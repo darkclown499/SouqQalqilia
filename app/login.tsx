@@ -121,204 +121,85 @@ export default function LoginScreen() {
   };
 
   // ── Google Sign-In ──
-  // Strategy: use HTTPS Supabase redirect URL (works in ALL environments
-  // including OnSpace Preview where custom schemes like onspaceapp:// are
-  // NOT registered). After browser closes, poll Supabase session for up
-  // to 20 seconds — handles the case where the redirect fires correctly
-  // but openAuthSessionAsync still returns 'cancel'.
   const handleGoogleSignIn = async () => {
     if (googleLoading) return;
     setGoogleLoading(true);
-
     try {
       const supabase = getSupabaseClient();
 
-      // ── WEB ──────────────────────────────────────────────────────────────
+      // ── WEB ──
       if (Platform.OS === 'web') {
         const redirectTo = typeof window !== 'undefined'
           ? `${window.location.origin}/auth/callback`
           : '';
-        const { data, error } = await supabase.auth.signInWithOAuth({
+        const { error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
-          options: {
-            redirectTo,
-            skipBrowserRedirect: false,
-            queryParams: { prompt: 'select_account', access_type: 'offline' },
-          },
+          options: { redirectTo, skipBrowserRedirect: false, queryParams: { prompt: 'select_account', access_type: 'offline' } },
         });
-        if (error || !data?.url) {
-          showAlert(isAr ? 'خطأ' : 'Error', error?.message ?? 'Failed to start Google sign-in');
-          setGoogleLoading(false);
-        }
-        return;
-      }
-
-      // ── MOBILE ───────────────────────────────────────────────────────────
-      // Use TWO redirect URLs — try custom scheme first (works in APK),
-      // fall back mechanism handles preview environments automatically.
-      const customSchemeRedirect = 'onspaceapp://auth/callback';
-      // The HTTPS Supabase callback URL also works as a redirect target
-      // in environments where the custom scheme is not registered.
-      const supabaseHttpsRedirect = 'https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/auth/v1/callback';
-
-      // Register onAuthStateChange listener BEFORE getting the OAuth URL.
-      // This is the PRIMARY detection path — fires when Supabase processes
-      // the auth callback regardless of how the redirect was captured.
-      let authResolved = false;
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (authResolved) return;
-        if (event === 'SIGNED_IN' && session) {
-          authResolved = true;
-          subscription.unsubscribe();
-          setGoogleLoading(false);
-          router.replace('/(tabs)');
-        }
-      });
-
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: customSchemeRedirect,
-          skipBrowserRedirect: true,
-          queryParams: { prompt: 'select_account', access_type: 'offline' },
-        },
-      });
-
-      if (error) {
-        subscription.unsubscribe();
-        showAlert(isAr ? 'خطأ' : 'Error', error.message);
+        if (error) showAlert(isAr ? 'خطأ' : 'Error', error.message);
         setGoogleLoading(false);
         return;
       }
 
-      if (!data?.url) {
-        subscription.unsubscribe();
+      // ── MOBILE ──
+      const redirectTo = 'onspaceapp://auth/callback';
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo, skipBrowserRedirect: true, queryParams: { prompt: 'select_account', access_type: 'offline' } },
+      });
+
+      if (error || !data?.url) {
         showAlert(
           isAr ? 'خطأ في الاتصال' : 'Connection Error',
-          isAr ? 'تعذّر الاتصال بـ Google. تحقق من اتصالك بالإنترنت.' : 'Could not connect to Google. Check your internet connection.'
+          error?.message ?? (isAr ? 'تعذّر الاتصال بـ Google' : 'Could not connect to Google')
         );
         setGoogleLoading(false);
         return;
       }
 
-      // Open the browser — pass BOTH redirect URLs so openAuthSessionAsync
-      // can capture either one when the browser navigates to them.
-      let result: { type: string; url?: string } = { type: 'cancel' };
-      if (typeof WebBrowser.openAuthSessionAsync === 'function') {
-        result = await WebBrowser.openAuthSessionAsync(
-          data.url,
-          customSchemeRedirect,
-          { showInRecents: false }
-        ) as { type: string; url?: string };
-      }
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo) as { type: string; url?: string };
 
-      // ── Path 1: deep link captured (APK / production) ─────────────────
-      if (!authResolved && result.type === 'success' && result.url) {
-        subscription.unsubscribe();
-        await processOAuthCallback(result.url, supabase);
-        return;
-      }
-
-      // ── Path 2: onAuthStateChange already fired ────────────────────────
-      if (authResolved) return;
-
-      // ── Path 3: browser closed but session may exist (preview env) ─────
-      // Poll Supabase for up to 20 seconds (2s intervals × 10 attempts).
-      // This handles OnSpace Preview where the custom scheme redirect
-      // can't be captured but Supabase may have stored the session
-      // through the HTTPS callback flow.
-      let attempts = 0;
-      const maxAttempts = 10;
-      const pollInterval = 2000;
-
-      const pollSession = async (): Promise<void> => {
-        if (authResolved) return;
+      if (result.type === 'success' && result.url) {
+        // Extract code or tokens from the redirect URL
+        const parsed = new URL(result.url);
+        const params = new URLSearchParams(parsed.searchParams);
+        if (parsed.hash?.startsWith('#')) {
+          new URLSearchParams(parsed.hash.slice(1)).forEach((v, k) => params.set(k, v));
+        }
+        const code = params.get('code');
+        if (code) {
+          const { error: exchErr } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchErr) {
+            showAlert(isAr ? 'خطأ' : 'Error', exchErr.message);
+            setGoogleLoading(false);
+            return;
+          }
+        } else {
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+          if (accessToken && refreshToken) {
+            const { error: sessErr } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+            if (sessErr) {
+              showAlert(isAr ? 'خطأ' : 'Error', sessErr.message);
+              setGoogleLoading(false);
+              return;
+            }
+          }
+        }
+        setGoogleLoading(false);
+        router.replace('/(tabs)');
+      } else {
+        // Browser closed / cancelled — check if session exists anyway
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          authResolved = true;
-          subscription.unsubscribe();
           setGoogleLoading(false);
           router.replace('/(tabs)');
-          return;
+        } else {
+          setGoogleLoading(false);
         }
-        attempts++;
-        if (attempts < maxAttempts) {
-          await new Promise<void>(resolve => setTimeout(resolve, pollInterval));
-          return pollSession();
-        }
-        // No session after 20s — user cancelled or error
-        subscription.unsubscribe();
-        setGoogleLoading(false);
-      };
-
-      await pollSession();
-
+      }
     } catch (e: any) {
       showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Google sign-in failed');
-      setGoogleLoading(false);
-    }
-  };
-
-  // Parses the OAuth callback URL and establishes a Supabase session
-  const processOAuthCallback = async (callbackUrl: string, supabase: ReturnType<typeof getSupabaseClient>) => {
-    try {
-      const parsed = new URL(callbackUrl);
-      const params = new URLSearchParams(parsed.searchParams);
-      // Also parse hash fragment (implicit flow)
-      if (parsed.hash?.startsWith('#')) {
-        new URLSearchParams(parsed.hash.slice(1)).forEach((v, k) => params.set(k, v));
-      }
-
-      const oauthErr = params.get('error_description') ?? params.get('error');
-      if (oauthErr) {
-        showAlert(isAr ? 'خطأ' : 'Error', decodeURIComponent(oauthErr));
-        setGoogleLoading(false);
-        return;
-      }
-
-      // PKCE flow: exchange code for session
-      const code = params.get('code');
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) { setGoogleLoading(false); router.replace('/(tabs)'); return; }
-          showAlert(isAr ? 'خطأ' : 'Error', error.message);
-          setGoogleLoading(false);
-          return;
-        }
-        setGoogleLoading(false);
-        router.replace('/(tabs)');
-        return;
-      }
-
-      // Implicit flow: set session directly from tokens
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-      if (accessToken && refreshToken) {
-        const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-        if (error) {
-          showAlert(isAr ? 'خطأ' : 'Error', error.message);
-          setGoogleLoading(false);
-          return;
-        }
-        setGoogleLoading(false);
-        router.replace('/(tabs)');
-        return;
-      }
-
-      // Last resort: check if session exists
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setGoogleLoading(false);
-        router.replace('/(tabs)');
-        return;
-      }
-
-      showAlert(isAr ? 'خطأ' : 'Sign-in Failed', isAr ? 'لم يتم استلام بيانات الجلسة.' : 'No session data received.');
-      setGoogleLoading(false);
-    } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e.message ?? 'Failed to process sign-in');
       setGoogleLoading(false);
     }
   };
