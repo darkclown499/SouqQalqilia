@@ -1,13 +1,16 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Pressable, Dimensions, FlatList,
-  Platform, StatusBar,
+  Platform, StatusBar, I18nManager,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withSpring, withTiming, interpolate, Extrapolation,
+} from 'react-native-reanimated';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -47,94 +50,84 @@ export default function OnboardingScreen() {
   const { colors } = useTheme();
   const { t, language, setLanguage } = useLanguage();
 
-  // ── Current slide index (source of truth) ─────────────────────────────────
   const [currentIndex, setCurrentIndex] = useState(0);
-
-  // ── Lock flag: prevents double-tap race on rapid presses ──────────────────
   const isNavigatingRef = useRef(false);
-
-  // ── Ref to FlatList for programmatic scroll ────────────────────────────────
   const flatListRef = useRef<FlatList>(null);
 
-  // Reset lock whenever index changes (user swiped or tapped Next)
+  // Animated value tracking scroll offset for dot animation
+  const scrollX = useSharedValue(0);
+
+  // Button entrance animation for last slide
+  const btnOpacity = useSharedValue(0);
+  const btnTranslateY = useSharedValue(20);
+
+  const isLast = currentIndex === SLIDES.length - 1;
+  const isRTL = language === 'ar';
+
+  // Animate Get Started button in/out
+  useEffect(() => {
+    if (isLast) {
+      btnOpacity.value = withTiming(1, { duration: 350 });
+      btnTranslateY.value = withSpring(0, { damping: 14, stiffness: 160 });
+    } else {
+      btnOpacity.value = withTiming(0, { duration: 200 });
+      btnTranslateY.value = withTiming(16, { duration: 200 });
+    }
+  }, [isLast]);
+
+  const btnAnimStyle = useAnimatedStyle(() => ({
+    opacity: btnOpacity.value,
+    transform: [{ translateY: btnTranslateY.value }],
+  }));
+
+  // Reset navigation lock on index change
   useEffect(() => {
     isNavigatingRef.current = false;
   }, [currentIndex]);
 
-  // ── Persist flag + navigate away — wrapped in try/catch ───────────────────
   const finish = useCallback(async (source: string) => {
-    // Lock immediately to prevent double-invocation
-    if (isNavigatingRef.current) {
-      console.log(`[Onboarding] finish(${source}) -> BLOCKED (already navigating)`);
-      return;
-    }
+    if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
-    console.log(`[Onboarding] finish(${source}) -> TRIGGERED`);
-
     try {
       await AsyncStorage.setItem(ONBOARDING_SEEN_KEY, '1');
-      console.log(`[Onboarding] finish(${source}) -> AsyncStorage.setItem SUCCESS`);
-    } catch (err) {
-      // Storage failure is non-blocking — navigate anyway so user is not frozen
-      console.log(`[Onboarding] finish(${source}) -> AsyncStorage.setItem FAILED (continuing):`, err);
-    }
-
-    // Replace so back-button cannot return to onboarding
+    } catch (_) {}
     router.replace('/beta-warning');
-    console.log(`[Onboarding] finish(${source}) -> router.replace('/beta-warning') CALLED`);
   }, [router]);
 
-  // ── Next / Get Started handler ────────────────────────────────────────────
-  const goNext = useCallback(() => {
-    console.log(`[Onboarding] goNext -> currentIndex=${currentIndex}, isNavigating=${isNavigatingRef.current}`);
-
-    // Debounce: ignore rapid repeated taps
-    if (isNavigatingRef.current) {
-      console.log('[Onboarding] goNext -> BLOCKED (lock active)');
-      return;
-    }
-
-    if (currentIndex < SLIDES.length - 1) {
-      const nextIndex = currentIndex + 1;
-      console.log(`[Onboarding] goNext -> scrolling to index ${nextIndex}`);
-      // Lock until scroll settles (onMomentumScrollEnd resets it via index change)
-      isNavigatingRef.current = true;
-      flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
-      setCurrentIndex(nextIndex);
-    } else {
-      console.log('[Onboarding] goNext -> last slide, calling finish()');
-      finish('next-button');
-    }
-  }, [currentIndex, finish]);
-
-  // ── Language switch — must NOT reset slide index ───────────────────────────
   const handleLangSwitch = useCallback((lang: Language) => {
-    console.log(`[Onboarding] languageSwitch -> ${lang}, currentIndex=${currentIndex}`);
     setLanguage(lang);
-    // Re-scroll to current index after language re-render to prevent drift
     requestAnimationFrame(() => {
       flatListRef.current?.scrollToIndex({ index: currentIndex, animated: false });
     });
   }, [setLanguage, currentIndex]);
 
-  // ── Swipe detection via onMomentumScrollEnd ────────────────────────────────
+  // Swipe detection — accounts for RTL where scroll direction is flipped
   const handleScrollEnd = useCallback((e: any) => {
-    const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const rawIndex = Math.round(offsetX / width);
+
+    // On RTL devices FlatList may invert scroll offset on some platforms
+    const newIndex = isRTL
+      ? Math.max(0, Math.min(SLIDES.length - 1, rawIndex))
+      : Math.max(0, Math.min(SLIDES.length - 1, rawIndex));
+
     if (newIndex !== currentIndex) {
-      console.log(`[Onboarding] onSwipe -> index ${currentIndex} -> ${newIndex}`);
       setCurrentIndex(newIndex);
     }
-  }, [currentIndex]);
+  }, [currentIndex, isRTL]);
 
-  // ── Dot press ─────────────────────────────────────────────────────────────
+  // Dot press
   const handleDotPress = useCallback((i: number) => {
-    console.log(`[Onboarding] dotPress -> index ${i}`);
     flatListRef.current?.scrollToIndex({ index: i, animated: true });
     setCurrentIndex(i);
   }, []);
 
-  const isLast = currentIndex === SLIDES.length - 1;
   const currentSlide = SLIDES[currentIndex];
+
+  // Swipe hint arrow direction:
+  // Arabic (RTL): swipe RIGHT  → forward = chevron_left pointing right gesture hint
+  // English (LTR): swipe LEFT → forward = chevron_right pointing left gesture hint
+  const swipeHintIcon = isRTL ? 'chevron-right' : 'chevron-left';
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -164,16 +157,18 @@ export default function OnboardingScreen() {
           ))}
         </View>
 
-        <Pressable
-          onPress={() => {
-            console.log('[Onboarding] skipButton -> PRESSED');
-            finish('skip-button');
-          }}
-          hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
-          accessibilityLabel="Skip onboarding"
-        >
-          <Text style={[styles.skipText, { color: colors.textMuted }]}>{t.skip}</Text>
-        </Pressable>
+        {!isLast ? (
+          <Pressable
+            onPress={() => finish('skip-button')}
+            hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
+            accessibilityLabel="Skip onboarding"
+          >
+            <Text style={[styles.skipText, { color: colors.textMuted }]}>{t.skip}</Text>
+          </Pressable>
+        ) : (
+          // Placeholder to keep layout stable
+          <View style={styles.skipPlaceholder} />
+        )}
       </View>
 
       {/* ── SLIDES ───────────────────────────────────────────────────────── */}
@@ -188,7 +183,10 @@ export default function OnboardingScreen() {
         bounces={false}
         decelerationRate="fast"
         onMomentumScrollEnd={handleScrollEnd}
-        // Prevent FlatList from intercepting Next button touch events
+        onScroll={(e) => {
+          scrollX.value = e.nativeEvent.contentOffset.x;
+        }}
+        scrollEventThrottle={16}
         keyboardShouldPersistTaps="handled"
         getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
         renderItem={({ item }) => (
@@ -233,67 +231,102 @@ export default function OnboardingScreen() {
         )}
       />
 
-      {/* ── PAGINATION DOTS ──────────────────────────────────────────────── */}
-      <View style={styles.dots}>
-        {SLIDES.map((_, i) => (
+      {/* ── BOTTOM AREA ──────────────────────────────────────────────────── */}
+      <View style={[styles.bottomArea, { paddingBottom: Math.max(insets.bottom, 20) + Spacing.md }]}>
+
+        {/* Swipe hint — shows on slides 1 and 2 only */}
+        {!isLast ? (
+          <View style={styles.swipeHintRow}>
+            {isRTL ? (
+              // Arabic: hint to swipe RIGHT
+              <>
+                <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} style={{ opacity: 0.5 }} />
+                <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} style={{ opacity: 0.7 }} />
+                <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
+                <Text style={[styles.swipeHintText, { color: colors.textMuted }]}>
+                  {language === 'ar' ? 'اسحب يميناً' : 'Swipe right'}
+                </Text>
+              </>
+            ) : (
+              // English: hint to swipe LEFT
+              <>
+                <Text style={[styles.swipeHintText, { color: colors.textMuted }]}>
+                  Swipe left
+                </Text>
+                <MaterialIcons name="chevron-left" size={20} color={colors.textMuted} />
+                <MaterialIcons name="chevron-left" size={20} color={colors.textMuted} style={{ opacity: 0.7 }} />
+                <MaterialIcons name="chevron-left" size={20} color={colors.textMuted} style={{ opacity: 0.5 }} />
+              </>
+            )}
+          </View>
+        ) : (
+          <View style={styles.swipeHintRow} />
+        )}
+
+        {/* Pagination dots */}
+        <View style={styles.dots}>
+          {SLIDES.map((_, i) => {
+            const dotAnimStyle = useAnimatedStyle(() => {
+              const inputRange = [(i - 1) * width, i * width, (i + 1) * width];
+              const dotWidth = interpolate(
+                scrollX.value,
+                inputRange,
+                [8, 28, 8],
+                Extrapolation.CLAMP
+              );
+              const opacity = interpolate(
+                scrollX.value,
+                inputRange,
+                [0.4, 1, 0.4],
+                Extrapolation.CLAMP
+              );
+              return { width: dotWidth, opacity };
+            });
+
+            return (
+              <Pressable
+                key={i}
+                onPress={() => handleDotPress(i)}
+                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                accessibilityLabel={`Go to slide ${i + 1}`}
+              >
+                <Animated.View
+                  style={[
+                    styles.dot,
+                    { backgroundColor: SLIDES[i].iconBg },
+                    dotAnimStyle,
+                  ]}
+                />
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Get Started button — animated in on last slide */}
+        <Animated.View style={[styles.btnWrap, btnAnimStyle]} pointerEvents={isLast ? 'auto' : 'none'}>
           <Pressable
-            key={i}
-            onPress={() => handleDotPress(i)}
-            hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-            accessibilityLabel={`Go to slide ${i + 1}`}
+            style={({ pressed }) => [
+              styles.startBtn,
+              {
+                backgroundColor: currentSlide.iconBg,
+                opacity: pressed ? 0.88 : 1,
+                ...Shadow.colored,
+              },
+            ]}
+            onPress={() => finish('get-started')}
+            accessibilityLabel="Get Started"
+            accessibilityRole="button"
           >
-            <View
-              style={[
-                styles.dot,
-                {
-                  backgroundColor: i === currentIndex ? currentSlide.iconBg : colors.border,
-                  width: i === currentIndex ? 28 : 8,
-                },
-              ]}
+            <Text style={[styles.startBtnText, { writingDirection: isRTL ? 'rtl' : 'ltr' }]}>
+              {t.getStarted}
+            </Text>
+            <MaterialIcons
+              name={isRTL ? 'arrow-back' : 'arrow-forward'}
+              size={22}
+              color="#fff"
             />
           </Pressable>
-        ))}
-      </View>
-
-      {/* ── NEXT / GET STARTED BUTTON ─────────────────────────────────────
-           Wrapped in extra padding to guarantee it clears Android nav bar
-           and any system gesture zones at the bottom.
-      ──────────────────────────────────────────────────────────────────── */}
-      <View
-        style={[
-          styles.actions,
-          {
-            // Always ensure button is above system navigation area
-            paddingBottom: Math.max(insets.bottom, 16) + Spacing.lg,
-          },
-        ]}
-        // pointerEvents="box-none" lets touch pass through wrapper but not button
-        pointerEvents="box-none"
-      >
-        <Pressable
-          style={({ pressed }) => [
-            styles.nextBtn,
-            {
-              backgroundColor: currentSlide.iconBg,
-              opacity: pressed ? 0.88 : 1,
-              ...Shadow.colored,
-            },
-          ]}
-          onPress={goNext}
-          // Generous hit area prevents missed taps near screen edges
-          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-          accessibilityLabel={isLast ? 'Get Started' : 'Next slide'}
-          accessibilityRole="button"
-        >
-          <Text style={styles.nextBtnText}>
-            {isLast ? t.getStarted : t.next}
-          </Text>
-          <MaterialIcons
-            name={isLast ? 'arrow-forward' : 'chevron-right'}
-            size={20}
-            color="#fff"
-          />
-        </Pressable>
+        </Animated.View>
       </View>
     </View>
   );
@@ -316,12 +349,19 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: Radius.full,
     borderWidth: 1.5,
-    minHeight: 44,          // iOS minimum touch target
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
   langPillText: { fontSize: FontSize.sm, fontWeight: '600' },
-  skipText: { fontSize: FontSize.sm, fontWeight: '600', minHeight: 44, textAlignVertical: 'center', lineHeight: 44 },
+  skipText: {
+    fontSize: FontSize.sm,
+    fontWeight: '600',
+    minHeight: 44,
+    textAlignVertical: 'center',
+    lineHeight: 44,
+  },
+  skipPlaceholder: { width: 60, height: 44 },
 
   slide: {
     flex: 1,
@@ -367,7 +407,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
 
-  // Logo slide
   logoContainer: {
     width: width * 0.58,
     height: width * 0.38,
@@ -405,35 +444,55 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
 
+  // ── Bottom area ───────────────────────────────────────────────────────────
+  bottomArea: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    gap: Spacing.md,
+    alignItems: 'center',
+  },
+
+  // Swipe hint
+  swipeHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    minHeight: 28,
+  },
+  swipeHintText: {
+    fontSize: FontSize.sm,
+    fontWeight: '500',
+    marginHorizontal: 4,
+  },
+
+  // Dots
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    paddingBottom: Spacing.lg,
-    minHeight: 32,
+    minHeight: 20,
   },
   dot: {
     height: 8,
     borderRadius: Radius.full,
   },
 
-  actions: {
-    paddingHorizontal: Spacing.lg,
-    // Elevate above any gesture-intercept layer
-    zIndex: 20,
+  // Get Started button
+  btnWrap: {
+    width: '100%',
   },
-  nextBtn: {
+  startBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     borderRadius: Radius.xl,
     paddingVertical: 18,
-    // Minimum 48dp height satisfies Android touch target requirement
     minHeight: 58,
+    width: '100%',
   },
-  nextBtnText: {
+  startBtnText: {
     color: '#fff',
     fontSize: FontSize.lg,
     fontWeight: '800',
