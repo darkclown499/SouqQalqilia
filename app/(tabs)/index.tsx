@@ -221,17 +221,7 @@ export default function HomeScreen() {
             contentFit="cover"
             transition={600}
           />
-          {/* Gradient-style overlay — stronger at bottom */}
-          <View style={[StyleSheet.absoluteFill, styles.bannerGradTop]} />
-          <View style={[StyleSheet.absoluteFill, styles.bannerGradBottom]} />
-
-          {/* Top-left: decorative pill */}
-          <View style={styles.bannerTag}>
-            <MaterialIcons name="local-offer" size={12} color="#fff" />
-            <Text style={styles.bannerTagText}>{isAr ? 'إعلانات مميزة' : 'Featured Deals'}</Text>
-          </View>
-
-          {/* Bottom content */}
+          {/* Bottom content — title + subtitle only, no overlays */}
           <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
             <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
               {currentBanner.title}
@@ -241,10 +231,6 @@ export default function HomeScreen() {
                 {currentBanner.subtitle}
               </Text>
             ) : null}
-            <View style={[styles.bannerCta, { alignSelf: isRTL ? 'flex-end' : 'flex-start' }]}>
-              <Text style={styles.bannerCtaText}>{isAr ? 'تصفح الآن' : 'Browse Now'}</Text>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={14} color="#fff" />
-            </View>
           </View>
 
           {/* Pagination dots */}
@@ -431,27 +417,9 @@ const styles = StyleSheet.create({
   sponsoredTitle: { fontSize: FontSize.sm, fontWeight: '700' },
   sponsoredSub: { fontSize: FontSize.xs },
   bannerWrap: { width: '100%', borderRadius: Radius.xl, overflow: 'hidden', marginBottom: Spacing.lg + 4, position: 'relative' },
-  bannerGradTop: { backgroundColor: 'rgba(0,0,0,0.08)' },
-  bannerGradBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '65%', backgroundColor: 'rgba(5,12,22,0.72)' },
-  bannerTag: {
-    position: 'absolute', top: 14, left: 14,
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 5,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
-  },
-  bannerTagText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700', letterSpacing: 0.3 },
   bannerContent: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.md, paddingBottom: Spacing.lg, gap: 5 },
-  bannerTitle: { fontSize: FontSize.xl + 2, fontWeight: '800', color: '#fff', letterSpacing: -0.5, lineHeight: 28 },
-  bannerSubtitle: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.78)', fontWeight: '500' },
-  bannerCta: {
-    flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 6,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
-    alignSelf: 'flex-start',
-  },
-  bannerCtaText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
+  bannerTitle: { fontSize: FontSize.xl + 2, fontWeight: '800', color: '#fff', letterSpacing: -0.5, lineHeight: 28, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  bannerSubtitle: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.9)', fontWeight: '500', textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   bannerDots: { position: 'absolute', top: 14, right: 14, flexDirection: 'row', gap: 5 },
   bannerDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.38)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   bannerDotActive: { backgroundColor: '#fff', width: 22, borderRadius: 4 },
