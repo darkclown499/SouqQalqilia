@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   sponsoredTitle: { fontSize: FontSize.sm, fontWeight: '700' },
   sponsoredSub: { fontSize: FontSize.xs },
   bannerWrap: { width: '100%', borderRadius: Radius.xl, overflow: 'hidden', marginBottom: Spacing.lg + 4, position: 'relative' },
-  bannerGradTop: { background: 'transparent', backgroundColor: 'rgba(0,0,0,0.08)' },
+  bannerGradTop: { backgroundColor: 'rgba(0,0,0,0.08)' },
   bannerGradBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '65%', backgroundColor: 'rgba(5,12,22,0.72)' },
   bannerTag: {
     position: 'absolute', top: 14, left: 14,
