@@ -124,7 +124,6 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     if (googleLoading) return;
     setGoogleLoading(true);
-    console.log('[Google] handleGoogleSignIn triggered, platform:', Platform.OS);
 
     try {
       const supabase = getSupabaseClient();
@@ -150,9 +149,11 @@ export default function LoginScreen() {
       }
 
       // ── MOBILE ───────────────────────────────────────────────────────────
+      // Set up auth state listener BEFORE opening the browser.
+      // On Android, the deep link (onspaceapp://) may not be captured by
+      // openAuthSessionAsync — Supabase fires onAuthStateChange instead.
       const redirectTo = 'onspaceapp://auth/callback';
 
-      console.log('[Google] Requesting OAuth URL...');
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -163,61 +164,85 @@ export default function LoginScreen() {
       });
 
       if (error) {
-        console.error('[Google] OAuth URL error:', error.message);
         showAlert(isAr ? 'خطأ' : 'Error', error.message);
         setGoogleLoading(false);
         return;
       }
 
       if (!data?.url) {
-        console.error('[Google] No OAuth URL returned');
-        showAlert(isAr ? 'خطأ في الاتصال' : 'Connection Error',
-          isAr ? 'تعذّر الاتصال بـ Google. تحقق من اتصالك بالإنترنت.' : 'Could not connect to Google. Check your internet connection.');
+        showAlert(
+          isAr ? 'خطأ في الاتصال' : 'Connection Error',
+          isAr ? 'تعذّر الاتصال بـ Google. تحقق من اتصالك بالإنترنت.' : 'Could not connect to Google. Check your internet connection.'
+        );
         setGoogleLoading(false);
         return;
       }
 
-      console.log('[Google] Opening browser session...');
-
-      // Verify WebBrowser is available
       if (typeof WebBrowser.openAuthSessionAsync !== 'function') {
-        console.error('[Google] WebBrowser.openAuthSessionAsync is not a function');
         showAlert(isAr ? 'خطأ' : 'Error', 'Browser module not available. Please try again.');
         setGoogleLoading(false);
         return;
       }
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-      console.log('[Google] Browser result type:', result.type);
+      // ── Listen for auth state change (primary path on Android) ──────────
+      let authResolved = false;
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (authResolved) return;
+        if (event === 'SIGNED_IN' && session) {
+          authResolved = true;
+          subscription.unsubscribe();
+          setGoogleLoading(false);
+          router.replace('/(tabs)');
+        }
+      });
 
-      if (result.type === 'cancel' || result.type === 'dismiss') {
-        // User closed the browser without signing in — silent, no alert
-        setGoogleLoading(false);
+      // ── Open the Google sign-in browser ─────────────────────────────────
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
+      if (authResolved) {
+        // onAuthStateChange already handled it — nothing more to do
         return;
       }
 
       if (result.type === 'success' && (result as any).url) {
-        console.log('[Google] Got callback URL, processing...');
+        // Deep link captured — process callback URL directly
+        subscription.unsubscribe();
         await processOAuthCallback((result as any).url, supabase);
         return;
       }
 
-      // Fallback: check if session was already established
-      console.log('[Google] Unexpected result type, checking session...');
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
+      // Browser closed (cancel/dismiss) — check if session was set anyway
+      // This covers the case where Android closes the browser after redirect
+      // but openAuthSessionAsync returns 'cancel' instead of 'success'
+      const { data: { session: existingSession } } = await supabase.auth.getSession();
+      if (existingSession) {
+        authResolved = true;
+        subscription.unsubscribe();
         setGoogleLoading(false);
         router.replace('/(tabs)');
-      } else {
-        showAlert(
-          isAr ? 'لم يكتمل التسجيل' : 'Sign-in Not Completed',
-          isAr ? 'أغلق المتصفح قبل إكمال تسجيل الدخول. حاول مجدداً.' : 'The browser was closed before sign-in completed. Please try again.'
-        );
-        setGoogleLoading(false);
+        return;
       }
 
+      // User genuinely cancelled — wait briefly for onAuthStateChange
+      // in case the session is still being processed
+      await new Promise<void>(resolve => setTimeout(resolve, 1500));
+
+      if (authResolved) return; // handled by listener
+
+      subscription.unsubscribe();
+
+      // Final session check
+      const { data: { session: finalSession } } = await supabase.auth.getSession();
+      if (finalSession) {
+        setGoogleLoading(false);
+        router.replace('/(tabs)');
+        return;
+      }
+
+      // Truly cancelled
+      setGoogleLoading(false);
+
     } catch (e: any) {
-      console.error('[Google] Exception:', e?.message ?? e);
       showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Google sign-in failed');
       setGoogleLoading(false);
     }
