@@ -22,8 +22,8 @@ export default function LoginScreen() {
   const { signInWithPassword, sendOTP, verifyOTPAndLogin, operationLoading } = useAuth();
 
   React.useEffect(() => {
-    if (Platform.OS !== 'web') WebBrowser.warmUpAsync();
-    return () => { if (Platform.OS !== 'web') WebBrowser.coolDownAsync(); };
+    if (Platform.OS !== 'web' && typeof WebBrowser.warmUpAsync === 'function') WebBrowser.warmUpAsync();
+    return () => { if (Platform.OS !== 'web' && typeof WebBrowser.coolDownAsync === 'function') WebBrowser.coolDownAsync(); };
   }, []);
 
   const { showAlert } = useAlert();

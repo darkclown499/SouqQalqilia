@@ -7,4 +7,22 @@ const real = (() => {
 if (typeof real.maybeCompleteAuthSession !== 'function') {
   real.maybeCompleteAuthSession = function() { return { type: 'success' }; };
 }
+if (typeof real.warmUpAsync !== 'function') {
+  real.warmUpAsync = async function() {};
+}
+if (typeof real.coolDownAsync !== 'function') {
+  real.coolDownAsync = async function() {};
+}
+if (typeof real.openAuthSessionAsync !== 'function') {
+  real.openAuthSessionAsync = async function() { return { type: 'cancel' }; };
+}
+if (typeof real.openBrowserAsync !== 'function') {
+  real.openBrowserAsync = async function() { return { type: 'cancel' }; };
+}
+if (typeof real.dismissBrowser !== 'function') {
+  real.dismissBrowser = function() {};
+}
+if (typeof real.dismissAuthSession !== 'function') {
+  real.dismissAuthSession = function() {};
+}
 module.exports = real;
