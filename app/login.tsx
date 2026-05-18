@@ -229,6 +229,7 @@ export default function LoginScreen() {
           setGoogleLoading(false);
           return;
         }
+        setGoogleLoading(false);
         router.replace('/(tabs)');
         return;
       }
@@ -243,6 +244,7 @@ export default function LoginScreen() {
           setGoogleLoading(false);
           return;
         }
+        setGoogleLoading(false);
         router.replace('/(tabs)');
         return;
       }
@@ -250,6 +252,7 @@ export default function LoginScreen() {
       // Last resort: check if session exists
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
+        setGoogleLoading(false);
         router.replace('/(tabs)');
         return;
       }
