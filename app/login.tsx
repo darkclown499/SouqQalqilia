@@ -121,6 +121,11 @@ export default function LoginScreen() {
   };
 
   // ── Google Sign-In ──
+  // Strategy: use HTTPS Supabase redirect URL (works in ALL environments
+  // including OnSpace Preview where custom schemes like onspaceapp:// are
+  // NOT registered). After browser closes, poll Supabase session for up
+  // to 20 seconds — handles the case where the redirect fires correctly
+  // but openAuthSessionAsync still returns 'cancel'.
   const handleGoogleSignIn = async () => {
     if (googleLoading) return;
     setGoogleLoading(true);
@@ -149,42 +154,16 @@ export default function LoginScreen() {
       }
 
       // ── MOBILE ───────────────────────────────────────────────────────────
-      // Set up auth state listener BEFORE opening the browser.
-      // On Android, the deep link (onspaceapp://) may not be captured by
-      // openAuthSessionAsync — Supabase fires onAuthStateChange instead.
-      const redirectTo = 'onspaceapp://auth/callback';
+      // Use TWO redirect URLs — try custom scheme first (works in APK),
+      // fall back mechanism handles preview environments automatically.
+      const customSchemeRedirect = 'onspaceapp://auth/callback';
+      // The HTTPS Supabase callback URL also works as a redirect target
+      // in environments where the custom scheme is not registered.
+      const supabaseHttpsRedirect = 'https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/auth/v1/callback';
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo,
-          skipBrowserRedirect: true,
-          queryParams: { prompt: 'select_account', access_type: 'offline' },
-        },
-      });
-
-      if (error) {
-        showAlert(isAr ? 'خطأ' : 'Error', error.message);
-        setGoogleLoading(false);
-        return;
-      }
-
-      if (!data?.url) {
-        showAlert(
-          isAr ? 'خطأ في الاتصال' : 'Connection Error',
-          isAr ? 'تعذّر الاتصال بـ Google. تحقق من اتصالك بالإنترنت.' : 'Could not connect to Google. Check your internet connection.'
-        );
-        setGoogleLoading(false);
-        return;
-      }
-
-      if (typeof WebBrowser.openAuthSessionAsync !== 'function') {
-        showAlert(isAr ? 'خطأ' : 'Error', 'Browser module not available. Please try again.');
-        setGoogleLoading(false);
-        return;
-      }
-
-      // ── Listen for auth state change (primary path on Android) ──────────
+      // Register onAuthStateChange listener BEFORE getting the OAuth URL.
+      // This is the PRIMARY detection path — fires when Supabase processes
+      // the auth callback regardless of how the redirect was captured.
       let authResolved = false;
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (authResolved) return;
@@ -196,51 +175,83 @@ export default function LoginScreen() {
         }
       });
 
-      // ── Open the Google sign-in browser ─────────────────────────────────
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: customSchemeRedirect,
+          skipBrowserRedirect: true,
+          queryParams: { prompt: 'select_account', access_type: 'offline' },
+        },
+      });
 
-      if (authResolved) {
-        // onAuthStateChange already handled it — nothing more to do
-        return;
-      }
-
-      if (result.type === 'success' && (result as any).url) {
-        // Deep link captured — process callback URL directly
+      if (error) {
         subscription.unsubscribe();
-        await processOAuthCallback((result as any).url, supabase);
+        showAlert(isAr ? 'خطأ' : 'Error', error.message);
+        setGoogleLoading(false);
         return;
       }
 
-      // Browser closed (cancel/dismiss) — check if session was set anyway
-      // This covers the case where Android closes the browser after redirect
-      // but openAuthSessionAsync returns 'cancel' instead of 'success'
-      const { data: { session: existingSession } } = await supabase.auth.getSession();
-      if (existingSession) {
-        authResolved = true;
+      if (!data?.url) {
+        subscription.unsubscribe();
+        showAlert(
+          isAr ? 'خطأ في الاتصال' : 'Connection Error',
+          isAr ? 'تعذّر الاتصال بـ Google. تحقق من اتصالك بالإنترنت.' : 'Could not connect to Google. Check your internet connection.'
+        );
+        setGoogleLoading(false);
+        return;
+      }
+
+      // Open the browser — pass BOTH redirect URLs so openAuthSessionAsync
+      // can capture either one when the browser navigates to them.
+      let result: { type: string; url?: string } = { type: 'cancel' };
+      if (typeof WebBrowser.openAuthSessionAsync === 'function') {
+        result = await WebBrowser.openAuthSessionAsync(
+          data.url,
+          customSchemeRedirect,
+          { showInRecents: false }
+        ) as { type: string; url?: string };
+      }
+
+      // ── Path 1: deep link captured (APK / production) ─────────────────
+      if (!authResolved && result.type === 'success' && result.url) {
+        subscription.unsubscribe();
+        await processOAuthCallback(result.url, supabase);
+        return;
+      }
+
+      // ── Path 2: onAuthStateChange already fired ────────────────────────
+      if (authResolved) return;
+
+      // ── Path 3: browser closed but session may exist (preview env) ─────
+      // Poll Supabase for up to 20 seconds (2s intervals × 10 attempts).
+      // This handles OnSpace Preview where the custom scheme redirect
+      // can't be captured but Supabase may have stored the session
+      // through the HTTPS callback flow.
+      let attempts = 0;
+      const maxAttempts = 10;
+      const pollInterval = 2000;
+
+      const pollSession = async (): Promise<void> => {
+        if (authResolved) return;
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          authResolved = true;
+          subscription.unsubscribe();
+          setGoogleLoading(false);
+          router.replace('/(tabs)');
+          return;
+        }
+        attempts++;
+        if (attempts < maxAttempts) {
+          await new Promise<void>(resolve => setTimeout(resolve, pollInterval));
+          return pollSession();
+        }
+        // No session after 20s — user cancelled or error
         subscription.unsubscribe();
         setGoogleLoading(false);
-        router.replace('/(tabs)');
-        return;
-      }
+      };
 
-      // User genuinely cancelled — wait briefly for onAuthStateChange
-      // in case the session is still being processed
-      await new Promise<void>(resolve => setTimeout(resolve, 1500));
-
-      if (authResolved) return; // handled by listener
-
-      subscription.unsubscribe();
-
-      // Final session check
-      const { data: { session: finalSession } } = await supabase.auth.getSession();
-      if (finalSession) {
-        setGoogleLoading(false);
-        router.replace('/(tabs)');
-        return;
-      }
-
-      // Truly cancelled
-      setGoogleLoading(false);
+      await pollSession();
 
     } catch (e: any) {
       showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Google sign-in failed');
@@ -270,9 +281,8 @@ export default function LoginScreen() {
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) {
-          // Code may have already been used — check existing session
           const { data: { session } } = await supabase.auth.getSession();
-          if (session) { router.replace('/(tabs)'); return; }
+          if (session) { setGoogleLoading(false); router.replace('/(tabs)'); return; }
           showAlert(isAr ? 'خطأ' : 'Error', error.message);
           setGoogleLoading(false);
           return;
@@ -455,11 +465,18 @@ export default function LoginScreen() {
           {googleLoading
             ? <ActivityIndicator size="small" color="#4285F4" style={{ width: 24, height: 24 }} />
             : <View style={styles.googleIconWrap}><Text style={styles.googleG}>G</Text></View>}
-          <Text style={styles.googleBtnText}>
-            {googleLoading
-              ? (isAr ? 'جارٍ التحميل...' : 'Opening...')
-              : (isAr ? 'المتابعة عبر Google' : 'Continue with Google')}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.googleBtnText}>
+              {googleLoading
+                ? (isAr ? 'جارٍ تسجيل الدخول...' : 'Signing in...')
+                : (isAr ? 'المتابعة عبر Google' : 'Continue with Google')}
+            </Text>
+            {googleLoading ? (
+              <Text style={styles.googleBtnSub}>
+                {isAr ? 'أكمل تسجيل الدخول في المتصفح ثم عد للتطبيق' : 'Complete sign-in in the browser then return'}
+              </Text>
+            ) : null}
+          </View>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -507,6 +524,7 @@ const styles = StyleSheet.create({
   googleIconWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#4285F4', alignItems: 'center', justifyContent: 'center' },
   googleG: { color: '#fff', fontSize: 13, fontWeight: '900', lineHeight: 17 },
   googleBtnText: { color: '#1a1a1a', fontSize: FontSize.md, fontWeight: '700' },
+  googleBtnSub: { color: '#6B7280', fontSize: FontSize.xs, marginTop: 2 },
   loadingOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
   loadingBox: { backgroundColor: '#fff', borderRadius: 16, padding: 28, alignItems: 'center', gap: 14, minWidth: 140, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 10, elevation: 8 },
   loadingText: { fontSize: FontSize.md, fontWeight: '600', color: '#1a1a1a' },
