@@ -124,6 +124,7 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     if (googleLoading) return;
     setGoogleLoading(true);
+    console.log('[Google] handleGoogleSignIn triggered, platform:', Platform.OS);
 
     try {
       const supabase = getSupabaseClient();
@@ -145,14 +146,13 @@ export default function LoginScreen() {
           showAlert(isAr ? 'خطأ' : 'Error', error?.message ?? 'Failed to start Google sign-in');
           setGoogleLoading(false);
         }
-        // Browser will redirect — no further action needed
         return;
       }
 
       // ── MOBILE ───────────────────────────────────────────────────────────
-      // Use the app scheme registered in app.json
       const redirectTo = 'onspaceapp://auth/callback';
 
+      console.log('[Google] Requesting OAuth URL...');
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -162,40 +162,63 @@ export default function LoginScreen() {
         },
       });
 
-      if (error || !data?.url) {
-        showAlert(isAr ? 'خطأ' : 'Error', error?.message ?? 'Failed to get OAuth URL');
+      if (error) {
+        console.error('[Google] OAuth URL error:', error.message);
+        showAlert(isAr ? 'خطأ' : 'Error', error.message);
         setGoogleLoading(false);
         return;
       }
 
-      // Open the browser and wait — openAuthSessionAsync captures the redirect
-      // automatically when it matches the redirectUrl prefix.
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, {
-        showInRecents: true,
-      });
+      if (!data?.url) {
+        console.error('[Google] No OAuth URL returned');
+        showAlert(isAr ? 'خطأ في الاتصال' : 'Connection Error',
+          isAr ? 'تعذّر الاتصال بـ Google. تحقق من اتصالك بالإنترنت.' : 'Could not connect to Google. Check your internet connection.');
+        setGoogleLoading(false);
+        return;
+      }
+
+      console.log('[Google] Opening browser session...');
+
+      // Verify WebBrowser is available
+      if (typeof WebBrowser.openAuthSessionAsync !== 'function') {
+        console.error('[Google] WebBrowser.openAuthSessionAsync is not a function');
+        showAlert(isAr ? 'خطأ' : 'Error', 'Browser module not available. Please try again.');
+        setGoogleLoading(false);
+        return;
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      console.log('[Google] Browser result type:', result.type);
 
       if (result.type === 'cancel' || result.type === 'dismiss') {
-        // User closed the browser without signing in
+        // User closed the browser without signing in — silent, no alert
         setGoogleLoading(false);
         return;
       }
 
-      if (result.type === 'success' && result.url) {
-        await processOAuthCallback(result.url, supabase);
+      if (result.type === 'success' && (result as any).url) {
+        console.log('[Google] Got callback URL, processing...');
+        await processOAuthCallback((result as any).url, supabase);
         return;
       }
 
-      // Fallback: browser closed without result — check if session was set
+      // Fallback: check if session was already established
+      console.log('[Google] Unexpected result type, checking session...');
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
+        setGoogleLoading(false);
         router.replace('/(tabs)');
       } else {
-        showAlert(isAr ? 'خطأ' : 'Sign-in Failed', isAr ? 'لم يتم تسجيل الدخول. حاول مجدداً.' : 'Sign-in was not completed. Please try again.');
+        showAlert(
+          isAr ? 'لم يكتمل التسجيل' : 'Sign-in Not Completed',
+          isAr ? 'أغلق المتصفح قبل إكمال تسجيل الدخول. حاول مجدداً.' : 'The browser was closed before sign-in completed. Please try again.'
+        );
+        setGoogleLoading(false);
       }
-      setGoogleLoading(false);
 
     } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e.message ?? 'Google sign-in failed');
+      console.error('[Google] Exception:', e?.message ?? e);
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Google sign-in failed');
       setGoogleLoading(false);
     }
   };
@@ -403,9 +426,15 @@ export default function LoginScreen() {
           <Text style={[styles.dividerText, { color: 'rgba(255,255,255,0.55)' }]}>{isAr ? 'أو' : 'or'}</Text>
           <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
         </View>
-        <Pressable style={[styles.googleBtn, { opacity: googleLoading ? 0.75 : 1 }]} onPress={handleGoogleSignIn} disabled={googleLoading}>
-          <View style={styles.googleIconWrap}><Text style={styles.googleG}>G</Text></View>
-          <Text style={styles.googleBtnText}>{isAr ? 'المتابعة عبر Google' : 'Continue with Google'}</Text>
+        <Pressable style={[styles.googleBtn, { opacity: googleLoading ? 0.82 : 1 }]} onPress={handleGoogleSignIn} disabled={googleLoading}>
+          {googleLoading
+            ? <ActivityIndicator size="small" color="#4285F4" style={{ width: 24, height: 24 }} />
+            : <View style={styles.googleIconWrap}><Text style={styles.googleG}>G</Text></View>}
+          <Text style={styles.googleBtnText}>
+            {googleLoading
+              ? (isAr ? 'جارٍ التحميل...' : 'Opening...')
+              : (isAr ? 'المتابعة عبر Google' : 'Continue with Google')}
+          </Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
