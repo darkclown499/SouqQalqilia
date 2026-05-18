@@ -1,10 +1,14 @@
 import React, { memo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Category, getCategoryName } from '@/services/categoriesService';
 import { Radius, FontSize, Spacing, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+const ICON_SIZE = SCREEN_W < 375 ? 22 : 28;
+const ICON_WRAP = SCREEN_W < 375 ? 46 : 58;
 
 interface CategoryCardProps {
   category: Category;
@@ -31,9 +35,9 @@ export const CategoryCard = memo(function CategoryCard({ category, onPress }: Ca
       onPress={() => onPress(category)}
     >
       <View style={[styles.stripe, { backgroundColor: category.color }]} />
-      <View style={styles.body}>
-        <View style={[styles.iconWrap, { backgroundColor: category.color + '1A' }]}>
-          <MaterialIcons name={category.icon as any} size={26} color={category.color} />
+      <View style={[styles.body, SCREEN_W < 375 && styles.bodySmall]}>
+        <View style={[styles.iconWrap, { backgroundColor: category.color + '1A', width: ICON_WRAP, height: ICON_WRAP }]}>
+          <MaterialIcons name={category.icon as any} size={ICON_SIZE} color={category.color} />
         </View>
         <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={2}>{displayName}</Text>
         <View style={[styles.arrow, { backgroundColor: category.color + '20' }]}>
@@ -45,13 +49,13 @@ export const CategoryCard = memo(function CategoryCard({ category, onPress }: Ca
 });
 
 const styles = StyleSheet.create({
-  stripe: { height: 4, width: '100%' },
-  body: { padding: Spacing.md, alignItems: 'center', gap: Spacing.sm },
+  stripe: { height: 5, width: '100%' },
+  body: { padding: Spacing.md, alignItems: 'center', gap: Spacing.sm, minHeight: 110 },
+  bodySmall: { padding: Spacing.sm, minHeight: 90 },
   iconWrap: {
-    width: 54, height: 54,
     borderRadius: Radius.md,
     alignItems: 'center', justifyContent: 'center',
   },
-  name: { fontSize: FontSize.sm, fontWeight: '600', textAlign: 'center', lineHeight: 17 },
-  arrow: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  name: { fontSize: FontSize.sm, fontWeight: '700', textAlign: 'center', lineHeight: 18 },
+  arrow: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
 });

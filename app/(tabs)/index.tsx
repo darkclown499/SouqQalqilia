@@ -23,8 +23,13 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth } from '@/template';
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - Spacing.lg * 2 - Spacing.sm) / 2;
+const { width: SCREEN_W } = Dimensions.get('window');
+// Responsive padding: small phones get tighter spacing
+const H_PAD = SCREEN_W < 375 ? 12 : Spacing.lg;
+const CARD_GAP = SCREEN_W < 375 ? 8 : Spacing.sm;
+const CARD_WIDTH = (SCREEN_W - H_PAD * 2 - CARD_GAP) / 2;
+// Banner height scales with screen width for all device sizes
+const BANNER_H = Math.round(SCREEN_W * 0.52);
 const SPONSORED_INTERVAL = 8;
 
 // Module-level cache: banners and interstitials rarely change, no need to
@@ -190,7 +195,7 @@ export default function HomeScreen() {
     }
     const realItem = item as Ad;
     return (
-      <View style={[styles.adWrapper, index % 2 === 0 ? { marginRight: Spacing.sm / 2 } : { marginLeft: Spacing.sm / 2 }]}>
+      <View style={[styles.adWrapper, index % 2 === 0 ? { marginRight: CARD_GAP / 2 } : { marginLeft: CARD_GAP / 2 }]}>
         <AdCard
           ad={realItem}
           width={CARD_WIDTH}
@@ -206,15 +211,43 @@ export default function HomeScreen() {
   const ListHeader = useMemo(() => (
     <>
       {currentBanner ? (
-        <Pressable style={[styles.bannerWrap, { ...Shadow.md }]} onPress={() => router.push('/search')} /*activeOpacity={0.95}*/>
-          <Image source={{ uri: currentBanner.image_url }} style={styles.bannerImg} contentFit="cover" transition={600} />
-          <View style={styles.bannerOverlay} />
-          <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-            <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{currentBanner.title}</Text>
-            {currentBanner.subtitle ? (
-              <Text style={[styles.bannerSubtitle, { textAlign: isRTL ? 'right' : 'left' }]}>{currentBanner.subtitle}</Text>
-            ) : null}
+        <Pressable
+          style={[styles.bannerWrap, { height: BANNER_H, ...Shadow.md }]}
+          onPress={() => router.push('/search')}
+        >
+          <Image
+            source={{ uri: currentBanner.image_url }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={600}
+          />
+          {/* Gradient-style overlay — stronger at bottom */}
+          <View style={[StyleSheet.absoluteFill, styles.bannerGradTop]} />
+          <View style={[StyleSheet.absoluteFill, styles.bannerGradBottom]} />
+
+          {/* Top-left: decorative pill */}
+          <View style={styles.bannerTag}>
+            <MaterialIcons name="local-offer" size={12} color="#fff" />
+            <Text style={styles.bannerTagText}>{isAr ? 'إعلانات مميزة' : 'Featured Deals'}</Text>
           </View>
+
+          {/* Bottom content */}
+          <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+            <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
+              {currentBanner.title}
+            </Text>
+            {currentBanner.subtitle ? (
+              <Text style={[styles.bannerSubtitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+                {currentBanner.subtitle}
+              </Text>
+            ) : null}
+            <View style={[styles.bannerCta, { alignSelf: isRTL ? 'flex-end' : 'flex-start' }]}>
+              <Text style={styles.bannerCtaText}>{isAr ? 'تصفح الآن' : 'Browse Now'}</Text>
+              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={14} color="#fff" />
+            </View>
+          </View>
+
+          {/* Pagination dots */}
           {banners.length > 1 ? (
             <View style={styles.bannerDots}>
               {banners.map((_, i) => (
@@ -387,8 +420,8 @@ const styles = StyleSheet.create({
   sortBarContent: { gap: Spacing.sm, paddingBottom: 2, paddingTop: 2 },
   sortChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1 },
   sortChipText: { fontSize: FontSize.xs },
-  listContent: { padding: Spacing.lg, paddingBottom: 36 },
-  adWrapper: { flex: 1, marginBottom: Spacing.sm },
+  listContent: { padding: H_PAD, paddingBottom: 36 },
+  adWrapper: { flex: 1, marginBottom: CARD_GAP },
   sponsoredRow: { flex: 2, width: '100%', marginBottom: Spacing.md },
   sponsoredCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1.5 },
   sponsoredIconWrap: { width: 44, height: 44, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
@@ -397,15 +430,31 @@ const styles = StyleSheet.create({
   sponsoredLabelText: { color: '#fff', fontSize: 9, fontWeight: '700' },
   sponsoredTitle: { fontSize: FontSize.sm, fontWeight: '700' },
   sponsoredSub: { fontSize: FontSize.xs },
-  bannerWrap: { width: '100%', height: 185, borderRadius: Radius.xl, overflow: 'hidden', marginBottom: Spacing.lg, position: 'relative' },
-  bannerImg: { width: '100%', height: '100%' },
-  bannerOverlay: { position: 'absolute', inset: 0, backgroundColor: 'rgba(5,15,25,0.55)' },
-  bannerContent: { position: 'absolute', bottom: Spacing.md, left: Spacing.md, right: Spacing.md, gap: 6 },
-  bannerTitle: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', letterSpacing: -0.4, lineHeight: 26 },
-  bannerSubtitle: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.72)' },
-  bannerDots: { position: 'absolute', bottom: Spacing.md, right: Spacing.md, flexDirection: 'row', gap: 4 },
-  bannerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.38)' },
-  bannerDotActive: { backgroundColor: '#fff', width: 18, borderRadius: 3 },
+  bannerWrap: { width: '100%', borderRadius: Radius.xl, overflow: 'hidden', marginBottom: Spacing.lg + 4, position: 'relative' },
+  bannerGradTop: { background: 'transparent', backgroundColor: 'rgba(0,0,0,0.08)' },
+  bannerGradBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '65%', backgroundColor: 'rgba(5,12,22,0.72)' },
+  bannerTag: {
+    position: 'absolute', top: 14, left: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+  },
+  bannerTagText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700', letterSpacing: 0.3 },
+  bannerContent: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.md, paddingBottom: Spacing.lg, gap: 5 },
+  bannerTitle: { fontSize: FontSize.xl + 2, fontWeight: '800', color: '#fff', letterSpacing: -0.5, lineHeight: 28 },
+  bannerSubtitle: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.78)', fontWeight: '500' },
+  bannerCta: {
+    flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 6,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+    alignSelf: 'flex-start',
+  },
+  bannerCtaText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
+  bannerDots: { position: 'absolute', top: 14, right: 14, flexDirection: 'row', gap: 5 },
+  bannerDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.38)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  bannerDotActive: { backgroundColor: '#fff', width: 22, borderRadius: 4 },
   sectionRow: { justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   sectionTitleRow: { alignItems: 'center', gap: 8 },
   sectionTitle: { fontSize: FontSize.lg, fontWeight: '700', letterSpacing: -0.2 },
@@ -415,8 +464,8 @@ const styles = StyleSheet.create({
   countPillText: { fontSize: FontSize.xs, fontWeight: '700' },
   activeSortPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
   activeSortText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
-  catOuter: { marginBottom: Spacing.lg, marginHorizontal: -Spacing.lg },
-  catContent: { paddingHorizontal: Spacing.lg, gap: Spacing.sm, alignItems: 'center' },
+  catOuter: { marginBottom: Spacing.lg, marginHorizontal: -H_PAD },
+  catContent: { paddingHorizontal: H_PAD, gap: Spacing.sm, alignItems: 'center' },
   catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: Spacing.md, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1.5 },
   catChipText: { fontSize: FontSize.xs },
   loadMoreIndicator: { paddingVertical: 20, alignItems: 'center' },

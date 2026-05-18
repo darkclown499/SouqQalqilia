@@ -1,5 +1,5 @@
 import React, { memo, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -9,6 +9,11 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { getCategoryName } from '@/services/categoriesService';
 import { timeAgo } from '@/utils/timeAgo';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+// Image height scales proportionally: taller on larger phones
+const IMG_H = Math.round(SCREEN_W * 0.265);
+const CLAMP_IMG_H = Math.max(130, Math.min(IMG_H, 190));
 
 interface AdCardProps {
   ad: Ad;
@@ -222,9 +227,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   imageWrap: { position: 'relative' },
-  image: { width: '100%', height: 145 },
+  image: { width: '100%', height: CLAMP_IMG_H },
   imagePlaceholder: {
-    width: '100%', height: 145,
+    width: '100%', height: CLAMP_IMG_H,
     alignItems: 'center', justifyContent: 'center',
   },
 
@@ -290,8 +295,8 @@ const styles = StyleSheet.create({
   priceText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '800' },
 
   // Info
-  info: { padding: 10, gap: 4 },
-  title: { fontSize: FontSize.sm, fontWeight: '700', lineHeight: 18 },
+  info: { padding: SCREEN_W < 375 ? 8 : 10, gap: 4 },
+  title: { fontSize: SCREEN_W < 375 ? FontSize.xs + 1 : FontSize.sm, fontWeight: '700', lineHeight: 19 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   locationText: { fontSize: 10, flex: 1 },
   footer: {
