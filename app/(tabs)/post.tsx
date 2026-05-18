@@ -114,6 +114,8 @@ export default function PostAdScreen() {
     if (!description.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال وصف' : 'Please enter a description.');
     if (!categoryId) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى اختيار تصنيف' : 'Please select a category.');
     if (!location.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال الحي أو المنطقة' : 'Please enter your neighbourhood.');
+    const parsedPrice = parseFloat(price);
+    if (!price.trim() || isNaN(parsedPrice) || parsedPrice <= 0) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال سعر صحيح (أكبر من 0)' : 'Please enter a valid price (greater than 0).');
     if (!phoneLocal.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال رقم الهاتف' : 'Please enter a phone number.');
 
     const fullPhone = `${phonePrefix}${phoneLocal.trim()}`;
@@ -121,7 +123,7 @@ export default function PostAdScreen() {
     try {
       const { data: ad, error: adError } = await createAd({
         title: title.trim(), description: description.trim(),
-        price: parseFloat(price) || 0, location: `${language === 'ar' ? 'قلقيلية' : 'Qalqilya'}${location.trim() ? ` - ${location.trim()}` : ''}`,
+        price: parsedPrice, location: `${language === 'ar' ? 'قلقيلية' : 'Qalqilya'}${location.trim() ? ` - ${location.trim()}` : ''}`,
         category_id: categoryId, phone_number: fullPhone, condition,
       });
       if (adError || !ad) throw new Error(adError ?? 'Failed to create ad');
@@ -328,7 +330,7 @@ export default function PostAdScreen() {
               <Text style={[styles.shekelIcon, { color: colors.primary }]}>₪</Text>
               <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.priceLocation}</Text>
             </View>
-            <Input label={t.price} placeholder={t.pricePlaceholder} value={price} onChangeText={setPrice} keyboardType="numeric" />
+            <Input label={language === 'ar' ? 'السعر (₪) *' : 'Price (₪) *'} placeholder={language === 'ar' ? 'أدخل السعر بالشيكل' : 'Enter price in ILS'} value={price} onChangeText={setPrice} keyboardType="numeric" />
             <Text style={[styles.locationLabel, { color: colors.textSecondary }, textAlign]}>
               {language === 'ar' ? 'الموقع' : 'Location'}
             </Text>
