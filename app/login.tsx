@@ -124,11 +124,12 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     if (googleLoading) return;
     setGoogleLoading(true);
-    try {
-      const supabase = getSupabaseClient();
 
-      // ── WEB ──
-      if (Platform.OS === 'web') {
+    const supabase = getSupabaseClient();
+
+    // ── WEB ──
+    if (Platform.OS === 'web') {
+      try {
         const redirectTo = typeof window !== 'undefined'
           ? `${window.location.origin}/auth/callback`
           : '';
@@ -137,11 +138,29 @@ export default function LoginScreen() {
           options: { redirectTo, skipBrowserRedirect: false, queryParams: { prompt: 'select_account', access_type: 'offline' } },
         });
         if (error) showAlert(isAr ? 'خطأ' : 'Error', error.message);
+      } catch (e: any) {
+        showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Google sign-in failed');
+      } finally {
         setGoogleLoading(false);
-        return;
       }
+      return;
+    }
 
-      // ── MOBILE ──
+    // ── MOBILE ──
+    // Step 1: Register auth state listener BEFORE opening browser
+    // This catches SIGNED_IN even if the deep link redirect isn't captured
+    let authResolved = false;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (authResolved) return;
+      if (event === 'SIGNED_IN' && session) {
+        authResolved = true;
+        subscription.unsubscribe();
+        setGoogleLoading(false);
+        router.replace('/(tabs)');
+      }
+    });
+
+    try {
       const redirectTo = 'onspaceapp://auth/callback';
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -149,6 +168,7 @@ export default function LoginScreen() {
       });
 
       if (error || !data?.url) {
+        subscription.unsubscribe();
         showAlert(
           isAr ? 'خطأ في الاتصال' : 'Connection Error',
           error?.message ?? (isAr ? 'تعذّر الاتصال بـ Google' : 'Could not connect to Google')
@@ -157,10 +177,11 @@ export default function LoginScreen() {
         return;
       }
 
+      // Step 2: Open browser
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo) as { type: string; url?: string };
 
+      // Step 3: Handle direct success (deep link was captured — works on real APK)
       if (result.type === 'success' && result.url) {
-        // Extract code or tokens from the redirect URL
         const parsed = new URL(result.url);
         const params = new URLSearchParams(parsed.searchParams);
         if (parsed.hash?.startsWith('#')) {
@@ -169,7 +190,16 @@ export default function LoginScreen() {
         const code = params.get('code');
         if (code) {
           const { error: exchErr } = await supabase.auth.exchangeCodeForSession(code);
-          if (exchErr) {
+          if (!exchErr && !authResolved) {
+            authResolved = true;
+            subscription.unsubscribe();
+            setGoogleLoading(false);
+            router.replace('/(tabs)');
+            return;
+          }
+          if (exchErr && !authResolved) {
+            subscription.unsubscribe();
+            authResolved = true;
             showAlert(isAr ? 'خطأ' : 'Error', exchErr.message);
             setGoogleLoading(false);
             return;
@@ -177,28 +207,52 @@ export default function LoginScreen() {
         } else {
           const accessToken = params.get('access_token');
           const refreshToken = params.get('refresh_token');
-          if (accessToken && refreshToken) {
+          if (accessToken && refreshToken && !authResolved) {
             const { error: sessErr } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-            if (sessErr) {
+            if (sessErr && !authResolved) {
+              subscription.unsubscribe();
+              authResolved = true;
               showAlert(isAr ? 'خطأ' : 'Error', sessErr.message);
               setGoogleLoading(false);
               return;
             }
           }
         }
-        setGoogleLoading(false);
-        router.replace('/(tabs)');
-      } else {
-        // Browser closed / cancelled — check if session exists anyway
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          setGoogleLoading(false);
-          router.replace('/(tabs)');
-        } else {
-          setGoogleLoading(false);
-        }
+        // onAuthStateChange will fire SIGNED_IN → handled above
+        return;
+      }
+
+      // Step 4: Browser closed without deep link (preview env / Android)
+      // Poll for session for up to 15 seconds — Supabase may have set it
+      // via onAuthStateChange while the browser was open.
+      if (!authResolved) {
+        let attempts = 0;
+        const maxAttempts = 10; // 10 × 1.5s = 15s
+        const poll = setInterval(async () => {
+          attempts++;
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session && !authResolved) {
+            authResolved = true;
+            subscription.unsubscribe();
+            clearInterval(poll);
+            setGoogleLoading(false);
+            router.replace('/(tabs)');
+          } else if (attempts >= maxAttempts && !authResolved) {
+            authResolved = true;
+            subscription.unsubscribe();
+            clearInterval(poll);
+            setGoogleLoading(false);
+            showAlert(
+              isAr ? 'لم يكتمل تسجيل الدخول' : 'Sign-in not completed',
+              isAr
+                ? 'يرجى إكمال تسجيل الدخول في المتصفح والعودة للتطبيق، أو المحاولة مجدداً.'
+                : 'Please complete sign-in in the browser and return to the app, or try again.'
+            );
+          }
+        }, 1500);
       }
     } catch (e: any) {
+      subscription.unsubscribe();
       showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Google sign-in failed');
       setGoogleLoading(false);
     }
