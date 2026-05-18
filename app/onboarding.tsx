@@ -19,6 +19,30 @@ import type { Language } from '@/constants/i18n';
 const { width } = Dimensions.get('window');
 export const ONBOARDING_SEEN_KEY = '@souq_onboarding_seen';
 
+// ── Animated dot — must be a component (not inline) to satisfy Rules of Hooks ──
+function Dot({ index, scrollX, color, onPress }: {
+  index: number;
+  scrollX: ReturnType<typeof useSharedValue<number>>;
+  color: string;
+  onPress: (i: number) => void;
+}) {
+  const dotAnimStyle = useAnimatedStyle(() => {
+    const inputRange = [(index - 1) * width, index * width, (index + 1) * width];
+    const dotWidth = interpolate(scrollX.value, inputRange, [8, 28, 8], Extrapolation.CLAMP);
+    const opacity = interpolate(scrollX.value, inputRange, [0.4, 1, 0.4], Extrapolation.CLAMP);
+    return { width: dotWidth, opacity };
+  });
+  return (
+    <Pressable
+      onPress={() => onPress(index)}
+      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+      accessibilityLabel={`Go to slide ${index + 1}`}
+    >
+      <Animated.View style={[styles.dot, { backgroundColor: color }, dotAnimStyle]} />
+    </Pressable>
+  );
+}
+
 const SLIDES = [
   {
     id: '1',
@@ -265,41 +289,9 @@ export default function OnboardingScreen() {
 
         {/* Pagination dots */}
         <View style={styles.dots}>
-          {SLIDES.map((_, i) => {
-            const dotAnimStyle = useAnimatedStyle(() => {
-              const inputRange = [(i - 1) * width, i * width, (i + 1) * width];
-              const dotWidth = interpolate(
-                scrollX.value,
-                inputRange,
-                [8, 28, 8],
-                Extrapolation.CLAMP
-              );
-              const opacity = interpolate(
-                scrollX.value,
-                inputRange,
-                [0.4, 1, 0.4],
-                Extrapolation.CLAMP
-              );
-              return { width: dotWidth, opacity };
-            });
-
-            return (
-              <Pressable
-                key={i}
-                onPress={() => handleDotPress(i)}
-                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                accessibilityLabel={`Go to slide ${i + 1}`}
-              >
-                <Animated.View
-                  style={[
-                    styles.dot,
-                    { backgroundColor: SLIDES[i].iconBg },
-                    dotAnimStyle,
-                  ]}
-                />
-              </Pressable>
-            );
-          })}
+          <Dot index={0} scrollX={scrollX} color={SLIDES[0].iconBg} onPress={handleDotPress} />
+          <Dot index={1} scrollX={scrollX} color={SLIDES[1].iconBg} onPress={handleDotPress} />
+          <Dot index={2} scrollX={scrollX} color={SLIDES[2].iconBg} onPress={handleDotPress} />
         </View>
 
         {/* Get Started button — animated in on last slide */}
