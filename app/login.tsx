@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, KeyboardAvoidingView,
-  Platform, Pressable, ActivityIndicator, Modal,
+  Platform, Pressable, ActivityIndicator, Modal, Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -44,6 +44,14 @@ export default function LoginScreen() {
   const router = useRouter();
   const isSubmittingRef = useRef(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const googleScale = useRef(new Animated.Value(1)).current;
+
+  const onGooglePressIn = useCallback(() => {
+    Animated.spring(googleScale, { toValue: 0.96, useNativeDriver: true, speed: 24, bounciness: 4 }).start();
+  }, [googleScale]);
+  const onGooglePressOut = useCallback(() => {
+    Animated.spring(googleScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }).start();
+  }, [googleScale]);
 
   // Countdown timer for resend button
   React.useEffect(() => {
@@ -393,26 +401,48 @@ export default function LoginScreen() {
         {/* Google */}
         <View style={styles.dividerRow}>
           <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
-          <Text style={[styles.dividerText, { color: 'rgba(255,255,255,0.55)' }]}>{isAr ? 'أو' : 'or'}</Text>
+          <Text style={[styles.dividerText, { color: 'rgba(255,255,255,0.55)' }]}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
           <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
         </View>
-        <Pressable style={[styles.googleBtn, { opacity: googleLoading ? 0.82 : 1 }]} onPress={handleGoogleSignIn} disabled={googleLoading}>
-          {googleLoading
-            ? <ActivityIndicator size="small" color="#4285F4" style={{ width: 24, height: 24 }} />
-            : <View style={styles.googleIconWrap}><Text style={styles.googleG}>G</Text></View>}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.googleBtnText}>
+
+        <Animated.View style={{ transform: [{ scale: googleScale }] }}>
+          <Pressable
+            style={[styles.googleBtn, googleLoading && styles.googleBtnLoading]}
+            onPress={handleGoogleSignIn}
+            disabled={googleLoading}
+            onPressIn={onGooglePressIn}
+            onPressOut={onGooglePressOut}
+          >
+            {/* Left: icon or spinner */}
+            <View style={styles.googleIconBox}>
               {googleLoading
-                ? (isAr ? 'جارٍ تسجيل الدخول...' : 'Signing in...')
-                : (isAr ? 'المتابعة عبر Google' : 'Continue with Google')}
-            </Text>
-            {googleLoading ? (
-              <Text style={styles.googleBtnSub}>
-                {isAr ? 'أكمل تسجيل الدخول في المتصفح ثم عد للتطبيق' : 'Complete sign-in in the browser then return'}
+                ? <ActivityIndicator size="small" color="#4285F4" />
+                : (
+                  <View style={styles.googleIconCircle}>
+                    {/* Google G — blue top-left + red bottom-left + yellow bottom-right + green top-right */}
+                    <Text style={styles.googleGLetter}>G</Text>
+                  </View>
+                )}
+            </View>
+
+            {/* Center: text */}
+            <View style={styles.googleTextCol}>
+              <Text style={styles.googleBtnText} numberOfLines={1}>
+                {googleLoading
+                  ? (isAr ? 'جارٍ تسجيل الدخول...' : 'Signing in...')
+                  : (isAr ? 'المتابعة عبر Google' : 'Continue with Google')}
               </Text>
-            ) : null}
-          </View>
-        </Pressable>
+              {googleLoading ? (
+                <Text style={styles.googleBtnSub} numberOfLines={1}>
+                  {isAr ? 'أكمل في المتصفح ثم عد للتطبيق' : 'Complete in browser, then return'}
+                </Text>
+              ) : null}
+            </View>
+
+            {/* Right: spacer to keep text centered */}
+            <View style={{ width: 40 }} />
+          </Pressable>
+        </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -455,11 +485,27 @@ const styles = StyleSheet.create({
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.md },
   dividerLine: { flex: 1, height: 1 },
   dividerText: { fontSize: FontSize.xs, fontWeight: '600' },
-  googleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, borderRadius: Radius.xl, paddingVertical: 14, marginTop: Spacing.sm, backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 4 },
-  googleIconWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#4285F4', alignItems: 'center', justifyContent: 'center' },
-  googleG: { color: '#fff', fontSize: 13, fontWeight: '900', lineHeight: 17 },
-  googleBtnText: { color: '#1a1a1a', fontSize: FontSize.md, fontWeight: '700' },
-  googleBtnSub: { color: '#6B7280', fontSize: FontSize.xs, marginTop: 2 },
+  googleBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    borderRadius: Radius.xl, paddingVertical: 14, paddingHorizontal: 16,
+    marginTop: Spacing.sm,
+    backgroundColor: '#fff',
+    borderWidth: 1.5, borderColor: '#E8EAED',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.10, shadowRadius: 8, elevation: 5,
+  },
+  googleBtnLoading: { borderColor: '#D2E3FC', backgroundColor: '#F8FBFF' },
+  googleIconBox: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  googleIconCircle: {
+    width: 36, height: 36, borderRadius: 18,
+    borderWidth: 1.5, borderColor: '#E8EAED',
+    backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#4285F4', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 3, elevation: 2,
+  },
+  googleGLetter: { fontSize: 19, fontWeight: '900', color: '#4285F4', lineHeight: 22 },
+  googleTextCol: { flex: 1, alignItems: 'center' },
+  googleBtnText: { color: '#1F1F1F', fontSize: FontSize.md, fontWeight: '700', letterSpacing: 0.1 },
+  googleBtnSub: { color: '#5F6368', fontSize: 11, marginTop: 2, textAlign: 'center' },
   loadingOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
   loadingBox: { backgroundColor: '#fff', borderRadius: 16, padding: 28, alignItems: 'center', gap: 14, minWidth: 140, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 10, elevation: 8 },
   loadingText: { fontSize: FontSize.md, fontWeight: '600', color: '#1a1a1a' },
