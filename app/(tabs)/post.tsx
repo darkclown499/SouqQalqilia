@@ -97,6 +97,18 @@ export default function PostAdScreen() {
 
   const handleRemoveImage = (index: number) => setImages(prev => prev.filter((_, i) => i !== index));
 
+  const resetForm = () => {
+    setTitle('');
+    setDescription('');
+    setPrice('');
+    setLocation('');
+    setCategoryId('');
+    setImages([]);
+    setPhoneLocal('');
+    setCondition('used');
+    setPhonePrefix('+970');
+  };
+
   const handleSubmit = async () => {
     if (!title.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال عنوان' : 'Please enter a title.');
     if (!description.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال وصف' : 'Please enter a description.');
@@ -121,17 +133,13 @@ export default function PostAdScreen() {
         }
         if (urls.length > 0) await saveAdImages(ad.id, urls);
       }
+      resetForm();
       showAlert(
         language === 'ar' ? 'تم نشر الإعلان!' : 'Ad Posted!',
         language === 'ar' ? 'إعلانك الآن متاح للعرض.' : 'Your listing is now live.',
         [
           { text: language === 'ar' ? 'عرض الإعلان' : 'View Listing', onPress: () => router.push(`/ad/${ad.id}`) },
-          {
-            text: language === 'ar' ? 'نشر آخر' : 'Post Another', style: 'cancel', onPress: () => {
-              setTitle(''); setDescription(''); setPrice(''); setLocation('');
-              setCategoryId(''); setImages([]); setPhoneLocal(''); setCondition('used');
-            },
-          },
+          { text: language === 'ar' ? 'نشر آخر' : 'Post Another', style: 'cancel' },
         ]
       );
     } catch (e: any) {
