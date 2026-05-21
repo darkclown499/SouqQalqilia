@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "onspace-app",
-    "slug": "onspace-app",
+    "name": "Souq Qalqilya",
+    "slug": "souq-qalqilya",
     "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
@@ -9,9 +9,18 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "app.onspace.souqQalqilya",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "We need camera access to let you take photos for your listings.",
+        "NSPhotoLibraryUsageDescription": "We need photo library access to let you upload images for your listings.",
+        "NSPhotoLibraryAddUsageDescription": "We need permission to save photos to your library.",
+        "NSUserTrackingUsageDescription": "This allows us to provide a better ad experience."
+      }
     },
     "android": {
+      "package": "app.onspace.souq_qalqilya",
       "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
