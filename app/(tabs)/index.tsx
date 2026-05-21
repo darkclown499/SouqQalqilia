@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
-  Dimensions, RefreshControl, ActivityIndicator,
+  Dimensions, RefreshControl, ActivityIndicator, Linking,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -182,7 +182,7 @@ export default function HomeScreen() {
       return (
         <Pressable
           style={[styles.sponsoredCard, { backgroundColor: colors.surface, borderColor: colors.primary + '40', ...Shadow.sm }]}
-          onPress={() => router.push('/search')}
+          onPress={() => Linking.openURL('https://wa.me/972559886886').catch(() => {})}
         >
           <View style={[styles.sponsoredIconWrap, { backgroundColor: colors.primaryGhost }]}>
             <MaterialIcons name="campaign" size={20} color={colors.primary} />
@@ -322,14 +322,6 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      {/* ── COMING SOON BANNER ── */}
-      <View style={[styles.comingSoonBar, { backgroundColor: '#FFF7ED', borderBottomColor: '#FED7AA' }]}>
-        <MaterialIcons name="construction" size={13} color="#D97706" />
-        <Text style={[styles.comingSoonText, { color: '#92400E' }]}>
-          {isAr ? 'قيد التطوير — ميزات جديدة قريباً 🚀' : 'Under Development — New features coming soon 🚀'}
-        </Text>
-      </View>
-
       {/* ── HEADER ── */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View style={[styles.headerTop, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
