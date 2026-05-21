@@ -307,7 +307,6 @@ export default function LoginScreen() {
           </View>
           <View style={styles.appNameHeroRow}>
             <Text style={styles.appName}>{isAr ? APP_NAME_AR : APP_NAME}</Text>
-            <View style={styles.heroBetaBadge}><Text style={styles.heroBetaBadgeText}>BETA</Text></View>
           </View>
           <Text style={styles.tagline}>{t.tagline}</Text>
         </View>
