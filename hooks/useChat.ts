@@ -14,15 +14,7 @@ try {
 export async function requestNotificationPermissions(): Promise<void> {
   if (!Notifications || Platform.OS === 'web') return;
   try {
-    // Configure notification handler
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-      }),
-    });
-
+    // Note: setNotificationHandler is called synchronously in _layout.tsx
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
@@ -42,21 +34,6 @@ export async function requestNotificationPermissions(): Promise<void> {
     } catch (_) {
       // Token registration can fail in simulators/emulators — not critical
     }
-  } catch (_) {}
-}
-
-/** Fire a local notification for a new message (in-app badge/banner when app is in foreground) */
-async function notifyNewMessage(senderName: string, preview: string): Promise<void> {
-  if (!Notifications || Platform.OS === 'web') return;
-  try {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: senderName,
-        body: preview,
-        sound: true,
-      },
-      trigger: null,
-    });
   } catch (_) {}
 }
 
@@ -196,26 +173,6 @@ export function useConversations() {
         .neq('sender_id', user.id);
 
       const newCount = count ?? 0;
-
-      // Local notification when new unread messages arrive
-      if (newCount > prevUnreadRef.current && prevUnreadRef.current >= 0) {
-        try {
-          const { data: latestMsgs } = await supabase
-            .from('messages')
-            .select('content, sender_id')
-            .is('read_at', null)
-            .neq('sender_id', user.id)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-          if (latestMsgs && latestMsgs.length > 0) {
-            const msg = latestMsgs[0] as any;
-            const senderName = 'New message';
-            const preview = msg.content?.substring(0, 80) || '...';
-            await notifyNewMessage(senderName, preview);
-          }
-        } catch (_) {}
-      }
 
       setUnreadCount(newCount);
       prevUnreadRef.current = newCount;

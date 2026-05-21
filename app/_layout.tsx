@@ -6,6 +6,21 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { useEffect } from 'react';
 import { Platform, InteractionManager } from 'react-native';
 
+// ── Configure notification handler SYNCHRONOUSLY at module level ─────────────
+// Must run before any notification arrives (foreground + background display)
+if (Platform.OS !== 'web') {
+  try {
+    const Notifications = require('expo-notifications');
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch (_) {}
+}
+
 // ─── Web: defer stale-token cleanup until after JS bundle is parsed ───────────
 // Running localStorage scan synchronously at module level blocks the JS thread
 // before React even mounts — move it behind a microtask so the first frame is
@@ -78,7 +93,7 @@ export default function RootLayout() {
 
     // ── Defer only heavy non-critical tasks ─────────────────────────────────
     const task = InteractionManager.runAfterInteractions(() => {
-      // Push notification setup — heavy, safe to defer
+      // Register push token — safe to defer (handler already set above)
       import('@/hooks/useChat').then(({ requestNotificationPermissions }) => {
         requestNotificationPermissions();
       });
