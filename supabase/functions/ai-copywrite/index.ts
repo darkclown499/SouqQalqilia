@@ -50,7 +50,8 @@ DESCRIPTION: [improved description]`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gemini-2.5-flash',
+        stream: false,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
