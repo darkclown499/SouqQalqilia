@@ -5,7 +5,7 @@
     "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
-    "scheme": "onspaceapp",
+    "scheme": "souqqalqilya",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -15,8 +15,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "We need camera access to let you take photos for your listings.",
         "NSPhotoLibraryUsageDescription": "We need photo library access to let you upload images for your listings.",
-        "NSPhotoLibraryAddUsageDescription": "We need permission to save photos to your library.",
-        "NSUserTrackingUsageDescription": "This allows us to provide a better ad experience."
+        "NSPhotoLibraryAddUsageDescription": "We need permission to save photos to your library."
       }
     },
     "android": {
@@ -81,7 +80,7 @@
           "autoVerify": true,
           "data": [
             {
-              "scheme": "onspaceapp",
+              "scheme": "souqqalqilya",
               "host": "auth",
               "pathPrefix": "/callback"
             }

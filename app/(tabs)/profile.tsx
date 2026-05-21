@@ -134,6 +134,35 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleDeleteAccount = () => {
+    showAlert(
+      isRTL ? 'حذف الحساب' : 'Delete Account',
+      isRTL
+        ? 'سيتم حذف حسابك وجميع إعلاناتك ورسائلك بشكل نهائي. هذا الإجراء لا يمكن التراجع عنه.'
+        : 'Your account, all listings, and messages will be permanently deleted. This action cannot be undone.',
+      [
+        { text: isRTL ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isRTL ? 'حذف نهائي' : 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const supabase = getSupabaseClient();
+              const { data: { user: currentUser } } = await supabase.auth.getUser();
+              if (!currentUser) return;
+              // Delete user profile (CASCADE handles ads, messages, favorites)
+              await supabase.from('user_profiles').delete().eq('id', currentUser.id);
+              // Sign out
+              await supabase.auth.signOut();
+            } catch (e: any) {
+              showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to delete account.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleContactSupport = () => {
     const msg = encodeURIComponent(SUPPORT_WHATSAPP_MESSAGE);
     const url = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${msg}`;
@@ -403,7 +432,7 @@ export default function ProfileScreen() {
 
             {/* Logout */}
             <Pressable
-              style={[styles.settingRowPressable, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              style={[styles.settingRowPressable, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
               onPress={handleLogout}
             >
               <View style={[styles.settingIconWrap, { backgroundColor: colors.errorLight }]}>
@@ -413,6 +442,25 @@ export default function ProfileScreen() {
                 <Text style={[styles.settingLabel, { color: colors.error, textAlign: isRTL ? 'right' : 'left' }]}>{t.signOut}</Text>
               </View>
               <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
+            </Pressable>
+
+            {/* Delete Account */}
+            <Pressable
+              style={[styles.settingRowPressable, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              onPress={handleDeleteAccount}
+            >
+              <View style={[styles.settingIconWrap, { backgroundColor: '#FEE2E2' }]}>
+                <MaterialIcons name="delete-forever" size={20} color="#DC2626" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingLabel, { color: '#DC2626', textAlign: isRTL ? 'right' : 'left' }]}>
+                  {isRTL ? 'حذف الحساب' : 'Delete Account'}
+                </Text>
+                <Text style={[styles.settingSub, { color: '#EF4444', textAlign: isRTL ? 'right' : 'left' }]}>
+                  {isRTL ? 'حذف نهائي لجميع البيانات' : 'Permanently removes all your data'}
+                </Text>
+              </View>
+              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color="#EF4444" />
             </Pressable>
           </View>
 

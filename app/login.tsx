@@ -169,7 +169,7 @@ export default function LoginScreen() {
     });
 
     try {
-      const redirectTo = 'onspaceapp://auth/callback';
+      const redirectTo = 'souqqalqilya://auth/callback';
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo, skipBrowserRedirect: true, queryParams: { prompt: 'select_account', access_type: 'offline' } },
