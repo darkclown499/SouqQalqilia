@@ -115,7 +115,7 @@ export default function OnboardingScreen() {
     try {
       await AsyncStorage.setItem(ONBOARDING_SEEN_KEY, '1');
     } catch (_) {}
-    router.replace('/beta-warning');
+    router.replace('/(tabs)');
   }, [router]);
 
   const handleLangSwitch = useCallback((lang: Language) => {

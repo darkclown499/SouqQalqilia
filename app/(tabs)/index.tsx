@@ -52,15 +52,26 @@ const FALLBACK_BANNERS: Banner[] = [
   { id: '3', title: 'New & Used Electronics', subtitle: 'Find the best tech deals', image_url: 'https://images.unsplash.com/photo-1585386959984-a4155224a1ad?w=600&q=80', link_url: '', is_active: true, position: 2, created_at: '' },
 ];
 
-function injectSponsored(ads: Ad[]): (Ad | { __sponsored: true; id: string })[] {
-  const result: (Ad | { __sponsored: true; id: string })[] = [];
-  for (let i = 0; i < ads.length; i++) {
-    result.push(ads[i]);
-    if ((i + 1) % SPONSORED_INTERVAL === 0 && i + 1 < ads.length) {
-      result.push({ __sponsored: true, id: `sponsored_${i}` });
+type FeedRow =
+  | { type: 'pair'; left: Ad; right: Ad | null; id: string }
+  | { type: 'sponsored'; id: string };
+
+function buildFeedRows(ads: Ad[]): FeedRow[] {
+  const rows: FeedRow[] = [];
+  let adIndex = 0;
+  let pairCount = 0;
+  while (adIndex < ads.length) {
+    // Inject sponsored row every SPONSORED_INTERVAL ads
+    if (pairCount > 0 && pairCount * 2 % SPONSORED_INTERVAL === 0) {
+      rows.push({ type: 'sponsored', id: `sponsored_${pairCount}` });
     }
+    const left = ads[adIndex];
+    const right = ads[adIndex + 1] ?? null;
+    rows.push({ type: 'pair', left, right, id: left.id });
+    adIndex += 2;
+    pairCount++;
   }
-  return result;
+  return rows;
 }
 
 function sortAds(ads: Ad[], sortBy: SortOption): Ad[] {
@@ -150,7 +161,7 @@ export default function HomeScreen() {
 
   // Memoize expensive sort + inject operations
   const sortedAds = useMemo(() => sortAds(ads, sortBy), [ads, sortBy]);
-  const feedItems = useMemo(() => injectSponsored(sortedAds), [sortedAds]);
+  const feedRows = useMemo(() => buildFeedRows(sortedAds), [sortedAds]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
@@ -166,45 +177,57 @@ export default function HomeScreen() {
     setSelectedCategory(id);
   }, []);
 
-  const renderItem = useCallback(({ item, index }: { item: Ad | { __sponsored: true; id: string }, index: number }) => { // Added explicit type for 'item'
-    if ('__sponsored' in item) { // Type guard to check if item is sponsored
+  const renderRow = useCallback(({ item }: { item: FeedRow }) => {
+    if (item.type === 'sponsored') {
       return (
-        <View style={styles.sponsoredRow}>
-          <Pressable
-            style={[styles.sponsoredCard, { backgroundColor: colors.surface, borderColor: colors.primary + '40', ...Shadow.sm }]}
-            onPress={() => router.push('/search')}
-          >
-            <View style={[styles.sponsoredIconWrap, { backgroundColor: colors.primaryGhost }]}>
-              <MaterialIcons name="campaign" size={20} color={colors.primary} />
+        <Pressable
+          style={[styles.sponsoredCard, { backgroundColor: colors.surface, borderColor: colors.primary + '40', ...Shadow.sm }]}
+          onPress={() => router.push('/search')}
+        >
+          <View style={[styles.sponsoredIconWrap, { backgroundColor: colors.primaryGhost }]}>
+            <MaterialIcons name="campaign" size={20} color={colors.primary} />
+          </View>
+          <View style={styles.sponsoredContent}>
+            <View style={[styles.sponsoredLabel, { backgroundColor: colors.primary }]}>
+              <Text style={styles.sponsoredLabelText}>{t.sponsored}</Text>
             </View>
-            <View style={styles.sponsoredContent}>
-              <View style={[styles.sponsoredLabel, { backgroundColor: colors.primary }]}>
-                <Text style={styles.sponsoredLabelText}>{t.sponsored}</Text>
-              </View>
-              <Text style={[styles.sponsoredTitle, { color: colors.textPrimary }]}>
-                {isAr ? 'اعرض إعلانك هنا' : 'Advertise Here'}
-              </Text>
-              <Text style={[styles.sponsoredSub, { color: colors.textMuted }]}>
-                {isAr ? 'تواصل معنا لتعزيز إعلانك' : 'Boost your listing for more visibility'}
-              </Text>
-            </View>
-            <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-          </Pressable>
-        </View>
+            <Text style={[styles.sponsoredTitle, { color: colors.textPrimary }]}>
+              {isAr ? 'اعرض إعلانك هنا' : 'Advertise Here'}
+            </Text>
+            <Text style={[styles.sponsoredSub, { color: colors.textMuted }]}>
+              {isAr ? 'تواصل معنا لتعزيز إعلانك' : 'Boost your listing for more visibility'}
+            </Text>
+          </View>
+          <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
+        </Pressable>
       );
     }
-    const realItem = item as Ad;
+    // pair row
     return (
-      <View style={[styles.adWrapper, index % 2 === 0 ? { marginRight: CARD_GAP / 2 } : { marginLeft: CARD_GAP / 2 }]}>
-        <AdCard
-          ad={realItem}
-          width={CARD_WIDTH}
-          isFavorited={favIds.has(realItem.id)}
-          onFavoritePress={user ? toggleFav : undefined}
-        />
+      <View style={[styles.pairRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <View style={styles.adWrapper}>
+          <AdCard
+            ad={item.left}
+            width={CARD_WIDTH}
+            isFavorited={favIds.has(item.left.id)}
+            onFavoritePress={user ? toggleFav : undefined}
+          />
+        </View>
+        {item.right ? (
+          <View style={styles.adWrapper}>
+            <AdCard
+              ad={item.right}
+              width={CARD_WIDTH}
+              isFavorited={favIds.has(item.right.id)}
+              onFavoritePress={user ? toggleFav : undefined}
+            />
+          </View>
+        ) : (
+          <View style={styles.adWrapper} />
+        )}
       </View>
     );
-  }, [colors, language, t, isRTL, favIds, user, toggleFav, router]); // Added 'router' to dependency array
+  }, [colors, t, isRTL, isAr, favIds, user, toggleFav, router]);
 
   const currentBanner = banners[featuredIndex] ?? banners[0];
 
@@ -299,6 +322,14 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+      {/* ── COMING SOON BANNER ── */}
+      <View style={[styles.comingSoonBar, { backgroundColor: '#FFF7ED', borderBottomColor: '#FED7AA' }]}>
+        <MaterialIcons name="construction" size={13} color="#D97706" />
+        <Text style={[styles.comingSoonText, { color: '#92400E' }]}>
+          {isAr ? 'قيد التطوير — ميزات جديدة قريباً 🚀' : 'Under Development — New features coming soon 🚀'}
+        </Text>
+      </View>
+
       {/* ── HEADER ── */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View style={[styles.headerTop, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -308,7 +339,6 @@ export default function HomeScreen() {
             </Text>
             <View style={[styles.appNameRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
               <Text style={[styles.appName, { textAlign: isRTL ? 'right' : 'left' }]}>{appTitle}</Text>
-              <View style={styles.betaBadge}><Text style={styles.betaBadgeText}>BETA</Text></View>
             </View>
           </View>
           <View style={[styles.headerActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -353,10 +383,9 @@ export default function HomeScreen() {
         <SkeletonGrid count={6} />
       ) : (
         <FlatList
-          data={feedItems} // No need for explicit type casting here, it's inferred from feedItems
+          data={feedRows}
           keyExtractor={item => item.id}
-          numColumns={2}
-          renderItem={renderItem}
+          renderItem={renderRow}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           windowSize={5}
@@ -386,6 +415,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  comingSoonBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: Spacing.md, borderBottomWidth: 1 },
+  comingSoonText: { fontSize: 11, fontWeight: '600' },
   container: { flex: 1 },
   header: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md, paddingTop: Spacing.sm },
   headerTop: { justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
@@ -407,9 +438,9 @@ const styles = StyleSheet.create({
   sortChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1 },
   sortChipText: { fontSize: FontSize.xs },
   listContent: { padding: H_PAD, paddingBottom: 36 },
-  adWrapper: { flex: 1, marginBottom: CARD_GAP },
-  sponsoredRow: { flex: 2, width: '100%', marginBottom: Spacing.md },
-  sponsoredCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1.5 },
+  pairRow: { flexDirection: 'row', gap: CARD_GAP, marginBottom: CARD_GAP },
+  adWrapper: { flex: 1 },
+  sponsoredCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1.5, marginBottom: Spacing.md },
   sponsoredIconWrap: { width: 44, height: 44, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
   sponsoredContent: { flex: 1, gap: 4 },
   sponsoredLabel: { borderRadius: Radius.full, paddingHorizontal: 7, paddingVertical: 2, alignSelf: 'flex-start' },
