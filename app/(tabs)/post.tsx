@@ -73,6 +73,7 @@ export default function PostAdScreen() {
 
   const handlePickCamera = async () => {
     setPhotoModalVisible(false);
+    // Small delay so modal closes before camera opens
     setTimeout(async () => {
       const result = await pickImage('camera');
       if (result) {
@@ -115,26 +116,19 @@ export default function PostAdScreen() {
     if (!location.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال الحي أو المنطقة' : 'Please enter your neighbourhood.');
     const parsedPrice = parseFloat(price);
     if (!price.trim() || isNaN(parsedPrice) || parsedPrice <= 0) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال سعر صحيح (أكبر من 0)' : 'Please enter a valid price (greater than 0).');
-    
-    // 🛠️ تم التعديل: إزالة شرط إجبارية الهاتف هنا
-    // إذا قام المستخدم بكتابة الرقم، نقوم بدمجه مع المقدمة، وإلا نتركه null أو نص فارغ
-    const fullPhone = phoneLocal.trim() ? `${phonePrefix}${phoneLocal.trim()}` : null;
+    if (!phoneLocal.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال رقم الهاتف' : 'Please enter a phone number.');
 
+    const fullPhone = `${phonePrefix}${phoneLocal.trim()}`;
     setLoading(true);
     try {
       const { data: ad, error: adError } = await createAd({
-        title: title.trim(), 
-        description: description.trim(),
-        price: parsedPrice, 
-        location: `${language === 'ar' ? 'قلقيلية' : 'Qalqilya'}${location.trim() ? ` - ${location.trim()}` : ''}`,
-        category_id: categoryId, 
-        phone_number: fullPhone, // 🛠️ تم التعديل: تمرير الرقم الاختياري (أو null) قاعدة البيانات يجب أن تسمح بـ null لهذا الحقل
-        condition,
+        title: title.trim(), description: description.trim(),
+        price: parsedPrice, location: `${language === 'ar' ? 'قلقيلية' : 'Qalqilya'}${location.trim() ? ` - ${location.trim()}` : ''}`,
+        category_id: categoryId, phone_number: fullPhone, condition,
       });
       if (adError || !ad) throw new Error(adError ?? 'Failed to create ad');
       if (images.length > 0) {
         const urls: string[] = [];
-        
         for (const img of images) {
           const { url } = await uploadImage(img.base64, user.id, ad.id);
           if (url) urls.push(url);
@@ -361,14 +355,9 @@ export default function PostAdScreen() {
           <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
             <View style={[styles.sectionHeader, rtl]}>
               <MaterialIcons name="phone" size={18} color={colors.primary} />
-              {/* 🛠️ تم التعديل: إزالة الـ * من العنوان وجعله يعكس كلمة (اختياري) بذكاء حسب اللغة */}
-              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>
-                {t.phoneNumber} {language === 'ar' ? '(اختياري)' : '(Optional)'}
-              </Text>
+              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.phoneNumber}</Text>
             </View>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }, textAlign]}>
-              {t.phoneNumber} {language === 'ar' ? '(اختياري)' : '(Optional)'}
-            </Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }, textAlign]}>{t.phoneNumber}</Text>
             <View style={[styles.phoneRow, rtl]}>
               <View style={[styles.prefixWrap, { borderColor: colors.border, backgroundColor: colors.background }]}>
                 {PHONE_PREFIXES.map(prefix => (
@@ -456,4 +445,152 @@ export default function PostAdScreen() {
   );
 }
 
-// ... الـ styles تظل كما هي بدون تغيير
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl,
+    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+  },
+  headerSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)', marginBottom: 2 },
+  headerTitle: { fontSize: FontSize.xxl, fontWeight: '800', color: '#fff', letterSpacing: -0.4 },
+  headerIcon: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  content: { padding: Spacing.lg, paddingBottom: 48, gap: Spacing.md },
+  sectionCard: { borderRadius: Radius.lg, padding: Spacing.md },
+  sectionHeader: { alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.md },
+  sectionLabel: { fontSize: FontSize.md, fontWeight: '700', flex: 1 },
+  sectionBadge: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  sectionBadgeText: { fontSize: FontSize.xs, fontWeight: '700' },
+  shekelIcon: { fontSize: 18, fontWeight: '800', width: 18, textAlign: 'center' },
+  imgContent: { flexDirection: 'row', gap: Spacing.sm, paddingBottom: 4 },
+  imgThumb: { width: 88, height: 88, borderRadius: Radius.md, overflow: 'hidden', position: 'relative' },
+  thumbImg: { width: 88, height: 88 },
+  mainLabel: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2, paddingVertical: 2, alignItems: 'center' },
+  mainLabelText: { color: '#fff', fontSize: 9, fontWeight: '700' },
+  removeImg: {
+    position: 'absolute', top: 5, right: 5,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  addImg: {
+    width: 88, height: 88, borderRadius: Radius.md,
+    borderWidth: 1.5, borderStyle: 'dashed',
+    alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  addImgIcon: { width: 46, height: 46, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
+  addImgText: { fontSize: FontSize.xs, fontWeight: '500' },
+
+  conditionRow: { gap: Spacing.sm },
+  conditionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: 14,
+    borderRadius: Radius.md, borderWidth: 1.5,
+  },
+  conditionText: { fontSize: FontSize.md },
+
+  fieldLabel: { fontSize: FontSize.sm, fontWeight: '600', marginBottom: 6, letterSpacing: 0.1 },
+  locationLabel: { fontSize: FontSize.sm, fontWeight: '600', marginBottom: 6, letterSpacing: 0.1 },
+  locationFieldRow: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1.5, borderRadius: Radius.md, overflow: 'hidden', marginBottom: Spacing.sm,
+  },
+  locationCity: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 14,
+  },
+  locationCityText: { fontSize: FontSize.sm, fontWeight: '700' },
+  locationDivider: { width: 1, height: 50 },
+  locationInputContainer: { flex: 1, marginBottom: 0 },
+  phoneRow: { gap: Spacing.sm, alignItems: 'flex-start', marginBottom: 4 },
+  prefixWrap: {
+    borderWidth: 1.5, borderRadius: Radius.md,
+    flexDirection: 'row', overflow: 'hidden', height: 50,
+  },
+  prefixBtn: { paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center', height: '100%' },
+  prefixText: { fontSize: FontSize.sm, fontWeight: '700' },
+  phoneInputWrap: { flex: 1 },
+  phoneInputContainer: { marginBottom: 0 },
+  phoneHint: { fontSize: FontSize.xs, marginTop: 2, fontStyle: 'italic' },
+  loadingCat: { fontSize: FontSize.sm, textAlign: 'center', paddingVertical: Spacing.md },
+
+  catGrid: { gap: Spacing.sm },
+  catOption: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: 12,
+    borderRadius: Radius.md, borderWidth: 1.5,
+  },
+  catOptionIcon: { width: 34, height: 34, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center' },
+  catOptionText: { fontSize: FontSize.sm, flex: 1 },
+  catCheckWrap: {
+    width: 22, height: 22, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  submitBtn: { marginTop: 4 },
+  guestContainer: { flex: 1 },
+  guestHeader: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl },
+  guestHeaderTitle: { fontSize: FontSize.xxl, fontWeight: '800', color: '#fff', letterSpacing: -0.4 },
+  guestBody: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: Spacing.md },
+  guestIcon: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
+  guestTitle: { fontSize: FontSize.xl, fontWeight: '700' },
+  guestSub: { fontSize: FontSize.md, textAlign: 'center', lineHeight: 22 },
+  guestBtn: { width: '100%', marginTop: Spacing.sm },
+});
+
+const photoStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: 36,
+    paddingTop: 12,
+    gap: Spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 20,
+  },
+  handle: {
+    width: 40, height: 4, borderRadius: 2,
+    alignSelf: 'center', marginBottom: Spacing.md,
+  },
+  sheetTitle: {
+    fontSize: FontSize.lg, fontWeight: '700',
+    textAlign: 'center',
+  },
+  sheetSub: {
+    fontSize: FontSize.sm, textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  option: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: Spacing.md, padding: Spacing.md,
+    borderRadius: Radius.lg, borderWidth: 1.5,
+  },
+  optionIcon: {
+    width: 52, height: 52, borderRadius: Radius.md,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  optionEmoji: { fontSize: 26 },
+  optionText: { flex: 1, gap: 3 },
+  optionTitle: { fontSize: FontSize.md, fontWeight: '700' },
+  optionSub: { fontSize: FontSize.sm },
+  optionArrow: { paddingLeft: 4 },
+  cancelBtn: {
+    borderRadius: Radius.xl,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: Spacing.xs ?? 4,
+  },
+  cancelText: { fontSize: FontSize.md, fontWeight: '700' },
+});
