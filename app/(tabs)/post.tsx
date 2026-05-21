@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, KeyboardAvoidingView, Platform, Modal,
+  View, Text, StyleSheet, ScrollView, Pressable, KeyboardAvoidingView, Platform, Modal, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -10,6 +10,8 @@ import { useAuth, useAlert } from '@/template';
 import { Button, Input } from '@/components';
 import { useCategories } from '@/hooks/useCategories';
 import { createAd, saveAdImages } from '@/services/adsService';
+import { getSupabaseClient } from '@/template';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { getCategoryName } from '@/services/categoriesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -42,6 +44,7 @@ export default function PostAdScreen() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const rtl = { flexDirection: isRTL ? ('row-reverse' as const) : ('row' as const) };
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
@@ -109,6 +112,40 @@ export default function PostAdScreen() {
     setPhonePrefix('+970');
   };
 
+  const handleAiImprove = async () => {
+    if (!title.trim() && !description.trim()) {
+      return showAlert(
+        language === 'ar' ? 'مطلوب' : 'Required',
+        language === 'ar' ? 'أدخل العنوان أو الوصف أولاً' : 'Please enter a title or description first.'
+      );
+    }
+    if (aiLoading) return;
+    setAiLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.functions.invoke('ai-copywrite', {
+        body: { title: title.trim(), description: description.trim(), language },
+      });
+      if (error) {
+        let errMsg = error.message;
+        if (error instanceof FunctionsHttpError) {
+          try { errMsg = await error.context?.text() ?? errMsg; } catch {}
+        }
+        return showAlert(language === 'ar' ? 'خطأ في الذكاء الاصطناعي' : 'AI Error', errMsg);
+      }
+      if (data?.title) setTitle(data.title);
+      if (data?.description) setDescription(data.description);
+      showAlert(
+        language === 'ar' ? 'تم التحسين!' : 'Improved!',
+        language === 'ar' ? 'تم تحسين العنوان والوصف بالذكاء الاصطناعي.' : 'Title and description enhanced by AI.'
+      );
+    } catch (e: any) {
+      showAlert(language === 'ar' ? 'خطأ' : 'Error', e.message ?? 'AI failed.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!title.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال عنوان' : 'Please enter a title.');
     if (!description.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال وصف' : 'Please enter a description.');
@@ -116,11 +153,11 @@ export default function PostAdScreen() {
     if (!location.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال الحي أو المنطقة' : 'Please enter your neighbourhood.');
     const parsedPrice = parseFloat(price);
     if (!price.trim() || isNaN(parsedPrice) || parsedPrice <= 0) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال سعر صحيح (أكبر من 0)' : 'Please enter a valid price (greater than 0).');
-    if (!phoneLocal.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال رقم الهاتف' : 'Please enter a phone number.');
+    // phone is optional — no validation required
 
-    const fullPhone = `${phonePrefix}${phoneLocal.trim()}`;
     setLoading(true);
     try {
+      const fullPhone = phoneLocal.trim() ? `${phonePrefix}${phoneLocal.trim()}` : '';
       const { data: ad, error: adError } = await createAd({
         title: title.trim(), description: description.trim(),
         price: parsedPrice, location: `${language === 'ar' ? 'قلقيلية' : 'Qalqilya'}${location.trim() ? ` - ${location.trim()}` : ''}`,
@@ -288,6 +325,21 @@ export default function PostAdScreen() {
             </View>
             <Input label={t.title} placeholder={t.titlePlaceholder} value={title} onChangeText={setTitle} maxLength={80} />
             <Input label={t.description} placeholder={t.descriptionPlaceholder} value={description} onChangeText={setDescription} multiline numberOfLines={4} />
+            {/* AI Improve button */}
+            <Pressable
+              style={[styles.aiBtn, { backgroundColor: colors.primaryGhost, borderColor: colors.primary, opacity: aiLoading ? 0.7 : 1 }]}
+              onPress={handleAiImprove}
+              disabled={aiLoading}
+            >
+              {aiLoading
+                ? <ActivityIndicator size="small" color={colors.primary} />
+                : <MaterialIcons name="auto-awesome" size={16} color={colors.primary} />}
+              <Text style={[styles.aiBtnText, { color: colors.primary }]}>
+                {aiLoading
+                  ? (language === 'ar' ? 'جاري التحسين...' : 'Improving...')
+                  : (language === 'ar' ? 'تحسين النص بالذكاء الاصطناعي' : 'Improve with AI')}
+              </Text>
+            </Pressable>
           </View>
 
           {/* Condition */}
@@ -351,11 +403,13 @@ export default function PostAdScreen() {
             </View>
           </View>
 
-          {/* Phone Number */}
+          {/* Phone Number - Optional */}
           <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
             <View style={[styles.sectionHeader, rtl]}>
               <MaterialIcons name="phone" size={18} color={colors.primary} />
-              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.phoneNumber}</Text>
+              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>
+                {language === 'ar' ? 'رقم الهاتف (اختياري)' : 'Phone Number (Optional)'}
+              </Text>
             </View>
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }, textAlign]}>{t.phoneNumber}</Text>
             <View style={[styles.phoneRow, rtl]}>
@@ -386,7 +440,9 @@ export default function PostAdScreen() {
               </View>
             </View>
             <Text style={[styles.phoneHint, { color: colors.textMuted }, textAlign]}>
-              {t.phoneNumber}: {phonePrefix}{phoneLocal || 'XXXXXXXXXX'}
+              {language === 'ar'
+                ? 'سيتمكن المشترون من التواصل عبر الواتساب إذا أدخلت رقمك'
+                : 'Buyers can contact you via WhatsApp if you provide a number'}
             </Text>
           </View>
 
@@ -531,6 +587,12 @@ const styles = StyleSheet.create({
   },
 
   submitBtn: { marginTop: 4 },
+  aiBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 10, paddingHorizontal: 14,
+    borderRadius: 10, borderWidth: 1.5, marginTop: 6,
+  },
+  aiBtnText: { fontSize: 13, fontWeight: '700' },
   guestContainer: { flex: 1 },
   guestHeader: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl },
   guestHeaderTitle: { fontSize: FontSize.xxl, fontWeight: '800', color: '#fff', letterSpacing: -0.4 },

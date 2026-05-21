@@ -91,6 +91,7 @@ export default function AdDetailScreen() {
   };
 
   const handleWhatsApp = () => {
+    if (!user) return router.push('/login');
     if (!ad) return;
     const phone = ad.phone_number?.trim();
     if (!phone) return showAlert(t.noPhoneNumber, t.noPhoneNumberMsg);
@@ -280,19 +281,15 @@ export default function AdDetailScreen() {
                 </Text>
               </Pressable>
 
-              <Pressable
-                style={[
-                  styles.waBtn,
-                  { backgroundColor: hasPhone ? '#25D366' : colors.border },
-                ]}
-                onPress={handleWhatsApp}
-                disabled={!hasPhone}
-              >
-                <MaterialIcons name="phone-in-talk" size={18} color={hasPhone ? '#fff' : colors.textMuted} />
-                <Text style={[styles.waBtnText, { color: hasPhone ? '#fff' : colors.textMuted }]}>
-                  {t.whatsappSeller}
-                </Text>
-              </Pressable>
+              {hasPhone ? (
+                <Pressable
+                  style={[styles.waBtn, { backgroundColor: '#25D366' }]}
+                  onPress={handleWhatsApp}
+                >
+                  <MaterialIcons name="phone-in-talk" size={18} color="#fff" />
+                  <Text style={[styles.waBtnText, { color: '#fff' }]}>{t.whatsappSeller}</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         )}
@@ -527,7 +524,7 @@ function AdDetailScrollContent({
               </View>
               <View style={styles.sellerInfo}>
                 <Text style={[styles.sellerName, { color: colors.textPrimary }]}>{sellerName}</Text>
-                <Text style={[styles.sellerEmail, { color: colors.textMuted }]}>{seller?.email ?? ''}</Text>
+                {/* Email is hidden from public view for privacy */}
               </View>
               <View style={[styles.sellerBadge, { backgroundColor: sellerVerified ? '#DBEAFE' : colors.accentLight }]}>
                 <MaterialIcons name={sellerVerified ? 'verified' : 'person'} size={14} color={sellerVerified ? '#2563EB' : colors.accent} />
@@ -536,7 +533,7 @@ function AdDetailScrollContent({
                 </Text>
               </View>
             </View>
-            {hasPhone && (
+            {hasPhone && user && (
               <View style={[styles.phoneRow, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
                 <MaterialIcons name="phone" size={15} color={colors.primary} />
                 <Text style={[styles.phoneText, { color: colors.textSecondary }]}>{ad.phone_number}</Text>

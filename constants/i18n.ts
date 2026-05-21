@@ -296,6 +296,19 @@ export const translations = {
     privacyPolicy: 'Privacy Policy',
     privacyPolicySub: 'How we handle your data',
 
+    // AI Copywrite
+    aiImprove: 'Improve with AI',
+    aiImproving: 'Improving...',
+    aiImproved: 'Text improved!',
+    aiImprovedMsg: 'The title and description have been enhanced by AI.',
+    aiError: 'AI Error',
+    phoneNumberOptional: 'Phone Number (Optional)',
+
+    // Guest auth wall
+    guestAuthTitle: 'Sign in Required',
+    guestAuthMsg: 'You need to sign in to use this feature.',
+    guestAuthBtn: 'Sign In',
+
     // Boost
     boost: 'Boost',
     boostAd: 'Boost Listing',
@@ -599,6 +612,19 @@ export const translations = {
     // Legal
     privacyPolicy: 'سياسة الخصوصية',
     privacyPolicySub: 'كيف نتعامل مع بياناتك',
+
+    // AI Copywrite
+    aiImprove: 'تحسين بالذكاء الاصطناعي',
+    aiImproving: 'جاري التحسين...',
+    aiImproved: 'تم تحسين النص!',
+    aiImprovedMsg: 'تم تحسين العنوان والوصف بواسطة الذكاء الاصطناعي.',
+    aiError: 'خطأ في الذكاء الاصطناعي',
+    phoneNumberOptional: 'رقم الهاتف (اختياري)',
+
+    // Guest auth wall
+    guestAuthTitle: 'يجب تسجيل الدخول',
+    guestAuthMsg: 'يجب عليك تسجيل الدخول لاستخدام هذه الميزة.',
+    guestAuthBtn: 'تسجيل الدخول',
 
     // Boost
     boost: 'تعزيز',

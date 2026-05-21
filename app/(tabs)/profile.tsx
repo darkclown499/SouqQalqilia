@@ -99,16 +99,34 @@ export default function ProfileScreen() {
 
   const handleSaveProfile = async () => {
     if (!user) return;
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      return showAlert(
+        isRTL ? 'مطلوب' : 'Required',
+        isRTL ? 'يرجى إدخال اسم المستخدم' : 'Please enter a display name.'
+      );
+    }
     setSaving(true);
     try {
       const supabase = getSupabaseClient();
       const { error } = await supabase
         .from('user_profiles')
-        .update({ username: editName.trim(), phone: editPhone.trim() || null })
+        .update({ username: trimmedName, phone: editPhone.trim() || null })
         .eq('id', user.id);
       if (error) throw error;
+      // Force a fresh read to confirm the write succeeded
+      const { data: fresh, error: readErr } = await supabase
+        .from('user_profiles')
+        .select('username')
+        .eq('id', user.id)
+        .single();
+      if (readErr || fresh?.username !== trimmedName) {
+        throw new Error(readErr?.message ?? 'Save failed — please try again.');
+      }
       showAlert(t.profileUpdated, t.profileUpdatedMsg);
       setEditMode(false);
+      // Refresh the displayed name immediately
+      setEditName(trimmedName);
     } catch (e: any) {
       showAlert('Error', e.message ?? 'Failed to save profile.');
     } finally {

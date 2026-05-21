@@ -26,9 +26,6 @@ export default function RootScreen() {
   if (route.showOnboarding) return <Redirect href="/onboarding" />;
   if (route.showBeta) return <Redirect href="/beta-warning" />;
 
-  return (
-    <AuthRouter loginRoute="/login" excludeRoutes={['/login', '/onboarding', '/beta-warning', '/ad', '/search', '/category', '/auth', '/favorites']}>
-      <Redirect href="/(tabs)" />
-    </AuthRouter>
-  );
+  // Skip auth wall — allow guest access directly to home
+  return <Redirect href="/(tabs)" />;
 }
