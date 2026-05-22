@@ -353,6 +353,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: Spacing.sm, backgroundColor: '#25D366',
     borderRadius: Radius.xl, paddingVertical: 16,
+    shadowColor: '#25D366', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
   },
   ctaWhatsAppText: { color: '#fff', fontSize: FontSize.md, fontWeight: '800' },
   ctaEmail: {

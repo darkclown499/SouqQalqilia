@@ -75,11 +75,13 @@ export async function uploadImage(
   }
   const byteArray = new Uint8Array(byteNumbers);
 
-  const path = `${userId}/${Date.now()}_${fileName}.jpg`;
+  // Always use unique filename to bust CDN cache for avatar updates
+  const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const path = `${userId}/${uniqueSuffix}_${fileName}.jpg`;
 
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(path, byteArray, { contentType: 'image/jpeg', upsert: true });
+    .upload(path, byteArray, { contentType: 'image/jpeg', upsert: false });
 
   if (error) return { url: null, error: error.message };
 

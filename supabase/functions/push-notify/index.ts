@@ -2,6 +2,11 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
+// In-memory deduplication: track last notified message per conversation
+// Key: `${recipient_id}:${conversation_id}` — Value: timestamp (ms)
+const lastNotified = new Map<string, number>();
+const DEDUP_WINDOW_MS = 8000; // 8 seconds — ignore duplicates within this window
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -10,7 +15,7 @@ serve(async (req) => {
   try {
     const body = await req.json();
 
-    // ── Badge reset shortcut: called when user opens chat and reads messages ──
+    // ── Badge reset shortcut ─────────────────────────────────────────────────
     if (body.action === 'reset_badge') {
       const { user_id } = body as { user_id: string };
       if (!user_id) {
@@ -51,10 +56,12 @@ serve(async (req) => {
       recipient_id,
       sender_name,
       message_preview,
+      conversation_id,
     }: {
       recipient_id: string;
       sender_name: string;
       message_preview: string;
+      conversation_id?: string;
     } = body;
 
     if (!recipient_id || !sender_name) {
@@ -64,12 +71,34 @@ serve(async (req) => {
       );
     }
 
+    // ── Deduplication: skip if same conversation was notified recently ────────
+    if (conversation_id) {
+      const dedupKey = `${recipient_id}:${conversation_id}`;
+      const lastTime = lastNotified.get(dedupKey) ?? 0;
+      const now = Date.now();
+      if (now - lastTime < DEDUP_WINDOW_MS) {
+        console.log(`[push-notify] Dedup skip for ${dedupKey}`);
+        return new Response(
+          JSON.stringify({ ok: true, skipped: 'dedup' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+      lastNotified.set(dedupKey, now);
+      // Cleanup old entries to prevent memory leak
+      if (lastNotified.size > 500) {
+        const cutoff = now - DEDUP_WINDOW_MS * 10;
+        for (const [k, v] of lastNotified.entries()) {
+          if (v < cutoff) lastNotified.delete(k);
+        }
+      }
+    }
+
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    // Fetch recipient push token and actual unread message count
+    // Fetch recipient push token and unread count
     const [profileResult, convResult] = await Promise.all([
       supabaseAdmin
         .from('user_profiles')
@@ -103,24 +132,27 @@ serve(async (req) => {
     const pushToken: string | null = profile?.push_token ?? null;
 
     if (!pushToken || !pushToken.startsWith('ExponentPushToken')) {
-      // No valid push token — not an error, just skip silently
       return new Response(
         JSON.stringify({ ok: true, skipped: 'no_valid_token' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    // Send via Expo Push Notification API
+    // ── Send via Expo Push Notification API ───────────────────────────────────
     const expoPayload = {
       to: pushToken,
-      title: sender_name,
+      // "title" shows app name + sender name (shown in notification center)
+      title: `سوق قلقيلية — ${sender_name}`,
       body: message_preview.substring(0, 100),
       sound: 'default',
       badge: unreadCount,
-      // content-available: 1 wakes the app in background on iOS so it can
-      // refresh its own badge count even without a visible notification.
       'content-available': 1,
-      data: { type: 'new_message', recipient_id, unread_count: unreadCount },
+      data: {
+        type: 'new_message',
+        recipient_id,
+        conversation_id: conversation_id ?? null,
+        unread_count: unreadCount,
+      },
       priority: 'high',
     };
 

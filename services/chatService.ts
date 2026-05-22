@@ -32,14 +32,29 @@ export async function fetchMyConversations(): Promise<{ data: Conversation[]; er
     .select(`
       *,
       ads(title, status, user_id),
-      buyer:user_profiles!conversations_buyer_id_fkey(username, email),
-      seller:user_profiles!conversations_seller_id_fkey(username, email)
+      buyer:user_profiles!conversations_buyer_id_fkey(username, email, avatar_url),
+      seller:user_profiles!conversations_seller_id_fkey(username, email, avatar_url),
+      ad_images!inner(url)
     `)
     .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
     .order('last_message_at', { ascending: false });
 
   if (error) return { data: [], error: error.message };
-  return { data: data as Conversation[], error: null };
+
+  // Attach per-conversation unread count
+  const enriched = await Promise.all(
+    (data as any[]).map(async (conv) => {
+      const { count } = await supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', conv.id)
+        .is('read_at', null)
+        .neq('sender_id', user.id);
+      return { ...conv, unread_count: count ?? 0 };
+    })
+  );
+
+  return { data: enriched as Conversation[], error: null };
 }
 
 export async function fetchOrCreateConversation(
@@ -76,8 +91,9 @@ export async function fetchConversationById(id: string): Promise<{ data: Convers
     .select(`
       *,
       ads(title, status, user_id),
-      buyer:user_profiles!conversations_buyer_id_fkey(username, email),
-      seller:user_profiles!conversations_seller_id_fkey(username, email)
+      buyer:user_profiles!conversations_buyer_id_fkey(username, email, avatar_url),
+      seller:user_profiles!conversations_seller_id_fkey(username, email, avatar_url),
+      ad_images(url)
     `)
     .eq('id', id)
     .single();
@@ -143,6 +159,7 @@ export async function notifyRecipient(
   recipientId: string,
   senderName: string,
   messageContent: string,
+  conversationId?: string,
 ): Promise<void> {
   try {
     const supabase = getSupabaseClient();
@@ -152,6 +169,7 @@ export async function notifyRecipient(
         recipient_id: recipientId,
         sender_name: senderName,
         message_preview: messageContent.substring(0, 100),
+        conversation_id: conversationId,
       },
     }).catch(() => {}); // swallow all errors silently
   } catch (_) {}

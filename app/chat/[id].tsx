@@ -235,7 +235,7 @@ export default function ChatScreen() {
       if (recipientId) {
         const senderDisplayName =
           user?.username || user?.email?.split('@')[0] || 'رسالة جديدة';
-        notifyRecipient(recipientId, senderDisplayName, content);
+        notifyRecipient(recipientId, senderDisplayName, content, id);
       }
     }
     setSending(false);

@@ -19,11 +19,10 @@ export default function MessagesScreen() {
   const { colors } = useTheme();
   const { t, isRTL, language } = useLanguage();
   const { conversations, loading, reload, unreadCount } = useConversations();
-  const totalConvs = conversations.length;
 
+  const totalConvs = conversations.length;
   const isAr = language === 'ar';
 
-  // ── Hooks must be called unconditionally (Rules of Hooks) ──────────────────
   const handleConvPress = useCallback((id: string) => {
     router.push(`/chat/${id}`);
   }, [router]);
@@ -40,11 +39,11 @@ export default function MessagesScreen() {
     return (
       <View style={[styles.guest, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <View style={[styles.header, { backgroundColor: colors.primary }]}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.headerSub}>{isAr ? 'صندوق' : 'Your'}</Text>
             <Text style={styles.headerTitle}>{t.yourMessages}</Text>
           </View>
-          <View style={[styles.headerIcon, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+          <View style={[styles.headerIconWrap, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
             <MaterialIcons name="chat-bubble-outline" size={24} color="#fff" />
           </View>
         </View>
@@ -62,32 +61,32 @@ export default function MessagesScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+
       {/* ── HEADER ── */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerSub}>{isAr ? 'صندوق' : 'Your'}</Text>
           <Text style={styles.headerTitle}>{t.yourMessages}</Text>
 
-          {/* Stats row */}
           <View style={[styles.statsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <View style={[styles.statPill, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
-              <MaterialIcons name="chat-bubble" size={12} color="rgba(255,255,255,0.85)" />
+              <MaterialIcons name="chat-bubble" size={11} color="rgba(255,255,255,0.85)" />
               <Text style={styles.statPillText}>{totalConvs} {isAr ? 'محادثة' : 'chats'}</Text>
             </View>
             {unreadCount > 0 ? (
-              <View style={[styles.statPill, { backgroundColor: colors.accent }]}>
-                <MaterialIcons name="notifications-active" size={12} color="#fff" />
-                <Text style={styles.statPillText}>{unreadCount} {isAr ? 'غير مقروء' : 'unread'}</Text>
+              <View style={[styles.statPill, { backgroundColor: '#F59E0B' }]}>
+                <MaterialIcons name="mark-chat-unread" size={11} color="#fff" />
+                <Text style={styles.statPillText}>{unreadCount} {isAr ? 'غير مقروءة' : 'unread'}</Text>
               </View>
             ) : null}
           </View>
         </View>
 
-        <View style={[styles.headerIcon, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+        <View style={[styles.headerIconWrap, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
           <MaterialIcons name="forum" size={26} color="#fff" />
           {unreadCount > 0 ? (
             <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              <Text style={styles.headerBadgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
             </View>
           ) : null}
         </View>
@@ -110,7 +109,7 @@ export default function MessagesScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           totalConvs > 0 ? (
-            <View style={[styles.listHeader, { backgroundColor: colors.background, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View style={[styles.listHeader, { backgroundColor: colors.surfaceTint, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
               <MaterialIcons name="sort" size={14} color={colors.textMuted} />
               <Text style={[styles.listHeaderText, { color: colors.textMuted }]}>
                 {isAr ? 'الأحدث أولاً' : 'Most recent first'}
@@ -122,12 +121,12 @@ export default function MessagesScreen() {
           !loading ? (
             <View style={styles.emptyWrap}>
               <View style={[styles.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
-                <MaterialIcons name="chat-bubble-outline" size={44} color={colors.textMuted} />
+                <MaterialIcons name="chat-bubble-outline" size={44} color={colors.primary} />
               </View>
               <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>{t.noConversations}</Text>
               <Text style={[styles.emptySub, { color: colors.textMuted }]}>{t.noConversationsSub}</Text>
               <Pressable
-                style={[styles.browseBtn, { backgroundColor: colors.primary }]}
+                style={[styles.browseBtn, { backgroundColor: colors.primary, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
                 onPress={() => router.push('/(tabs)/')}
               >
                 <MaterialIcons name="storefront" size={16} color="#fff" />
@@ -144,6 +143,7 @@ export default function MessagesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
   header: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -156,6 +156,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: 'rgba(255,255,255,0.65)',
     marginBottom: 2,
+    fontWeight: '500',
   },
   headerTitle: {
     fontSize: FontSize.xxl,
@@ -165,7 +166,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   statsRow: {
-    flexDirection: 'row',
     gap: Spacing.sm,
     flexWrap: 'wrap',
   },
@@ -175,14 +175,14 @@ const styles = StyleSheet.create({
     gap: 4,
     borderRadius: Radius.full,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
   },
   statPillText: {
     color: '#fff',
     fontSize: FontSize.xs,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  headerIcon: {
+  headerIconWrap: {
     width: 52,
     height: 52,
     borderRadius: 26,
@@ -210,21 +210,22 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // List header
   listHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: 10,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: 'transparent',
   },
   listHeaderText: {
     fontSize: FontSize.xs,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 
-  separator: { height: 1, marginLeft: 78 },
+  separator: { height: 1 },
 
-  // Empty state
   emptyWrap: {
     flex: 1,
     alignItems: 'center',
@@ -265,7 +266,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Guest
   guest: { flex: 1 },
   guestBody: {
     flex: 1,
