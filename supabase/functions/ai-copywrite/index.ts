@@ -40,10 +40,17 @@ Give me the result in this exact format (no extra text):
 TITLE: [improved title]
 DESCRIPTION: [improved description]`;
 
-    const aiBaseUrl = Deno.env.get('ONSPACE_AI_BASE_URL') ?? 'https://ai.onspace.ai';
+    const rawBaseUrl = Deno.env.get('ONSPACE_AI_BASE_URL') ?? 'https://ai.onspace.ai';
     const aiApiKey = Deno.env.get('ONSPACE_AI_API_KEY') ?? '';
 
-    const response = await fetch(`${aiBaseUrl}/v1/chat/completions`, {
+    // Normalize base URL — strip trailing slash and any trailing /v1
+    // so we always construct the full path ourselves
+    const aiBaseUrl = rawBaseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
+
+    const endpoint = `${aiBaseUrl}/v1/chat/completions`;
+    console.log('AI endpoint:', endpoint);
+
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${aiApiKey}`,
@@ -63,9 +70,9 @@ DESCRIPTION: [improved description]`;
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('AI API error:', response.status, errText);
+      console.error('AI API error:', response.status, errText, '| endpoint used:', endpoint);
       return new Response(
-        JSON.stringify({ error: `AI error: ${response.status}` }),
+        JSON.stringify({ error: `AI error: ${response.status}`, detail: errText }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
