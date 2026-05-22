@@ -31,10 +31,9 @@ export async function fetchMyConversations(): Promise<{ data: Conversation[]; er
     .from('conversations')
     .select(`
       *,
-      ads(title, status, user_id),
+      ads(title, status, user_id, ad_images(url, position)),
       buyer:user_profiles!conversations_buyer_id_fkey(username, email, avatar_url),
-      seller:user_profiles!conversations_seller_id_fkey(username, email, avatar_url),
-      ad_images!inner(url)
+      seller:user_profiles!conversations_seller_id_fkey(username, email, avatar_url)
     `)
     .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
     .order('last_message_at', { ascending: false });
@@ -90,10 +89,9 @@ export async function fetchConversationById(id: string): Promise<{ data: Convers
     .from('conversations')
     .select(`
       *,
-      ads(title, status, user_id),
+      ads(title, status, user_id, ad_images(url, position)),
       buyer:user_profiles!conversations_buyer_id_fkey(username, email, avatar_url),
-      seller:user_profiles!conversations_seller_id_fkey(username, email, avatar_url),
-      ad_images(url)
+      seller:user_profiles!conversations_seller_id_fkey(username, email, avatar_url)
     `)
     .eq('id', id)
     .single();

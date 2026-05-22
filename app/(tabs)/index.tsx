@@ -385,7 +385,7 @@ export default function HomeScreen() {
           maxToRenderPerBatch={10}
           initialNumToRender={10}
           removeClippedSubviews={true}
-          onEndReached={undefined}
+
           refreshControl={<RefreshControl refreshing={loading} onRefresh={handleRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
           ListHeaderComponent={ListHeader}
           ListFooterComponent={

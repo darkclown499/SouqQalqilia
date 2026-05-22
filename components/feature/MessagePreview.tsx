@@ -32,7 +32,9 @@ export const MessagePreview = memo(function MessagePreview({
   const avatarUrl = (otherUser as any)?.avatar_url;
 
   const adTitle = (conversation as any).ads?.title ?? '';
-  const adThumb = (conversation as any).ad_images?.[0]?.url ?? (conversation as any).ads?.ad_images?.[0]?.url;
+  const rawAdImages: any[] = (conversation as any).ads?.ad_images ?? [];
+  const sortedAdImages = [...rawAdImages].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  const adThumb = sortedAdImages[0]?.url ?? null;
 
   const unreadCount: number = (conversation as any).unread_count ?? 0;
   const hasUnread = unreadCount > 0;

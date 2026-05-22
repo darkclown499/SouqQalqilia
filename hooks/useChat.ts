@@ -125,11 +125,19 @@ export function useConversations() {
     const supabase = getSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return 0;
+    // First get all conversation IDs the user belongs to
+    const { data: convRows } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
+    const convIds = (convRows ?? []).map((c: any) => c.id);
+    if (convIds.length === 0) return 0;
     const { count } = await supabase
       .from('messages')
       .select('id', { count: 'exact', head: true })
       .is('read_at', null)
-      .neq('sender_id', user.id);
+      .neq('sender_id', user.id)
+      .in('conversation_id', convIds);
     return count ?? 0;
   }, []);
 
@@ -161,18 +169,27 @@ export function useConversations() {
       setConversations(convResult.data);
       if (showSpinner) setLoading(false);
 
-      // Unread count
+      // Unread count — scoped to user's own conversations
       const supabase = getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setUnreadCount(0); return; }
 
-      const { count } = await supabase
-        .from('messages')
-        .select('id', { count: 'exact', head: true })
-        .is('read_at', null)
-        .neq('sender_id', user.id);
+      const { data: convRows } = await supabase
+        .from('conversations')
+        .select('id')
+        .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
+      const convIds = (convRows ?? []).map((c: any) => c.id);
 
-      const newCount = count ?? 0;
+      let newCount = 0;
+      if (convIds.length > 0) {
+        const { count } = await supabase
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .is('read_at', null)
+          .neq('sender_id', user.id)
+          .in('conversation_id', convIds);
+        newCount = count ?? 0;
+      }
 
       setUnreadCount(newCount);
       prevUnreadRef.current = newCount;
