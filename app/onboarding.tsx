@@ -135,64 +135,6 @@ function FloatingIcon({
   );
 }
 
-// ── Pulse ring — 2 rings instead of 3, only active on current slide ───────────
-function PulseRing({ size, color, delay, isActive }: {
-  size: number; color: string; delay: number; isActive: boolean;
-}) {
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(0.45);
-
-  useEffect(() => {
-    if (!isActive) {
-      cancelAnimation(scale);
-      cancelAnimation(opacity);
-      scale.value = 1;
-      opacity.value = 0;
-      return;
-    }
-    opacity.value = withTiming(0.45, { duration: 300 });
-    scale.value = withDelay(
-      delay,
-      withRepeat(
-        withSequence(
-          withTiming(1.65, { duration: 1800, easing: Easing.out(Easing.ease) }),
-          withTiming(1, { duration: 0 }),
-        ),
-        -1, false,
-      ),
-    );
-    const opLoop = withDelay(
-      delay,
-      withRepeat(
-        withSequence(
-          withTiming(0, { duration: 1800, easing: Easing.out(Easing.ease) }),
-          withTiming(0.45, { duration: 0 }),
-        ),
-        -1, false,
-      ),
-    );
-    opacity.value = opLoop;
-
-    return () => {
-      cancelAnimation(scale);
-      cancelAnimation(opacity);
-    };
-  }, [isActive]);
-
-  const style = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-
-  return (
-    <Animated.View style={[
-      styles.pulseRing,
-      { width: size, height: size, borderRadius: size / 2, borderColor: color },
-      style,
-    ]} />
-  );
-}
-
 // ── Main icon ─────────────────────────────────────────────────────────────────
 function MainIcon({ iconName, accentColor, isActive }: {
   iconName: any; accentColor: string; isActive: boolean;
@@ -303,12 +245,6 @@ function Dot({ isActive, onPress }: { isActive: boolean; onPress: () => void }) 
 function Slide({ item, isActive }: { item: typeof SLIDES[0]; isActive: boolean }) {
   return (
     <View style={[styles.slide, { width: W }]}>
-      {/* Decorative rings — centered on icon */}
-      <View style={[styles.ringsWrap, { top: ICON_TOP, height: RING_BASE * 1.7 }]}>
-        <PulseRing size={RING_BASE} color="rgba(255,255,255,0.45)" delay={0} isActive={isActive} />
-        <PulseRing size={RING_BASE} color="rgba(255,255,255,0.25)" delay={700} isActive={isActive} />
-      </View>
-
       {/* Floating icons */}
       <FloatingIcon iconName={item.decorIcon1} size={28} color="rgba(255,255,255,0.5)"
         top={H * 0.12} left={W * 0.07} delay={200} isActive={isActive} />
@@ -583,19 +519,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-  },
-
-  // Rings — centered on icon position
-  ringsWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pulseRing: {
-    position: 'absolute',
-    borderWidth: 1.5,
   },
 
   // Floating icons
