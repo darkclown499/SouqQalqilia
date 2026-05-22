@@ -56,6 +56,25 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 
 export default function RootLayout() {
   useEffect(() => {
+    // ── Notification tap → open related chat conversation ────────────────────
+    let notifSub: any = null;
+    if (Platform.OS !== 'web') {
+      try {
+        const Notifications = require('expo-notifications');
+        notifSub = Notifications.addNotificationResponseReceivedListener(
+          (response: any) => {
+            const data = response?.notification?.request?.content?.data ?? {};
+            const conversationId: string | undefined = data?.conversation_id;
+            if (conversationId) {
+              import('expo-router').then(({ router }) => {
+                router.push(`/chat/${conversationId}` as any);
+              });
+            }
+          }
+        );
+      } catch (_) {}
+    }
+
     // ── CRITICAL: Register auth state listener immediately ──────────────────
     // Must NOT be deferred — Google OAuth fires SIGNED_IN before interactions
     // settle and the listener must be ready to catch it.
@@ -99,7 +118,12 @@ export default function RootLayout() {
       });
     });
 
-    return () => task.cancel();
+    return () => {
+      task.cancel();
+      if (notifSub) {
+        try { notifSub.remove(); } catch (_) {}
+      }
+    };
   }, []);
 
   return (
