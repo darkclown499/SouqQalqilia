@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Pressable, Dimensions,
@@ -17,14 +16,24 @@ import Animated, {
   withRepeat,
   withSequence,
   withDelay,
+  cancelAnimation,
   Easing,
 } from 'react-native-reanimated';
 import { useLanguage } from '@/hooks/useLanguage';
 import { Spacing, FontSize, Radius } from '@/constants/theme';
 import type { Language } from '@/constants/i18n';
 
-const { width, height } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 export const ONBOARDING_SEEN_KEY = '@souq_onboarding_seen';
+
+// Responsive helpers — clamp for very small (320px) and large (428px+) phones
+const W = SCREEN_W;
+const H = SCREEN_H;
+
+// Icon area sits at 20–22% from top; bottom overlay roughly 300px
+const ICON_TOP = Math.max(H * 0.18, 120);
+// Ring size relative to screen width, capped so it doesn't overflow on small screens
+const RING_BASE = Math.min(W * 0.56, 220);
 
 // ── Slide data ────────────────────────────────────────────────────────────────
 const SLIDES = [
@@ -65,32 +74,54 @@ const SLIDES = [
 ];
 
 // ── Floating decoration icon ─────────────────────────────────────────────────
+// Only animate when the slide is active to save GPU/CPU on other slides
 function FloatingIcon({
-  iconName, size, color, top, left, right, delay, rotateDir = 1,
+  iconName, size, color, top, left, right, delay, rotateDir = 1, isActive,
 }: {
   iconName: any; size: number; color: string;
   top?: number; left?: number; right?: number;
-  delay?: number; rotateDir?: number;
+  delay?: number; rotateDir?: number; isActive: boolean;
 }) {
   const translateY = useSharedValue(0);
   const rotate = useSharedValue(0);
   const opacity = useSharedValue(0);
 
   useEffect(() => {
-    opacity.value = withDelay(delay ?? 0, withTiming(1, { duration: 600 }));
-    translateY.value = withDelay(delay ?? 0,
-      withRepeat(withSequence(
-        withTiming(-14, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
-      ), -1, false)
+    if (!isActive) {
+      cancelAnimation(translateY);
+      cancelAnimation(rotate);
+      opacity.value = withTiming(0, { duration: 150 });
+      translateY.value = 0;
+      rotate.value = 0;
+      return;
+    }
+    opacity.value = withDelay(delay ?? 0, withTiming(1, { duration: 500 }));
+    translateY.value = withDelay(
+      delay ?? 0,
+      withRepeat(
+        withSequence(
+          withTiming(-12, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1, false,
+      ),
     );
-    rotate.value = withDelay(delay ?? 0,
-      withRepeat(withSequence(
-        withTiming(rotateDir * 8, { duration: 2200, easing: Easing.inOut(Easing.sin) }),
-        withTiming(-rotateDir * 8, { duration: 2200, easing: Easing.inOut(Easing.sin) }),
-      ), -1, false)
+    rotate.value = withDelay(
+      delay ?? 0,
+      withRepeat(
+        withSequence(
+          withTiming(rotateDir * 7, { duration: 2200, easing: Easing.inOut(Easing.sin) }),
+          withTiming(-rotateDir * 7, { duration: 2200, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1, false,
+      ),
     );
-  }, []);
+    return () => {
+      cancelAnimation(translateY);
+      cancelAnimation(rotate);
+      cancelAnimation(opacity);
+    };
+  }, [isActive]);
 
   const style = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -104,25 +135,49 @@ function FloatingIcon({
   );
 }
 
-// ── Pulse ring ────────────────────────────────────────────────────────────────
-function PulseRing({ size, color, delay }: { size: number; color: string; delay: number }) {
+// ── Pulse ring — 2 rings instead of 3, only active on current slide ───────────
+function PulseRing({ size, color, delay, isActive }: {
+  size: number; color: string; delay: number; isActive: boolean;
+}) {
   const scale = useSharedValue(1);
-  const opacity = useSharedValue(0.5);
+  const opacity = useSharedValue(0.45);
 
   useEffect(() => {
-    scale.value = withDelay(delay,
-      withRepeat(withSequence(
-        withTiming(1.7, { duration: 1800, easing: Easing.out(Easing.ease) }),
-        withTiming(1, { duration: 0 }),
-      ), -1, false)
+    if (!isActive) {
+      cancelAnimation(scale);
+      cancelAnimation(opacity);
+      scale.value = 1;
+      opacity.value = 0;
+      return;
+    }
+    opacity.value = withTiming(0.45, { duration: 300 });
+    scale.value = withDelay(
+      delay,
+      withRepeat(
+        withSequence(
+          withTiming(1.65, { duration: 1800, easing: Easing.out(Easing.ease) }),
+          withTiming(1, { duration: 0 }),
+        ),
+        -1, false,
+      ),
     );
-    opacity.value = withDelay(delay,
-      withRepeat(withSequence(
-        withTiming(0, { duration: 1800, easing: Easing.out(Easing.ease) }),
-        withTiming(0.5, { duration: 0 }),
-      ), -1, false)
+    const opLoop = withDelay(
+      delay,
+      withRepeat(
+        withSequence(
+          withTiming(0, { duration: 1800, easing: Easing.out(Easing.ease) }),
+          withTiming(0.45, { duration: 0 }),
+        ),
+        -1, false,
+      ),
     );
-  }, []);
+    opacity.value = opLoop;
+
+    return () => {
+      cancelAnimation(scale);
+      cancelAnimation(opacity);
+    };
+  }, [isActive]);
 
   const style = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -159,13 +214,26 @@ function MainIcon({ iconName, accentColor, isActive }: {
     transform: [{ scale: scale.value }, { rotate: `${rotate.value}deg` }],
   }));
 
+  // Responsive icon container
+  const ICON_OUTER = Math.min(W * 0.46, 180);
+  const ICON_INNER = Math.round(ICON_OUTER * 0.75);
+
   return (
     <Animated.View style={style}>
-      <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-        <View style={[styles.iconInner, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
-          <MaterialIcons name={iconName} size={80} color="#fff" />
+      <View style={[styles.iconContainer, {
+        width: ICON_OUTER, height: ICON_OUTER, borderRadius: ICON_OUTER / 2,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+      }]}>
+        <View style={[styles.iconInner, {
+          width: ICON_INNER, height: ICON_INNER, borderRadius: ICON_INNER / 2,
+          backgroundColor: 'rgba(255,255,255,0.25)',
+        }]}>
+          <MaterialIcons name={iconName} size={Math.round(ICON_INNER * 0.56)} color="#fff" />
         </View>
-        <View style={[styles.iconGlow, { backgroundColor: accentColor + '40' }]} />
+        <View style={[styles.iconGlow, {
+          width: ICON_INNER, height: ICON_INNER, borderRadius: ICON_INNER / 2,
+          backgroundColor: accentColor + '40',
+        }]} />
       </View>
     </Animated.View>
   );
@@ -173,22 +241,22 @@ function MainIcon({ iconName, accentColor, isActive }: {
 
 // ── Animated text block ───────────────────────────────────────────────────────
 function SlideText({ title, subtitle }: { title: string; subtitle: string }) {
-  const titleY = useSharedValue(40);
+  const titleY = useSharedValue(30);
   const titleOp = useSharedValue(0);
-  const subY = useSharedValue(40);
+  const subY = useSharedValue(30);
   const subOp = useSharedValue(0);
 
   useEffect(() => {
-    titleY.value = withDelay(100, withSpring(0, { damping: 14, stiffness: 120 }));
-    titleOp.value = withDelay(100, withTiming(1, { duration: 400 }));
-    subY.value = withDelay(220, withSpring(0, { damping: 14, stiffness: 120 }));
-    subOp.value = withDelay(220, withTiming(1, { duration: 400 }));
+    titleY.value = withDelay(80, withSpring(0, { damping: 14, stiffness: 120 }));
+    titleOp.value = withDelay(80, withTiming(1, { duration: 350 }));
+    subY.value = withDelay(200, withSpring(0, { damping: 14, stiffness: 120 }));
+    subOp.value = withDelay(200, withTiming(1, { duration: 350 }));
 
     return () => {
-      titleY.value = withTiming(40, { duration: 180 });
-      titleOp.value = withTiming(0, { duration: 180 });
-      subY.value = withTiming(40, { duration: 180 });
-      subOp.value = withTiming(0, { duration: 180 });
+      titleY.value = withTiming(30, { duration: 150 });
+      titleOp.value = withTiming(0, { duration: 150 });
+      subY.value = withTiming(30, { duration: 150 });
+      subOp.value = withTiming(0, { duration: 150 });
     };
   }, []);
 
@@ -231,31 +299,30 @@ function Dot({ isActive, onPress }: { isActive: boolean; onPress: () => void }) 
   );
 }
 
-// ── Full-screen Slide (fills the ScrollView page) ────────────────────────────
+// ── Full-screen Slide ────────────────────────────────────────────────────────
 function Slide({ item, isActive }: { item: typeof SLIDES[0]; isActive: boolean }) {
   return (
-    <View style={[styles.slide, { width }]}>
-      {/* Decorative rings — centered on screen */}
-      <View style={styles.ringsWrap}>
-        <PulseRing size={220} color="rgba(255,255,255,0.5)" delay={0} />
-        <PulseRing size={220} color="rgba(255,255,255,0.35)" delay={600} />
-        <PulseRing size={220} color="rgba(255,255,255,0.2)" delay={1200} />
+    <View style={[styles.slide, { width: W }]}>
+      {/* Decorative rings — centered on icon */}
+      <View style={[styles.ringsWrap, { top: ICON_TOP, height: RING_BASE * 1.7 }]}>
+        <PulseRing size={RING_BASE} color="rgba(255,255,255,0.45)" delay={0} isActive={isActive} />
+        <PulseRing size={RING_BASE} color="rgba(255,255,255,0.25)" delay={700} isActive={isActive} />
       </View>
 
       {/* Floating icons */}
-      <FloatingIcon iconName={item.decorIcon1} size={30} color="rgba(255,255,255,0.5)"
-        top={height * 0.14} left={width * 0.08} delay={200} />
-      <FloatingIcon iconName={item.decorIcon2} size={24} color="rgba(255,255,255,0.38)"
-        top={height * 0.2} right={width * 0.08} delay={500} rotateDir={-1} />
-      <FloatingIcon iconName={item.decorIcon3} size={20} color="rgba(255,255,255,0.3)"
-        top={height * 0.32} left={width * 0.14} delay={800} />
+      <FloatingIcon iconName={item.decorIcon1} size={28} color="rgba(255,255,255,0.5)"
+        top={H * 0.12} left={W * 0.07} delay={200} isActive={isActive} />
+      <FloatingIcon iconName={item.decorIcon2} size={22} color="rgba(255,255,255,0.38)"
+        top={H * 0.18} right={W * 0.07} delay={450} rotateDir={-1} isActive={isActive} />
+      <FloatingIcon iconName={item.decorIcon3} size={18} color="rgba(255,255,255,0.3)"
+        top={H * 0.30} left={W * 0.13} delay={700} isActive={isActive} />
 
       {/* Sparkle dots */}
-      <View style={[styles.sparkle, { top: height * 0.1, right: width * 0.2, backgroundColor: item.accentColor }]} />
-      <View style={[styles.sparkle, { top: height * 0.28, left: width * 0.22, backgroundColor: 'rgba(255,255,255,0.7)', width: 6, height: 6 }]} />
+      <View style={[styles.sparkle, { top: H * 0.09, right: W * 0.2, backgroundColor: item.accentColor }]} />
+      <View style={[styles.sparkle, { top: H * 0.26, left: W * 0.22, backgroundColor: 'rgba(255,255,255,0.7)', width: 6, height: 6 }]} />
 
-      {/* Main content — centered */}
-      <View style={styles.iconWrap}>
+      {/* Main icon — centered at ICON_TOP */}
+      <View style={[styles.iconWrap, { top: ICON_TOP }]}>
         {item.isLogo ? (
           <LogoSlide isActive={isActive} />
         ) : (
@@ -285,9 +352,11 @@ function LogoSlide({ isActive }: { isActive: boolean }) {
     transform: [{ scale: scale.value }],
   }));
 
+  const CARD_W = Math.min(W * 0.60, 240);
+
   return (
     <Animated.View style={[styles.logoWrap, style]}>
-      <View style={styles.logoCard}>
+      <View style={[styles.logoCard, { width: CARD_W, height: Math.round(CARD_W * 0.55) }]}>
         <Image
           source={require('@/assets/images/plankton-logo.png')}
           style={styles.logoImage}
@@ -316,7 +385,6 @@ export default function OnboardingScreen() {
   const isRTL = language === 'ar';
   const slide = SLIDES[currentIndex];
 
-  // Animate bg color change
   const bgColors = ['#0A6E5C', '#D97706', '#075247'];
   const currentBg = bgColors[currentIndex] ?? '#0A6E5C';
 
@@ -342,7 +410,7 @@ export default function OnboardingScreen() {
     transform: [{ scale: btnScale.value }, { translateY: btnY.value }],
   }));
 
-  // Swipe hint animation
+  // Swipe hint
   const hintOp = useSharedValue(1);
   useEffect(() => {
     hintOp.value = withTiming(isLast ? 0 : 1, { duration: 200 });
@@ -351,12 +419,12 @@ export default function OnboardingScreen() {
 
   const handleScrollEnd = useCallback((e: any) => {
     const offsetX = e.nativeEvent.contentOffset.x;
-    const newIndex = Math.max(0, Math.min(SLIDES.length - 1, Math.round(offsetX / width)));
+    const newIndex = Math.max(0, Math.min(SLIDES.length - 1, Math.round(offsetX / W)));
     if (newIndex !== currentIndex) setCurrentIndex(newIndex);
   }, [currentIndex]);
 
   const goToSlide = useCallback((index: number) => {
-    scrollRef.current?.scrollTo({ x: index * width, animated: true });
+    scrollRef.current?.scrollTo({ x: index * W, animated: true });
     setCurrentIndex(index);
   }, []);
 
@@ -376,7 +444,6 @@ export default function OnboardingScreen() {
       <View style={[styles.bgCircle2, { backgroundColor: 'rgba(255,255,255,0.05)' }]} />
 
       {/* ── FULL-SCREEN HORIZONTAL SCROLL ─────────────────────────────── */}
-      {/* This covers the ENTIRE screen so the user can swipe anywhere */}
       <Animated.ScrollView
         ref={scrollRef}
         horizontal
@@ -386,16 +453,17 @@ export default function OnboardingScreen() {
         bounces={false}
         decelerationRate="fast"
         onMomentumScrollEnd={handleScrollEnd}
-        scrollEventThrottle={16}
+        scrollEventThrottle={32}
         style={StyleSheet.absoluteFill}
-        contentContainerStyle={{ width: width * SLIDES.length }}
+        contentContainerStyle={{ width: W * SLIDES.length }}
+        removeClippedSubviews={true}
       >
         {SLIDES.map((item, index) => (
           <Slide key={item.id} item={item} isActive={index === currentIndex} />
         ))}
       </Animated.ScrollView>
 
-      {/* ── TOP BAR (overlay, non-scroll) ───────────────────────────────── */}
+      {/* ── TOP BAR ───────────────────────────────────────────────────────── */}
       <View
         style={[styles.topBar, { paddingTop: insets.top + Spacing.sm }]}
         pointerEvents="box-none"
@@ -430,9 +498,9 @@ export default function OnboardingScreen() {
         ) : <View style={{ width: 60 }} />}
       </View>
 
-      {/* ── BOTTOM OVERLAY (text + dots + button) ───────────────────────── */}
+      {/* ── BOTTOM OVERLAY ────────────────────────────────────────────────── */}
       <View
-        style={[styles.bottomOverlay, { paddingBottom: Math.max(insets.bottom, 24) + 12 }]}
+        style={[styles.bottomOverlay, { paddingBottom: Math.max(insets.bottom, 20) + 10 }]}
         pointerEvents="box-none"
       >
         {/* Text */}
@@ -455,7 +523,7 @@ export default function OnboardingScreen() {
         <Animated.View style={[styles.swipeHintWrap, hintAnimStyle]} pointerEvents="none">
           <MaterialIcons
             name={isRTL ? 'swipe-left' : 'swipe-right'}
-            size={22}
+            size={20}
             color="rgba(255,255,255,0.5)"
           />
           <Text style={styles.swipeHintText}>
@@ -463,7 +531,7 @@ export default function OnboardingScreen() {
           </Text>
         </Animated.View>
 
-        {/* Get Started (last slide) */}
+        {/* Get Started */}
         <Animated.View
           style={[styles.startBtnWrap, btnAnimStyle]}
           pointerEvents={isLast ? 'auto' : 'none'}
@@ -494,36 +562,34 @@ const styles = StyleSheet.create({
 
   bgCircle1: {
     position: 'absolute',
-    width: width * 1.5,
-    height: width * 1.5,
-    borderRadius: width * 0.75,
-    top: -width * 0.5,
-    left: -width * 0.25,
+    width: W * 1.5,
+    height: W * 1.5,
+    borderRadius: W * 0.75,
+    top: -W * 0.5,
+    left: -W * 0.25,
   },
   bgCircle2: {
     position: 'absolute',
-    width: width * 1.3,
-    height: width * 1.3,
-    borderRadius: width * 0.65,
-    bottom: -width * 0.5,
-    right: -width * 0.3,
+    width: W * 1.3,
+    height: W * 1.3,
+    borderRadius: W * 0.65,
+    bottom: -W * 0.5,
+    right: -W * 0.3,
   },
 
   // Slide — full screen
   slide: {
-    height,
+    height: H,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
 
-  // Rings — centered on screen
+  // Rings — centered on icon position
   ringsWrap: {
     position: 'absolute',
-    top: height * 0.22,
     left: 0,
     right: 0,
-    height: 180,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -543,51 +609,39 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 
-  // Icon centered at ~35% from top
+  // Icon centered at ICON_TOP
   iconWrap: {
     position: 'absolute',
-    top: height * 0.22,
     left: 0,
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  // Main icon
+  // Main icon (sizes set dynamically)
   iconContainer: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
   iconInner: {
-    width: 136,
-    height: 136,
-    borderRadius: 68,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
   },
   iconGlow: {
     position: 'absolute',
-    width: 136,
-    height: 136,
-    borderRadius: 68,
     zIndex: 1,
   },
 
   // Logo slide
   logoWrap: { alignItems: 'center', gap: 16 },
   logoCard: {
-    width: width * 0.65,
-    height: 130,
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderRadius: Radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
+    padding: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
@@ -605,7 +659,7 @@ const styles = StyleSheet.create({
   },
   logoTagText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700', letterSpacing: 0.5 },
 
-  // TOP BAR overlay
+  // TOP BAR
   topBar: {
     position: 'absolute',
     top: 0,
@@ -648,23 +702,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
-    gap: 14,
+    gap: 12,
   },
 
-  // Text
-  textArea: {
-    width: '100%',
-    alignItems: 'center',
-    paddingBottom: 4,
-  },
-  textBlock: { alignItems: 'center', gap: Spacing.md },
+  textArea: { width: '100%', alignItems: 'center' },
+  textBlock: { alignItems: 'center', gap: Spacing.sm },
   slideTitle: {
-    fontSize: FontSize.display,
+    fontSize: Math.min(FontSize.display, W * 0.1),
     fontWeight: '800',
     color: '#fff',
     textAlign: 'center',
     letterSpacing: -0.8,
-    lineHeight: 44,
+    lineHeight: Math.min(44, W * 0.115),
     textShadowColor: 'rgba(0,0,0,0.2)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,
@@ -673,7 +722,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     color: 'rgba(255,255,255,0.82)',
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 24,
     fontWeight: '400',
     paddingHorizontal: Spacing.sm,
   },
@@ -695,8 +744,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 6,
+    gap: 7,
+    paddingVertical: 4,
   },
   swipeHintText: {
     color: 'rgba(255,255,255,0.5)',
@@ -705,16 +754,14 @@ const styles = StyleSheet.create({
   },
 
   // Start button
-  startBtnWrap: {
-    width: '100%',
-  },
+  startBtnWrap: { width: '100%' },
   startBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
     borderRadius: Radius.xl,
-    paddingVertical: 18,
+    paddingVertical: 17,
     backgroundColor: '#fff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
