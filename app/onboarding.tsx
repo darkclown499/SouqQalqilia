@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Pressable, Dimensions,
@@ -486,21 +487,15 @@ export default function OnboardingScreen() {
           ))}
         </View>
 
-        {/* Next button (slides 1 & 2) */}
-        <Animated.View style={[styles.nextBtnWrap, nextAnimStyle]} pointerEvents={isLast ? 'none' : 'auto'}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.nextBtn,
-              { backgroundColor: 'rgba(255,255,255,0.2)', opacity: pressed ? 0.8 : 1 },
-            ]}
-            onPress={handleNext}
-          >
-            <Text style={styles.nextBtnText}>
-              {isRTL ? 'التالي' : 'Next'}
+        {/* Swipe hint (slides 1 & 2) */}
+        {!isLast ? (
+          <Animated.View style={[styles.swipeHintWrap, nextAnimStyle]}>
+            <MaterialIcons name={isRTL ? 'swipe-left' : 'swipe-right'} size={22} color="rgba(255,255,255,0.5)" />
+            <Text style={styles.swipeHintText}>
+              {isRTL ? 'اسحب للتالي' : 'Swipe to continue'}
             </Text>
-            <MaterialIcons name={isRTL ? 'arrow-back' : 'arrow-forward'} size={20} color="#fff" />
-          </Pressable>
-        </Animated.View>
+          </Animated.View>
+        ) : null}
 
         {/* Get Started button (slide 3) */}
         <Animated.View style={[styles.startBtnWrap, btnAnimStyle]} pointerEvents={isLast ? 'auto' : 'none'}>
@@ -720,23 +715,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
 
-  nextBtnWrap: {
-    width: '100%',
-  },
-  nextBtn: {
+  swipeHintWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    borderRadius: Radius.xl,
-    paddingVertical: 18,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.35)',
+    gap: 8,
+    paddingVertical: 14,
   },
-  nextBtnText: {
-    color: '#fff',
-    fontSize: FontSize.lg,
-    fontWeight: '700',
+  swipeHintText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: FontSize.sm,
+    fontWeight: '500',
   },
 
   startBtnWrap: {
