@@ -24,7 +24,7 @@ import type { Language } from '@/constants/i18n';
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, refreshSession } = useAuth();
   const { showAlert } = useAlert();
   const { colors, isDark, toggleTheme } = useTheme();
   const { t, language, setLanguage, isRTL } = useLanguage();
@@ -34,6 +34,7 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [saving, setSaving] = useState(false);
+  const [localDisplayName, setLocalDisplayName] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
@@ -123,10 +124,13 @@ export default function ProfileScreen() {
       if (readErr || fresh?.username !== trimmedName) {
         throw new Error(readErr?.message ?? 'Save failed — please try again.');
       }
+      // Update local display name immediately so UI reflects change without waiting for context
+      setLocalDisplayName(trimmedName);
+      setEditName(trimmedName);
+      // Refresh auth context so username propagates to all screens
+      await refreshSession();
       showAlert(t.profileUpdated, t.profileUpdatedMsg);
       setEditMode(false);
-      // Refresh the displayed name immediately
-      setEditName(trimmedName);
     } catch (e: any) {
       showAlert('Error', e.message ?? 'Failed to save profile.');
     } finally {
@@ -187,7 +191,7 @@ export default function ProfileScreen() {
     );
   }
 
-  const displayName = user.username || user.email?.split('@')[0] || 'User';
+  const displayName = localDisplayName ?? user.username ?? user.email?.split('@')[0] ?? 'User';
   const activeAds = ads.filter(a => a.status === 'active' || a.status === 'featured');
   const soldAds = ads.filter(a => a.status === 'sold');
 
