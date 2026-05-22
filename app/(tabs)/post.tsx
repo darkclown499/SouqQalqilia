@@ -148,6 +148,10 @@ export default function PostAdScreen() {
   };
 
   const handleSubmit = async () => {
+    if (images.length === 0) return showAlert(
+      language === 'ar' ? 'صورة مطلوبة' : 'Photo Required',
+      language === 'ar' ? 'يجب إضافة صورة واحدة على الأقل للإعلان.' : 'At least one photo is required for your listing.'
+    );
     if (!title.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال عنوان' : 'Please enter a title.');
     if (!description.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال وصف' : 'Please enter a description.');
     if (!categoryId) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى اختيار تصنيف' : 'Please select a category.');
@@ -390,6 +394,14 @@ export default function PostAdScreen() {
               <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.priceLocation}</Text>
             </View>
             <Input label={language === 'ar' ? 'السعر (₪) *' : 'Price (₪) *'} placeholder={language === 'ar' ? 'أدخل السعر بالشيكل' : 'Enter price in ILS'} value={price} onChangeText={setPrice} keyboardType="numeric" />
+            <View style={[styles.priceWarningBox, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+              <MaterialIcons name="warning-amber" size={15} color="#D97706" />
+              <Text style={styles.priceWarningText}>
+                {language === 'ar'
+                  ? 'تحذير: إدخال سعر غير منطقي أو مضلل سيؤدي إلى حذف الإعلان فوراً دون إشعار مسبق.'
+                  : 'Warning: Listing with an unrealistic or misleading price will be removed immediately without prior notice.'}
+              </Text>
+            </View>
             <Text style={[styles.locationLabel, { color: colors.textSecondary }, textAlign]}>
               {language === 'ar' ? 'الموقع' : 'Location'}
             </Text>
@@ -560,6 +572,14 @@ const styles = StyleSheet.create({
     width: 88, height: 88, borderRadius: Radius.md,
     borderWidth: 1.5, borderStyle: 'dashed',
     alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  priceWarningBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 7,
+    borderRadius: Radius.md, borderWidth: 1.5,
+    paddingHorizontal: 10, paddingVertical: 9, marginTop: 2,
+  },
+  priceWarningText: {
+    fontSize: FontSize.xs, color: '#92400E', flex: 1, lineHeight: 17, fontWeight: '600',
   },
   addImgIcon: { width: 46, height: 46, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
   addImgText: { fontSize: FontSize.xs, fontWeight: '500' },
