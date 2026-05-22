@@ -523,6 +523,7 @@ const styles = StyleSheet.create({
     top: height * 0.22,
     left: 0,
     right: 0,
+    height: 180,
     alignItems: 'center',
     justifyContent: 'center',
   },
