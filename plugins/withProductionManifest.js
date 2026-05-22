@@ -12,7 +12,10 @@
  *   8. Play Billing Library forced to ≥6.0.1 via Gradle resolution strategy
  *   9. Post-merge XML patch removes any permission that survived manifest merge
  */
-const { withAndroidManifest, withDangerousMod, withAppBuildGradle } = require('@expo/config-plugins');
+// Resolve @expo/config-plugins relative to the project root so EAS CLI
+// (which runs from its own node_modules) can find the correct package.
+const { withAndroidManifest, withDangerousMod, withAppBuildGradle } =
+  require(require.resolve('@expo/config-plugins', { paths: [__dirname + '/..'] }));
 const path = require('path');
 const fs = require('fs');
 
