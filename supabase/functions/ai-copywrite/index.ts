@@ -19,34 +19,44 @@ serve(async (req) => {
     const isAr = language === 'ar';
 
     const systemPrompt = isAr
-      ? `أنت خبير تسويق رقمي متخصص في سوق قلقيلية الفلسطيني. مهمتك إعادة صياغة إعلانات البيع بأسلوب تسويقي جذاب ومناسب للجمهور المحلي في قلقيلية وفلسطين.`
-      : `You are a digital marketing expert specializing in Qalqilya's local marketplace. Your task is to rewrite product listings in an engaging, professional style suitable for the Palestinian local market.`;
+      ? `أنت خبير تسويق رقمي متخصص في سوق قلقيلية الفلسطيني. مهمتك كتابة عنوان قصير جذاب ووصف تفصيلي مقنع لإعلانات البيع.
+
+قواعد صارمة:
+- العنوان: جملة واحدة قصيرة (أقل من 60 حرف)، يصف المنتج بدقة مع أبرز ميزة.
+- الوصف: فقرة كاملة (3-5 جمل) تشمل: الحالة، المميزات، سبب الشراء، أي معلومات إضافية مفيدة.
+- لا تضع محتوى العنوان داخل الوصف.
+- أجب فقط بالشكل المطلوب بدون أي نص إضافي.`
+      : `You are a digital marketing expert for Qalqilya marketplace. Write a short catchy title and a detailed compelling description for product listings.
+
+Strict rules:
+- TITLE: One short sentence (under 60 chars), precise product name with key feature only.
+- DESCRIPTION: Full paragraph (3-5 sentences) covering: condition, features, why to buy, any useful details.
+- Never repeat the title content inside the description.
+- Reply only in the required format, no extra text.`;
 
     const userPrompt = isAr
-      ? `بصفتك خبير تسويق رقمي لتطبيق سوق قلقيلية، قم بإعادة صياغة الإعلان التالي بأسلوب تسويقي جذاب، واضح، ومناسب للجمهور المحلي في قلقيلية وفلسطين، مع التركيز على نقاط البيع.
+      ? `أعد كتابة هذا الإعلان بأسلوب تسويقي احترافي:
 
-العنوان: ${title || ''}
-الوصف: ${description || ''}
+العنوان الحالي: ${title || ''}
+الوصف الحالي: ${description || ''}
 
-أعطني النتيجة بهذا الشكل بالضبط (بدون أي نص إضافي):
-TITLE: [العنوان المُحسَّن]
-DESCRIPTION: [الوصف المُحسَّن]`
-      : `As a digital marketing expert for Souq Qalqilya app, rewrite the following listing in an engaging, clear, and compelling style for the local Palestinian market, focusing on selling points.
+أجب بهذا الشكل الحرفي فقط (سطرين فقط):
+TITLE: [عنوان قصير - جملة واحدة أقل من 60 حرف]
+DESCRIPTION: [وصف تفصيلي 3-5 جمل يشرح المنتج بالكامل]`
+      : `Rewrite this listing professionally:
 
-Title: ${title || ''}
-Description: ${description || ''}
+Current title: ${title || ''}
+Current description: ${description || ''}
 
-Give me the result in this exact format (no extra text):
-TITLE: [improved title]
-DESCRIPTION: [improved description]`;
+Reply in this exact format only (two lines only):
+TITLE: [short title - one sentence under 60 chars]
+DESCRIPTION: [detailed 3-5 sentence description explaining the product fully]`;
 
     const rawBaseUrl = Deno.env.get('ONSPACE_AI_BASE_URL') ?? 'https://ai.onspace.ai';
     const aiApiKey = Deno.env.get('ONSPACE_AI_API_KEY') ?? '';
 
     // Normalize base URL — strip trailing slash and any trailing /v1
-    // so we always construct the full path ourselves
     const aiBaseUrl = rawBaseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
-
     const endpoint = `${aiBaseUrl}/v1/chat/completions`;
     console.log('AI endpoint:', endpoint);
 
@@ -78,14 +88,41 @@ DESCRIPTION: [improved description]`;
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content ?? '';
+    const content: string = data.choices?.[0]?.message?.content ?? '';
+    console.log('AI raw response:', content);
 
-    // Parse TITLE: and DESCRIPTION: from response
-    const titleMatch = content.match(/TITLE:\s*(.+?)(?:\n|$)/i);
-    const descMatch = content.match(/DESCRIPTION:\s*([\s\S]+?)(?:\n\n|$)/i);
+    // ── Robust line-by-line parser ──────────────────────────────────────────
+    // Handles multiline descriptions and avoids regex greediness issues.
+    let improvedTitle = title ?? '';
+    let improvedDescription = description ?? '';
 
-    const improvedTitle = titleMatch?.[1]?.trim() ?? title;
-    const improvedDescription = descMatch?.[1]?.trim() ?? content.trim();
+    const lines = content.split('\n');
+    let inDesc = false;
+    const descLines: string[] = [];
+
+    for (const line of lines) {
+      if (/^TITLE:\s*/i.test(line)) {
+        improvedTitle = line.replace(/^TITLE:\s*/i, '').trim();
+        inDesc = false;
+      } else if (/^DESCRIPTION:\s*/i.test(line)) {
+        inDesc = true;
+        const firstPart = line.replace(/^DESCRIPTION:\s*/i, '').trim();
+        if (firstPart) descLines.push(firstPart);
+      } else if (inDesc) {
+        const trimmed = line.trim();
+        if (trimmed) descLines.push(trimmed);
+      }
+    }
+
+    if (descLines.length > 0) {
+      improvedDescription = descLines.join(' ');
+    } else if (!improvedTitle && content.trim()) {
+      // Fallback: use full content as description if parsing failed completely
+      improvedDescription = content.trim();
+    }
+
+    console.log('Parsed title:', improvedTitle);
+    console.log('Parsed description:', improvedDescription);
 
     return new Response(
       JSON.stringify({ title: improvedTitle, description: improvedDescription }),
