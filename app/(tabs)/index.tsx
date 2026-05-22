@@ -29,7 +29,8 @@ const H_PAD = SCREEN_W < 375 ? 12 : Spacing.lg;
 const CARD_GAP = SCREEN_W < 375 ? 8 : Spacing.sm;
 const CARD_WIDTH = (SCREEN_W - H_PAD * 2 - CARD_GAP) / 2;
 // Banner height scales with screen width for all device sizes
-const BANNER_H = Math.round(SCREEN_W * 0.52);
+// 16:9 aspect ratio — shows full image without cropping
+const BANNER_H = Math.round(SCREEN_W * (9 / 16));
 const SPONSORED_INTERVAL = 8;
 
 // Module-level cache: banners and interstitials rarely change, no need to
@@ -241,7 +242,7 @@ export default function HomeScreen() {
           <Image
             source={{ uri: currentBanner.image_url }}
             style={StyleSheet.absoluteFill}
-            contentFit="cover"
+            contentFit="contain"
             transition={600}
           />
           {/* Bottom content — title + subtitle only, no overlays */}
@@ -439,7 +440,7 @@ const styles = StyleSheet.create({
   sponsoredLabelText: { color: '#fff', fontSize: 9, fontWeight: '700' },
   sponsoredTitle: { fontSize: FontSize.sm, fontWeight: '700' },
   sponsoredSub: { fontSize: FontSize.xs },
-  bannerWrap: { width: '100%', borderRadius: Radius.xl, overflow: 'hidden', marginBottom: Spacing.lg + 4, position: 'relative' },
+  bannerWrap: { width: '100%', borderRadius: Radius.xl, overflow: 'hidden', marginBottom: Spacing.lg + 4, position: 'relative', backgroundColor: '#0A6E5C' },
   bannerContent: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.md, paddingBottom: Spacing.lg, gap: 5 },
   bannerTitle: { fontSize: FontSize.xl + 2, fontWeight: '800', color: '#fff', letterSpacing: -0.5, lineHeight: 28, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   bannerSubtitle: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.9)', fontWeight: '500', textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
