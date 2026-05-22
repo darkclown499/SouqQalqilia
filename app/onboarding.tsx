@@ -150,9 +150,7 @@ function PulseRing({ size, color, delay, isActive }: {
       opacity.value = 0;
       return;
     }
-    // Reset to visible state immediately before starting loop
-    opacity.value = 0.45;
-    scale.value = 1;
+    opacity.value = withTiming(0.45, { duration: 300 });
     scale.value = withDelay(
       delay,
       withRepeat(
@@ -163,7 +161,7 @@ function PulseRing({ size, color, delay, isActive }: {
         -1, false,
       ),
     );
-    opacity.value = withDelay(
+    const opLoop = withDelay(
       delay,
       withRepeat(
         withSequence(
@@ -173,6 +171,7 @@ function PulseRing({ size, color, delay, isActive }: {
         -1, false,
       ),
     );
+    opacity.value = opLoop;
 
     return () => {
       cancelAnimation(scale);
