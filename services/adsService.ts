@@ -53,17 +53,16 @@ export async function fetchAds(params?: {
   const limit = params?.limit ?? 20;
   const offset = params?.offset ?? 0;
 
-  // Select only the columns needed for the card view — no user_profiles join on list
+  // Use left join so ads WITHOUT images are also returned
   let query = supabase
     .from('ads')
     .select(`
       id, user_id, category_id, title, price, location, condition,
       status, views, created_at, boosted_until, serial_number,
       categories(id, name, name_ar, icon, color),
-      ad_images!inner(id, url, position)
+      ad_images(id, url, position)
     `)
     .in('status', ['active', 'featured'])
-    .eq('ad_images.position', 0)
     .order('boosted_until', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -74,32 +73,17 @@ export async function fetchAds(params?: {
   if (params?.condition) query = query.eq('condition', params.condition);
 
   const { data, error } = await query;
-  if (error) {
-    // Fallback: if inner join returns empty (no images), retry without image filter
-    let fallbackQuery = supabase
-      .from('ads')
-      .select(`
-        id, user_id, category_id, title, price, location, condition,
-        status, views, created_at, boosted_until, serial_number,
-        categories(id, name, name_ar, icon, color),
-        ad_images(id, url, position)
-      `)
-      .in('status', ['active', 'featured'])
-      .order('boosted_until', { ascending: false, nullsFirst: false })
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+  if (error) return { data: [], error: error.message };
 
-    if (params?.categoryId) fallbackQuery = fallbackQuery.eq('category_id', params.categoryId);
-    if (params?.search) fallbackQuery = fallbackQuery.ilike('title', `%${params.search}%`);
-    if (params?.maxPrice !== undefined) fallbackQuery = fallbackQuery.lte('price', params.maxPrice);
-    if (params?.condition) fallbackQuery = fallbackQuery.eq('condition', params.condition);
+  // Sort ad_images by position so index 0 is always the main image
+  const sorted = (data as Ad[]).map(ad => ({
+    ...ad,
+    ad_images: ad.ad_images
+      ? [...ad.ad_images].sort((a, b) => a.position - b.position)
+      : [],
+  }));
 
-    const fallback = await fallbackQuery;
-    if (fallback.error) return { data: [], error: fallback.error.message };
-    return { data: fallback.data as Ad[], error: null };
-  }
-
-  return { data: data as Ad[], error: null };
+  return { data: sorted, error: null };
 }
 
 /** Fetch a single ad by ID */
