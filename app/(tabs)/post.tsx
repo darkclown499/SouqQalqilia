@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, KeyboardAvoidingView, Platform, Modal, ActivityIndicator,
@@ -129,7 +130,7 @@ export default function PostAdScreen() {
       if (error) {
         let errMsg = error.message;
         if (error instanceof FunctionsHttpError) {
-          try { errMsg = await error.context?.text() ?? errMsg; } catch {}
+          try { errMsg = await error.context?.text() ?? errMsg; } catch { /* Ignore error during context access */ }
         }
         return showAlert(language === 'ar' ? 'خطأ في الذكاء الاصطناعي' : 'AI Error', errMsg);
       }
@@ -153,7 +154,13 @@ export default function PostAdScreen() {
     if (!location.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال الحي أو المنطقة' : 'Please enter your neighbourhood.');
     const parsedPrice = parseFloat(price);
     if (!price.trim() || isNaN(parsedPrice) || parsedPrice <= 0) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال سعر صحيح (أكبر من 0)' : 'Please enter a valid price (greater than 0).');
-    // phone is optional — no validation required
+    // phone is optional — validate length only if provided
+    if (phoneLocal.trim() && phoneLocal.trim().length !== 9) {
+      return showAlert(
+        language === 'ar' ? 'رقم هاتف غير صحيح' : 'Invalid Phone',
+        language === 'ar' ? 'رقم الهاتف يجب أن يكون 9 أرقام بالضبط' : 'Phone number must be exactly 9 digits.'
+      );
+    }
 
     setLoading(true);
     try {
@@ -410,8 +417,11 @@ export default function PostAdScreen() {
               <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>
                 {language === 'ar' ? 'رقم الهاتف (اختياري)' : 'Phone Number (Optional)'}
               </Text>
+              {/* No star required — optional field */}
             </View>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }, textAlign]}>{t.phoneNumber}</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }, textAlign]}>
+              {language === 'ar' ? 'رقم الهاتف' : 'Phone Number'}
+            </Text>
             <View style={[styles.phoneRow, rtl]}>
               <View style={[styles.prefixWrap, { borderColor: colors.border, backgroundColor: colors.background }]}>
                 {PHONE_PREFIXES.map(prefix => (
@@ -431,13 +441,27 @@ export default function PostAdScreen() {
               </View>
               <View style={styles.phoneInputWrap}>
                 <Input
-                  placeholder={t.phonePlaceholder}
+                  placeholder={language === 'ar' ? 'XX-XXX-XXXX' : 'XX-XXX-XXXX'}
                   value={phoneLocal}
-                  onChangeText={setPhoneLocal}
-                  keyboardType="phone-pad"
+                  onChangeText={(val) => {
+                    // Numbers only, max 9 digits
+                    const digits = val.replace(/[^0-9]/g, '').slice(0, 9);
+                    setPhoneLocal(digits);
+                  }}
+                  keyboardType="number-pad"
                   containerStyle={styles.phoneInputContainer}
+                  maxLength={9}
                 />
               </View>
+            </View>
+            {/* 9-digit hint */}
+            <View style={[styles.phoneHintBox, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
+              <MaterialIcons name="info-outline" size={14} color={colors.primary} />
+              <Text style={[styles.phoneHintText, { color: colors.textSecondary }]}>
+                {language === 'ar'
+                  ? 'أدخل 9 أرقام فقط — ابدأ من الرقم الذي بعد الصفر (مثال: 599123456)'
+                  : 'Enter 9 digits only — skip the leading zero (e.g. 599123456)'}
+              </Text>
             </View>
             <Text style={[styles.phoneHint, { color: colors.textMuted }, textAlign]}>
               {language === 'ar'
@@ -570,7 +594,13 @@ const styles = StyleSheet.create({
   prefixText: { fontSize: FontSize.sm, fontWeight: '700' },
   phoneInputWrap: { flex: 1 },
   phoneInputContainer: { marginBottom: 0 },
-  phoneHint: { fontSize: FontSize.xs, marginTop: 2, fontStyle: 'italic' },
+  phoneHintBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 6,
+    borderRadius: Radius.md, borderWidth: 1,
+    paddingHorizontal: 10, paddingVertical: 8, marginTop: 6,
+  },
+  phoneHintText: { fontSize: FontSize.xs, flex: 1, lineHeight: 17 },
+  phoneHint: { fontSize: FontSize.xs, marginTop: 4, fontStyle: 'italic' },
   loadingCat: { fontSize: FontSize.sm, textAlign: 'center', paddingVertical: Spacing.md },
 
   catGrid: { gap: Spacing.sm },
@@ -652,7 +682,7 @@ const photoStyles = StyleSheet.create({
     borderRadius: Radius.xl,
     paddingVertical: 14,
     alignItems: 'center',
-    marginTop: Spacing.xs ?? 4,
+    marginTop: Spacing.xs || 4, // Changed from Spacing.xs ?? 4 to Spacing.xs || 4 for correctness
   },
   cancelText: { fontSize: FontSize.md, fontWeight: '700' },
 });

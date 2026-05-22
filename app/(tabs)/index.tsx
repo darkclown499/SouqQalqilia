@@ -385,14 +385,33 @@ export default function HomeScreen() {
           maxToRenderPerBatch={10}
           initialNumToRender={10}
           removeClippedSubviews={true}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.4}
+          onEndReached={undefined}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={handleRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
           ListHeaderComponent={ListHeader}
           ListFooterComponent={
-            loadingMore ? (
-              <View style={styles.loadMoreIndicator}>
-                <ActivityIndicator color={colors.primary} size="small" />
+            hasMore ? (
+              <Pressable
+                style={[styles.loadMoreBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={handleLoadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? (
+                  <ActivityIndicator color={colors.primary} size="small" />
+                ) : (
+                  <>
+                    <MaterialIcons name="expand-more" size={18} color={colors.primary} />
+                    <Text style={[styles.loadMoreText, { color: colors.primary }]}>
+                      {isAr ? 'تحميل المزيد' : 'Load More'}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            ) : ads.length > 0 ? (
+              <View style={styles.endOfList}>
+                <MaterialIcons name="check-circle-outline" size={16} color={colors.textMuted} />
+                <Text style={[styles.endOfListText, { color: colors.textMuted }]}>
+                  {isAr ? 'تم عرض جميع الإعلانات' : 'All listings shown'}
+                </Text>
               </View>
             ) : null
           }
@@ -461,4 +480,16 @@ const styles = StyleSheet.create({
   catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: Spacing.md, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1.5 },
   catChipText: { fontSize: FontSize.xs },
   loadMoreIndicator: { paddingVertical: 20, alignItems: 'center' },
+  loadMoreBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, marginHorizontal: H_PAD, marginBottom: 24, marginTop: 8,
+    paddingVertical: 14, borderRadius: Radius.xl,
+    borderWidth: 1.5,
+  },
+  loadMoreText: { fontSize: FontSize.md, fontWeight: '700' },
+  endOfList: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 20,
+  },
+  endOfListText: { fontSize: FontSize.sm, fontWeight: '500' },
 });
