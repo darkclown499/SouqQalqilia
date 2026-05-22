@@ -60,7 +60,7 @@ export async function fetchAds(params?: {
       id, user_id, category_id, title, price, location, condition,
       status, views, created_at, boosted_until, serial_number,
       categories(id, name, name_ar, icon, color),
-      ad_images!inner(id, url, position)
+      ad_images(id, url, position)
     `)
     .in('status', ['active', 'featured'])
     .eq('ad_images.position', 0)
@@ -74,31 +74,7 @@ export async function fetchAds(params?: {
   if (params?.condition) query = query.eq('condition', params.condition);
 
   const { data, error } = await query;
-  if (error) {
-    // Fallback: if inner join returns empty (no images), retry without image filter
-    let fallbackQuery = supabase
-      .from('ads')
-      .select(`
-        id, user_id, category_id, title, price, location, condition,
-        status, views, created_at, boosted_until, serial_number,
-        categories(id, name, name_ar, icon, color),
-        ad_images(id, url, position)
-      `)
-      .in('status', ['active', 'featured'])
-      .order('boosted_until', { ascending: false, nullsFirst: false })
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (params?.categoryId) fallbackQuery = fallbackQuery.eq('category_id', params.categoryId);
-    if (params?.search) fallbackQuery = fallbackQuery.ilike('title', `%${params.search}%`);
-    if (params?.maxPrice !== undefined) fallbackQuery = fallbackQuery.lte('price', params.maxPrice);
-    if (params?.condition) fallbackQuery = fallbackQuery.eq('condition', params.condition);
-
-    const fallback = await fallbackQuery;
-    if (fallback.error) return { data: [], error: fallback.error.message };
-    return { data: fallback.data as Ad[], error: null };
-  }
-
+  if (error) return { data: [], error: error.message };
   return { data: data as Ad[], error: null };
 }
 
