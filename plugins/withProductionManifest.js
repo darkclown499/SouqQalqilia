@@ -12,19 +12,53 @@
  *   8. Play Billing Library forced to ≥6.0.1 via Gradle resolution strategy
  *   9. Post-merge XML patch removes any permission that survived manifest merge
  */
-// Resolve @expo/config-plugins: prefer the project's own copy (installed in
-// node_modules), but fall back to the copy bundled inside EAS CLI when the
-// project node_modules are not yet available (e.g. during `eas init`).
+// Resolve @expo/config-plugins with multi-strategy fallback.
+// Strategy order:
+//   1. Project's own node_modules (normal installed build)
+//   2. Walk up from require.main.filename (EAS CLI entry point)
+//   3. Known global eas-cli installation paths
+//   4. Direct require as last resort
 const _configPlugins = (() => {
-  try {
-    const resolved = require.resolve('@expo/config-plugins', {
-      paths: [__dirname + '/..'],
-    });
-    return require(resolved);
-  } catch (_) {
-    // node_modules not yet installed — use EAS CLI's bundled copy
-    return require('@expo/config-plugins');
+  const _path = require('path');
+
+  const tryLoad = (searchPath) => {
+    try {
+      return require(require.resolve('@expo/config-plugins', { paths: [searchPath] }));
+    } catch (_) { return null; }
+  };
+
+  // 1. Project node_modules
+  let r = tryLoad(_path.resolve(__dirname, '..'));
+  if (r) return r;
+
+  // 2. Walk up from the EAS CLI main entry (require.main)
+  if (require.main && require.main.filename) {
+    let dir = _path.dirname(require.main.filename);
+    for (let i = 0; i < 6; i++) {
+      r = tryLoad(dir);
+      if (r) return r;
+      const up = _path.dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
   }
+
+  // 3. Known global eas-cli paths (Linux/macOS CI environments)
+  const globalCandidates = [
+    '/usr/local/lib/node_modules/eas-cli',
+    '/usr/lib/node_modules/eas-cli',
+    '/opt/homebrew/lib/node_modules/eas-cli',
+    '/usr/local/lib/node_modules/@expo/eas-cli',
+  ];
+  for (const p of globalCandidates) {
+    r = tryLoad(p);
+    if (r) return r;
+  }
+
+  // 4. Direct require — works when Node's module resolution finds it on PATH
+  try { return require('@expo/config-plugins'); } catch (_) {}
+
+  throw new Error('[withProductionManifest] Cannot resolve @expo/config-plugins — please run npm install first.');
 })();
 const { withAndroidManifest, withDangerousMod, withAppBuildGradle } = _configPlugins;
 const path = require('path');
