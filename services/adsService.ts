@@ -121,6 +121,22 @@ export async function createAd(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: null, error: 'Not authenticated' };
 
+  // Ensure user_profiles row exists (trigger may have failed for some users)
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('id')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (!profile) {
+    // Re-create missing profile so the FK constraint is satisfied
+    await supabase.from('user_profiles').upsert({
+      id: user.id,
+      email: user.email ?? '',
+      username: user.user_metadata?.username ?? user.email?.split('@')[0] ?? '',
+    }, { onConflict: 'id' });
+  }
+
   const { data, error } = await supabase
     .from('ads')
     .insert({ ...input, user_id: user.id })
