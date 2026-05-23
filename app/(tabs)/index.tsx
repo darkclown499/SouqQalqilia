@@ -28,11 +28,9 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const H_PAD = SCREEN_W < 375 ? 12 : Spacing.lg;
 const CARD_GAP = SCREEN_W < 375 ? 8 : Spacing.sm;
 const CARD_WIDTH = (SCREEN_W - H_PAD * 2 - CARD_GAP) / 2;
-// Banner width = screen width minus horizontal padding on both sides
-const BANNER_W = SCREEN_W - H_PAD * 2;
-// Banner height: exact 16:9 ratio based on actual banner width (not full screen)
+// Banner height: exact 16:9 ratio matching 1280×720 images
 // Container and image share the same ratio → cover fills perfectly with zero cropping
-const BANNER_H = Math.round(BANNER_W * (720 / 1280));
+const BANNER_H = Math.round(SCREEN_W * (720 / 1280));
 const SPONSORED_INTERVAL = 8;
 
 // Module-level cache: banners and interstitials rarely change, no need to
