@@ -173,9 +173,9 @@ export default function AdDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
       {/* Back button */}
-      <View style={[styles.backBtnWrap, { top: insets.top + 12 }]}>
+      <View style={[styles.backBtnWrap, { top: insets.top + 12, ...(isAr ? { right: Spacing.md, left: undefined } : { left: Spacing.md }) }]}>
         <Pressable style={styles.iconBtn} onPress={() => router.back()} hitSlop={8}>
-          <MaterialIcons name="arrow-back" size={20} color="#fff" />
+          <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={20} color="#fff" />
         </Pressable>
       </View>
 
@@ -519,9 +519,13 @@ function AdDetailScrollContent({
           <View style={[styles.sellerCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
             <Text style={[styles.cardLabel, { color: colors.primary }]}>{t.seller}</Text>
             <View style={styles.sellerRow}>
-              <View style={[styles.sellerAvatar, { backgroundColor: colors.primary }]}>
-                <Text style={styles.sellerAvatarText}>{sellerName.charAt(0).toUpperCase()}</Text>
-              </View>
+              {seller?.avatar_url ? (
+                <Image source={{ uri: seller.avatar_url }} style={styles.sellerAvatarImg} contentFit="cover" transition={200} />
+              ) : (
+                <View style={[styles.sellerAvatar, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.sellerAvatarText}>{sellerName.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
               <View style={styles.sellerInfo}>
                 <Text style={[styles.sellerName, { color: colors.textPrimary }]}>{sellerName}</Text>
                 {/* Email is hidden from public view for privacy */}
@@ -633,7 +637,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   errorText: { fontSize: FontSize.lg, marginTop: 12 },
-  backBtnWrap: { position: 'absolute', left: Spacing.md, zIndex: 10 },
+  backBtnWrap: { position: 'absolute', zIndex: 10 },
   topRightBtns: { position: 'absolute', right: Spacing.md, zIndex: 10, flexDirection: 'row', gap: 8 },
   iconBtn: {
     width: 42, height: 42, borderRadius: 21,
@@ -718,6 +722,7 @@ const styles = StyleSheet.create({
   sellerCard: { borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.md },
   sellerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   sellerAvatar: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
+  sellerAvatarImg: { width: 50, height: 50, borderRadius: 25 },
   sellerAvatarText: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff' },
   sellerInfo: { flex: 1 },
   sellerName: { fontSize: FontSize.md, fontWeight: '700' },

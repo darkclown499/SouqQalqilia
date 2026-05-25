@@ -9,8 +9,8 @@ export interface Conversation {
   last_message_at: string;
   created_at: string;
   ads?: { title: string; status?: string; user_id?: string };
-  buyer?: { username: string; email: string };
-  seller?: { username: string; email: string };
+  buyer?: { username: string; email: string; avatar_url?: string | null };
+  seller?: { username: string; email: string; avatar_url?: string | null };
 }
 
 export interface Message {

@@ -25,7 +25,7 @@ export interface Ad {
   serial_number?: number | null;
   categories?: { id: string; name: string; icon: string; color: string };
   ad_images?: AdImage[];
-  user_profiles?: { username: string; email: string; phone?: string };
+  user_profiles?: { username: string; email: string; phone?: string; avatar_url?: string | null };
 }
 
 export interface CreateAdInput {
@@ -63,7 +63,6 @@ export async function fetchAds(params?: {
       ad_images(id, url, position)
     `)
     .in('status', ['active', 'featured'])
-    .eq('ad_images.position', 0)
     .order('boosted_until', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -87,7 +86,7 @@ export async function fetchAdById(id: string): Promise<{ data: Ad | null; error:
       *,
       categories(id, name, icon, color),
       ad_images(id, url, position),
-      user_profiles(username, email, phone)
+      user_profiles(username, email, phone, avatar_url)
     `)
     .eq('id', id)
     .single();
