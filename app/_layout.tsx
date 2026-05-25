@@ -18,6 +18,18 @@ if (Platform.OS !== 'web') {
         shouldSetBadge: true,
       }),
     });
+    // Create Android notification channel (required for Android 8+ / API 26+)
+    // Must be set before any notification arrives
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('messages', {
+        name: 'الرسائل',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#0A6E5C',
+        sound: 'default',
+        showBadge: true,
+      }).catch(() => {});
+    }
   } catch (_) {}
 }
 
@@ -105,6 +117,15 @@ export default function RootLayout() {
             }, { onConflict: 'id', ignoreDuplicates: true });
           } catch (_) {
             // Non-fatal — createAd has its own fallback as well
+          }
+
+          // ── Register push token right after sign-in ──────────────────────
+          // Don't defer — user should receive notifications immediately after login
+          if (Platform.OS !== 'web') {
+            try {
+              const { registerPushToken } = await import('@/hooks/useChat');
+              await registerPushToken();
+            } catch (_) {}
           }
         }
       });

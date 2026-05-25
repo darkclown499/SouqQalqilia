@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl, Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert } from '@/template';
@@ -332,6 +333,7 @@ export default function ChatScreen() {
   const otherUser = isBuyer ? conversation?.seller : conversation?.buyer;
   const otherName = otherUser?.username || otherUser?.email?.split('@')[0] || 'User';
   const otherInitial = otherName.charAt(0).toUpperCase();
+  const otherAvatarUrl = (otherUser as any)?.avatar_url ?? null;
 
   // Build messages with date group headers
   // Using the imported Message type for better type safety
@@ -363,9 +365,18 @@ export default function ChatScreen() {
             <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={22} color="#fff" />
           </Pressable>
 
-          <View style={[styles.headerAvatar, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
-            <Text style={styles.headerAvatarText}>{otherInitial}</Text>
-          </View>
+          {otherAvatarUrl ? (
+            <Image
+              source={{ uri: otherAvatarUrl }}
+              style={styles.headerAvatarImg}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={[styles.headerAvatar, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
+              <Text style={styles.headerAvatarText}>{otherInitial}</Text>
+            </View>
+          )}
 
           <View style={styles.headerInfo}>
             <Text style={[styles.headerName, { textAlign: isAr ? 'right' : 'left' }]} numberOfLines={1}>{otherName}</Text>
@@ -715,6 +726,10 @@ const styles = StyleSheet.create({
   headerAvatar: {
     width: 42, height: 42, borderRadius: 21,
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)',
+  },
+  headerAvatarImg: {
+    width: 42, height: 42, borderRadius: 21,
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)',
   },
   headerAvatarText: { color: '#fff', fontWeight: '800', fontSize: FontSize.md },

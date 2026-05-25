@@ -10,6 +10,9 @@ try {
   Notifications = require('expo-notifications');
 } catch (_) {}
 
+// EAS project ID from app.json extra.eas.projectId
+const EAS_PROJECT_ID = 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1';
+
 /** Request push notification permissions and register/save device push token */
 export async function requestNotificationPermissions(): Promise<void> {
   if (!Notifications || Platform.OS === 'web') return;
@@ -23,18 +26,23 @@ export async function requestNotificationPermissions(): Promise<void> {
     }
     if (finalStatus !== 'granted') return;
 
-    // Get Expo push token and persist it to the user's profile
-    try {
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: undefined, // uses app.json projectId automatically
-      });
-      if (tokenData?.data) {
-        await savePushToken(tokenData.data);
-      }
-    } catch (_) {
-      // Token registration can fail in simulators/emulators — not critical
-    }
+    await registerPushToken();
   } catch (_) {}
+}
+
+/** Get and save Expo push token — safe to call multiple times (idempotent) */
+export async function registerPushToken(): Promise<void> {
+  if (!Notifications || Platform.OS === 'web') return;
+  try {
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: EAS_PROJECT_ID,
+    });
+    if (tokenData?.data) {
+      await savePushToken(tokenData.data);
+    }
+  } catch (_) {
+    // Token registration can fail in simulators/emulators — not critical
+  }
 }
 
 // ─── useMessages ───────────────────────────────────────────────────────────────
