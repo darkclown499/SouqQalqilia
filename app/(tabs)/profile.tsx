@@ -263,7 +263,6 @@ export default function ProfileScreen() {
                 { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
                 { icon: 'whatsapp', label: isRTL ? 'الدعم' : 'Support', color: '#25D366', bg: '#E8F5E9', onPress: handleContactSupport },
                 ...(isAdmin ? [{ icon: 'admin-panel-settings', label: t.adminAccess, color: colors.accentDark, bg: colors.accentLight, onPress: () => router.push('/admin') }] : []),
-                { icon: 'logout', label: t.signOut, color: colors.error, bg: colors.errorLight, onPress: handleLogout },
               ].map((tile) => (
                 <Pressable
                   key={tile.label}
