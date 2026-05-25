@@ -172,43 +172,6 @@ export default function AdDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
-      {/* Back button */}
-      <View style={[styles.backBtnWrap, { top: insets.top + 12, ...(isAr ? { right: Spacing.md, left: undefined } : { left: Spacing.md }) }]}>
-        <Pressable style={styles.iconBtn} onPress={() => router.back()} hitSlop={8}>
-          <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={20} color="#fff" />
-        </Pressable>
-      </View>
-
-      {/* Top-right actions */}
-      <View style={[styles.topRightBtns, { top: insets.top + 12 }]}>
-        {/* Favorite button */}
-        {user && !isOwner ? (
-          <Pressable
-            style={[styles.iconBtn, { backgroundColor: isFavorited ? 'rgba(255,59,107,0.8)' : 'rgba(0,0,0,0.42)' }]}
-            onPress={() => toggleFav(ad.id)}
-            hitSlop={8}
-          >
-            <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={18} color="#fff" />
-          </Pressable>
-        ) : null}
-
-        {/* Share button */}
-        <Pressable style={styles.iconBtn} onPress={handleShare} hitSlop={8}>
-          <MaterialIcons name="share" size={18} color="#fff" />
-        </Pressable>
-
-        {/* Report button (non-owner only) */}
-        {!isOwner ? (
-          <Pressable
-            style={[styles.iconBtn, { backgroundColor: 'rgba(0,0,0,0.4)' }]}
-            onPress={() => setReportVisible(true)}
-            hitSlop={8}
-          >
-            <MaterialIcons name="flag" size={18} color="#fff" />
-          </Pressable>
-        ) : null}
-      </View>
-
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
         <View>
           <AdDetailScrollContent
@@ -239,6 +202,38 @@ export default function AdDetailScreen() {
           />
         </View>
       </ScrollView>
+
+      {/* Back button — after ScrollView so it renders on top on Android */}
+      <View style={[styles.backBtnWrap, { top: insets.top + 12, ...(isAr ? { right: Spacing.md, left: undefined } : { left: Spacing.md }) }]}>
+        <Pressable style={styles.iconBtn} onPress={() => router.back()} hitSlop={8}>
+          <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={20} color="#fff" />
+        </Pressable>
+      </View>
+
+      {/* Top-right actions — after ScrollView so they render on top on Android */}
+      <View style={[styles.topRightBtns, { top: insets.top + 12 }]}>
+        {user && !isOwner ? (
+          <Pressable
+            style={[styles.iconBtn, { backgroundColor: isFavorited ? 'rgba(255,59,107,0.8)' : 'rgba(0,0,0,0.42)' }]}
+            onPress={() => toggleFav(ad.id)}
+            hitSlop={8}
+          >
+            <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={18} color="#fff" />
+          </Pressable>
+        ) : null}
+        <Pressable style={styles.iconBtn} onPress={handleShare} hitSlop={8}>
+          <MaterialIcons name="share" size={18} color="#fff" />
+        </Pressable>
+        {!isOwner ? (
+          <Pressable
+            style={[styles.iconBtn, { backgroundColor: 'rgba(0,0,0,0.4)' }]}
+            onPress={() => setReportVisible(true)}
+            hitSlop={8}
+          >
+            <MaterialIcons name="flag" size={18} color="#fff" />
+          </Pressable>
+        ) : null}
+      </View>
 
       {/* ── BOTTOM ACTION BAR ── */}
       <View style={[styles.bottomBar, { backgroundColor: colors.surface, borderTopColor: colors.border }, Shadow.md]}>
@@ -428,12 +423,7 @@ function AdDetailScrollContent({
                 ) : null}
               </>
             ) : null}
-            {images.length > 1 ? (
-              <View style={styles.counterPill}>
-                <MaterialIcons name="photo-library" size={12} color="#fff" />
-                <Text style={styles.counterText}>{activeImage + 1}/{images.length}</Text>
-              </View>
-            ) : null}
+
           </>
         ) : (
           <Pressable style={styles.noImage} onPress={() => openGallery(0)}>
