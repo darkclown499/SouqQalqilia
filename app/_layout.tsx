@@ -80,11 +80,32 @@ export default function RootLayout() {
     // settle and the listener must be ready to catch it.
     import('@/template').then(({ getSupabaseClient }) => {
       const supabase = getSupabaseClient();
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_OUT') {
           import('expo-router').then(({ router }) => {
             router.replace('/login');
           });
+        }
+
+        // ── Ensure user_profiles exists on every sign-in ─────────────────────
+        // The DB trigger (on_auth_user_created) sometimes fails for Google OAuth
+        // or SMS-based users. This upsert is idempotent and runs silently.
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+          const u = session.user;
+          try {
+            await supabase.from('user_profiles').upsert({
+              id: u.id,
+              email: u.email ?? '',
+              username:
+                u.user_metadata?.full_name ??
+                u.user_metadata?.name ??
+                u.user_metadata?.username ??
+                u.email?.split('@')[0] ??
+                '',
+            }, { onConflict: 'id', ignoreDuplicates: true });
+          } catch (_) {
+            // Non-fatal — createAd has its own fallback as well
+          }
         }
       });
       // Note: subscription cleanup handled by app lifecycle
