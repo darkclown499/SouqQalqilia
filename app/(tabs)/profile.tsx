@@ -261,7 +261,7 @@ export default function ProfileScreen() {
                 { icon: 'manage-accounts', label: t.editProfile, color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
                 { icon: 'add-circle-outline', label: t.postAd, color: colors.primary, bg: colors.primaryGhost, onPress: () => router.push('/(tabs)/post') },
                 { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
-                { icon: 'whatsapp', label: isRTL ? 'الدعم' : 'Support', color: '#25D366', bg: '#E8F5E9', onPress: handleContactSupport },
+                { icon: 'whatsapp', label: isRTL ? 'الدعم' : 'Support', color: '#fff', bg: '#25D366', onPress: handleContactSupport },
                 ...(isAdmin ? [{ icon: 'admin-panel-settings', label: t.adminAccess, color: colors.accentDark, bg: colors.accentLight, onPress: () => router.push('/admin') }] : []),
               ].map((tile) => (
                 <Pressable
@@ -403,20 +403,29 @@ export default function ProfileScreen() {
               </View>
             </View>
 
-            {/* Support */}
-            <Pressable
-              style={[styles.settingRowPressable, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={handleContactSupport}
-            >
-              <View style={[styles.settingIconWrap, { backgroundColor: '#E8F5E9' }]}>
-                <MaterialIcons name="whatsapp" size={22} color="#25D366" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{t.contactSupport}</Text>
-                <Text style={[styles.settingSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{t.contactSupportSub}</Text>
-              </View>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-            </Pressable>
+            {/* Support — WhatsApp CTA card */}
+            <View style={[styles.waCardWrap, { borderBottomColor: colors.borderLight }]}>
+              <Pressable
+                style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1 }]}
+                onPress={handleContactSupport}
+              >
+                {/* Left: icon badge */}
+                <View style={styles.waIconBadge}>
+                  <MaterialIcons name="whatsapp" size={28} color="#fff" />
+                </View>
+
+                {/* Center: text */}
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.waCardTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t.contactSupport}</Text>
+                  <Text style={[styles.waCardSub, { textAlign: isRTL ? 'right' : 'left' }]}>{t.contactSupportSub}</Text>
+                </View>
+
+                {/* Right: arrow */}
+                <View style={styles.waArrow}>
+                  <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={18} color="#fff" />
+                </View>
+              </Pressable>
+            </View>
 
             {/* Privacy Policy */}
             <Pressable
@@ -713,6 +722,56 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 7, minWidth: 40, alignItems: 'center',
   },
   langOptionText: { fontSize: FontSize.sm },
+
+  // WhatsApp Support Card
+  waCardWrap: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+  },
+  waCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: '#25D366',
+    borderRadius: Radius.xl,
+    paddingVertical: 14,
+    paddingHorizontal: Spacing.md,
+    shadowColor: '#25D366',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  waIconBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  waCardTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  waCardSub: {
+    fontSize: FontSize.xs,
+    color: 'rgba(255,255,255,0.8)',
+    lineHeight: 16,
+  },
+  waArrow: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // Follow Us card
   followCard: {
