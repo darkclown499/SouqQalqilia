@@ -1,6 +1,6 @@
-import { AlertProvider, AuthProvider } from '@/template';
+import { AlertProvider, AuthProvider, getSupabaseClient } from '@/template';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { useEffect } from 'react';
@@ -88,48 +88,35 @@ export default function RootLayout() {
     }
 
     // ── CRITICAL: Register auth state listener immediately ──────────────────
-    // Must NOT be deferred — Google OAuth fires SIGNED_IN before interactions
-    // settle and the listener must be ready to catch it.
-    import('@/template').then(({ getSupabaseClient }) => {
-      const supabase = getSupabaseClient();
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'SIGNED_OUT') {
-          import('expo-router').then(({ router }) => {
-            router.replace('/login');
-          });
-        }
+    // Use static-imported getSupabaseClient — no dynamic import delay.
+    const supabase = getSupabaseClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        router.replace('/login');
+      }
 
-        // ── Ensure user_profiles exists on every sign-in ─────────────────────
-        // The DB trigger (on_auth_user_created) sometimes fails for Google OAuth
-        // or SMS-based users. This upsert is idempotent and runs silently.
-        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-          const u = session.user;
-          try {
-            await supabase.from('user_profiles').upsert({
-              id: u.id,
-              email: u.email ?? '',
-              username:
-                u.user_metadata?.full_name ??
-                u.user_metadata?.name ??
-                u.user_metadata?.username ??
-                u.email?.split('@')[0] ??
-                '',
-            }, { onConflict: 'id', ignoreDuplicates: true });
-          } catch (_) {
-            // Non-fatal — createAd has its own fallback as well
-          }
+      // ── Ensure user_profiles exists on every sign-in ─────────────────────
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        const u = session.user;
+        // Fire-and-forget profile upsert — non-blocking
+        supabase.from('user_profiles').upsert({
+          id: u.id,
+          email: u.email ?? '',
+          username:
+            u.user_metadata?.full_name ??
+            u.user_metadata?.name ??
+            u.user_metadata?.username ??
+            u.email?.split('@')[0] ??
+            '',
+        }, { onConflict: 'id', ignoreDuplicates: true }).then(() => {}).catch(() => {});
 
-          // ── Register push token right after sign-in ──────────────────────
-          // Don't defer — user should receive notifications immediately after login
-          if (Platform.OS !== 'web') {
-            try {
-              const { registerPushToken } = await import('@/hooks/useChat');
-              await registerPushToken();
-            } catch (_) {}
-          }
+        // ── Register push token right after sign-in ──────────────────────
+        if (Platform.OS !== 'web') {
+          import('@/hooks/useChat').then(({ registerPushToken }) => {
+            registerPushToken().catch(() => {});
+          }).catch(() => {});
         }
-      });
-      // Note: subscription cleanup handled by app lifecycle
+      }
     });
 
     // Web console interceptor for stale token errors (immediate)
@@ -162,6 +149,7 @@ export default function RootLayout() {
 
     return () => {
       task.cancel();
+      subscription.unsubscribe();
       if (notifSub) {
         try { notifSub.remove(); } catch (_) {}
       }

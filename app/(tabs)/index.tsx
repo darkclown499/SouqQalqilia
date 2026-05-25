@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
-  Dimensions, RefreshControl, ActivityIndicator, Linking,
+  Dimensions, RefreshControl, ActivityIndicator, Linking, Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -382,10 +382,11 @@ export default function HomeScreen() {
           renderItem={renderRow}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          windowSize={5}
-          maxToRenderPerBatch={10}
-          initialNumToRender={10}
-          removeClippedSubviews={true}
+          windowSize={7}
+          maxToRenderPerBatch={6}
+          initialNumToRender={6}
+          updateCellsBatchingPeriod={60}
+          removeClippedSubviews={Platform.OS === 'android'}
 
           refreshControl={<RefreshControl refreshing={loading} onRefresh={handleRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
           ListHeaderComponent={ListHeader}

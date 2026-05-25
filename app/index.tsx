@@ -70,12 +70,12 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
       dotAnim(dotScale3, 360).start();
     });
 
-    // Fade out after 2.3s
+    // Fade out after 1.6s — faster perceived startup
     const timer = setTimeout(() => {
       Animated.timing(screenOpacity, {
-        toValue: 0, duration: 380, useNativeDriver: true,
+        toValue: 0, duration: 280, useNativeDriver: true,
       }).start(() => onDone());
-    }, 2300);
+    }, 1600);
 
     return () => clearTimeout(timer);
   }, []);
