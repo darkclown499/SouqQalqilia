@@ -211,7 +211,7 @@ export default function AdDetailScreen() {
       </View>
 
       {/* Top-right actions — after ScrollView so they render on top on Android */}
-      <View style={[styles.topRightBtns, { top: insets.top + 12 }]}>
+      <View style={[styles.topRightBtns, { top: insets.top + 12, ...(isAr ? { left: Spacing.md, right: undefined } : { right: Spacing.md }) }]}>
         {user && !isOwner ? (
           <Pressable
             style={[styles.iconBtn, { backgroundColor: isFavorited ? 'rgba(255,59,107,0.8)' : 'rgba(0,0,0,0.42)' }]}
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   errorText: { fontSize: FontSize.lg, marginTop: 12 },
   backBtnWrap: { position: 'absolute', zIndex: 10 },
-  topRightBtns: { position: 'absolute', right: Spacing.md, zIndex: 10, flexDirection: 'row', gap: 8 },
+  topRightBtns: { position: 'absolute', zIndex: 10, flexDirection: 'row', gap: 8 },
   iconBtn: {
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: 'rgba(0,0,0,0.42)',
