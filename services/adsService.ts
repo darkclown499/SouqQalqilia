@@ -1,5 +1,39 @@
 import { getSupabaseClient } from '@/template';
 
+// ── Module-level ads cache ────────────────────────────────────────────────────
+// Populated by preloadAds() called from _layout.tsx right after auth.
+// Home screen reads this immediately → zero loading delay on first visit.
+export interface AdsCache {
+  data: Ad[];
+  fetchedAt: number;
+}
+let _adsCache: AdsCache | null = null;
+const CACHE_TTL_MS = 90_000; // 90 seconds
+
+export function getAdsCache(): AdsCache | null {
+  if (!_adsCache) return null;
+  if (Date.now() - _adsCache.fetchedAt > CACHE_TTL_MS) {
+    _adsCache = null;
+    return null;
+  }
+  return _adsCache;
+}
+
+export function setAdsCache(data: Ad[]): void {
+  _adsCache = { data, fetchedAt: Date.now() };
+}
+
+export function clearAdsCache(): void {
+  _adsCache = null;
+}
+
+/** Preload first page of ads into cache — call right after auth resolves */
+export async function preloadAds(): Promise<void> {
+  if (getAdsCache()) return; // Already fresh
+  const { data } = await fetchAds({ limit: 20, offset: 0 });
+  if (data.length > 0) setAdsCache(data);
+}
+
 export interface AdImage {
   id: string;
   ad_id: string;

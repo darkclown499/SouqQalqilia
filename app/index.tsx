@@ -1,4 +1,10 @@
-import { AuthRouter } from '@/template';
+// ── Preload ads for guest users (no auth) ───────────────────────────────────
+// Fires immediately at module level so cache is populated by the time
+// the user passes the splash screen and the tab renders.
+import { preloadAds } from '@/services/adsService';
+preloadAds().catch(() => {});
+
+
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
