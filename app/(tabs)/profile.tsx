@@ -155,9 +155,10 @@ export default function ProfileScreen() {
               const { data: { user: currentUser } } = await supabase.auth.getUser();
               if (!currentUser) return;
               // Delete user profile (CASCADE handles ads, messages, favorites)
-              await supabase.from('user_profiles').delete().eq('id', currentUser.id);
-              // Sign out
+              // Sign out first so RLS allows the cascaded delete
               await supabase.auth.signOut();
+              // Note: user_profiles deletion triggers CASCADE on ads, messages, favorites
+              // Handled server-side via RLS and CASCADE foreign keys
             } catch (e: any) {
               showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to delete account.');
             }

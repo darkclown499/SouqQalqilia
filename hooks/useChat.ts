@@ -177,17 +177,12 @@ export function useConversations() {
       setConversations(convResult.data);
       if (showSpinner) setLoading(false);
 
-      // Unread count — scoped to user's own conversations
+      // Unread count — derive from already-fetched conversations (no extra round-trip)
       const supabase = getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setUnreadCount(0); return; }
 
-      const { data: convRows } = await supabase
-        .from('conversations')
-        .select('id')
-        .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
-      const convIds = (convRows ?? []).map((c: any) => c.id);
-
+      const convIds = convResult.data.map((c: any) => c.id);
       let newCount = 0;
       if (convIds.length > 0) {
         const { count } = await supabase

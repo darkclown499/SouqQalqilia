@@ -2,7 +2,7 @@
   "expo": {
     "name": "Souq Qalqilya",
     "slug": "souq-qalqilya",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/plankton-logo.png",
     "scheme": "souqqalqilya",
@@ -10,17 +10,19 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.onspace.souqQalqilya",
-      "buildNumber": "1",
+      "bundleIdentifier": "app.onspace.souq_qalqilya",
+      "buildNumber": "5",
       "infoPlist": {
         "NSCameraUsageDescription": "We need camera access to let you take photos for your listings.",
         "NSPhotoLibraryUsageDescription": "We need photo library access to let you upload images for your listings.",
-        "NSPhotoLibraryAddUsageDescription": "We need permission to save photos to your library."
+        "NSPhotoLibraryAddUsageDescription": "We need permission to save photos to your library.",
+        "NSUserNotificationsUsageDescription": "We send you notifications when you receive new messages.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "app.onspace.souq_qalqilya",
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/plankton-logo.png",
         "backgroundColor": "#ffffff"

@@ -41,17 +41,24 @@ export async function fetchMyConversations(): Promise<{ data: Conversation[]; er
   if (error) return { data: [], error: error.message };
 
   // Attach per-conversation unread count
-  const enriched = await Promise.all(
-    (data as any[]).map(async (conv) => {
-      const { count } = await supabase
-        .from('messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('conversation_id', conv.id)
-        .is('read_at', null)
-        .neq('sender_id', user.id);
-      return { ...conv, unread_count: count ?? 0 };
-    })
-  );
+  // Batch unread count: one query for all conversations (avoids N+1 queries)
+  const convIds = (data as any[]).map((c) => c.id);
+  let unreadMap: Record<string, number> = {};
+  if (convIds.length > 0) {
+    const { data: unreadRows } = await supabase
+      .from('messages')
+      .select('conversation_id')
+      .in('conversation_id', convIds)
+      .is('read_at', null)
+      .neq('sender_id', user.id);
+    (unreadRows ?? []).forEach((row: any) => {
+      unreadMap[row.conversation_id] = (unreadMap[row.conversation_id] ?? 0) + 1;
+    });
+  }
+  const enriched = (data as any[]).map((conv) => ({
+    ...conv,
+    unread_count: unreadMap[conv.id] ?? 0,
+  }));
 
   return { data: enriched as Conversation[], error: null };
 }
