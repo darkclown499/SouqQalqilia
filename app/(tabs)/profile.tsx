@@ -142,23 +142,51 @@ export default function ProfileScreen() {
     showAlert(
       isRTL ? 'حذف الحساب' : 'Delete Account',
       isRTL
-        ? 'سيتم حذف حسابك وجميع إعلاناتك ورسائلك بشكل نهائي. هذا الإجراء لا يمكن التراجع عنه.'
-        : 'Your account, all listings, and messages will be permanently deleted. This action cannot be undone.',
+        ? 'هل أنت متأكد من حذف حسابك نهائياً؟ سيؤدي هذا إلى مسح كافة بياناتك ولا يمكن التراجع عن هذا الإجراء.'
+        : 'Are you sure you want to permanently delete your account? This will erase all your data and cannot be undone.',
       [
         { text: isRTL ? 'إلغاء' : 'Cancel', style: 'cancel' },
         {
-          text: isRTL ? 'حذف نهائي' : 'Delete Permanently',
+          text: isRTL ? 'تأكيد الحذف' : 'Confirm Delete',
           style: 'destructive',
           onPress: async () => {
             try {
               const supabase = getSupabaseClient();
-              const { data: { user: currentUser } } = await supabase.auth.getUser();
-              if (!currentUser) return;
-              // Delete user profile (CASCADE handles ads, messages, favorites)
-              // Sign out first so RLS allows the cascaded delete
+
+              // Get current session token BEFORE signing out
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session?.access_token) {
+                return showAlert(
+                  isRTL ? 'خطأ' : 'Error',
+                  isRTL ? 'لا توجد جلسة نشطة. يرجى تسجيل الدخول مجدداً.' : 'No active session. Please sign in again.'
+                );
+              }
+
+              // Call Edge Function to delete account using service role key
+              const { data, error } = await supabase.functions.invoke('delete-account', {
+                body: {},
+                headers: { Authorization: `Bearer ${session.access_token}` },
+              });
+
+              if (error) {
+                // Extract detailed error from FunctionsHttpError
+                let errorMessage = error.message;
+                try {
+                  const text = await (error as any).context?.text?.();
+                  if (text) {
+                    const parsed = JSON.parse(text);
+                    errorMessage = parsed?.error ?? text;
+                  }
+                } catch { /* use original message */ }
+                return showAlert(isRTL ? 'فشل الحذف' : 'Delete Failed', errorMessage);
+              }
+
+              // Sign out client-side after successful server deletion
               await supabase.auth.signOut();
-              // Note: user_profiles deletion triggers CASCADE on ads, messages, favorites
-              // Handled server-side via RLS and CASCADE foreign keys
+
+              // Navigate to login — auth listener in _layout.tsx will also trigger
+              router.replace('/login');
+
             } catch (e: any) {
               showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to delete account.');
             }
