@@ -429,64 +429,40 @@ export default function LoginScreen() {
           ) : null}
         </View>
 
-        {/* Social Login Divider */}
-        <View style={styles.dividerRow}>
-          <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
-          <Text style={[styles.dividerText, { color: 'rgba(255,255,255,0.55)' }]}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
-          <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
-        </View>
-
-        {/* Google + Apple side by side */}
-        <View style={[styles.socialRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
-
-          {/* ── Google Button ── */}
-          <Animated.View style={[styles.socialBtnWrap, { transform: [{ scale: googleScale }] }]}>
-            <Pressable
-              style={[styles.socialBtn, styles.googleSocialBtn, googleLoading && styles.googleBtnLoading]}
-              onPress={handleGoogleSignIn}
-              disabled={googleLoading || appleLoading}
-              onPressIn={onGooglePressIn}
-              onPressOut={onGooglePressOut}
-              accessibilityLabel={isAr ? 'تسجيل الدخول عبر Google' : 'Sign in with Google'}
-            >
-              {googleLoading
-                ? <ActivityIndicator size="small" color="#4285F4" />
-                : (
-                  <View style={styles.socialIconCircle}>
-                    <Text style={styles.googleGLetter}>G</Text>
-                  </View>
-                )}
-              <Text style={[styles.socialBtnLabel, { color: '#1F1F1F' }]} numberOfLines={1}>
-                Google
-              </Text>
-            </Pressable>
-          </Animated.View>
-
-          {/* ── Apple Button (iOS only) ── */}
-          {Platform.OS === 'ios' ? (
-            <View style={styles.socialBtnWrap}>
-              <Pressable
-                style={[styles.socialBtn, styles.appleSocialBtn, appleLoading && { opacity: 0.7 }]}
-                onPress={handleAppleSignIn}
-                disabled={appleLoading || googleLoading}
-                accessibilityLabel={isAr ? 'تسجيل الدخول عبر Apple' : 'Sign in with Apple'}
-              >
-                {appleLoading
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : (
-                    <View style={styles.appleIconWrap}>
-                      {/* Apple logo using SF symbol fallback text */}
-                      <Text style={styles.appleLogoText}>{''}</Text>
-                    </View>
-                  )}
-                <Text style={[styles.socialBtnLabel, { color: '#fff' }]} numberOfLines={1}>
-                  Apple
-                </Text>
-              </Pressable>
+        {/* Social Login — Android only (Google). iOS uses email/password only. */}
+        {Platform.OS !== 'ios' ? (
+          <>
+            <View style={styles.dividerRow}>
+              <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
+              <Text style={[styles.dividerText, { color: 'rgba(255,255,255,0.55)' }]}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
+              <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
             </View>
-          ) : null}
 
-        </View>
+            <View style={styles.socialRow}>
+              <Animated.View style={[styles.socialBtnWrap, { transform: [{ scale: googleScale }] }]}>
+                <Pressable
+                  style={[styles.socialBtn, styles.googleSocialBtn, googleLoading && styles.googleBtnLoading]}
+                  onPress={handleGoogleSignIn}
+                  disabled={googleLoading}
+                  onPressIn={onGooglePressIn}
+                  onPressOut={onGooglePressOut}
+                  accessibilityLabel={isAr ? 'تسجيل الدخول عبر Google' : 'Sign in with Google'}
+                >
+                  {googleLoading
+                    ? <ActivityIndicator size="small" color="#4285F4" />
+                    : (
+                      <View style={styles.socialIconCircle}>
+                        <Text style={styles.googleGLetter}>G</Text>
+                      </View>
+                    )}
+                  <Text style={[styles.socialBtnLabel, { color: '#1F1F1F' }]} numberOfLines={1}>
+                    Google
+                  </Text>
+                </Pressable>
+              </Animated.View>
+            </View>
+          </>
+        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
