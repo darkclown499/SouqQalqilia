@@ -98,9 +98,16 @@ export default function LoginScreen() {
   const togglePassword = useCallback(() => setShowPassword(v => !v), []);
   const toggleConfirmPassword = useCallback(() => setShowConfirmPassword(v => !v), []);
 
+  // ── Email format validator ──
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim());
+
   // ── Email Login ──
   const handleLogin = async () => {
     if (!email.trim() || !password) return showAlert(t.missingFields, t.fillAllFields);
+    if (!isValidEmail(email)) return showAlert(
+      isAr ? 'بريد غير صحيح' : 'Invalid Email',
+      isAr ? 'يرجى إدخال بريد إلكتروني صحيح مثل: example@gmail.com' : 'Please enter a valid email address, e.g. example@gmail.com'
+    );
     if (operationLoading || verifying || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     try {
@@ -115,6 +122,10 @@ export default function LoginScreen() {
   // ── Email Register: Send OTP ──
   const handleSendOTP = async () => {
     if (!email.trim() || !password) return showAlert(t.missingFields, t.fillAllFields);
+    if (!isValidEmail(email)) return showAlert(
+      isAr ? 'بريد غير صحيح' : 'Invalid Email',
+      isAr ? 'يرجى إدخال بريد إلكتروني صحيح مثل: example@gmail.com' : 'Please enter a valid email address, e.g. example@gmail.com'
+    );
     if (password !== confirmPassword) return showAlert(t.passwordMismatch, t.passwordsDontMatch);
     if (password.length < 6) return showAlert(t.weakPassword, t.passwordMin6);
     if (operationLoading || isSubmittingRef.current) return;
