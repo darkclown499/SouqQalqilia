@@ -13,7 +13,7 @@ import type { Language } from '@/constants/i18n';
 // ─── Privacy Policy Content (bilingual) ──────────────────────────────────────
 
 const POLICY_EN = {
-  lastUpdated: 'Last updated: January 1, 2025',
+  lastUpdated: 'Last updated: May 30, 2026',
   sections: [
     {
       icon: 'info-outline' as const,
@@ -52,29 +52,34 @@ const POLICY_EN = {
     },
     {
       icon: 'child-care' as const,
-      title: '8. Children\'s Privacy',
+      title: "8. Children's Privacy",
       body: 'Souq Qalqilya is not directed to children under the age of 13. We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, please contact us immediately and we will delete it.',
     },
     {
+      icon: 'delete-forever' as const,
+      title: '9. Account Deletion',
+      body: 'You can permanently delete your account and all associated data directly from within the app at any time:\n\n1. Open the app and go to the Profile tab\n2. Scroll down to the Settings section\n3. Tap "Delete Account" (shown in red)\n4. Confirm the deletion in the dialog that appears\n\nUpon confirmation, the following data is immediately and permanently deleted from our servers:\n\n• Your user account and authentication credentials\n• All ad listings you have posted (including photos)\n• All messages and conversations\n• Your favorites list\n• Your profile photo and personal information\n\nThis action is irreversible. Once deleted, your data cannot be recovered. If you only want to stop using the app temporarily, you can simply log out instead.',
+    },
+    {
       icon: 'manage-accounts' as const,
-      title: '9. Your Rights',
-      body: 'You have the right to:\n\n• Access the personal data we hold about you\n• Correct inaccurate information\n• Delete your account and all associated data\n• Withdraw consent at any time\n\nTo exercise these rights, contact us via WhatsApp or email at the address below.',
+      title: '10. Your Rights',
+      body: 'You have the right to:\n\n• Access the personal data we hold about you\n• Correct inaccurate information\n• Delete your account and all associated data (see Section 9)\n• Withdraw consent at any time\n\nTo exercise these rights, contact us via WhatsApp or email at the address below.',
     },
     {
       icon: 'update' as const,
-      title: '10. Changes to This Policy',
+      title: '11. Changes to This Policy',
       body: 'We may update this Privacy Policy from time to time. We will notify you of significant changes through the app or via email. Continued use of the app after changes constitutes acceptance of the updated policy.',
     },
     {
       icon: 'contact-mail' as const,
-      title: '11. Contact Us',
-      body: 'For privacy-related questions, please contact:\n\nPlankton Team\nQalqilya, Palestine\n\nWhatsApp: +972-59-000-0000\nEmail: support@souqqalqilya.ps',
+      title: '12. Contact Us',
+      body: 'For privacy-related questions, please contact:\n\nPlankton Team\nQalqilya, Palestine\n\nWhatsApp: +972-59-232-4302\nEmail: support@souqqalqilya.ps',
     },
   ],
 };
 
 const POLICY_AR = {
-  lastUpdated: 'آخر تحديث: ١ يناير ٢٠٢٥',
+  lastUpdated: 'آخر تحديث: ٣٠ مايو ٢٠٢٦',
   sections: [
     {
       icon: 'info-outline' as const,
@@ -117,19 +122,24 @@ const POLICY_AR = {
       body: 'سوق قلقيلية ليس موجهاً للأطفال دون سن الثالثة عشرة. لا نجمع عن قصد أي معلومات شخصية من الأطفال. إذا اعتقدت أن طفلاً قدّم لنا معلومات شخصية، يرجى التواصل معنا فوراً وسنحذفها.',
     },
     {
+      icon: 'delete-forever' as const,
+      title: '٩. حذف الحساب',
+      body: 'يمكنك حذف حسابك وجميع بياناتك نهائياً مباشرةً من داخل التطبيق في أي وقت:\n\n١. افتح التطبيق وانتقل إلى تبويب الملف الشخصي\n٢. انتقل للأسفل إلى قسم الإعدادات\n٣. اضغط على "حذف الحساب" (باللون الأحمر)\n٤. أكّد الحذف في نافذة الحوار التي تظهر\n\nعند التأكيد، يُحذف الآتي فوراً ونهائياً من خوادمنا:\n\n• حسابك وبيانات تسجيل الدخول\n• جميع الإعلانات التي نشرتها (بما فيها الصور)\n• جميع الرسائل والمحادثات\n• قائمة المفضلة\n• صورة الملف الشخصي والمعلومات الشخصية\n\nهذا الإجراء لا رجعة فيه. بعد الحذف، لا يمكن استرجاع بياناتك. إذا أردت التوقف عن استخدام التطبيق مؤقتاً، يمكنك تسجيل الخروج فحسب.',
+    },
+    {
       icon: 'manage-accounts' as const,
-      title: '٩. حقوقك',
-      body: 'يحق لك:\n\n• الاطلاع على البيانات الشخصية التي نحتفظ بها عنك\n• تصحيح المعلومات غير الدقيقة\n• حذف حسابك وجميع البيانات المرتبطة به\n• سحب موافقتك في أي وقت\n\nلممارسة هذه الحقوق، تواصل معنا عبر واتساب أو البريد الإلكتروني أدناه.',
+      title: '١٠. حقوقك',
+      body: 'يحق لك:\n\n• الاطلاع على البيانات الشخصية التي نحتفظ بها عنك\n• تصحيح المعلومات غير الدقيقة\n• حذف حسابك وجميع البيانات المرتبطة به (انظر القسم ٩)\n• سحب موافقتك في أي وقت\n\nلممارسة هذه الحقوق، تواصل معنا عبر واتساب أو البريد الإلكتروني أدناه.',
     },
     {
       icon: 'update' as const,
-      title: '١٠. التغييرات على هذه السياسة',
+      title: '١١. التغييرات على هذه السياسة',
       body: 'قد نُحدّث سياسة الخصوصية هذه من وقت لآخر. سنُعلمك بأي تغييرات جوهرية عبر التطبيق أو بالبريد الإلكتروني. استمرار استخدام التطبيق بعد التغييرات يعني قبولك للسياسة المحدّثة.',
     },
     {
       icon: 'contact-mail' as const,
-      title: '١١. تواصل معنا',
-      body: 'لأي استفسارات تتعلق بالخصوصية، يُرجى التواصل:\n\nفريق بلانكتون\nقلقيلية، فلسطين\n\nواتساب: ٩٧٢-٥٩-٠٠٠-٠٠٠٠+\nالبريد الإلكتروني: support@souqqalqilya.ps',
+      title: '١٢. تواصل معنا',
+      body: 'لأي استفسارات تتعلق بالخصوصية، يُرجى التواصل:\n\nفريق بلانكتون\nقلقيلية، فلسطين\n\nواتساب: 972-59-232-4302+\nالبريد الإلكتروني: support@souqqalqilya.ps',
     },
   ],
 };
@@ -218,23 +228,43 @@ export default function PrivacyPolicyScreen() {
             { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' },
           ]}>
             {isAr
-              ? 'نحن ملتزمون بحماية خصوصيتك وبيانات. اقرأ هذه السياسة بعناية لفهم كيفية تعاملنا مع معلوماتك.'
+              ? 'نحن ملتزمون بحماية خصوصيتك وبياناتك. اقرأ هذه السياسة بعناية لفهم كيفية تعاملنا مع معلوماتك.'
               : 'We are committed to protecting your privacy and data. Read this policy carefully to understand how we handle your information.'}
           </Text>
+        </View>
+
+        {/* ── DELETE ACCOUNT HIGHLIGHT CARD ──────────────────────────────────── */}
+        <View style={[styles.deleteHighlight, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+          <View style={styles.deleteHighlightIcon}>
+            <MaterialIcons name="delete-forever" size={22} color="#DC2626" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.deleteHighlightTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'حذف الحساب متاح داخل التطبيق' : 'Account Deletion Available In-App'}
+            </Text>
+            <Text style={[styles.deleteHighlightBody, { textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr
+                ? 'الملف الشخصي ← الإعدادات ← حذف الحساب'
+                : 'Profile Tab → Settings → Delete Account'}
+            </Text>
+          </View>
         </View>
 
         {/* ── ACCORDION SECTIONS ─────────────────────────────────────────────── */}
         <View style={styles.sections}>
           {policy.sections.map((section, i) => {
             const isOpen = expandedIndex === i;
+            const isDeleteSection = section.icon === 'delete-forever';
             return (
               <View
                 key={i}
                 style={[
                   styles.sectionCard,
                   {
-                    backgroundColor: colors.surface,
-                    borderColor: isOpen ? colors.primary + '50' : colors.border,
+                    backgroundColor: isDeleteSection && isOpen ? '#FEF2F2' : colors.surface,
+                    borderColor: isDeleteSection
+                      ? (isOpen ? '#F87171' : '#FECACA')
+                      : (isOpen ? colors.primary + '50' : colors.border),
                     ...Shadow.xs,
                   },
                 ]}
@@ -249,18 +279,24 @@ export default function PrivacyPolicyScreen() {
                 >
                   <View style={[
                     styles.sectionIconWrap,
-                    { backgroundColor: isOpen ? colors.primaryGhost : colors.surfaceTint },
+                    {
+                      backgroundColor: isDeleteSection
+                        ? '#FEE2E2'
+                        : (isOpen ? colors.primaryGhost : colors.surfaceTint),
+                    },
                   ]}>
                     <MaterialIcons
                       name={section.icon}
                       size={18}
-                      color={isOpen ? colors.primary : colors.textMuted}
+                      color={isDeleteSection ? '#DC2626' : (isOpen ? colors.primary : colors.textMuted)}
                     />
                   </View>
                   <Text style={[
                     styles.sectionTitle,
                     {
-                      color: isOpen ? colors.primary : colors.textPrimary,
+                      color: isDeleteSection
+                        ? '#DC2626'
+                        : (isOpen ? colors.primary : colors.textPrimary),
                       flex: 1,
                       textAlign: isRTL ? 'right' : 'left',
                     },
@@ -270,15 +306,18 @@ export default function PrivacyPolicyScreen() {
                   <MaterialIcons
                     name={isOpen ? 'expand-less' : 'expand-more'}
                     size={22}
-                    color={isOpen ? colors.primary : colors.textMuted}
+                    color={isDeleteSection ? '#DC2626' : (isOpen ? colors.primary : colors.textMuted)}
                   />
                 </Pressable>
 
                 {isOpen ? (
-                  <View style={[styles.sectionBody, { borderTopColor: colors.borderLight }]}>
+                  <View style={[styles.sectionBody, { borderTopColor: isDeleteSection ? '#FECACA' : colors.borderLight }]}>
                     <Text style={[
                       styles.sectionBodyText,
-                      { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' },
+                      {
+                        color: isDeleteSection ? '#7F1D1D' : colors.textSecondary,
+                        textAlign: isRTL ? 'right' : 'left',
+                      },
                     ]}>
                       {section.body}
                     </Text>
@@ -373,6 +412,36 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FontSize.sm,
     lineHeight: 22,
+    fontWeight: '500',
+  },
+
+  // Delete highlight card
+  deleteHighlight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    borderRadius: Radius.lg,
+    borderWidth: 1.5,
+    padding: Spacing.md,
+    marginBottom: 4,
+  },
+  deleteHighlightIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.sm,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteHighlightTitle: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: '#DC2626',
+    marginBottom: 2,
+  },
+  deleteHighlightBody: {
+    fontSize: FontSize.xs,
+    color: '#EF4444',
     fontWeight: '500',
   },
 
