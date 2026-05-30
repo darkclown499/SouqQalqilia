@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, KeyboardAvoidingView,
   Platform, Pressable, ActivityIndicator, Modal, Animated,
 } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
@@ -39,12 +40,43 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const router = useRouter();
   const isSubmittingRef = useRef(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const googleScale = useRef(new Animated.Value(1)).current;
+
+  // ── Apple Sign-In ──
+  const handleAppleSignIn = async () => {
+    if (appleLoading) return;
+    setAppleLoading(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken ?? '',
+      });
+      if (error) {
+        showAlert(isAr ? 'خطأ في تسجيل الدخول' : 'Sign-in Error', error.message);
+      } else {
+        router.replace('/(tabs)');
+      }
+    } catch (e: any) {
+      if (e?.code !== 'ERR_REQUEST_CANCELED') {
+        showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Apple sign-in failed');
+      }
+    } finally {
+      setAppleLoading(false);
+    }
+  };
 
   const onGooglePressIn = useCallback(() => {
     Animated.spring(googleScale, { toValue: 0.96, useNativeDriver: true, speed: 24, bounciness: 4 }).start();
@@ -397,51 +429,64 @@ export default function LoginScreen() {
           ) : null}
         </View>
 
-        {/* Google */}
+        {/* Social Login Divider */}
         <View style={styles.dividerRow}>
           <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
           <Text style={[styles.dividerText, { color: 'rgba(255,255,255,0.55)' }]}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
           <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
         </View>
 
-        <Animated.View style={{ transform: [{ scale: googleScale }] }}>
-          <Pressable
-            style={[styles.googleBtn, googleLoading && styles.googleBtnLoading]}
-            onPress={handleGoogleSignIn}
-            disabled={googleLoading}
-            onPressIn={onGooglePressIn}
-            onPressOut={onGooglePressOut}
-          >
-            {/* Left: icon or spinner */}
-            <View style={styles.googleIconBox}>
+        {/* Google + Apple side by side */}
+        <View style={[styles.socialRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+
+          {/* ── Google Button ── */}
+          <Animated.View style={[styles.socialBtnWrap, { transform: [{ scale: googleScale }] }]}>
+            <Pressable
+              style={[styles.socialBtn, styles.googleSocialBtn, googleLoading && styles.googleBtnLoading]}
+              onPress={handleGoogleSignIn}
+              disabled={googleLoading || appleLoading}
+              onPressIn={onGooglePressIn}
+              onPressOut={onGooglePressOut}
+              accessibilityLabel={isAr ? 'تسجيل الدخول عبر Google' : 'Sign in with Google'}
+            >
               {googleLoading
                 ? <ActivityIndicator size="small" color="#4285F4" />
                 : (
-                  <View style={styles.googleIconCircle}>
-                    {/* Google G — blue top-left + red bottom-left + yellow bottom-right + green top-right */}
+                  <View style={styles.socialIconCircle}>
                     <Text style={styles.googleGLetter}>G</Text>
                   </View>
                 )}
-            </View>
-
-            {/* Center: text */}
-            <View style={styles.googleTextCol}>
-              <Text style={styles.googleBtnText} numberOfLines={1}>
-                {googleLoading
-                  ? (isAr ? 'جارٍ تسجيل الدخول...' : 'Signing in...')
-                  : (isAr ? 'المتابعة عبر Google' : 'Continue with Google')}
+              <Text style={[styles.socialBtnLabel, { color: '#1F1F1F' }]} numberOfLines={1}>
+                Google
               </Text>
-              {googleLoading ? (
-                <Text style={styles.googleBtnSub} numberOfLines={1}>
-                  {isAr ? 'أكمل في المتصفح ثم عد للتطبيق' : 'Complete in browser, then return'}
-                </Text>
-              ) : null}
-            </View>
+            </Pressable>
+          </Animated.View>
 
-            {/* Right: spacer to keep text centered */}
-            <View style={{ width: 40 }} />
-          </Pressable>
-        </Animated.View>
+          {/* ── Apple Button (iOS only) ── */}
+          {Platform.OS === 'ios' ? (
+            <View style={styles.socialBtnWrap}>
+              <Pressable
+                style={[styles.socialBtn, styles.appleSocialBtn, appleLoading && { opacity: 0.7 }]}
+                onPress={handleAppleSignIn}
+                disabled={appleLoading || googleLoading}
+                accessibilityLabel={isAr ? 'تسجيل الدخول عبر Apple' : 'Sign in with Apple'}
+              >
+                {appleLoading
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : (
+                    <View style={styles.appleIconWrap}>
+                      {/* Apple logo using SF symbol fallback text */}
+                      <Text style={styles.appleLogoText}>{''}</Text>
+                    </View>
+                  )}
+                <Text style={[styles.socialBtnLabel, { color: '#fff' }]} numberOfLines={1}>
+                  Apple
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -484,24 +529,41 @@ const styles = StyleSheet.create({
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.md },
   dividerLine: { flex: 1, height: 1 },
   dividerText: { fontSize: FontSize.xs, fontWeight: '600' },
-  googleBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: Radius.xl, paddingVertical: 14, paddingHorizontal: 16,
+  // ── Social buttons row ──
+  socialRow: {
+    flexDirection: 'row', gap: Spacing.sm,
     marginTop: Spacing.sm,
+  },
+  socialBtnWrap: { flex: 1 },
+  socialBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10,
+    borderRadius: Radius.xl, paddingVertical: 15,
+    minHeight: 54,
+  },
+  googleSocialBtn: {
     backgroundColor: '#fff',
     borderWidth: 1.5, borderColor: '#E8EAED',
     shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.10, shadowRadius: 8, elevation: 5,
   },
+  appleSocialBtn: {
+    backgroundColor: '#000',
+    borderWidth: 1.5, borderColor: '#000',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 8, elevation: 5,
+  },
   googleBtnLoading: { borderColor: '#D2E3FC', backgroundColor: '#F8FBFF' },
-  googleIconBox: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  googleIconCircle: {
-    width: 36, height: 36, borderRadius: 18,
-    borderWidth: 1.5, borderColor: '#E8EAED',
+  socialIconCircle: {
+    width: 26, height: 26, borderRadius: 13,
+    borderWidth: 1, borderColor: '#E8EAED',
     backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#4285F4', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 3, elevation: 2,
   },
-  googleGLetter: { fontSize: 19, fontWeight: '900', color: '#4285F4', lineHeight: 22 },
+  googleGLetter: { fontSize: 15, fontWeight: '900', color: '#4285F4', lineHeight: 18 },
+  appleIconWrap: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
+  appleLogoText: { fontSize: 20, color: '#fff', lineHeight: 22, marginTop: -2 },
+  socialBtnLabel: { fontSize: FontSize.md, fontWeight: '700', letterSpacing: 0.1 },
+  // legacy (kept for safety)
+  googleIconBox: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   googleTextCol: { flex: 1, alignItems: 'center' },
   googleBtnText: { color: '#1F1F1F', fontSize: FontSize.md, fontWeight: '700', letterSpacing: 0.1 },
   googleBtnSub: { color: '#5F6368', fontSize: 11, marginTop: 2, textAlign: 'center' },
