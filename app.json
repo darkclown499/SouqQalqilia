@@ -2,7 +2,7 @@
   "expo": {
     "name": "Souq Qalqilya",
     "slug": "souq-qalqilya",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/plankton-logo.png",
     "scheme": "souqqalqilya",
@@ -11,19 +11,19 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.onspace.souq_qalqilya",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "infoPlist": {
-        "NSCameraUsageDescription": "Souq Qalqilya uses your camera to take product photos when creating or editing a marketplace listing. Photos are uploaded to your ad so buyers can see what you are selling.",
-        "NSPhotoLibraryUsageDescription": "Souq Qalqilya accesses your photo library so you can select existing images to attach to a marketplace listing or set your profile picture. Selected photos are uploaded to your ad.",
-        "NSPhotoLibraryAddUsageDescription": "Souq Qalqilya may save product images shared in the app to your photo library when you choose to download them.",
-        "NSUserNotificationsUsageDescription": "Souq Qalqilya sends push notifications to alert you when a buyer or seller sends you a message about one of your listings.",
-        "NSMicrophoneUsageDescription": "Souq Qalqilya does not use the microphone. This description is required because the camera framework is linked. No audio is ever recorded or accessed.",
+        "NSCameraUsageDescription": "Souq Qalqilya needs camera access to let you photograph items you want to sell. When you create or edit a marketplace listing, you can take a photo directly with your camera to attach as a product image so buyers can see exactly what you are offering.",
+        "NSPhotoLibraryUsageDescription": "Souq Qalqilya needs access to your photo library so you can choose existing photos of items you want to sell or select a profile picture. Chosen images are uploaded to your listing or profile so other users can see them.",
+        "NSPhotoLibraryAddUsageDescription": "Souq Qalqilya needs permission to save images to your photo library when you download product photos from a listing you are viewing in the marketplace.",
+        "NSUserNotificationsUsageDescription": "Souq Qalqilya sends you push notifications to alert you immediately when a buyer or seller sends you a new message about one of your marketplace listings, so you never miss a sale opportunity.",
+        "NSMicrophoneUsageDescription": "Souq Qalqilya does not record audio or use the microphone for any feature. This permission entry is required by iOS because the camera framework used for capturing product photos includes microphone APIs. The microphone is never accessed by the app.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "app.onspace.souq_qalqilya",
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/plankton-logo.png",
         "backgroundColor": "#ffffff"
