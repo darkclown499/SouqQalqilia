@@ -13,10 +13,11 @@
       "bundleIdentifier": "app.onspace.souq_qalqilya",
       "buildNumber": "5",
       "infoPlist": {
-        "NSCameraUsageDescription": "We need camera access to let you take photos for your listings.",
-        "NSPhotoLibraryUsageDescription": "We need photo library access to let you upload images for your listings.",
-        "NSPhotoLibraryAddUsageDescription": "We need permission to save photos to your library.",
-        "NSUserNotificationsUsageDescription": "We send you notifications when you receive new messages.",
+        "NSCameraUsageDescription": "Souq Qalqilya uses your camera to take product photos when creating or editing a marketplace listing. Photos are uploaded to your ad so buyers can see what you are selling.",
+        "NSPhotoLibraryUsageDescription": "Souq Qalqilya accesses your photo library so you can select existing images to attach to a marketplace listing or set your profile picture. Selected photos are uploaded to your ad.",
+        "NSPhotoLibraryAddUsageDescription": "Souq Qalqilya may save product images shared in the app to your photo library when you choose to download them.",
+        "NSUserNotificationsUsageDescription": "Souq Qalqilya sends push notifications to alert you when a buyer or seller sends you a message about one of your listings.",
+        "NSMicrophoneUsageDescription": "Souq Qalqilya does not use the microphone. This description is required because the camera framework is linked. No audio is ever recorded or accessed.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
