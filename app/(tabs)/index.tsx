@@ -48,11 +48,7 @@ const SORT_OPTIONS: { key: SortOption; label: string; labelAr: string; icon: str
   { key: 'boosted', label: 'Boosted', labelAr: 'معزز', icon: 'bolt' },
 ];
 
-const FALLBACK_BANNERS: Banner[] = [
-  { id: '1', title: 'Discover Great Deals', subtitle: 'Browse thousands of listings near you', image_url: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=600&q=80', link_url: '', is_active: true, position: 0, created_at: '' },
-  { id: '2', title: 'Sell Your Items Fast', subtitle: 'Post a free listing in minutes', image_url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&q=80', link_url: '', is_active: true, position: 1, created_at: '' },
-  { id: '3', title: 'New & Used Electronics', subtitle: 'Find the best tech deals', image_url: 'https://images.unsplash.com/photo-1585386959984-a4155224a1ad?w=600&q=80', link_url: '', is_active: true, position: 2, created_at: '' },
-];
+
 
 type FeedRow =
   | { type: 'pair'; left: Ad; right: Ad | null; id: string }
@@ -104,7 +100,7 @@ export default function HomeScreen() {
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [featuredIndex, setFeaturedIndex] = useState(0);
-  const [banners, setBanners] = useState<Banner[]>(_bannersCache ?? FALLBACK_BANNERS);
+  const [banners, setBanners] = useState<Banner[]>(_bannersCache ?? []);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [showSortBar, setShowSortBar] = useState(false);
   const [interstitials, setInterstitials] = useState<InterstitialAd[]>(_interstitialsCache ?? []);
@@ -118,19 +114,20 @@ export default function HomeScreen() {
   useEffect(() => { load({ categoryId: selectedCategory ?? undefined }); }, [selectedCategory, load]);
 
   useEffect(() => {
-    // Fire all non-critical fetches in parallel; use cache if available
-    if (!_bannersCache || !_interstitialsCache) {
-      Promise.all([
-        _bannersCache ? Promise.resolve({ data: _bannersCache }) : fetchActiveBanners(),
-        _interstitialsCache ? Promise.resolve({ data: _interstitialsCache }) : fetchActiveInterstitials(),
-      ]).then(([bannersResult, intResult]) => {
-        if (bannersResult.data.length > 0) {
-          _bannersCache = bannersResult.data;
-          setBanners(bannersResult.data);
+    // Use cache if available, otherwise fetch independently for speed
+    if (!_bannersCache) {
+      fetchActiveBanners().then(({ data }) => {
+        if (data.length > 0) {
+          _bannersCache = data;
+          setBanners(data);
         }
-        if (intResult.data.length > 0) {
-          _interstitialsCache = intResult.data;
-          setInterstitials(intResult.data);
+      });
+    }
+    if (!_interstitialsCache) {
+      fetchActiveInterstitials().then(({ data }) => {
+        if (data.length > 0) {
+          _interstitialsCache = data;
+          setInterstitials(data);
         }
       });
     }
