@@ -45,11 +45,24 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
-    if (deleteError) {
-      console.error('Delete error:', deleteError.message);
+    // Use REST API directly — auth.admin.deleteUser() may not work on all OnSpace Cloud configs
+    const deleteRes = await fetch(
+      `${Deno.env.get('SUPABASE_URL')}/auth/v1/admin/users/${user.id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'apikey': Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!deleteRes.ok) {
+      const errText = await deleteRes.text();
+      console.error('Delete error:', errText);
       return new Response(
-        JSON.stringify({ error: `Failed to delete account: ${deleteError.message}` }),
+        JSON.stringify({ error: `Failed to delete account: ${errText}` }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

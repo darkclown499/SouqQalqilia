@@ -208,6 +208,14 @@ export async function reportAd(
   const supabase = getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: 'Not authenticated' };
+
+  // Ensure user_profiles row exists before inserting report (FK constraint)
+  await supabase.from('user_profiles').upsert({
+    id: user.id,
+    email: user.email ?? '',
+    username: user.user_metadata?.username ?? user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? '',
+  }, { onConflict: 'id', ignoreDuplicates: true });
+
   const { error } = await supabase.from('reports').insert({ ad_id: adId, reporter_id: user.id, reason });
   return { error: error ? error.message : null };
 }

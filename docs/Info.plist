@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- ─── App Identity ─────────────────────────────────────────────────── -->
+    <key>CFBundleIdentifier</key>
+    <string>app.onspace.souq_qalqilya</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>Souq Qalqilya</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.5</string>
+
+    <key>CFBundleVersion</key>
+    <string>6</string>
+
+    <!-- ─── Device Support ───────────────────────────────────────────────── -->
+    <!-- iPhone only — iPad NOT supported -->
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>1</integer>
+    </array>
+
+    <!-- ─── Orientation ──────────────────────────────────────────────────── -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+
+    <!-- ─── Permission Usage Descriptions (Required by App Store) ───────── -->
+
+    <!--
+        Camera: User taps "Add Photo" while creating/editing a marketplace
+        listing → selects "Take Photo" → camera opens to capture the product.
+    -->
+    <key>NSCameraUsageDescription</key>
+    <string>Souq Qalqilya needs camera access to let you photograph items you want to sell. When you create or edit a marketplace listing, you can take a photo directly with your camera to attach as a product image so buyers can see exactly what you are offering.</string>
+
+    <!--
+        Photo Library Read: User taps "Add Photo" while creating/editing a
+        listing → selects "Choose from Library" → picker opens to select
+        existing product photos.  Also used to set profile avatar.
+    -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Souq Qalqilya needs access to your photo library so you can choose existing photos of items you want to sell or select a profile picture. Chosen images are uploaded to your listing or profile so other users can see them.</string>
+
+    <!--
+        Photo Library Write: Allows saving a product image from a viewed
+        listing to the user's camera roll when they tap "Save Image".
+    -->
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Souq Qalqilya needs permission to save images to your photo library when you download product photos from a listing you are viewing in the marketplace.</string>
+
+    <!--
+        Push Notifications: Alerts the user immediately when a buyer or
+        seller sends a new in-app message about one of their listings.
+    -->
+    <key>NSUserNotificationsUsageDescription</key>
+    <string>Souq Qalqilya sends you push notifications to alert you immediately when a buyer or seller sends you a new message about one of your marketplace listings, so you never miss a sale opportunity.</string>
+
+    <!--
+        Microphone: The app does NOT record audio.  This key is required
+        because the AVFoundation / camera framework linked by expo-camera
+        declares microphone capability.  The microphone is never accessed
+        by Souq Qalqilya at runtime.
+    -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Souq Qalqilya does not record audio or use the microphone for any feature. This permission entry is required by iOS because the camera framework used for capturing product photos includes microphone APIs. The microphone is never accessed by the app.</string>
+
+    <!-- ─── Encryption Export Compliance ─────────────────────────────────── -->
+    <!--
+        The app uses only standard HTTPS/TLS (exempt encryption).
+        No custom or non-standard encryption algorithms are used.
+        No EAR export documentation is required.
+    -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+
+    <!-- ─── Deep Link / URL Scheme ───────────────────────────────────────── -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>souqqalqilya</string>
+            </array>
+        </dict>
+    </array>
+
+</dict>
+</plist>
