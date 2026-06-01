@@ -13,7 +13,7 @@
     <string>1.0.5</string>
 
     <key>CFBundleVersion</key>
-    <string>6</string>
+    <string>8</string>
 
     <!-- ─── Device Support ───────────────────────────────────────────────── -->
     <!-- iPhone only — iPad NOT supported -->
