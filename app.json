@@ -12,9 +12,9 @@
       "supportsTablet": false,
       "devices": ["iphone"],
       "bundleIdentifier": "app.onspace.souq_qalqilya",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "infoPlist": {
-        "NSCameraUsageDescription": "Souq Qalqilya needs camera access to let you photograph items you want to sell. When you create or edit a marketplace listing, you can take a photo directly with your camera to attach as a product image so buyers can see exactly what you are offering.",
+        "NSCameraUsageDescription": "Souq Qalqilya uses your camera exclusively to photograph items you are selling. Photos are taken only when you tap the camera button inside the Post Ad or Edit Listing screen, are uploaded to our servers, and displayed in your marketplace listing so buyers can view the product. No photos are taken automatically or shared with third parties.",
         "NSPhotoLibraryUsageDescription": "Souq Qalqilya needs access to your photo library so you can choose existing photos of items you want to sell or select a profile picture. Chosen images are uploaded to your listing or profile so other users can see them.",
         "NSPhotoLibraryAddUsageDescription": "Souq Qalqilya needs permission to save images to your photo library when you download product photos from a listing you are viewing in the marketplace.",
         "NSUserNotificationsUsageDescription": "Souq Qalqilya sends you push notifications to alert you immediately when a buyer or seller sends you a new message about one of your marketplace listings, so you never miss a sale opportunity.",

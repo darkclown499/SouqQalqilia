@@ -227,10 +227,15 @@ export default function AdDetailScreen() {
         {!isOwner ? (
           <Pressable
             style={[styles.iconBtn, { backgroundColor: 'rgba(0,0,0,0.4)' }]}
-            onPress={() => setReportVisible(true)}
-            hitSlop={8}
+            onPress={() => {
+              setReportVisible(true);
+            }}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+            accessible={true}
+            accessibilityLabel="Report listing"
+            accessibilityRole="button"
           >
-            <MaterialIcons name="flag" size={18} color="#fff" />
+            <MaterialIcons name="flag" size={20} color="#fff" />
           </Pressable>
         ) : null}
       </View>
@@ -630,7 +635,7 @@ const styles = StyleSheet.create({
   backBtnWrap: { position: 'absolute', zIndex: 10 },
   topRightBtns: { position: 'absolute', zIndex: 10, flexDirection: 'row', gap: 8 },
   iconBtn: {
-    width: 42, height: 42, borderRadius: 21,
+    width: 48, height: 48, borderRadius: 24,
     backgroundColor: 'rgba(0,0,0,0.42)',
     alignItems: 'center', justifyContent: 'center',
   },
@@ -753,7 +758,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
   },
   waBtnText: { fontSize: FontSize.md, fontWeight: '700' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', zIndex: 100 },
   modalSheet: {
     borderTopLeftRadius: Radius.xxl, borderTopRightRadius: Radius.xxl,
     padding: Spacing.lg, paddingBottom: Spacing.xxl, gap: Spacing.md,
