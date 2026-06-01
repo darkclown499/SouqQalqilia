@@ -317,7 +317,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, ads.length, handleCategoryPress, router]); // Dependency array is now correct. The /*eslint-disable-next-line react-hooks/exhaustive-deps*/ comment is not needed.
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, ads.length, handleCategoryPress, router, setSortBy]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>

@@ -25,7 +25,6 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     const cached = isDefault ? getAdsCache() : null;
     if (cached) {
       setAds(cached.data);
-      loadedCountRef.current = cached.data.length;
       setHasMore(cached.data.length === PAGE_SIZE);
       setLoading(false);
     } else {
