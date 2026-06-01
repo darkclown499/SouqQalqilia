@@ -1,5 +1,6 @@
 import { AlertProvider, AuthProvider, getSupabaseClient } from '@/template';
 import { preloadAds } from '@/services/adsService';
+import { preloadBanners } from '@/services/bannersService';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { ThemeProvider } from '@/contexts/ThemeContext';
@@ -114,6 +115,7 @@ export default function RootLayout() {
         // ── Preload ads cache right after sign-in ───────────────────────
         // This ensures home screen renders instantly with data already in cache
         preloadAds().catch(() => {});
+        preloadBanners().catch(() => {});
 
         // ── Register push token right after sign-in ──────────────────────
         if (Platform.OS !== 'web') {

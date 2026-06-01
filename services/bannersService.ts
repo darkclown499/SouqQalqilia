@@ -1,5 +1,31 @@
 import { getSupabaseClient } from '@/template';
 
+// ── Module-level banners cache ────────────────────────────────────────────────
+let _bannersCache: Banner[] | null = null;
+const CACHE_TTL_MS = 5 * 60_000; // 5 minutes
+let _bannersFetchedAt = 0;
+
+export function getBannersCache(): Banner[] | null {
+  if (!_bannersCache) return null;
+  if (Date.now() - _bannersFetchedAt > CACHE_TTL_MS) {
+    _bannersCache = null;
+    return null;
+  }
+  return _bannersCache;
+}
+
+export function setBannersCache(data: Banner[]): void {
+  _bannersCache = data;
+  _bannersFetchedAt = Date.now();
+}
+
+/** Preload banners into cache — call right after auth resolves */
+export async function preloadBanners(): Promise<void> {
+  if (getBannersCache()) return;
+  const { data } = await fetchActiveBanners();
+  if (data.length > 0) setBannersCache(data);
+}
+
 export interface Banner {
   id: string;
   title: string;

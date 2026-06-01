@@ -14,7 +14,7 @@ import { InterstitialAdOverlay } from '@/components/feature/InterstitialAdOverla
 import { useAds } from '@/hooks/useAds';
 import { useCategories } from '@/hooks/useCategories';
 import { useFavoriteIds } from '@/hooks/useFavorites';
-import { fetchActiveBanners, Banner } from '@/services/bannersService';
+import { fetchActiveBanners, getBannersCache, setBannersCache, Banner } from '@/services/bannersService';
 import { fetchActiveInterstitials, InterstitialAd } from '@/services/interstitialService';
 import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
@@ -34,9 +34,7 @@ const CONTENT_W = SCREEN_W - H_PAD * 2;
 const BANNER_H = Math.round(CONTENT_W * (720 / 1280));
 const SPONSORED_INTERVAL = 8;
 
-// Module-level cache: banners and interstitials rarely change, no need to
-// re-fetch on every mount. Cleared only on explicit refresh.
-let _bannersCache: Banner[] | null = null;
+// Module-level interstitials cache (banners cache moved to bannersService)
 let _interstitialsCache: InterstitialAd[] | null = null;
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'boosted';
@@ -100,7 +98,7 @@ export default function HomeScreen() {
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [featuredIndex, setFeaturedIndex] = useState(0);
-  const [banners, setBanners] = useState<Banner[]>(_bannersCache ?? []);
+  const [banners, setBanners] = useState<Banner[]>(() => getBannersCache() ?? []);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [showSortBar, setShowSortBar] = useState(false);
   const [interstitials, setInterstitials] = useState<InterstitialAd[]>(_interstitialsCache ?? []);
@@ -115,13 +113,16 @@ export default function HomeScreen() {
 
   useEffect(() => {
     // Use cache if available, otherwise fetch independently for speed
-    if (!_bannersCache) {
+    // Use service cache if available, otherwise fetch
+    if (!getBannersCache()) {
       fetchActiveBanners().then(({ data }) => {
         if (data.length > 0) {
-          _bannersCache = data;
+          setBannersCache(data);
           setBanners(data);
         }
       });
+    } else {
+      // Already preloaded — state initialized correctly above, no extra call needed
     }
     if (!_interstitialsCache) {
       fetchActiveInterstitials().then(({ data }) => {
