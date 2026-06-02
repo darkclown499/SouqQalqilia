@@ -174,11 +174,10 @@ export default function HomeScreen() {
   const displayName = user?.username || user?.email?.split('@')[0] || '';
   const appTitle = isAr ? 'سوق قلقيلية' : 'Souq Qalqilya';
 
-  // Filter out ads from blocked users, then sort
+  // Sort ads (keep blocked users' ads visible but flagged)
   const sortedAds = useMemo(() => {
-    const filtered = blockedIds.size > 0 ? ads.filter(a => !blockedIds.has(a.user_id)) : ads;
-    return sortAds(filtered, sortBy);
-  }, [ads, sortBy, blockedIds]);
+    return sortAds(ads, sortBy);
+  }, [ads, sortBy]);
   const feedRows = useMemo(() => buildFeedRows(sortedAds), [sortedAds]);
 
   const handleLoadMore = useCallback(() => {
@@ -229,6 +228,7 @@ export default function HomeScreen() {
             width={CARD_WIDTH}
             isFavorited={favIds.has(item.left.id)}
             onFavoritePress={user ? toggleFav : undefined}
+            isBlocked={blockedIds.has(item.left.user_id)}
           />
         </View>
         {item.right ? (
@@ -238,6 +238,7 @@ export default function HomeScreen() {
               width={CARD_WIDTH}
               isFavorited={favIds.has(item.right.id)}
               onFavoritePress={user ? toggleFav : undefined}
+              isBlocked={blockedIds.has(item.right.user_id)}
             />
           </View>
         ) : (
@@ -245,7 +246,7 @@ export default function HomeScreen() {
         )}
       </View>
     );
-  }, [colors, t, isRTL, isAr, favIds, user, toggleFav, router]);
+  }, [colors, t, isRTL, isAr, favIds, user, toggleFav, router, blockedIds]);
 
   const currentBanner = banners[featuredIndex] ?? banners[0];
 

@@ -12,6 +12,7 @@ interface MessagePreviewProps {
   conversation: Conversation;
   currentUserId: string;
   onPress: (id: string) => void;
+  isBlocked?: boolean;
 }
 
 const AVATAR_COLORS = ['#0A6E5C', '#3B82F6', '#8B5CF6', '#EC4899', '#F97316', '#10B981'];
@@ -20,14 +21,18 @@ function getAvatarColor(name: string) {
 }
 
 export const MessagePreview = memo(function MessagePreview({
-  conversation, currentUserId, onPress,
+  conversation, currentUserId, onPress, isBlocked = false,
 }: MessagePreviewProps) {
   const { colors } = useTheme();
   const { isRTL } = useLanguage();
 
+  const { language } = useLanguage();
+  const isAr = language === 'ar';
   const isBuyer = conversation.buyer_id === currentUserId;
   const otherUser = isBuyer ? conversation.seller : conversation.buyer;
-  const otherName = otherUser?.username || otherUser?.email?.split('@')[0] || 'User';
+  const otherName = isBlocked
+    ? (isAr ? 'مستخدم محظور' : 'Blocked User')
+    : (otherUser?.username || otherUser?.email?.split('@')[0] || 'User');
   const avatarColor = getAvatarColor(otherName);
   const avatarUrl = (otherUser as any)?.avatar_url;
 
@@ -62,7 +67,11 @@ export const MessagePreview = memo(function MessagePreview({
 
       {/* Avatar */}
       <View style={styles.avatarWrap}>
-        {avatarUrl ? (
+        {isBlocked ? (
+          <View style={[styles.avatar, { backgroundColor: '#EF4444', borderColor: 'transparent', borderWidth: 0 }]}>
+            <MaterialIcons name="block" size={24} color="#fff" />
+          </View>
+        ) : avatarUrl ? (
           <Image
             source={{ uri: avatarUrl }}
             style={[styles.avatar, { borderColor: hasUnread ? colors.primary : 'transparent', borderWidth: hasUnread ? 2 : 0 }]}
@@ -110,14 +119,16 @@ export const MessagePreview = memo(function MessagePreview({
           style={[
             styles.lastMessage,
             {
-              color: hasUnread ? colors.textPrimary : colors.textSecondary,
+              color: isBlocked ? '#EF4444' : hasUnread ? colors.textPrimary : colors.textSecondary,
               fontWeight: hasUnread ? '600' : '400',
               textAlign: isRTL ? 'right' : 'left',
             },
           ]}
           numberOfLines={2}
         >
-          {lastMsg || (isRTL ? 'ابدأ المحادثة...' : 'Start a conversation...')}
+          {isBlocked
+            ? (isAr ? 'هذا المستخدم محظور — المحتوى مخفي' : 'This user is blocked — content hidden')
+            : lastMsg || (isRTL ? 'ابدأ المحادثة...' : 'Start a conversation...')}
         </Text>
       </View>
 

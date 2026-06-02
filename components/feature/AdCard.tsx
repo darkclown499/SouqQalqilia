@@ -21,6 +21,7 @@ interface AdCardProps {
   sponsored?: boolean;
   isFavorited?: boolean;
   onFavoritePress?: (adId: string) => void;
+  isBlocked?: boolean;
 }
 
 function formatPrice(price: number, isAr: boolean) {
@@ -28,7 +29,7 @@ function formatPrice(price: number, isAr: boolean) {
   return `₪${price.toLocaleString()}`;
 }
 
-export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited = false, onFavoritePress }: AdCardProps) {
+export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited = false, onFavoritePress, isBlocked = false }: AdCardProps) {
   const router = useRouter();
   const { colors } = useTheme();
   const { t, language, isRTL } = useLanguage();
@@ -161,6 +162,16 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
           </View>
         ) : null}
 
+        {/* Blocked user overlay */}
+        {isBlocked ? (
+          <View style={styles.blockedOverlay}>
+            <View style={styles.blockedBanner}>
+              <MaterialIcons name="block" size={13} color="#fff" />
+              <Text style={styles.blockedBannerText}>{isAr ? 'مستخدم محظور' : 'Blocked User'}</Text>
+            </View>
+          </View>
+        ) : null}
+
         {/* Sponsored label */}
         {sponsored ? (
           <View style={[styles.sponsoredBadge, { backgroundColor: colors.primaryGhost }]}>
@@ -266,6 +277,20 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xs, paddingHorizontal: 5, paddingVertical: 2,
   },
   imgCountText: { color: '#fff', fontSize: 9, fontWeight: '700' },
+
+  // Blocked overlay
+  blockedOverlay: {
+    position: 'absolute', inset: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  blockedBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: Radius.sm,
+  },
+  blockedBannerText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
 
   // Sold overlay
   soldOverlay: {

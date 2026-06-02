@@ -28,11 +28,8 @@ export default function MessagesScreen() {
     }
   }, [user?.id]);
 
-  // Filter out conversations with blocked users
-  const filteredConversations = React.useMemo(() => {
-    if (blockedIds.size === 0) return conversations;
-    return conversations.filter(c => !blockedIds.has(c.buyer_id) && !blockedIds.has(c.seller_id));
-  }, [conversations, blockedIds]);
+  // Don't filter — show conversations with blocked users but flagged
+  const filteredConversations = conversations;
 
   const totalConvs = filteredConversations.length;
   const isAr = language === 'ar';
@@ -41,13 +38,17 @@ export default function MessagesScreen() {
     router.push(`/chat/${id}`);
   }, [router]);
 
-  const renderConversation = useCallback(({ item }: any) => (
-    <MessagePreview
-      conversation={item}
-      currentUserId={user!.id}
-      onPress={handleConvPress}
-    />
-  ), [user, handleConvPress]);
+  const renderConversation = useCallback(({ item }: any) => {
+    const otherId = item.buyer_id === user!.id ? item.seller_id : item.buyer_id;
+    return (
+      <MessagePreview
+        conversation={item}
+        currentUserId={user!.id}
+        onPress={handleConvPress}
+        isBlocked={blockedIds.has(otherId)}
+      />
+    );
+  }, [user, handleConvPress, blockedIds]);
 
   if (!user) {
     return (
