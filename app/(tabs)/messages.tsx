@@ -8,7 +8,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '@/template';
 import { MessagePreview, EmptyState, Button } from '@/components';
 import { useConversations } from '@/hooks/useChat';
-import { fetchBlockedIds } from '@/services/blockService';
+import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
@@ -26,6 +26,14 @@ export default function MessagesScreen() {
     if (user) {
       fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
     }
+  }, [user?.id]);
+
+  // Re-sync when any block/unblock happens
+  React.useEffect(() => {
+    const unsub = subscribeToBlockChanges(() => {
+      if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
+    });
+    return unsub;
   }, [user?.id]);
 
   // Don't filter — show conversations with blocked users but flagged

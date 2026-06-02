@@ -174,10 +174,10 @@ export default function HomeScreen() {
   const displayName = user?.username || user?.email?.split('@')[0] || '';
   const appTitle = isAr ? 'سوق قلقيلية' : 'Souq Qalqilya';
 
-  // Sort ads (keep blocked users' ads visible but flagged)
+  // Sort ads — completely hide blocked users' ads
   const sortedAds = useMemo(() => {
-    return sortAds(ads, sortBy);
-  }, [ads, sortBy]);
+    return sortAds(ads.filter(ad => !blockedIds.has(ad.user_id)), sortBy);
+  }, [ads, sortBy, blockedIds]);
   const feedRows = useMemo(() => buildFeedRows(sortedAds), [sortedAds]);
 
   const handleLoadMore = useCallback(() => {
@@ -228,7 +228,6 @@ export default function HomeScreen() {
             width={CARD_WIDTH}
             isFavorited={favIds.has(item.left.id)}
             onFavoritePress={user ? toggleFav : undefined}
-            isBlocked={blockedIds.has(item.left.user_id)}
           />
         </View>
         {item.right ? (
@@ -238,7 +237,6 @@ export default function HomeScreen() {
               width={CARD_WIDTH}
               isFavorited={favIds.has(item.right.id)}
               onFavoritePress={user ? toggleFav : undefined}
-              isBlocked={blockedIds.has(item.right.user_id)}
             />
           </View>
         ) : (

@@ -15,7 +15,7 @@ import { updateAdStatus } from '@/services/adsService';
 import { checkIsAdmin } from '@/services/adminService';
 import { getSupabaseClient } from '@/template';
 import { pickImage, uploadImage } from '@/services/imageService';
-import { fetchBlockedIds, unblockUser } from '@/services/blockService';
+import { fetchBlockedIds, unblockUser, subscribeToBlockChanges } from '@/services/blockService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
@@ -65,6 +65,14 @@ export default function ProfileScreen() {
       loadBlockedUsers();
     }
   }, [user]);
+
+  // Re-load blocked users whenever any block/unblock happens anywhere in the app
+  useEffect(() => {
+    const unsub = subscribeToBlockChanges(() => {
+      loadBlockedUsers();
+    });
+    return unsub;
+  }, []);
 
   const loadBlockedUsers = async () => {
     const ids = await fetchBlockedIds();
