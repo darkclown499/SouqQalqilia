@@ -31,6 +31,7 @@ const REPORT_REASONS = [
   { key: 'fraud', icon: 'report-problem' as const },
   { key: 'inappropriate', icon: 'block' as const },
   { key: 'duplicate', icon: 'content-copy' as const },
+  { key: 'abusive_user', icon: 'warning' as const },
   { key: 'other', icon: 'more-horiz' as const },
 ];
 
@@ -171,6 +172,7 @@ export default function AdDetailScreen() {
     fraud: t.reportReasonFraud,
     inappropriate: t.reportReasonInappropriate,
     duplicate: t.reportReasonDuplicate,
+    abusive_user: t.reportReasonAbusiveUser,
     other: t.reportReasonOther,
   };
 
@@ -196,6 +198,7 @@ export default function AdDetailScreen() {
             colors={colors}
             onPromote={() => setPromoteVisible(true)}
             onReport={() => setReportVisible(true)}
+            onReportUser={() => { setSelectedReason('abusive_user'); setReportVisible(true); }}
             router={router}
             user={user}
             showAlert={showAlert}
@@ -398,7 +401,7 @@ function AdDetailScrollContent({
   ad, images, activeImage, setActiveImage, openGallery,
   isNew, isBoosted, isFree, hasPhone, isOwner,
   sellerName, seller, t, isAr, colors,
-  onPromote, onReport, router, user, showAlert,
+  onPromote, onReport, onReportUser, router, user, showAlert,
   relatedAds, favIds, toggleFav, sellerVerified,
 }: any) {
   return (
@@ -561,6 +564,18 @@ function AdDetailScrollContent({
                 <Text style={[styles.phoneText, { color: colors.textSecondary }]}>{ad.phone_number}</Text>
               </View>
             )}
+            {!isOwner && user ? (
+              <Pressable
+                style={[styles.reportUserBtn, { borderColor: colors.errorLight ?? '#FEE2E2', backgroundColor: colors.errorLight ?? '#FFF5F5' }]}
+                onPress={onReportUser}
+                hitSlop={4}
+              >
+                <MaterialIcons name="flag" size={15} color={colors.error ?? '#EF4444'} />
+                <Text style={[styles.reportUserBtnText, { color: colors.error ?? '#EF4444' }]}>
+                  {isAr ? 'الإبلاغ عن المستخدم' : 'Report User'}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {/* Promote button (owner only) */}
@@ -760,6 +775,13 @@ const styles = StyleSheet.create({
   },
   promoteBtnTitle: { fontSize: FontSize.md, fontWeight: '700' },
   promoteBtnSub: { fontSize: FontSize.xs, marginTop: 2 },
+  reportUserBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    borderRadius: Radius.md, borderWidth: 1,
+    paddingHorizontal: Spacing.md, paddingVertical: 9,
+    marginTop: 4,
+  },
+  reportUserBtnText: { fontSize: FontSize.sm, fontWeight: '600' },
   bottomBar: { padding: Spacing.md, paddingHorizontal: Spacing.lg, borderTopWidth: 1 },
   ownerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   ownerLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
