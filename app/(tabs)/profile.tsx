@@ -15,6 +15,7 @@ import { updateAdStatus } from '@/services/adsService';
 import { checkIsAdmin } from '@/services/adminService';
 import { getSupabaseClient } from '@/template';
 import { pickImage, uploadImage } from '@/services/imageService';
+import { fetchBlockedIds, unblockUser } from '@/services/blockService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
@@ -39,6 +40,9 @@ export default function ProfileScreen() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<{ id: string; username: string; email: string; avatar_url: string | null }[]>([]);
+  const [blockedExpanded, setBlockedExpanded] = useState(false);
+  const [unblockingId, setUnblockingId] = useState<string | null>(null);
 
   const rtl = { flexDirection: isRTL ? ('row-reverse' as const) : ('row' as const) };
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
@@ -58,8 +62,38 @@ export default function ProfileScreen() {
           if (data?.phone) setEditPhone(data.phone ?? '');
           setIsVerified(!!data?.is_verified);
         });
+      loadBlockedUsers();
     }
   }, [user]);
+
+  const loadBlockedUsers = async () => {
+    const ids = await fetchBlockedIds();
+    if (ids.length === 0) { setBlockedUsers([]); return; }
+    const { data } = await getSupabaseClient()
+      .from('user_profiles')
+      .select('id, username, email, avatar_url')
+      .in('id', ids);
+    setBlockedUsers((data ?? []) as any);
+  };
+
+  const handleUnblock = (userId: string, name: string) => {
+    showAlert(
+      isRTL ? 'رفع الحظر' : 'Unblock User',
+      isRTL ? `هل تريد رفع الحظر عن "${name}"؟` : `Unblock "${name}"?`,
+      [
+        { text: isRTL ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isRTL ? 'رفع الحظر' : 'Unblock',
+          onPress: async () => {
+            setUnblockingId(userId);
+            await unblockUser(userId);
+            setBlockedUsers(prev => prev.filter(u => u.id !== userId));
+            setUnblockingId(null);
+          },
+        },
+      ]
+    );
+  };
 
   const handleLogout = () => {
     showAlert(t.signOut, t.signOutConfirm, [
@@ -568,6 +602,72 @@ export default function ProfileScreen() {
             </Text>
           </View>
 
+          {/* ── BLOCKED USERS ── */}
+          {blockedUsers.length > 0 ? (
+            <View style={[styles.blockedCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Pressable
+                style={[styles.blockedHeader, { borderBottomColor: blockedExpanded ? colors.borderLight : 'transparent', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                onPress={() => setBlockedExpanded(v => !v)}
+              >
+                <View style={[styles.blockedIconWrap, { backgroundColor: '#FEE2E2' }]}>
+                  <MaterialIcons name="block" size={18} color="#EF4444" />
+                </View>
+                <Text style={[styles.blockedTitle, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
+                  {isRTL ? 'المستخدمون المحظورون' : 'Blocked Users'}
+                </Text>
+                <View style={[styles.blockedBadge, { backgroundColor: '#EF4444' }]}>
+                  <Text style={styles.blockedBadgeText}>{blockedUsers.length}</Text>
+                </View>
+                <MaterialIcons
+                  name={blockedExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                  size={20}
+                  color={colors.textMuted}
+                  style={{ marginLeft: isRTL ? 0 : 4, marginRight: isRTL ? 4 : 0 }}
+                />
+              </Pressable>
+
+              {blockedExpanded ? (
+                <View style={styles.blockedList}>
+                  {blockedUsers.map((bu, idx) => {
+                    const buName = bu.username || bu.email?.split('@')[0] || 'User';
+                    const isLast = idx === blockedUsers.length - 1;
+                    return (
+                      <View
+                        key={bu.id}
+                        style={[
+                          styles.blockedItem,
+                          { borderBottomColor: colors.borderLight, borderBottomWidth: isLast ? 0 : 1, flexDirection: isRTL ? 'row-reverse' : 'row' },
+                        ]}
+                      >
+                        {bu.avatar_url ? (
+                          <Image source={{ uri: bu.avatar_url }} style={styles.blockedAvatar} contentFit="cover" transition={200} />
+                        ) : (
+                          <View style={[styles.blockedAvatarPlaceholder, { backgroundColor: colors.primaryGhost }]}>
+                            <Text style={[styles.blockedAvatarText, { color: colors.primary }]}>{buName.charAt(0).toUpperCase()}</Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.blockedName, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{buName}</Text>
+                          <Text style={[styles.blockedEmail, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{bu.email}</Text>
+                        </View>
+                        <Pressable
+                          style={[styles.unblockBtn, { backgroundColor: colors.primaryGhost, opacity: unblockingId === bu.id ? 0.5 : 1 }]}
+                          onPress={() => handleUnblock(bu.id, buName)}
+                          disabled={unblockingId === bu.id}
+                        >
+                          <MaterialIcons name="lock-open" size={14} color={colors.primary} />
+                          <Text style={[styles.unblockBtnText, { color: colors.primary }]}>
+                            {isRTL ? 'رفع الحظر' : 'Unblock'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
           {/* ── MY LISTINGS ── */}
           <View style={[styles.listingsSection]}>
             <View style={[styles.listingsHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -871,6 +971,30 @@ const styles = StyleSheet.create({
   markSoldText: { fontSize: FontSize.sm, fontWeight: '600' },
   soldChip: { paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full },
   soldChipText: { fontSize: FontSize.xs, fontWeight: '700' },
+
+  // Blocked Users card
+  blockedCard: {
+    marginHorizontal: Spacing.lg, marginTop: Spacing.md,
+    borderRadius: Radius.xl, borderWidth: 1, overflow: 'hidden',
+  },
+  blockedHeader: {
+    alignItems: 'center', gap: Spacing.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  blockedIconWrap: { width: 36, height: 36, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center' },
+  blockedTitle: { fontSize: FontSize.md, fontWeight: '700' },
+  blockedBadge: { borderRadius: Radius.full, minWidth: 22, height: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  blockedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  blockedList: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm },
+  blockedItem: { alignItems: 'center', gap: Spacing.md, paddingVertical: 12 },
+  blockedAvatar: { width: 44, height: 44, borderRadius: 22 },
+  blockedAvatarPlaceholder: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  blockedAvatarText: { fontSize: FontSize.lg, fontWeight: '800' },
+  blockedName: { fontSize: FontSize.sm, fontWeight: '700' },
+  blockedEmail: { fontSize: FontSize.xs, marginTop: 2 },
+  unblockBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: Radius.full },
+  unblockBtnText: { fontSize: FontSize.xs, fontWeight: '700' },
 
   // Guest
   guestOuter: { flex: 1 },
