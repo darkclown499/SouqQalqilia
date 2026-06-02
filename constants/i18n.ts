@@ -309,6 +309,26 @@ export const translations = {
     guestAuthMsg: 'You need to sign in to use this feature.',
     guestAuthBtn: 'Sign In',
 
+    // EULA / Terms
+    eulaAgree: 'By creating an account, you agree to our',
+    eulaTerms: 'Terms of Use',
+    eulaAnd: 'and',
+    eulaPrivacy: 'Privacy Policy',
+    eulaMustAgree: 'You must agree to the Terms of Use to continue.',
+    eulaContent: 'Souq Qalqilya Terms of Use\n\nBy using this app, you agree to:\n\n1. No Objectionable Content\nYou may not post content that is illegal, offensive, fraudulent, or harmful. There is zero tolerance for objectionable content or abusive users.\n\n2. No Abusive Behavior\nHarassment, threats, or abusive messages are strictly prohibited. Violators will be permanently removed.\n\n3. User Safety\nYou may report any listing or user that violates these terms. Reports are reviewed within 24 hours and action will be taken promptly.\n\n4. Blocking\nYou may block any user to prevent them from contacting you. Blocked users content will be hidden from your feed immediately.\n\n5. Account\nYou are responsible for your account activity. We reserve the right to suspend or permanently ban accounts that violate these terms.',
+
+    // Block User
+    blockUserTitle: 'Block User',
+    blockUserMsg: 'Block this user? Their content will be hidden from your feed and they will not be able to contact you.',
+    blockUserDone: 'User Blocked',
+    blockUserDoneMsg: 'This user has been blocked. Their content is now hidden.',
+    unblockUserTitle: 'Unblock User',
+    unblockUserMsg: 'Unblock this user?',
+    unblockUserDone: 'User Unblocked',
+    reportUser: 'Report User',
+    blockUser2: 'Block User',
+    unblockUser2: 'Unblock User',
+
     // Boost
     boost: 'Boost',
     boostAd: 'Boost Listing',
@@ -625,6 +645,26 @@ export const translations = {
     guestAuthTitle: 'يجب تسجيل الدخول',
     guestAuthMsg: 'يجب عليك تسجيل الدخول لاستخدام هذه الميزة.',
     guestAuthBtn: 'تسجيل الدخول',
+
+    // EULA / Terms
+    eulaAgree: 'بإنشاء حساب، أنت توافق على',
+    eulaTerms: 'شروط الاستخدام',
+    eulaAnd: 'و',
+    eulaPrivacy: 'سياسة الخصوصية',
+    eulaMustAgree: 'يجب الموافقة على شروط الاستخدام للمتابعة.',
+    eulaContent: 'شروط استخدام سوق قلقيلية\n\nباستخدامك هذا التطبيق، أنت توافق على:\n\n١. لا محتوى مسيء\nلا يجوز نشر محتوى غير قانوني أو مسيء أو احتيالي أو ضار. لا تسامح مطلقاً مع المحتوى المسيء أو المستخدمين المزعجين.\n\n٢. لا سلوك مسيء\nيُحظر التحرش والتهديد والرسائل المسيئة. سيتم إزالة المخالفين بشكل دائم.\n\n٣. سلامة المستخدمين\nيمكنك الإبلاغ عن أي إعلان أو مستخدم ينتهك هذه الشروط. تتم مراجعة البلاغات خلال 24 ساعة وسيتم اتخاذ الإجراء اللازم.\n\n٤. الحظر\nيمكنك حظر أي مستخدم لمنعه من التواصل معك. سيختفي محتوى المستخدمين المحظورين من موجزك فوراً.\n\n٥. الحساب\nأنت مسؤول عن نشاط حسابك. نحتفظ بحق تعليق أو حظر الحسابات التي تنتهك هذه الشروط.',
+
+    // Block User
+    blockUserTitle: 'حظر المستخدم',
+    blockUserMsg: 'هل تريد حظر هذا المستخدم؟ سيختفي محتواه من موجزك ولن يتمكن من التواصل معك.',
+    blockUserDone: 'تم حظر المستخدم',
+    blockUserDoneMsg: 'تم حظر هذا المستخدم. محتواه مخفي الآن.',
+    unblockUserTitle: 'رفع الحظر',
+    unblockUserMsg: 'هل تريد رفع الحظر عن هذا المستخدم؟',
+    unblockUserDone: 'تم رفع الحظر',
+    reportUser: 'الإبلاغ عن المستخدم',
+    blockUser2: 'حظر المستخدم',
+    unblockUser2: 'رفع الحظر',
 
     // Boost
     boost: 'تعزيز',

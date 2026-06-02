@@ -43,6 +43,8 @@ export default function LoginScreen() {
   const [appleLoading, setAppleLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [eulaAccepted, setEulaAccepted] = useState(false);
+  const [eulaModalVisible, setEulaModalVisible] = useState(false);
   const router = useRouter();
   const isSubmittingRef = useRef(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -121,6 +123,7 @@ export default function LoginScreen() {
 
   // ── Email Register: Send OTP ──
   const handleSendOTP = async () => {
+    if (!eulaAccepted) return showAlert(isAr ? 'الموافقة مطلوبة' : 'Agreement Required', t.eulaMustAgree);
     if (!email.trim() || !password) return showAlert(t.missingFields, t.fillAllFields);
     if (!isValidEmail(email)) return showAlert(
       isAr ? 'بريد غير صحيح' : 'Invalid Email',
@@ -426,6 +429,26 @@ export default function LoginScreen() {
               <Input label={t.confirmPassword} placeholder={t.repeatPassword} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showConfirmPassword}
                 rightElement={<Pressable onPress={toggleConfirmPassword} hitSlop={8}><MaterialIcons name={showConfirmPassword ? 'visibility' : 'visibility-off'} size={20} color={colors.textMuted} /></Pressable>}
               />
+              {/* EULA checkbox */}
+              <Pressable
+                style={[styles.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}
+                onPress={() => setEulaAccepted(v => !v)}
+              >
+                <View style={[styles.eulaCheckbox, { borderColor: eulaAccepted ? colors.primary : colors.border, backgroundColor: eulaAccepted ? colors.primary : 'transparent' }]}>
+                  {eulaAccepted ? <MaterialIcons name="check" size={13} color="#fff" /> : null}
+                </View>
+                <Text style={[styles.eulaText, { color: colors.textSecondary, textAlign: isAr ? 'right' : 'left' }]}>
+                  {t.eulaAgree + ' '}
+                  <Text style={[styles.eulaLink, { color: colors.primary }]} onPress={() => setEulaModalVisible(true)}>
+                    {t.eulaTerms}
+                  </Text>
+                  {' ' + t.eulaAnd + ' '}
+                  <Text style={[styles.eulaLink, { color: colors.primary }]} onPress={() => router.push('/privacy')}>
+                    {t.eulaPrivacy}
+                  </Text>
+                </Text>
+              </Pressable>
+
               <Button label={t.continueCode} onPress={handleSendOTP} loading={operationLoading} size="lg" />
             </>
           )}
@@ -439,6 +462,34 @@ export default function LoginScreen() {
             </Text>
           ) : null}
         </View>
+
+      {/* EULA Modal */}
+      <Modal visible={eulaModalVisible} animationType="slide" transparent onRequestClose={() => setEulaModalVisible(false)}>
+        <View style={styles.eulaModalOverlay}>
+          <View style={[styles.eulaModalSheet, { backgroundColor: colors.surface }]}>
+            <View style={[styles.eulaModalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.eulaModalTitle, { color: colors.textPrimary }]}>
+                {isAr ? 'شروط الاستخدام (EULA)' : 'Terms of Use (EULA)'}
+              </Text>
+              <Pressable onPress={() => setEulaModalVisible(false)} hitSlop={8}>
+                <MaterialIcons name="close" size={22} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.eulaModalBody} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.eulaModalText, { color: colors.textSecondary }]}>
+                {t.eulaContent}
+              </Text>
+            </ScrollView>
+            <Pressable
+              style={[styles.eulaAcceptBtn, { backgroundColor: colors.primary }]}
+              onPress={() => { setEulaAccepted(true); setEulaModalVisible(false); }}
+            >
+              <MaterialIcons name="check-circle" size={18} color="#fff" />
+              <Text style={styles.eulaAcceptBtnText}>{isAr ? 'أوافق وأقبل الشروط' : 'I Agree & Accept'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
         {/* Social Login — Android only (Google). iOS uses email/password only. */}
         {Platform.OS !== 'ios' ? (
@@ -480,6 +531,19 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  // EULA
+  eulaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8, marginTop: 4 },
+  eulaCheckbox: { width: 20, height: 20, borderRadius: 5, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0 },
+  eulaText: { flex: 1, fontSize: FontSize.xs, lineHeight: 18 },
+  eulaLink: { fontWeight: '700' },
+  eulaModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  eulaModalSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%', paddingBottom: 32 },
+  eulaModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.lg, borderBottomWidth: 1 },
+  eulaModalTitle: { fontSize: FontSize.lg, fontWeight: '800' },
+  eulaModalBody: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
+  eulaModalText: { fontSize: FontSize.sm, lineHeight: 22 },
+  eulaAcceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginHorizontal: Spacing.lg, marginTop: Spacing.md, paddingVertical: 14, borderRadius: Radius.lg },
+  eulaAcceptBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
   scroll: { flex: 1 },
   content: { paddingHorizontal: Spacing.lg },
   langRow: { justifyContent: 'flex-end', gap: Spacing.sm, marginBottom: Spacing.sm },

@@ -16,6 +16,7 @@ import { useCategories } from '@/hooks/useCategories';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { fetchActiveBanners, getBannersCache, setBannersCache, Banner } from '@/services/bannersService';
 import { fetchActiveInterstitials, InterstitialAd } from '@/services/interstitialService';
+import { fetchBlockedIds } from '@/services/blockService';
 import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -104,8 +105,14 @@ export default function HomeScreen() {
   const [interstitials, setInterstitials] = useState<InterstitialAd[]>(_interstitialsCache ?? []);
   const [activeInterstitial, setActiveInterstitial] = useState<InterstitialAd | null>(null);
   const [interstitialVisible, setInterstitialVisible] = useState(false);
+  const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   const appStartTime = useRef(Date.now());
   const interstitialShown = useRef(false);
+
+  // Fetch blocked users once on mount
+  useEffect(() => {
+    if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
+  }, [user?.id]);
 
   const isAr = language === 'ar';
 
@@ -159,8 +166,11 @@ export default function HomeScreen() {
   const displayName = user?.username || user?.email?.split('@')[0] || '';
   const appTitle = isAr ? 'سوق قلقيلية' : 'Souq Qalqilya';
 
-  // Memoize expensive sort + inject operations
-  const sortedAds = useMemo(() => sortAds(ads, sortBy), [ads, sortBy]);
+  // Filter out ads from blocked users, then sort
+  const sortedAds = useMemo(() => {
+    const filtered = blockedIds.size > 0 ? ads.filter(a => !blockedIds.has(a.user_id)) : ads;
+    return sortAds(filtered, sortBy);
+  }, [ads, sortBy, blockedIds]);
   const feedRows = useMemo(() => buildFeedRows(sortedAds), [sortedAds]);
 
   const handleLoadMore = useCallback(() => {

@@ -8,6 +8,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '@/template';
 import { MessagePreview, EmptyState, Button } from '@/components';
 import { useConversations } from '@/hooks/useChat';
+import { fetchBlockedIds } from '@/services/blockService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
@@ -19,8 +20,21 @@ export default function MessagesScreen() {
   const { colors } = useTheme();
   const { t, isRTL, language } = useLanguage();
   const { conversations, loading, reload, unreadCount } = useConversations();
+  const [blockedIds, setBlockedIds] = React.useState<Set<string>>(new Set());
 
-  const totalConvs = conversations.length;
+  React.useEffect(() => {
+    if (user) {
+      fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
+    }
+  }, [user?.id]);
+
+  // Filter out conversations with blocked users
+  const filteredConversations = React.useMemo(() => {
+    if (blockedIds.size === 0) return conversations;
+    return conversations.filter(c => !blockedIds.has(c.buyer_id) && !blockedIds.has(c.seller_id));
+  }, [conversations, blockedIds]);
+
+  const totalConvs = filteredConversations.length;
   const isAr = language === 'ar';
 
   const handleConvPress = useCallback((id: string) => {
@@ -94,7 +108,7 @@ export default function MessagesScreen() {
 
       {/* ── CONVERSATION LIST ── */}
       <FlatList
-        data={conversations}
+        data={filteredConversations}
         keyExtractor={item => item.id}
         renderItem={renderConversation}
         windowSize={5}

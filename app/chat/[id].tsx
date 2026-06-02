@@ -11,6 +11,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert } from '@/template';
 import { useMessages } from '@/hooks/useChat';
 import { fetchConversationById, sendMessage, markMessagesRead, updateTypingIndicator, fetchTypingStatus, notifyRecipient, deleteConversation, Conversation, Message } from '@/services/chatService';
+import { blockUser, isUserBlocked } from '@/services/blockService';
 import { updateAdStatus } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
@@ -80,6 +81,7 @@ export default function ChatScreen() {
   const [otherTyping, setOtherTyping] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<FlatList<MsgItem>>(null); // Added type argument to FlatList
   const { messages, loading, refreshing, reload, pollSilent, appendMessage, updateMessage, markReadLocally } = useMessages(id);
@@ -89,9 +91,16 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (id) {
-      fetchConversationById(id).then(({ data }) => setConversation(data));
+      fetchConversationById(id).then(({ data }) => {
+        setConversation(data);
+        // Check if the other user is already blocked
+        if (data) {
+          const otherId = data.buyer_id === user?.id ? data.seller_id : data.buyer_id;
+          if (otherId) isUserBlocked(otherId).then(setIsBlocked);
+        }
+      });
     }
-  }, [id]);
+  }, [id, user?.id]);
 
   // Poll typing indicator every 2 seconds
   useEffect(() => {
@@ -303,6 +312,65 @@ export default function ChatScreen() {
     }
   };
 
+  // ── Block User ─────────────────────────────────────────────────────────
+  const handleBlockUser = () => {
+    setMenuVisible(false);
+    const otherId = isBuyer ? conversation?.seller_id : conversation?.buyer_id;
+    if (!otherId) return;
+    const actionLabel = isBlocked ? (isAr ? 'رفع الحظر' : 'Unblock') : (isAr ? 'حظر' : 'Block');
+    const msgText = isBlocked
+      ? (isAr ? 'هل تريد رفع الحظر عن هذا المستخدم؟' : 'Unblock this user?')
+      : (isAr ? 'هل تريد حظر هذا المستخدم؟ سيختفي محتواه من موجزك فوراً.' : 'Block this user? Their content will be hidden from your feed immediately.');
+    showAlert(
+      isAr ? (isBlocked ? 'رفع الحظر' : 'حظر المستخدم') : (isBlocked ? 'Unblock User' : 'Block User'),
+      msgText,
+      [
+        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: actionLabel,
+          style: isBlocked ? 'default' : 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            if (isBlocked) {
+              const { error } = await (await import('@/services/blockService')).unblockUser(otherId);
+              setActionLoading(false);
+              if (!error) { setIsBlocked(false); showAlert(isAr ? 'تم رفع الحظر' : 'Unblocked', isAr ? 'تم رفع الحظر عن هذا المستخدم.' : 'User has been unblocked.'); }
+            } else {
+              const { error } = await blockUser(otherId);
+              setActionLoading(false);
+              if (!error) { setIsBlocked(true); showAlert(isAr ? 'تم الحظر' : 'Blocked', isAr ? 'تم حظر هذا المستخدم. محتواه مخفي الآن.' : 'User blocked. Their content is now hidden.'); }
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ── Report User ───────────────────────────────────────────────────────
+  const handleReportUser = () => {
+    setMenuVisible(false);
+    const otherId = isBuyer ? conversation?.seller_id : conversation?.buyer_id;
+    if (!otherId || !user) return;
+    showAlert(
+      isAr ? 'الإبلاغ عن المستخدم' : 'Report User',
+      isAr ? 'هل تريد الإبلاغ عن هذا المستخدم بسبب سلوك مسيء؟ سنراجع البلاغ خلال 24 ساعة.' : 'Report this user for abusive behavior? We will review within 24 hours.',
+      [
+        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isAr ? 'إبلاغ' : 'Report',
+          style: 'destructive',
+          onPress: async () => {
+            const supabase = (await import('@/template')).getSupabaseClient();
+            // Upsert user_profiles defensively
+            await supabase.from('user_profiles').upsert({ id: user.id, email: user.email ?? '' }, { onConflict: 'id', ignoreDuplicates: true });
+            await supabase.from('reports').upsert({ ad_id: conversation?.ad_id ?? '', reporter_id: user.id, reason: 'abusive_user' }, { onConflict: 'ad_id,reporter_id', ignoreDuplicates: true });
+            showAlert(isAr ? 'تم الإبلاغ' : 'Reported', isAr ? 'شكراً. سنراجع هذا البلاغ خلال 24 ساعة.' : 'Thank you. We will review this report within 24 hours.');
+          },
+        },
+      ]
+    );
+  };
+
   // ── Delete Conversation ────────────────────────────────────────────────
   const handleDeleteConversation = () => {
     setMenuVisible(false);
@@ -473,6 +541,44 @@ export default function ChatScreen() {
                   </Pressable>
                 )
               ) : null}
+
+              {/* Block User */}
+              <Pressable
+                style={[styles.menuItem, { flexDirection: isAr ? 'row-reverse' : 'row' }]}
+                onPress={handleBlockUser}
+              >
+                <View style={[styles.menuIconWrap, { backgroundColor: isBlocked ? '#DBEAFE' : '#FEE2E2' }]}>
+                  <MaterialIcons name={isBlocked ? 'lock-open' : 'block'} size={20} color={isBlocked ? '#2563EB' : '#EF4444'} />
+                </View>
+                <View style={styles.menuItemText}>
+                  <Text style={[styles.menuItemTitle, { color: isBlocked ? '#2563EB' : '#EF4444', textAlign: isAr ? 'right' : 'left' }]}>
+                    {isBlocked ? (isAr ? 'رفع الحظر' : 'Unblock User') : (isAr ? 'حظر المستخدم' : 'Block User')}
+                  </Text>
+                  <Text style={[styles.menuItemSub, { color: colors.textMuted, textAlign: isAr ? 'right' : 'left' }]}>
+                    {isBlocked
+                      ? (isAr ? 'السماح لهذا المستخدم بالتواصل مجدداً' : 'Allow this user to contact you again')
+                      : (isAr ? 'إخفاء محتواه فوراً ومنعه من التواصل' : 'Hide their content and prevent contact')}
+                  </Text>
+                </View>
+              </Pressable>
+
+              {/* Report User */}
+              <Pressable
+                style={[styles.menuItem, { flexDirection: isAr ? 'row-reverse' : 'row' }]}
+                onPress={handleReportUser}
+              >
+                <View style={[styles.menuIconWrap, { backgroundColor: '#FFF7ED' }]}>
+                  <MaterialIcons name="flag" size={20} color="#D97706" />
+                </View>
+                <View style={styles.menuItemText}>
+                  <Text style={[styles.menuItemTitle, { color: '#D97706', textAlign: isAr ? 'right' : 'left' }]}>
+                    {isAr ? 'الإبلاغ عن المستخدم' : 'Report User'}
+                  </Text>
+                  <Text style={[styles.menuItemSub, { color: colors.textMuted, textAlign: isAr ? 'right' : 'left' }]}>
+                    {isAr ? 'إبلاغ عن سلوك مسيء — مراجعة خلال 24 ساعة' : 'Report abusive behavior — reviewed within 24h'}
+                  </Text>
+                </View>
+              </Pressable>
 
               {/* Divider */}
               <View style={[styles.menuDivider, { backgroundColor: colors.borderLight }]} />

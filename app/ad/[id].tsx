@@ -10,6 +10,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert } from '@/template';
 import { Button, Badge } from '@/components';
 import { fetchAdById, fetchAds, Ad, AdImage, updateAdStatus, reportAd } from '@/services/adsService';
+import { blockUser, isUserBlocked, unblockUser } from '@/services/blockService';
 import { fetchOrCreateConversation } from '@/services/chatService';
 import { getSupabaseClient } from '@/template';
 import { PromotionModal } from '@/components/feature/PromotionModal';
@@ -57,6 +58,7 @@ export default function AdDetailScreen() {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [relatedAds, setRelatedAds] = useState<Ad[]>([]);
   const [sellerVerified, setSellerVerified] = useState(false);
+  const [isSellerBlocked, setIsSellerBlocked] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -70,6 +72,8 @@ export default function AdDetailScreen() {
           .eq('id', data.user_id)
           .single()
           .then(({ data: p }) => setSellerVerified(!!p?.is_verified));
+        // Check if seller is blocked
+        isUserBlocked(data.user_id).then(setIsSellerBlocked);
       }
       if (data?.category_id) {
         fetchAds({ categoryId: data.category_id, limit: 7 }).then(({ data: related }) => {
@@ -226,16 +230,35 @@ export default function AdDetailScreen() {
         </Pressable>
         {!isOwner ? (
           <Pressable
-            style={[styles.iconBtn, { backgroundColor: 'rgba(0,0,0,0.4)' }]}
+            style={[styles.iconBtn, { backgroundColor: isSellerBlocked ? 'rgba(37,99,235,0.75)' : 'rgba(0,0,0,0.4)' }]}
             onPress={() => {
-              setReportVisible(true);
+              if (isSellerBlocked) {
+                showAlert(
+                  isAr ? 'رفع الحظر' : 'Unblock User',
+                  isAr ? 'هل تريد رفع الحظر عن هذا المستخدم؟' : 'Unblock this user?',
+                  [
+                    { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+                    { text: isAr ? 'رفع الحظر' : 'Unblock', onPress: async () => { await unblockUser(ad!.user_id); setIsSellerBlocked(false); } },
+                  ]
+                );
+              } else {
+                showAlert(
+                  isAr ? 'خيارات' : 'Options',
+                  isAr ? 'ماذا تريد أن تفعل؟' : 'What would you like to do?',
+                  [
+                    { text: isAr ? 'إبلاغ عن الإعلان' : 'Report Listing', onPress: () => setReportVisible(true) },
+                    { text: isAr ? 'حظر المستخدم' : 'Block User', style: 'destructive', onPress: async () => { const { error } = await blockUser(ad!.user_id); if (!error) { setIsSellerBlocked(true); showAlert(isAr ? 'تم الحظر' : 'Blocked', isAr ? 'تم حظر هذا المستخدم. محتواه مخفي الآن.' : 'User blocked. Their content is now hidden.'); } } },
+                    { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+                  ]
+                );
+              }
             }}
             hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
             accessible={true}
-            accessibilityLabel="Report listing"
+            accessibilityLabel={isSellerBlocked ? 'Unblock user' : 'Report or block'}
             accessibilityRole="button"
           >
-            <MaterialIcons name="flag" size={20} color="#fff" />
+            <MaterialIcons name={isSellerBlocked ? 'lock-open' : 'flag'} size={20} color="#fff" />
           </Pressable>
         ) : null}
       </View>
