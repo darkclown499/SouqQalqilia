@@ -16,7 +16,7 @@ import { useCategories } from '@/hooks/useCategories';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { fetchActiveBanners, getBannersCache, setBannersCache, Banner } from '@/services/bannersService';
 import { fetchActiveInterstitials, InterstitialAd } from '@/services/interstitialService';
-import { fetchBlockedIds } from '@/services/blockService';
+import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockService';
 import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -112,6 +112,14 @@ export default function HomeScreen() {
   // Fetch blocked users once on mount
   useEffect(() => {
     if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
+  }, [user?.id]);
+
+  // Re-sync blockedIds whenever block/unblock happens anywhere in the app
+  useEffect(() => {
+    const unsub = subscribeToBlockChanges(() => {
+      if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
+    });
+    return unsub;
   }, [user?.id]);
 
   const isAr = language === 'ar';

@@ -1,5 +1,21 @@
 import { getSupabaseClient } from '@/template';
 
+// ── Simple module-level pub/sub for block list changes ────────────────────────
+// Allows any screen (e.g. index.tsx) to re-fetch blockedIds when a block/unblock
+// occurs in another screen (e.g. profile.tsx) without needing a shared Context.
+type BlockChangeListener = () => void;
+const _blockListeners: Set<BlockChangeListener> = new Set();
+
+/** Subscribe to block list changes. Returns an unsubscribe function. */
+export function subscribeToBlockChanges(listener: BlockChangeListener): () => void {
+  _blockListeners.add(listener);
+  return () => _blockListeners.delete(listener);
+}
+
+function notifyBlockChange() {
+  _blockListeners.forEach(fn => fn());
+}
+
 /** Block a user — their content disappears from feed immediately (client-side filter) */
 export async function blockUser(blockedId: string): Promise<{ error: string | null }> {
   const supabase = getSupabaseClient();
@@ -11,6 +27,7 @@ export async function blockUser(blockedId: string): Promise<{ error: string | nu
     .from('blocked_users')
     .upsert({ blocker_id: user.id, blocked_id: blockedId }, { onConflict: 'blocker_id,blocked_id', ignoreDuplicates: true });
 
+  if (!error) notifyBlockChange();
   return { error: error ? error.message : null };
 }
 
@@ -26,6 +43,7 @@ export async function unblockUser(blockedId: string): Promise<{ error: string | 
     .eq('blocker_id', user.id)
     .eq('blocked_id', blockedId);
 
+  if (!error) notifyBlockChange();
   return { error: error ? error.message : null };
 }
 
