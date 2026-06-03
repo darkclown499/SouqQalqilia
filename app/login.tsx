@@ -529,13 +529,13 @@ export default function LoginScreen() {
               </Animated.View>
 
               {/* Apple — iOS & Android (Apple requires showing on iOS; optional on Android) */}
-              <Pressable
-                style={[styles.socialBtnWrap]}
-                onPress={handleAppleSignIn}
-                disabled={appleLoading}
-                accessibilityLabel={isAr ? 'تسجيل الدخول عبر Apple' : 'Sign in with Apple'}
-              >
-                <View style={[styles.socialBtn, styles.appleSocialBtn, { opacity: appleLoading ? 0.7 : 1 }]}>
+              <Animated.View style={styles.socialBtnWrap}>
+                <Pressable
+                  style={[styles.socialBtn, styles.appleSocialBtn, { opacity: appleLoading ? 0.7 : 1 }]}
+                  onPress={handleAppleSignIn}
+                  disabled={appleLoading}
+                  accessibilityLabel={isAr ? 'تسجيل الدخول عبر Apple' : 'Sign in with Apple'}
+                >
                   {appleLoading
                     ? <ActivityIndicator size="small" color="#fff" />
                     : (
@@ -546,8 +546,8 @@ export default function LoginScreen() {
                   <Text style={[styles.socialBtnLabel, { color: '#fff' }]} numberOfLines={1}>
                     Apple
                   </Text>
-                </View>
-              </Pressable>
+                </Pressable>
+              </Animated.View>
             </View>
           </>
         ) : null}
