@@ -349,7 +349,7 @@ export default function LoginScreen() {
         <View style={styles.hero}>
           <View style={styles.logoRing}>
             <Image
-              source={require('@/assets/images/app-logo.png')}
+              source={require('@/assets/images/app-logo-bg.png')}
               style={styles.logoImage}
               contentFit="contain"
               transition={200}

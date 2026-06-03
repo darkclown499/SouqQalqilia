@@ -47,6 +47,7 @@ const SLIDES = [
     decorIcon1: 'sell' as const,
     decorIcon2: 'shopping-bag' as const,
     decorIcon3: 'local-offer' as const,
+    isLogo: true,
   },
   {
     id: '2',
@@ -69,7 +70,6 @@ const SLIDES = [
     decorIcon1: 'handshake' as const,
     decorIcon2: 'people' as const,
     decorIcon3: 'location-on' as const,
-    isLogo: true,
   },
 ];
 
@@ -294,7 +294,7 @@ function LogoSlide({ isActive }: { isActive: boolean }) {
     <Animated.View style={[styles.logoWrap, style]}>
       <View style={[styles.logoCard, { width: CARD_W, height: Math.round(CARD_W * 0.55) }]}>
         <Image
-          source={require('@/assets/images/plankton-logo.png')}
+          source={require('@/assets/images/app-logo-bg.png')}
           style={styles.logoImage}
           contentFit="contain"
           transition={300}
@@ -560,16 +560,17 @@ const styles = StyleSheet.create({
   // Logo slide
   logoWrap: { alignItems: 'center', gap: 16 },
   logoCard: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: 'transparent',
     borderRadius: Radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 14,
+    padding: 0,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 20,
     elevation: 12,
+    overflow: 'hidden',
   },
   logoImage: { width: '100%', height: '100%' },
   logoTag: {
