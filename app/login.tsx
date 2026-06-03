@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
@@ -491,8 +491,8 @@ export default function LoginScreen() {
         </View>
       </Modal>
 
-        {/* Social Login — Android only (Google). iOS uses email/password only. */}
-        {Platform.OS !== 'ios' ? (
+        {/* Social Login — Google on Android, Apple on iOS, both shown */}
+        {Platform.OS !== 'web' ? (
           <>
             <View style={styles.dividerRow}>
               <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
@@ -501,6 +501,7 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.socialRow}>
+              {/* Google — Android & iOS */}
               <Animated.View style={[styles.socialBtnWrap, { transform: [{ scale: googleScale }] }]}>
                 <Pressable
                   style={[styles.socialBtn, styles.googleSocialBtn, googleLoading && styles.googleBtnLoading]}
@@ -522,6 +523,27 @@ export default function LoginScreen() {
                   </Text>
                 </Pressable>
               </Animated.View>
+
+              {/* Apple — iOS & Android (Apple requires showing on iOS; optional on Android) */}
+              <Pressable
+                style={[styles.socialBtnWrap]}
+                onPress={handleAppleSignIn}
+                disabled={appleLoading}
+                accessibilityLabel={isAr ? 'تسجيل الدخول عبر Apple' : 'Sign in with Apple'}
+              >
+                <View style={[styles.socialBtn, styles.appleSocialBtn, { opacity: appleLoading ? 0.7 : 1 }]}>
+                  {appleLoading
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : (
+                      <View style={styles.appleIconWrap}>
+                        <FontAwesome name="apple" size={20} color="#fff" />
+                      </View>
+                    )}
+                  <Text style={[styles.socialBtnLabel, { color: '#fff' }]} numberOfLines={1}>
+                    Apple
+                  </Text>
+                </View>
+              </Pressable>
             </View>
           </>
         ) : null}
