@@ -128,10 +128,10 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/plankton-logo.png",
-          "imageWidth": 200,
+          "image": "./assets/images/app-logo-bg.png",
+          "imageWidth": 220,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#0A6E5C"
         }
       ],
       "expo-camera",
