@@ -389,12 +389,6 @@ export default function LoginScreen() {
                 <Text style={[styles.otpTitle, { color: colors.textPrimary }]}>{t.checkEmail}</Text>
                 <Text style={[styles.otpSub, { color: colors.textSecondary }]}>{t.codeSentTo}</Text>
                 <Text style={[styles.otpEmail, { color: colors.primary }]}>{email}</Text>
-              <View style={[styles.spamNote, { backgroundColor: colors.primaryGhost }]}>
-                <MaterialIcons name="info-outline" size={14} color={colors.primary} />
-                <Text style={[styles.spamNoteText, { color: colors.textSecondary }]}>
-                  {isAr ? 'إذا لم يصلك الرمز، تحقق من مجلد البريد المزعج (Spam)' : 'If you did not receive the code, check your Spam/Junk folder'}
-                </Text>
-              </View>
               </View>
               <Input label={t.verificationCode} placeholder="0  0  0  0" value={otp} onChangeText={setOtp} keyboardType="number-pad" maxLength={4} textAlign="center" returnKeyType="done" onSubmitEditing={handleVerifyOTP} />
               <Button label={t.verifyCreate} onPress={handleVerifyOTP} loading={operationLoading} size="lg" />
@@ -605,8 +599,6 @@ const styles = StyleSheet.create({
   otpEmail: { fontSize: FontSize.md, fontWeight: '600' },
   resendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: Spacing.md, paddingVertical: 10 },
   resendText: { fontSize: FontSize.sm, fontWeight: '600' },
-  spamNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, borderRadius: Radius.md, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 },
-  spamNoteText: { flex: 1, fontSize: 12, lineHeight: 17 },
   link: { alignItems: 'center', marginTop: Spacing.xs },
   linkText: { fontSize: FontSize.sm, fontWeight: '600' },
   footerHint: { textAlign: 'center', fontSize: FontSize.sm, color: 'rgba(255,255,255,0.4)', marginTop: Spacing.md },
