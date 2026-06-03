@@ -4,6 +4,7 @@ import {
   Platform, Pressable, ActivityIndicator, Modal, Animated,
 } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
@@ -347,9 +348,12 @@ export default function LoginScreen() {
         {/* Hero */}
         <View style={styles.hero}>
           <View style={styles.logoRing}>
-            <View style={styles.logo}>
-              <MaterialIcons name="storefront" size={36} color="#fff" />
-            </View>
+            <Image
+              source={require('@/assets/images/app-logo.png')}
+              style={styles.logoImage}
+              contentFit="contain"
+              transition={200}
+            />
           </View>
           <View style={styles.appNameHeroRow}>
             <Text style={styles.appName}>{isAr ? APP_NAME_AR : APP_NAME}</Text>
@@ -572,8 +576,8 @@ const styles = StyleSheet.create({
   langPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1 },
   langPillText: { fontSize: FontSize.sm },
   hero: { alignItems: 'center', marginBottom: Spacing.xl, paddingVertical: Spacing.md },
-  logoRing: { width: 88, height: 88, borderRadius: 44, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.md, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)' },
-  logo: { width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  logoRing: { width: 100, height: 100, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.md, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.15)' },
+  logoImage: { width: 90, height: 90, borderRadius: 16 },
   appNameHeroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 4 },
   appName: { fontSize: FontSize.xxxl, fontWeight: '800', color: '#fff', letterSpacing: -0.8 },
   heroBetaBadge: { backgroundColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'center', shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 4, elevation: 3 },
