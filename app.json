@@ -12,7 +12,7 @@
       "supportsTablet": false,
       "devices": ["iphone"],
       "bundleIdentifier": "app.onspace.souq_qalqilya",
-      "buildNumber": "8",
+      "buildNumber": "9",
       "usesAppleSignIn": true,
       "infoPlist": {
         "NSCameraUsageDescription": "Souq Qalqilya uses your camera exclusively to photograph items you are selling. Photos are taken only when you tap the camera button inside the Post Ad or Edit Listing screen, are uploaded to our servers, and displayed in your marketplace listing so buyers can view the product. No photos are taken automatically or shared with third parties.",
@@ -25,7 +25,7 @@
     },
     "android": {
       "package": "app.onspace.souq_qalqilya",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/plankton-logo.png",
         "backgroundColor": "#ffffff"
