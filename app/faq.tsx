@@ -95,7 +95,6 @@ const FAQ_ITEMS: FaqItem[] = [
 
 function FaqAccordion({ item, isRTL, colors }: { item: FaqItem; isRTL: boolean; colors: any }) {
   const [open, setOpen] = useState(false);
-  const height = useSharedValue(0);
   const rotation = useSharedValue(0);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -105,10 +104,14 @@ function FaqAccordion({ item, isRTL, colors }: { item: FaqItem; isRTL: boolean; 
   }));
 
   const arrowStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${withSpring(open ? 180 : 0, { damping: 14, stiffness: 120 })}deg` }],
+    transform: [{ rotate: `${rotation.value}deg` }],
   }));
 
-  const toggle = () => setOpen(v => !v);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    rotation.value = withSpring(next ? 180 : 0, { damping: 14, stiffness: 120 });
+  };
 
   return (
     <View style={[faqStyles.item, { borderColor: colors.border, backgroundColor: colors.surface }]}>
