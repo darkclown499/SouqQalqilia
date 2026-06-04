@@ -71,7 +71,7 @@ export default function SupportFormScreen() {
       const body = encodeURIComponent(
         `${isRTL ? 'وصف المشكلة' : 'Issue Description'}:\n${description.trim()}\n\n`
         + (screenshot ? (isRTL ? '(تم إرفاق لقطة الشاشة)' : '(Screenshot attached)') : (isRTL ? '(لا توجد لقطة شاشة)' : '(No screenshot)'))
-        + `\n\n---\nSouq Qalqilya App v1.0.5\n${Platform.OS} ${Platform.Version}`
+        + `\n\n---\nSouq Qalqilya App v1.0.9\n${Platform.OS} ${Platform.Version}`
       );
       const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${body}`;
 

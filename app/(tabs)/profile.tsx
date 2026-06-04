@@ -23,7 +23,7 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_WHATSAPP_MESSAGE } from '@/constants/config';
 import type { Language } from '@/constants/i18n';
 
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.0.9';
 const FACEBOOK_URL = 'https://www.facebook.com/share/1L5KLdnkaY/';
 const INSTAGRAM_URL = 'https://www.instagram.com/co.plankton?igsh=MWV4Z2RncTVoYW81ZA==';
 
