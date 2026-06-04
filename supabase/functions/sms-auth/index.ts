@@ -71,27 +71,38 @@ serve(async (req) => {
         .maybeSingle();
 
       if (!profileData?.id) {
-        // New user — use admin.createUser with email_confirm:true to bypass email confirmation
-        const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
-          email: syntheticEmail,
-          password: syntheticPassword,
-          email_confirm: true,
-          phone: phoneNumber,
-          user_metadata: { phone: phoneNumber, auth_method: 'firebase_phone' },
+        // New user — use direct REST API to bypass ipNotInner restriction on admin JS client
+        const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_SERVICE_ROLE_KEY,
+            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({
+            email: syntheticEmail,
+            password: syntheticPassword,
+            email_confirm: true,
+            phone: phoneNumber,
+            user_metadata: { phone: phoneNumber, auth_method: 'firebase_phone' },
+          }),
         });
 
-        if (createError) {
+        const createJson = await createRes.json();
+
+        if (!createRes.ok) {
+          const msg: string = createJson?.msg ?? createJson?.message ?? createJson?.error ?? '';
           // If user already exists (race condition), continue to sign-in
-          if (!createError.message?.includes('already been registered') && !createError.message?.includes('already registered')) {
-            console.error('admin.createUser error:', createError);
-            throw new Error(`Failed to create user: ${createError?.message}`);
+          if (!msg.toLowerCase().includes('already') && !msg.toLowerCase().includes('registered')) {
+            console.error('REST createUser error:', createJson);
+            throw new Error(`Failed to create user: ${msg}`);
           }
-        } else if (createData?.user) {
-          // Store phone in profile — trigger may already handle this, but upsert just in case
+        } else if (createJson?.id) {
+          // Store phone in profile
           await supabaseAdmin
             .from('user_profiles')
             .upsert({
-              id: createData.user.id,
+              id: createJson.id,
               email: syntheticEmail,
               phone: phoneNumber,
               username: '',
@@ -99,11 +110,17 @@ serve(async (req) => {
             .then(() => {}).catch(() => {});
         }
       } else {
-        // Existing user — ensure email is confirmed in case it was created via signUp before
-        const { data: adminUser } = await supabaseAdmin.auth.admin.getUserById(profileData.id);
-        if (adminUser?.user && !adminUser.user.email_confirmed_at) {
-          await supabaseAdmin.auth.admin.updateUserById(profileData.id, { email_confirm: true }).catch(() => {});
-        }
+        // Existing user — ensure email is confirmed via REST API
+        const updateRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileData.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_SERVICE_ROLE_KEY,
+            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({ email_confirm: true }),
+        });
+        if (!updateRes.ok) console.warn('Could not confirm email for existing user');
       }
 
       // 4. Sign in to get a Supabase session
