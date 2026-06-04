@@ -196,27 +196,42 @@ export default function HomeScreen() {
 
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
     if (item.type === 'sponsored') {
+      const waUrl = 'https://wa.me/972559886886?text=' + encodeURIComponent(isAr ? 'مرحباً، أريد تعزيز إعلاني في سوق قلقيلية 🛍️' : 'Hello, I want to boost my ad on Souq Qalqilya 🛍️');
       return (
-        <Pressable
-          style={[styles.sponsoredCard, { backgroundColor: colors.surface, borderColor: colors.primary + '40', ...Shadow.sm }]}
-          onPress={() => Linking.openURL('https://wa.me/972559886886').catch(() => {})}
-        >
-          <View style={[styles.sponsoredIconWrap, { backgroundColor: colors.primaryGhost }]}>
-            <MaterialIcons name="campaign" size={20} color={colors.primary} />
-          </View>
-          <View style={styles.sponsoredContent}>
-            <View style={[styles.sponsoredLabel, { backgroundColor: colors.primary }]}>
-              <Text style={styles.sponsoredLabelText}>{t.sponsored}</Text>
+        <View style={[styles.sponsoredCard, { backgroundColor: colors.surface, borderColor: '#25D366' + '55', ...Shadow.sm }]}>
+          {/* Header row */}
+          <View style={[styles.sponsoredHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View style={[styles.sponsoredIconWrap, { backgroundColor: '#25D36618' }]}>
+              <MaterialIcons name="campaign" size={20} color="#25D366" />
             </View>
-            <Text style={[styles.sponsoredTitle, { color: colors.textPrimary }]}>
-              {isAr ? 'اعرض إعلانك هنا' : 'Advertise Here'}
-            </Text>
-            <Text style={[styles.sponsoredSub, { color: colors.textMuted }]}>
-              {isAr ? 'تواصل معنا لتعزيز إعلانك' : 'Boost your listing for more visibility'}
-            </Text>
+            <View style={styles.sponsoredContent}>
+              <View style={[styles.sponsoredLabelRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                <View style={[styles.sponsoredLabel, { backgroundColor: colors.accent }]}>
+                  <Text style={styles.sponsoredLabelText}>{isAr ? 'مميز' : 'BOOST'}</Text>
+                </View>
+                <View style={[styles.sponsoredPriceBadge, { backgroundColor: '#0A6E5C' }]}>
+                  <Text style={styles.sponsoredPriceText}>30 ₪</Text>
+                </View>
+              </View>
+              <Text style={[styles.sponsoredTitle, { color: colors.textPrimary }]}>
+                {isAr ? 'عزّز إعلانك واجعله مميزاً!' : 'Boost Your Ad & Stand Out!'}
+              </Text>
+              <Text style={[styles.sponsoredSub, { color: colors.textMuted }]}>
+                {isAr ? 'يظهر منتجك في أول التطبيق ويصل لأكبر عدد من المشترين' : 'Your product appears at the top and reaches more buyers'}
+              </Text>
+            </View>
           </View>
-          <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-        </Pressable>
+          {/* WhatsApp CTA button */}
+          <Pressable
+            style={({ pressed }) => [styles.sponsoredWaBtn, { opacity: pressed ? 0.85 : 1 }]}
+            onPress={() => Linking.openURL(waUrl).catch(() => {})}
+          >
+            <MaterialIcons name="whatsapp" size={18} color="#fff" />
+            <Text style={styles.sponsoredWaBtnText}>
+              {isAr ? 'تواصل الآن عبر واتساب' : 'Contact via WhatsApp'}
+            </Text>
+          </Pressable>
+        </View>
       );
     }
     // pair row
@@ -469,13 +484,19 @@ const styles = StyleSheet.create({
   listContent: { padding: H_PAD, paddingBottom: 36 },
   pairRow: { flexDirection: 'row', gap: CARD_GAP, marginBottom: CARD_GAP },
   adWrapper: { flex: 1 },
-  sponsoredCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1.5, marginBottom: Spacing.md },
-  sponsoredIconWrap: { width: 44, height: 44, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
-  sponsoredContent: { flex: 1, gap: 4 },
-  sponsoredLabel: { borderRadius: Radius.full, paddingHorizontal: 7, paddingVertical: 2, alignSelf: 'flex-start' },
-  sponsoredLabelText: { color: '#fff', fontSize: 9, fontWeight: '700' },
+  sponsoredCard: { borderRadius: Radius.xl, padding: Spacing.md, borderWidth: 1.5, marginBottom: Spacing.md, gap: Spacing.sm },
+  sponsoredHeader: { alignItems: 'flex-start', gap: Spacing.md },
+  sponsoredIconWrap: { width: 44, height: 44, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 },
+  sponsoredContent: { flex: 1, gap: 5 },
+  sponsoredLabelRow: { alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  sponsoredLabel: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
+  sponsoredLabelText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
+  sponsoredPriceBadge: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3 },
+  sponsoredPriceText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   sponsoredTitle: { fontSize: FontSize.sm, fontWeight: '700' },
-  sponsoredSub: { fontSize: FontSize.xs },
+  sponsoredSub: { fontSize: FontSize.xs, lineHeight: 17 },
+  sponsoredWaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#25D366', borderRadius: Radius.xl, paddingVertical: 12, shadowColor: '#25D366', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  sponsoredWaBtnText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
   bannerWrap: { width: '100%', borderRadius: Radius.xl, overflow: 'hidden', marginBottom: Spacing.lg + 4, position: 'relative', backgroundColor: '#0A6E5C' },
   bannerContent: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.md, paddingBottom: Spacing.lg, gap: 5 },
   bannerTitle: { fontSize: FontSize.xl + 2, fontWeight: '800', color: '#fff', letterSpacing: -0.5, lineHeight: 28, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
