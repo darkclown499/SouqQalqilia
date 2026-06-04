@@ -104,6 +104,7 @@ export default function LoginScreen() {
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneResend, setPhoneResend] = useState(0);
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const [recaptchaReady, setRecaptchaReady] = useState(false);
   const recaptchaRef = useRef<any>(null);
   const phoneResendRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -112,6 +113,16 @@ export default function LoginScreen() {
   const [appleLoading, setAppleLoading] = useState(false);
 
   const isSubmittingRef = useRef(false);
+
+  // Mark reCAPTCHA as ready after mount (ref is set synchronously on render)
+  useEffect(() => {
+    if (Platform.OS === 'web') { setRecaptchaReady(true); return; }
+    // Give the modal one frame to mount and bind its ref
+    const t = setTimeout(() => {
+      if (recaptchaRef.current) setRecaptchaReady(true);
+    }, 600);
+    return () => clearTimeout(t);
+  }, []);
 
   // Card fade animation
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -178,8 +189,12 @@ export default function LoginScreen() {
       if (!app) throw new Error('Firebase not available');
       const auth = getAuth(app);
 
-      if (!recaptchaRef.current)
-        throw new Error(isAr ? 'لم يتم تحميل reCAPTCHA بعد، أعد المحاولة' : 'reCAPTCHA not ready, please try again');
+      if (!recaptchaRef.current || !recaptchaReady) {
+      return showAlert(
+        isAr ? 'جارٍ التهيئة' : 'Please wait',
+        isAr ? 'جارٍ تحميل نظام التحقق، انتظر لحظة وأعد المحاولة' : 'Security check is loading, please wait a moment and try again'
+      );
+    }
 
       const result = await signInWithPhoneNumber(auth, fullPhone, recaptchaRef.current);
       setConfirmationResult(result);
@@ -407,18 +422,22 @@ export default function LoginScreen() {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0A0F0D' : '#0A6E5C'} />
-
-      {/* Firebase reCAPTCHA */}
+      {/* Firebase reCAPTCHA — must be at root level, outside ScrollView */}
       {Platform.OS !== 'web' && FIREBASE_READY ? (
         <FirebaseRecaptchaVerifierModal
-          ref={recaptchaRef}
+          ref={(r) => {
+            recaptchaRef.current = r;
+            if (r && !recaptchaReady) setRecaptchaReady(true);
+          }}
           firebaseConfig={FIREBASE_CONFIG}
           attemptInvisibleVerification
           title={isAr ? 'التحقق من رقم الهاتف' : 'Verify Phone Number'}
           cancelLabel={isAr ? 'إلغاء' : 'Cancel'}
         />
       ) : null}
+      <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0A0F0D' : '#0A6E5C'} />
+
+
 
       {/* Verifying overlay */}
       <Modal visible={verifying} transparent animationType="none" statusBarTranslucent>
@@ -526,6 +545,7 @@ export default function LoginScreen() {
                 setPhoneNumber={setPhoneNumber}
                 loading={phoneLoading}
                 onSend={handleSendPhoneCode}
+                recaptchaReady={recaptchaReady}
                 colors={colors} isAr={isAr}
               />
             ) : (
@@ -653,7 +673,7 @@ export default function LoginScreen() {
 }
 
 // ─── Phone Input Panel ─────────────────────────────────────────────────────────
-function PhoneInputPanel({ phoneNumber, setPhoneNumber, loading, onSend, colors, isAr }: any) {
+function PhoneInputPanel({ phoneNumber, setPhoneNumber, loading, onSend, recaptchaReady, colors, isAr }: any) {
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
@@ -692,12 +712,23 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, loading, onSend, colors,
       </Text>
 
       <Pressable
-        style={({ pressed }) => [s.primaryBtn, { backgroundColor: colors.primary, opacity: pressed || loading ? 0.85 : 1 }]}
+        style={({ pressed }) => [
+          s.primaryBtn,
+          {
+            backgroundColor: (!recaptchaReady || loading) ? colors.textMuted : colors.primary,
+            opacity: pressed ? 0.85 : 1,
+          },
+        ]}
         onPress={onSend}
-        disabled={loading}
+        disabled={loading || !recaptchaReady}
       >
         {loading
           ? <ActivityIndicator size="small" color="#fff" />
+          : !recaptchaReady
+          ? <>
+              <ActivityIndicator size="small" color="#fff" />
+              <Text style={s.primaryBtnText}>{isAr ? 'جارٍ التهيئة...' : 'Initializing...'}</Text>
+            </>
           : <>
               <MaterialIcons name="send" size={16} color="#fff" />
               <Text style={s.primaryBtnText}>{isAr ? 'إرسال رمز التحقق' : 'Send Verification Code'}</Text>
