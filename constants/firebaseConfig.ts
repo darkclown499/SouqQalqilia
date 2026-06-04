@@ -15,12 +15,13 @@
 // values. You already entered these when configuring the backend secrets.
 // ────────────────────────────────────────────────────────────────────────────
 export const FIREBASE_CONFIG = {
-  apiKey: '',            // ← paste your FIREBASE_WEB_API_KEY here
-  projectId: '',         // ← paste your FIREBASE_PROJECT_ID here
-  appId: '',             // ← paste your FIREBASE_APP_ID here
-  authDomain: '',        // ← typically: <projectId>.firebaseapp.com
-  storageBucket: '',     // ← typically: <projectId>.appspot.com
-  messagingSenderId: '', // ← from Firebase project settings (optional)
+  apiKey: 'AIzaSyAoZEglBVjg1mQRaf8bt_lpDLALGaeKI30',
+  projectId: 'sooqqalqilia',
+  appId: '1:622640723046:web:e0109779459ac6d2c329a7',
+  authDomain: 'sooqqalqilia.firebaseapp.com',
+  storageBucket: 'sooqqalqilia.firebasestorage.app',
+  messagingSenderId: '622640723046',
+  measurementId: 'G-8V5GC52Y2S',
 };
 
 /** Returns true only when all required Firebase fields are filled in. */
