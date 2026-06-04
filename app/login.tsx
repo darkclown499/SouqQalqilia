@@ -2,8 +2,11 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, KeyboardAvoidingView,
   Platform, Pressable, ActivityIndicator, Modal, Animated,
-  Dimensions, StatusBar,
+  Dimensions, StatusBar, TextInput,
 } from 'react-native';
+import { FirebaseRecaptchaVerifierModal, FirebaseRecaptchaBanner } from 'expo-firebase-recaptcha';
+import { initializeApp, getApps } from 'firebase/app';
+import { getAuth, signInWithPhoneNumber, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 // Apple Authentication — only available on iOS/macOS, safe-imported
 let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
 try {
@@ -24,7 +27,23 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { APP_NAME, APP_NAME_AR } from '@/constants/config';
 import type { Language } from '@/constants/i18n';
 
-type Mode = 'login' | 'register' | 'otp' | 'forgot' | 'forgot_sent';
+// ─── Firebase setup ─────────────────────────────────────────────────────
+// Firebase web credentials are intentionally public — they identify your project.
+// Update these values from Firebase Console → Project Settings → Your apps → Web
+import { FIREBASE_CONFIG } from '@/constants/firebaseConfig';
+
+function getFirebaseApp() {
+  try {
+    const apps = getApps();
+    if (apps.length > 0) return apps[0];
+    return initializeApp(FIREBASE_CONFIG);
+  } catch (e) {
+    console.warn('Firebase init error:', e);
+    return null;
+  }
+}
+
+type Mode = 'login' | 'register' | 'otp' | 'forgot' | 'forgot_sent' | 'phone' | 'phone_otp';
 
 // ─── Responsive helpers ───────────────────────────────────────────────────────
 function useDimensions() {
@@ -69,6 +88,14 @@ export default function LoginScreen() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [eulaAccepted, setEulaAccepted] = useState(false);
   const [eulaModalVisible, setEulaModalVisible] = useState(false);
+  // Phone auth state
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneOtp, setPhoneOtp] = useState('');
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [phoneResendCooldown, setPhoneResendCooldown] = useState(0);
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const recaptchaVerifierRef = useRef<any>(null);
+  const phoneResendRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const router = useRouter();
   const isSubmittingRef = useRef(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -145,6 +172,16 @@ export default function LoginScreen() {
     Animated.spring(appleScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }).start();
   }, []);
 
+  // Phone resend cooldown
+  useEffect(() => {
+    if (phoneResendCooldown <= 0) {
+      if (phoneResendRef.current) { clearInterval(phoneResendRef.current); phoneResendRef.current = null; }
+      return;
+    }
+    phoneResendRef.current = setInterval(() => setPhoneResendCooldown(v => v <= 1 ? 0 : v - 1), 1000);
+    return () => { if (phoneResendRef.current) clearInterval(phoneResendRef.current); };
+  }, [phoneResendCooldown > 0]);
+
   // Countdown timer for resend
   useEffect(() => {
     if (resendCooldown <= 0) {
@@ -154,6 +191,102 @@ export default function LoginScreen() {
     cooldownRef.current = setInterval(() => setResendCooldown(v => v <= 1 ? 0 : v - 1), 1000);
     return () => { if (cooldownRef.current) clearInterval(cooldownRef.current); };
   }, [resendCooldown > 0]);
+
+  // ── Phone: Send verification code ──
+  const handleSendPhoneCode = async () => {
+    const trimmed = phoneNumber.trim();
+    if (!trimmed || trimmed.length < 7) {
+      return showAlert(
+        isAr ? 'رقم غير صحيح' : 'Invalid Number',
+        isAr ? 'يرجى إدخال رقم هاتف صحيح مع رمز الدولة' : 'Please enter a valid phone number with country code'
+      );
+    }
+    if (phoneLoading || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setPhoneLoading(true);
+    try {
+      const app = getFirebaseApp();
+      if (!app) throw new Error('Firebase not available');
+      const auth = getAuth(app);
+      const result = await signInWithPhoneNumber(auth, trimmed, recaptchaVerifierRef.current);
+      setConfirmationResult(result);
+      resetCardAnim();
+      setMode('phone_otp');
+      setPhoneResendCooldown(60);
+    } catch (e: any) {
+      const msg = e?.message ?? 'Failed to send code';
+      showAlert(isAr ? 'خطأ' : 'Error', msg);
+    } finally {
+      setPhoneLoading(false);
+      isSubmittingRef.current = false;
+    }
+  };
+
+  // ── Phone: Verify OTP & sign into Supabase ──
+  const handleVerifyPhoneOtp = async () => {
+    if (!phoneOtp || phoneOtp.length < 6) {
+      return showAlert(
+        isAr ? 'الرمز مطلوب' : 'Code Required',
+        isAr ? 'يرجى إدخال رمز التحقق المكون من 6 أرقام' : 'Please enter the 6-digit verification code'
+      );
+    }
+    if (!confirmationResult) {
+      return showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'يرجى إعادة إرسال الرمز' : 'Please resend the code');
+    }
+    if (phoneLoading) return;
+    setPhoneLoading(true);
+    try {
+      // 1. Verify code with Firebase
+      const credential = await confirmationResult.confirm(phoneOtp.trim());
+      const firebaseUser = credential.user;
+
+      // 2. Get Firebase ID token
+      const idToken = await firebaseUser.getIdToken();
+
+      // 3. Exchange for Supabase session via Edge Function
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.functions.invoke('sms-auth', {
+        body: { action: 'verify_firebase', idToken },
+      });
+
+      if (error) {
+        let errMsg = error.message;
+        try {
+          const { FunctionsHttpError } = await import('@supabase/supabase-js');
+          if (error instanceof FunctionsHttpError) {
+            const text = await error.context?.text();
+            errMsg = text || errMsg;
+          }
+        } catch { }
+        throw new Error(errMsg);
+      }
+
+      if (data?.session) {
+        const { error: sessErr } = await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+        if (sessErr) throw new Error(sessErr.message);
+        router.replace('/(tabs)');
+      } else {
+        throw new Error('No session returned');
+      }
+    } catch (e: any) {
+      showAlert(isAr ? 'فشل التحقق' : 'Verification Failed', e?.message ?? 'Incorrect code');
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  // ── Phone: Resend code ──
+  const handleResendPhoneCode = async () => {
+    if (phoneResendCooldown > 0 || phoneLoading || isSubmittingRef.current) return;
+    // Reset back to phone input mode and re-trigger
+    setPhoneOtp('');
+    setConfirmationResult(null);
+    resetCardAnim();
+    setMode('phone');
+  };
 
   const togglePassword = useCallback(() => setShowPassword(v => !v), []);
   const toggleConfirmPassword = useCallback(() => setShowConfirmPassword(v => !v), []);
@@ -389,6 +522,16 @@ export default function LoginScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="light-content" backgroundColor="#0A6E5C" />
 
+      {/* Firebase reCAPTCHA verifier — must be in the component tree */}
+      {Platform.OS !== 'web' ? (
+        <FirebaseRecaptchaVerifierModal
+          ref={recaptchaVerifierRef}
+          firebaseConfig={FIREBASE_CONFIG}
+          attemptInvisibleVerification
+          title={isAr ? 'التحقق من رقم الهاتف' : 'Verify Phone Number'}
+          cancelLabel={isAr ? 'إلغاء' : 'Cancel'}
+        />
+      ) : null}
       {/* ── Verifying overlay ── */}
       <Modal visible={verifying} transparent animationType="none" statusBarTranslucent>
         <View style={s.overlay}>
@@ -480,10 +623,10 @@ export default function LoginScreen() {
             },
           ]}
         >
-          {/* ─ Login/Register Tabs ─ */}
-          {(mode === 'login' || mode === 'register') ? (
+          {/* ─ Login/Register/Phone Tabs ─ */}
+          {(mode === 'login' || mode === 'register' || mode === 'phone') ? (
             <View style={[s.tabs, { backgroundColor: colors.background }]}>
-              {(['login', 'register'] as const).map(tab => (
+              {(['login', 'register', 'phone'] as const).map(tab => (
                 <Pressable
                   key={tab}
                   style={[
@@ -492,8 +635,13 @@ export default function LoginScreen() {
                   ]}
                   onPress={() => switchMode(tab)}
                 >
+                  <MaterialIcons
+                    name={tab === 'phone' ? 'phone' : tab === 'login' ? 'login' : 'person-add'}
+                    size={13}
+                    color={mode === tab ? '#fff' : colors.textMuted}
+                  />
                   <Text style={[s.tabText, { color: mode === tab ? '#fff' : colors.textMuted }]}>
-                    {tab === 'login' ? t.signIn : t.register}
+                    {tab === 'login' ? t.signIn : tab === 'register' ? t.register : (isAr ? 'هاتف' : 'Phone')}
                   </Text>
                 </Pressable>
               ))}
@@ -544,6 +692,30 @@ export default function LoginScreen() {
             />
           ) : null}
 
+          {/* ─ Mode: Phone Number Entry ─ */}
+          {mode === 'phone' ? (
+            <PhoneForm
+              phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber}
+              loading={phoneLoading}
+              onSend={handleSendPhoneCode}
+              recaptchaVerifierRef={recaptchaVerifierRef}
+              colors={colors} isAr={isAr}
+            />
+          ) : null}
+
+          {/* ─ Mode: Phone OTP ─ */}
+          {mode === 'phone_otp' ? (
+            <PhoneOtpForm
+              phoneNumber={phoneNumber}
+              otp={phoneOtp} setOtp={setPhoneOtp}
+              resendCooldown={phoneResendCooldown}
+              loading={phoneLoading}
+              onVerify={handleVerifyPhoneOtp}
+              onResend={handleResendPhoneCode}
+              colors={colors} isAr={isAr}
+            />
+          ) : null}
+
           {/* ─ Mode: Forgot Password ─ */}
           {mode === 'forgot' ? (
             <ForgotForm
@@ -576,10 +748,18 @@ export default function LoginScreen() {
               </Text>
             </Text>
           ) : null}
+          {mode === 'phone' ? (
+            <Text style={[s.footerHint, { color: colors.textMuted }]}>
+              {isAr ? 'لديك حساب؟ ' : 'Have an account? '}
+              <Text style={[s.footerLink, { color: colors.primary }]} onPress={() => switchMode('login')}>
+                {t.signIn}
+              </Text>
+            </Text>
+          ) : null}
         </Animated.View>
 
         {/* ── Social Buttons ── */}
-        {(mode === 'login' || mode === 'register') && Platform.OS !== 'web' ? (
+        {(mode === 'login' || mode === 'register' || mode === 'phone') && Platform.OS !== 'web' ? (
           <View style={[s.socialSection, { maxWidth: maxCardWidth, width: '100%', alignSelf: 'center' }]}>
             <View style={s.dividerRow}>
               <View style={s.dividerLine} />
@@ -632,6 +812,119 @@ export default function LoginScreen() {
         colors={colors} t={t} isAr={isAr}
       />
     </KeyboardAvoidingView>
+  );
+}
+
+// ─── Phone Number Form ─────────────────────────────────────────────
+function PhoneForm({ phoneNumber, setPhoneNumber, loading, onSend, recaptchaVerifierRef, colors, isAr }: any) {
+  return (
+    <View style={s.formBody}>
+      <View style={s.centeredHeader}>
+        <View style={[s.iconCircle, { backgroundColor: colors.primaryGhost }]}>
+          <MaterialIcons name="phone-android" size={32} color={colors.primary} />
+        </View>
+        <Text style={[s.formTitle, { color: colors.textPrimary, textAlign: 'center' }]}>
+          {isAr ? 'تسجيل برقم الهاتف' : 'Sign in with Phone'}
+        </Text>
+        <Text style={[s.formSub, { color: colors.textMuted, textAlign: 'center' }]}>
+          {isAr
+            ? 'سيتم إرسال رمز تحقق من 6 أرقام إلى رقمك'
+            : 'A 6-digit verification code will be sent to your number'}
+        </Text>
+      </View>
+
+      {/* Phone input with country code prefix */}
+      <View style={[s.phoneInputWrap, { borderColor: colors.border, backgroundColor: colors.background }]}>
+        <View style={[s.countryCodeBadge, { backgroundColor: colors.primaryGhost }]}>
+          <Text style={[s.countryCodeText, { color: colors.primary }]}>🇵🇸 +970</Text>
+        </View>
+        <TextInput
+          style={[s.phoneInput, { color: colors.textPrimary }]}
+          placeholder={isAr ? '59x xxx xxxx' : '59x xxx xxxx'}
+          placeholderTextColor={colors.textMuted}
+          value={phoneNumber}
+          onChangeText={(v) => {
+            // Auto-prefix +970 if user types without it
+            let cleaned = v.replace(/[^+0-9]/g, '');
+            setPhoneNumber(cleaned);
+          }}
+          keyboardType="phone-pad"
+          autoFocus
+          returnKeyType="send"
+          onSubmitEditing={onSend}
+        />
+      </View>
+
+      <Text style={[s.phoneHint, { color: colors.textMuted }]}>
+        {isAr
+          ? 'أدخل الرقم كاملاً مع رمز الدولة مثال: +970591234567'
+          : 'Enter full number with country code e.g. +970591234567'}
+      </Text>
+
+      <Button
+        label={isAr ? 'إرسال رمز التحقق' : 'Send Verification Code'}
+        onPress={onSend}
+        loading={loading}
+        size="lg"
+      />
+    </View>
+  );
+}
+
+// ─── Phone OTP Form ─────────────────────────────────────────────
+function PhoneOtpForm({ phoneNumber, otp, setOtp, resendCooldown, loading, onVerify, onResend, colors, isAr }: any) {
+  return (
+    <View style={s.formBody}>
+      <View style={s.centeredHeader}>
+        <View style={[s.iconCircle, { backgroundColor: colors.primaryGhost }]}>
+          <MaterialIcons name="sms" size={32} color={colors.primary} />
+        </View>
+        <Text style={[s.formTitle, { color: colors.textPrimary, textAlign: 'center' }]}>
+          {isAr ? 'أدخل رمز التحقق' : 'Enter Verification Code'}
+        </Text>
+        <Text style={[s.formSub, { color: colors.textMuted, textAlign: 'center' }]}>
+          {isAr ? 'تم إرسال رمز مكون من 6 أرقام إلى' : 'A 6-digit code was sent to'}
+        </Text>
+        <View style={[s.emailPill, { backgroundColor: colors.primaryGhost }]}>
+          <MaterialIcons name="phone" size={14} color={colors.primary} />
+          <Text style={[s.emailPillText, { color: colors.primary }]} numberOfLines={1}>{phoneNumber}</Text>
+        </View>
+      </View>
+
+      <TextInput
+        style={[s.otpBigInput, { borderColor: colors.primary, backgroundColor: colors.background, color: colors.textPrimary }]}
+        placeholder="•  •  •  •  •  •"
+        placeholderTextColor={colors.textMuted}
+        value={otp}
+        onChangeText={setOtp}
+        keyboardType="number-pad"
+        maxLength={6}
+        textAlign="center"
+        returnKeyType="done"
+        onSubmitEditing={onVerify}
+        autoFocus
+      />
+
+      <Button
+        label={isAr ? 'تحقق وتسجيل الدخول' : 'Verify & Sign In'}
+        onPress={onVerify}
+        loading={loading}
+        size="lg"
+      />
+
+      <Pressable
+        style={[s.resendBtn, { opacity: resendCooldown > 0 ? 0.5 : 1 }]}
+        onPress={onResend}
+        disabled={resendCooldown > 0}
+      >
+        <MaterialIcons name="refresh" size={15} color={resendCooldown > 0 ? colors.textMuted : colors.primary} />
+        <Text style={[s.resendText, { color: resendCooldown > 0 ? colors.textMuted : colors.primary }]}>
+          {resendCooldown > 0
+            ? (isAr ? `إعادة الإرسال (${resendCooldown}ث)` : `Resend Code (${resendCooldown}s)`)
+            : (isAr ? 'إعادة إرسال الرمز' : 'Resend Code')}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -1078,4 +1371,25 @@ const s = StyleSheet.create({
     shadowOpacity: 0.18, shadowRadius: 12, elevation: 8,
   },
   overlayText: { fontSize: FontSize.md, fontWeight: '600', color: '#1a1a1a' },
+
+  // Phone auth
+  phoneInputWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1.5, borderRadius: Radius.md,
+    overflow: 'hidden', height: 52,
+  },
+  countryCodeBadge: {
+    paddingHorizontal: Spacing.md, height: '100%',
+    alignItems: 'center', justifyContent: 'center',
+    borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.08)',
+  },
+  countryCodeText: { fontSize: FontSize.sm, fontWeight: '700' },
+  phoneInput: { flex: 1, paddingHorizontal: Spacing.md, fontSize: FontSize.md, height: '100%' },
+  phoneHint: { fontSize: FontSize.xs, marginTop: -8, lineHeight: 18 },
+  otpBigInput: {
+    borderWidth: 2, borderRadius: Radius.lg,
+    paddingVertical: Spacing.md, fontSize: 28,
+    fontWeight: '800', letterSpacing: 8,
+    textAlign: 'center', height: 72,
+  },
 });
