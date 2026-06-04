@@ -6,20 +6,16 @@ preloadBanners().catch(() => {});
 
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, StyleSheet, Dimensions, Animated, Easing,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ONBOARDING_SEEN_KEY } from './onboarding';
 
 const { width: W, height: H } = Dimensions.get('window');
 
 const BG = '#0A6E5C';
-const BG_DARK = '#085A4C';
 const GOLD = '#E8C060';
-const WHITE = '#FFFFFF';
 const WHITE_DIM = 'rgba(255,255,255,0.65)';
 
 const LOADING_MESSAGES = [
@@ -39,33 +35,20 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
   const screenOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Step 1: fade + scale logo in
     Animated.parallel([
-      Animated.timing(logoOpacity, {
-        toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true,
-      }),
-      Animated.spring(logoScale, {
-        toValue: 1, damping: 14, stiffness: 100, useNativeDriver: true,
-      }),
+      Animated.timing(logoOpacity, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.spring(logoScale, { toValue: 1, damping: 14, stiffness: 100, useNativeDriver: true }),
     ]).start();
 
-    // Step 2: after 500ms, fade slogan in
     setTimeout(() => {
       Animated.parallel([
-        Animated.timing(sloganOpacity, {
-          toValue: 1, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true,
-        }),
-        Animated.timing(sloganY, {
-          toValue: 0, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true,
-        }),
+        Animated.timing(sloganOpacity, { toValue: 1, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(sloganY, { toValue: 0, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true }),
       ]).start();
     }, 500);
 
-    // Step 3: at 1.75s fade out and transition
     const t = setTimeout(() => {
-      Animated.timing(screenOpacity, {
-        toValue: 0, duration: 350, useNativeDriver: true,
-      }).start(() => onDone());
+      Animated.timing(screenOpacity, { toValue: 0, duration: 350, useNativeDriver: true }).start(() => onDone());
     }, 1750);
 
     return () => clearTimeout(t);
@@ -73,35 +56,11 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[styles.fullScreen, { backgroundColor: BG, opacity: screenOpacity }]}>
-      {/* Subtle radial glow behind logo */}
       <View style={styles.glow} />
-
-      {/* Logo centered */}
-      <Animated.View
-        style={[
-          styles.logoCenter,
-          { opacity: logoOpacity, transform: [{ scale: logoScale }] },
-        ]}
-      >
-        <Image
-          source={require('@/assets/images/app-logo-transparent.png')}
-          style={styles.logoImgMain}
-          contentFit="contain"
-          transition={0}
-        />
+      <Animated.View style={[styles.logoCenter, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}>
+        <Image source={require('@/assets/images/app-logo-transparent.png')} style={styles.logoImgMain} contentFit="contain" transition={0} />
       </Animated.View>
-
-      {/* Slogan pinned to bottom */}
-      <Animated.View
-        style={[
-          styles.sloganWrap,
-          {
-            opacity: sloganOpacity,
-            transform: [{ translateY: sloganY }],
-            bottom: insets.bottom + 64,
-          },
-        ]}
-      >
+      <Animated.View style={[styles.sloganWrap, { opacity: sloganOpacity, transform: [{ translateY: sloganY }], bottom: insets.bottom + 64 }]}>
         <View style={styles.sloganLine} />
         <Text style={styles.sloganText}>سوق قلقيلية.. خيرات بلادنا بين يديك</Text>
         <View style={styles.sloganLine} />
@@ -113,173 +72,93 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
 // ─── Phase 2: Loading Screen ─────────────────────────────────────────────────
 function LoadingPhase({ onDone }: { onDone: () => void }) {
   const insets = useSafeAreaInsets();
-
   const screenOpacity = useRef(new Animated.Value(0)).current;
   const logoY         = useRef(new Animated.Value(20)).current;
   const logoOpacity   = useRef(new Animated.Value(0)).current;
   const barWidth      = useRef(new Animated.Value(0)).current;
   const shimmerX      = useRef(new Animated.Value(-200)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
-
   const [msgIndex, setMsgIndex] = useState(0);
   const msgOpacity = useRef(new Animated.Value(0)).current;
 
-  // Fade in full screen, then animate components
   useEffect(() => {
-    Animated.timing(screenOpacity, {
-      toValue: 1, duration: 280, useNativeDriver: true,
-    }).start(() => {
-      // Logo slides down from offset + fades in
+    Animated.timing(screenOpacity, { toValue: 1, duration: 280, useNativeDriver: true }).start(() => {
       Animated.parallel([
-        Animated.timing(logoOpacity, {
-          toValue: 1, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true,
-        }),
-        Animated.timing(logoY, {
-          toValue: 0, duration: 450, easing: Easing.out(Easing.back(1.1)), useNativeDriver: true,
-        }),
+        Animated.timing(logoOpacity, { toValue: 1, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(logoY, { toValue: 0, duration: 450, easing: Easing.out(Easing.back(1.1)), useNativeDriver: true }),
       ]).start(() => {
-        // Progress bar + content fade in
         Animated.parallel([
-          Animated.timing(contentOpacity, {
-            toValue: 1, duration: 350, useNativeDriver: true,
-          }),
-          Animated.timing(barWidth, {
-            toValue: W * 0.68,
-            duration: 2200,
-            easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
-            useNativeDriver: false,
-          }),
+          Animated.timing(contentOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+          Animated.timing(barWidth, { toValue: W * 0.68, duration: 2200, easing: Easing.bezier(0.25, 0.46, 0.45, 0.94), useNativeDriver: false }),
         ]).start();
-
-        // Shimmer loop
         Animated.loop(
           Animated.sequence([
-            Animated.timing(shimmerX, {
-              toValue: W * 0.75, duration: 1000, easing: Easing.linear, useNativeDriver: true,
-            }),
-            Animated.timing(shimmerX, {
-              toValue: -200, duration: 0, useNativeDriver: true,
-            }),
+            Animated.timing(shimmerX, { toValue: W * 0.75, duration: 1000, easing: Easing.linear, useNativeDriver: true }),
+            Animated.timing(shimmerX, { toValue: -200, duration: 0, useNativeDriver: true }),
             Animated.delay(400),
           ])
         ).start();
       });
     });
 
-    // Rotating messages
-    const fadeMsgIn = () => {
-      Animated.timing(msgOpacity, {
-        toValue: 1, duration: 380, useNativeDriver: true,
-      }).start();
-    };
-
-    fadeMsgIn();
+    Animated.timing(msgOpacity, { toValue: 1, duration: 380, useNativeDriver: true }).start();
     const cycle = setInterval(() => {
-      Animated.timing(msgOpacity, {
-        toValue: 0, duration: 280, useNativeDriver: true,
-      }).start(() => {
+      Animated.timing(msgOpacity, { toValue: 0, duration: 280, useNativeDriver: true }).start(() => {
         setMsgIndex(i => (i + 1) % LOADING_MESSAGES.length);
-        Animated.timing(msgOpacity, {
-          toValue: 1, duration: 380, useNativeDriver: true,
-        }).start();
+        Animated.timing(msgOpacity, { toValue: 1, duration: 380, useNativeDriver: true }).start();
       });
     }, 1600);
 
-    // Complete after 2.8s
     const t = setTimeout(() => {
       clearInterval(cycle);
-      Animated.timing(screenOpacity, {
-        toValue: 0, duration: 350, useNativeDriver: true,
-      }).start(() => onDone());
+      Animated.timing(screenOpacity, { toValue: 0, duration: 350, useNativeDriver: true }).start(() => onDone());
     }, 2800);
 
-    return () => {
-      clearTimeout(t);
-      clearInterval(cycle);
-    };
+    return () => { clearTimeout(t); clearInterval(cycle); };
   }, []);
 
   return (
     <Animated.View style={[styles.fullScreen, { backgroundColor: BG, opacity: screenOpacity }]}>
       <View style={styles.glow} />
-
-      {/* Logo — shifted slightly above center */}
-      <Animated.View
-        style={[
-          styles.logoAboveCenter,
-          { opacity: logoOpacity, transform: [{ translateY: logoY }] },
-        ]}
-      >
-        <Image
-          source={require('@/assets/images/app-logo-transparent.png')}
-          style={styles.logoImgLoading}
-          contentFit="contain"
-          transition={0}
-        />
+      <Animated.View style={[styles.logoAboveCenter, { opacity: logoOpacity, transform: [{ translateY: logoY }] }]}>
+        <Image source={require('@/assets/images/app-logo-transparent.png')} style={styles.logoImgLoading} contentFit="contain" transition={0} />
         <Text style={styles.appTitleLoading}>سوق قلقيلية</Text>
       </Animated.View>
-
-      {/* Progress bar + rotating text */}
       <Animated.View style={[styles.bottomContent, { opacity: contentOpacity, paddingBottom: insets.bottom + 80 }]}>
-        {/* Rotating message */}
-        <Animated.Text style={[styles.loadingMsg, { opacity: msgOpacity }]}>
-          {LOADING_MESSAGES[msgIndex]}
-        </Animated.Text>
-
-        {/* Progress bar */}
+        <Animated.Text style={[styles.loadingMsg, { opacity: msgOpacity }]}>{LOADING_MESSAGES[msgIndex]}</Animated.Text>
         <View style={styles.progressTrack}>
           <Animated.View style={[styles.progressFill, { width: barWidth }]}>
-            <Animated.View
-              style={[styles.progressShimmer, { transform: [{ translateX: shimmerX }] }]}
-            />
+            <Animated.View style={[styles.progressShimmer, { transform: [{ translateX: shimmerX }] }]} />
           </Animated.View>
         </View>
-
-        {/* Dots */}
         <LoadingDots />
       </Animated.View>
     </Animated.View>
   );
 }
 
-// ─── Animated loading dots ───────────────────────────────────────────────────
 function LoadingDots() {
   const dots = [
     useRef(new Animated.Value(0.4)).current,
     useRef(new Animated.Value(0.4)).current,
     useRef(new Animated.Value(0.4)).current,
   ];
-
   useEffect(() => {
     dots.forEach((dot, i) => {
       Animated.loop(
         Animated.sequence([
           Animated.delay(i * 200),
-          Animated.timing(dot, {
-            toValue: 1, duration: 400, useNativeDriver: true,
-          }),
-          Animated.timing(dot, {
-            toValue: 0.4, duration: 400, useNativeDriver: true,
-          }),
+          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0.4, duration: 400, useNativeDriver: true }),
           Animated.delay((dots.length - i - 1) * 200),
         ])
       ).start();
     });
   }, []);
-
   return (
     <View style={styles.dotsWrap}>
       {dots.map((d, i) => (
-        <Animated.View
-          key={i}
-          style={[
-            styles.loadingDot,
-            {
-              opacity: d,
-              backgroundColor: i === 1 ? GOLD : 'rgba(255,255,255,0.8)',
-            },
-          ]}
-        />
+        <Animated.View key={i} style={[styles.loadingDot, { opacity: d, backgroundColor: i === 1 ? GOLD : 'rgba(255,255,255,0.8)' }]} />
       ))}
     </View>
   );
@@ -288,30 +167,12 @@ function LoadingDots() {
 // ─── Root ────────────────────────────────────────────────────────────────────
 export default function RootScreen() {
   const [phase, setPhase] = useState<'launch' | 'loading' | 'done'>('launch');
-  const [route, setRoute] = useState<{ showOnboarding: boolean } | null>(null);
 
-  useEffect(() => {
-    AsyncStorage.getItem(ONBOARDING_SEEN_KEY).then(val => {
-      setRoute({ showOnboarding: !val });
-    });
-  }, []);
-
-  if (phase === 'launch') {
-    return <LaunchPhase onDone={() => setPhase('loading')} />;
-  }
-
-  if (phase === 'loading') {
-    return <LoadingPhase onDone={() => setPhase('done')} />;
-  }
-
-  if (!route) return null;
-
-  if (route.showOnboarding) return <Redirect href="/onboarding" />;
-
+  if (phase === 'launch') return <LaunchPhase onDone={() => setPhase('loading')} />;
+  if (phase === 'loading') return <LoadingPhase onDone={() => setPhase('done')} />;
   return <Redirect href="/(tabs)" />;
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   fullScreen: {
     ...StyleSheet.absoluteFillObject,
@@ -319,123 +180,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-
-  // Radial glow
   glow: {
     position: 'absolute',
-    width: W * 1.2,
-    height: W * 1.2,
+    width: W * 1.2, height: W * 1.2,
     borderRadius: W * 0.6,
     backgroundColor: 'rgba(255,255,255,0.04)',
     top: H * 0.5 - W * 0.6,
     left: -W * 0.1,
   },
-
-  // ── Phase 1 ──
-  logoCenter: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoImgMain: {
-    width: W * 0.46,
-    height: W * 0.46,
-  },
-
-  sloganWrap: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    alignItems: 'center',
-    gap: 10,
-  },
-  sloganLine: {
-    width: 48,
-    height: 1.5,
-    backgroundColor: GOLD,
-    opacity: 0.7,
-    borderRadius: 99,
-  },
-  sloganText: {
-    color: GOLD,
-    fontSize: 17,
-    fontWeight: '700',
-    textAlign: 'center',
-    letterSpacing: 0.4,
-    lineHeight: 26,
-    textShadowColor: 'rgba(0,0,0,0.15)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-
-  // ── Phase 2 ──
-  logoAboveCenter: {
-    alignItems: 'center',
-    marginTop: -H * 0.1,
-    gap: 14,
-  },
-  logoImgLoading: {
-    width: W * 0.36,
-    height: W * 0.36,
-  },
-  appTitleLoading: {
-    color: WHITE,
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    textAlign: 'center',
-    opacity: 0.95,
-  },
-
-  bottomContent: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 32,
-  },
-
-  loadingMsg: {
-    color: WHITE_DIM,
-    fontSize: 13.5,
-    fontWeight: '500',
-    textAlign: 'center',
-    letterSpacing: 0.2,
-    lineHeight: 20,
-  },
-
-  progressTrack: {
-    width: W * 0.68,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 99,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: GOLD,
-    borderRadius: 99,
-    overflow: 'hidden',
-  },
-  progressShimmer: {
-    position: 'absolute',
-    top: 0,
-    width: 80,
-    height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderRadius: 99,
-  },
-
-  dotsWrap: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  loadingDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-  },
+  logoCenter: { alignItems: 'center', justifyContent: 'center' },
+  logoImgMain: { width: W * 0.46, height: W * 0.46 },
+  sloganWrap: { position: 'absolute', left: 24, right: 24, alignItems: 'center', gap: 10 },
+  sloganLine: { width: 48, height: 1.5, backgroundColor: GOLD, opacity: 0.7, borderRadius: 99 },
+  sloganText: { color: GOLD, fontSize: 17, fontWeight: '700', textAlign: 'center', letterSpacing: 0.4, lineHeight: 26 },
+  logoAboveCenter: { alignItems: 'center', marginTop: -H * 0.1, gap: 14 },
+  logoImgLoading: { width: W * 0.36, height: W * 0.36 },
+  appTitleLoading: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', letterSpacing: 0.3, textAlign: 'center', opacity: 0.95 },
+  bottomContent: { position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', gap: 14, paddingHorizontal: 32 },
+  loadingMsg: { color: WHITE_DIM, fontSize: 13.5, fontWeight: '500', textAlign: 'center', letterSpacing: 0.2, lineHeight: 20 },
+  progressTrack: { width: W * 0.68, height: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 99, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: GOLD, borderRadius: 99, overflow: 'hidden' },
+  progressShimmer: { position: 'absolute', top: 0, width: 80, height: '100%', backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 99 },
+  dotsWrap: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 2 },
+  loadingDot: { width: 7, height: 7, borderRadius: 3.5 },
 });

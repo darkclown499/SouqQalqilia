@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, Switch, TextInput,
-  KeyboardAvoidingView, Platform, Linking, Animated as RNAnimated, Modal, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, Pressable, TextInput,
+  KeyboardAvoidingView, Platform, Linking, Modal, ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,33 +34,25 @@ function AnimatedSwitch({ value, onValueChange, colors }: {
   const translateX = useSharedValue(value ? 22 : 2);
   const trackColor = useSharedValue(value ? 1 : 0);
   const starOpacity = useSharedValue(value ? 1 : 0);
-  const sunRotate = useSharedValue(value ? 0 : 1);
 
   const handleToggle = useCallback(() => {
     const next = !value;
     translateX.value = withSpring(next ? 22 : 2, { damping: 12, stiffness: 200 });
     trackColor.value = withTiming(next ? 1 : 0, { duration: 280 });
     starOpacity.value = withTiming(next ? 1 : 0, { duration: 240 });
-    sunRotate.value = withSequence(
-      withSpring(next ? 0 : 1.2, { damping: 10, stiffness: 180 }),
-      withSpring(next ? 0 : 1, { damping: 14, stiffness: 120 })
-    );
     onValueChange(next);
   }, [value]);
 
   const thumbStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
   }));
-
   const trackStyle = useAnimatedStyle(() => ({
     backgroundColor: trackColor.value > 0.5 ? colors.primary : colors.border,
   }));
-
   const moonStyle = useAnimatedStyle(() => ({
     opacity: starOpacity.value,
     transform: [{ scale: withSpring(value ? 1 : 0.4, { damping: 12 }) }],
   }));
-
   const sunStyle = useAnimatedStyle(() => ({
     opacity: withTiming(value ? 0 : 1, { duration: 200 }),
     transform: [{ scale: withSpring(value ? 0.4 : 1, { damping: 12 }) }],
@@ -69,15 +61,12 @@ function AnimatedSwitch({ value, onValueChange, colors }: {
   return (
     <Pressable onPress={handleToggle} hitSlop={8}>
       <Animated.View style={[switchS.track, trackStyle]}>
-        {/* Moon icon */}
         <Animated.View style={[switchS.icon, moonStyle]}>
           <MaterialIcons name="nightlight-round" size={14} color="#fff" />
         </Animated.View>
-        {/* Sun icon */}
         <Animated.View style={[switchS.icon, sunStyle]}>
           <MaterialIcons name="wb-sunny" size={14} color="#F59E0B" />
         </Animated.View>
-        {/* Thumb */}
         <Animated.View style={[switchS.thumb, thumbStyle]} />
       </Animated.View>
     </Pressable>
@@ -85,27 +74,9 @@ function AnimatedSwitch({ value, onValueChange, colors }: {
 }
 
 const switchS = StyleSheet.create({
-  track: {
-    width: 50, height: 28, borderRadius: 14,
-    position: 'relative', overflow: 'hidden',
-    justifyContent: 'center',
-  },
-  thumb: {
-    position: 'absolute',
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.22,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  icon: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    left: 0, right: 0, top: 0, bottom: 0,
-  },
+  track: { width: 50, height: 28, borderRadius: 14, position: 'relative', overflow: 'hidden', justifyContent: 'center' },
+  thumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.22, shadowRadius: 3, elevation: 3 },
+  icon: { position: 'absolute', alignItems: 'center', justifyContent: 'center', left: 0, right: 0, top: 0, bottom: 0 },
 });
 
 // ─── Section Header ───────────────────────────────────────────────────────────
@@ -125,6 +96,32 @@ const sH = StyleSheet.create({
   icon: { width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
 });
+
+// ─── Setting Row ─────────────────────────────────────────────────────────────
+function SettingRow({ icon, iconBg, iconColor, label, sub, isRTL, colors, onPress, right, danger, borderBottom = true }: any) {
+  const content = (
+    <View style={[styles.sRowInner, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomWidth: borderBottom ? 1 : 0, borderBottomColor: colors.borderLight }]}>
+      <View style={[styles.sRowIcon, { backgroundColor: iconBg }]}>
+        <MaterialIcons name={icon} size={20} color={iconColor} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.sRowLabel, { color: danger ? colors.error : colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{label}</Text>
+        {sub ? <Text style={[styles.sRowSub, { color: danger ? colors.error + 'AA' : colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{sub}</Text> : null}
+      </View>
+      {right ?? <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />}
+    </View>
+  );
+
+  if (!onPress) return content;
+  return (
+    <Pressable
+      style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1 }]}
+      onPress={onPress}
+    >
+      {content}
+    </Pressable>
+  );
+}
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -149,6 +146,7 @@ export default function ProfileScreen() {
   const [unblockingId, setUnblockingId] = useState<string | null>(null);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [activeTab, setActiveTab] = useState<'listings' | 'settings'>('listings');
 
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
 
@@ -267,9 +265,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleDeleteAccount = () => {
-    setDeleteConfirmVisible(true);
-  };
+  const handleDeleteAccount = () => setDeleteConfirmVisible(true);
 
   const confirmDeleteAccount = async () => {
     setDeletingAccount(true);
@@ -278,7 +274,7 @@ export default function ProfileScreen() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         setDeleteConfirmVisible(false);
-        return showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'لا توجد جلسة نشطة. يرجى تسجيل الدخول مجدداً.' : 'No active session. Please sign in again.');
+        return showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'لا توجد جلسة نشطة.' : 'No active session.');
       }
       const { error } = await supabase.functions.invoke('delete-account', { body: {}, headers: { Authorization: `Bearer ${session.access_token}` } });
       if (error) {
@@ -302,9 +298,7 @@ export default function ProfileScreen() {
     if (!user?.email) return;
     showAlert(
       isRTL ? 'تغيير كلمة المرور' : 'Change Password',
-      isRTL
-        ? `هل تريد إرسال رابط تغيير كلمة المرور إلى ${user.email}؟`
-        : `Send a password reset link to ${user.email}?`,
+      isRTL ? `هل تريد إرسال رابط تغيير كلمة المرور إلى ${user.email}؟` : `Send a password reset link to ${user.email}?`,
       [
         { text: isRTL ? 'إلغاء' : 'Cancel', style: 'cancel' },
         {
@@ -317,12 +311,7 @@ export default function ProfileScreen() {
                 : 'souqqalqilya://auth/callback';
               const { error } = await supabase.auth.resetPasswordForEmail(user.email!, { redirectTo });
               if (error) throw error;
-              showAlert(
-                isRTL ? 'تم الإرسال' : 'Email Sent',
-                isRTL
-                  ? `تم إرسال رابط تغيير كلمة المرور إلى ${user.email}`
-                  : `A password reset link has been sent to ${user.email}`
-              );
+              showAlert(isRTL ? 'تم الإرسال' : 'Email Sent', isRTL ? `تم إرسال رابط إعادة التعيين إلى ${user.email}` : `A reset link was sent to ${user.email}`);
             } catch (e: any) {
               showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to send reset link');
             }
@@ -339,19 +328,24 @@ export default function ProfileScreen() {
 
   const openLink = (url: string) => Linking.openURL(url).catch(() => {});
 
+  // ── Guest View ──
   if (!user) {
     return (
-      <View style={[styles.guestOuter, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <View style={[styles.guestHeader, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.guestHeaderTitle, textAlign]}>{t.profileTitle}</Text>
+      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <View style={[styles.guestHero, { backgroundColor: colors.primary }]}>
+          <View style={[styles.guestAvatarRing, { borderColor: 'rgba(255,255,255,0.3)' }]}>
+            <View style={[styles.guestAvatarInner, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+              <MaterialIcons name="person-outline" size={40} color="rgba(255,255,255,0.9)" />
+            </View>
+          </View>
+          <Text style={styles.guestHeroTitle}>{isRTL ? 'ملفي الشخصي' : 'My Profile'}</Text>
+          <Text style={styles.guestHeroSub}>{t.notSignedInSub}</Text>
         </View>
         <View style={styles.guestBody}>
-          <View style={[styles.guestAvatarCircle, { backgroundColor: colors.surfaceTint }]}>
-            <MaterialIcons name="person-outline" size={48} color={colors.primary} />
-          </View>
-          <Text style={[styles.guestTitle, { color: colors.textPrimary }]}>{t.notSignedIn}</Text>
-          <Text style={[styles.guestSub, { color: colors.textMuted }]}>{t.notSignedInSub}</Text>
-          <Button label={t.signInRegister} onPress={() => router.push('/login')} style={styles.guestBtn} />
+          <Pressable style={[styles.guestLoginBtn, { backgroundColor: colors.primary }]} onPress={() => router.push('/login')}>
+            <MaterialIcons name="login" size={20} color="#fff" />
+            <Text style={styles.guestLoginText}>{t.signInRegister}</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -368,497 +362,448 @@ export default function ProfileScreen() {
 
           {/* ── HERO ── */}
           <View style={[styles.hero, { backgroundColor: colors.primary }]}>
-            <Pressable style={styles.avatarContainer} onPress={handlePickAvatar} disabled={avatarLoading}>
+            {/* Avatar */}
+            <Pressable style={styles.avatarWrap} onPress={handlePickAvatar} disabled={avatarLoading}>
               {avatarUrl ? (
                 <Image source={{ uri: avatarUrl }} style={styles.avatarImg} contentFit="cover" transition={200} />
               ) : (
-                <View style={[styles.avatarPlaceholder, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                <View style={[styles.avatarPlaceholder, { backgroundColor: 'rgba(255,255,255,0.22)' }]}>
                   <Text style={styles.avatarInitial}>{displayName.charAt(0).toUpperCase()}</Text>
                 </View>
               )}
-              <View style={[styles.cameraOverlay, { backgroundColor: colors.accent }]}>
-                <MaterialIcons name={avatarLoading ? 'hourglass-empty' : 'camera-alt'} size={14} color="#fff" />
+              <View style={[styles.avatarCamBtn, { backgroundColor: colors.accent }]}>
+                <MaterialIcons name={avatarLoading ? 'hourglass-empty' : 'camera-alt'} size={13} color="#fff" />
               </View>
             </Pressable>
+
+            {/* Name + badges */}
             <Text style={styles.heroName}>{displayName}</Text>
             <Text style={styles.heroEmail}>{user.email}</Text>
-            {isAdmin ? (
-              <View style={[styles.adminChip, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
-                <MaterialIcons name="verified" size={13} color="#fff" />
-                <Text style={styles.adminChipText}>Administrator</Text>
-              </View>
-            ) : null}
-            {isVerified && !isAdmin ? (
-              <View style={[styles.adminChip, { backgroundColor: 'rgba(37,99,235,0.3)' }]}>
-                <MaterialIcons name="verified" size={13} color="#93C5FD" />
-                <Text style={[styles.adminChipText, { color: '#BFDBFE' }]}>{isRTL ? 'بائع موثّق' : 'Verified Seller'}</Text>
-              </View>
-            ) : null}
-            <View style={[styles.statsCard, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
+
+            <View style={styles.heroBadges}>
+              {isAdmin ? (
+                <View style={[styles.heroBadge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                  <MaterialIcons name="verified" size={12} color="#fff" />
+                  <Text style={styles.heroBadgeText}>Admin</Text>
+                </View>
+              ) : null}
+              {isVerified && !isAdmin ? (
+                <View style={[styles.heroBadge, { backgroundColor: 'rgba(37,99,235,0.35)' }]}>
+                  <MaterialIcons name="verified" size={12} color="#93C5FD" />
+                  <Text style={[styles.heroBadgeText, { color: '#BFDBFE' }]}>{isRTL ? 'موثّق' : 'Verified'}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            {/* Stats row */}
+            <View style={[styles.statsRow, { backgroundColor: 'rgba(0,0,0,0.12)' }]}>
               {[
                 { num: activeAds.length, label: t.active, icon: 'storefront' },
                 { num: soldAds.length, label: t.sold, icon: 'check-circle-outline' },
                 { num: ads.length, label: t.total, icon: 'list-alt' },
               ].map((s, i, arr) => (
                 <React.Fragment key={s.label}>
-                  <View style={styles.stat}>
-                    <MaterialIcons name={s.icon as any} size={16} color="rgba(255,255,255,0.7)" />
+                  <View style={styles.statItem}>
                     <Text style={styles.statNum}>{s.num}</Text>
                     <Text style={styles.statLabel}>{s.label}</Text>
                   </View>
-                  {i < arr.length - 1 ? <View style={styles.statDivider} /> : null}
+                  {i < arr.length - 1 ? <View style={styles.statDiv} /> : null}
                 </React.Fragment>
               ))}
             </View>
           </View>
 
-          {/* ── QUICK TILES ── */}
-          <View style={[styles.tilesWrap, { backgroundColor: colors.surface }]}>
-            <View style={[styles.tilesGrid, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              {[
-                { icon: 'manage-accounts', label: t.editProfile, color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
-                { icon: 'add-circle-outline', label: t.postAd, color: colors.primary, bg: colors.primaryGhost, onPress: () => router.push('/(tabs)/post') },
-                { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
-                { icon: 'help-outline', label: isRTL ? 'المساعدة' : 'Help', color: '#7C3AED', bg: '#EDE9FE', onPress: () => router.push('/faq') },
-                ...(isAdmin ? [{ icon: 'admin-panel-settings', label: t.adminAccess, color: colors.accentDark, bg: colors.accentLight, onPress: () => router.push('/admin') }] : []),
-              ].map((tile) => (
-                <Pressable
-                  key={tile.label}
-                  style={({ pressed }) => [styles.tile, { backgroundColor: colors.background, opacity: pressed ? 0.7 : 1 }]}
-                  onPress={tile.onPress}
-                >
-                  <View style={[styles.tileIcon, { backgroundColor: tile.bg }]}>
-                    <MaterialIcons name={tile.icon as any} size={22} color={tile.color} />
-                  </View>
-                  <Text style={[styles.tileLabel, { color: colors.textSecondary }]} numberOfLines={1}>{tile.label}</Text>
-                </Pressable>
-              ))}
-            </View>
+          {/* ── QUICK ACTIONS ── */}
+          <View style={[styles.actionsRow, { backgroundColor: colors.surface }]}>
+            {[
+              { icon: 'edit', label: isRTL ? 'تعديل الملف' : 'Edit Profile', color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
+              { icon: 'add-circle-outline', label: isRTL ? 'نشر إعلان' : 'Post Ad', color: colors.primary, bg: colors.primaryGhost, onPress: () => router.push('/(tabs)/post') },
+              { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
+              ...(isAdmin ? [{ icon: 'admin-panel-settings', label: isRTL ? 'الإدارة' : 'Admin', color: '#D97706', bg: '#FEF3C7', onPress: () => router.push('/admin') }] : []),
+            ].map((a) => (
+              <Pressable
+                key={a.label}
+                style={({ pressed }) => [styles.actionTile, { opacity: pressed ? 0.7 : 1 }]}
+                onPress={a.onPress}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: a.bg }]}>
+                  <MaterialIcons name={a.icon as any} size={22} color={a.color} />
+                </View>
+                <Text style={[styles.actionLabel, { color: colors.textSecondary }]} numberOfLines={1}>{a.label}</Text>
+              </Pressable>
+            ))}
           </View>
 
           {/* ── EDIT PROFILE ── */}
           {editMode ? (
             <View style={[styles.editCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.editCardHeader, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <View style={[styles.editCardIconWrap, { backgroundColor: colors.primaryGhost }]}>
-                  <MaterialIcons name="manage-accounts" size={18} color={colors.primary} />
+              <View style={[styles.editCardHead, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                <View style={[styles.editCardIcon, { backgroundColor: colors.primaryGhost }]}>
+                  <MaterialIcons name="edit" size={16} color={colors.primary} />
                 </View>
                 <Text style={[styles.editCardTitle, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>{t.editProfile}</Text>
                 <Pressable onPress={() => setEditMode(false)} hitSlop={8}><MaterialIcons name="close" size={20} color={colors.textMuted} /></Pressable>
               </View>
-              <Pressable style={[styles.avatarEditRow, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: colors.background, borderColor: colors.border }]} onPress={handlePickAvatar} disabled={avatarLoading}>
-                {avatarUrl ? (<Image source={{ uri: avatarUrl }} style={styles.avatarSmall} contentFit="cover" />) : (<View style={[styles.avatarSmallPlaceholder, { backgroundColor: colors.primary }]}><Text style={styles.avatarSmallText}>{displayName.charAt(0).toUpperCase()}</Text></View>)}
+
+              {/* Avatar row */}
+              <Pressable style={[styles.avatarEditRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderColor: colors.border, backgroundColor: colors.background }]} onPress={handlePickAvatar} disabled={avatarLoading}>
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatarSmall} contentFit="cover" />
+                ) : (
+                  <View style={[styles.avatarSmallPlaceholder, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.avatarSmallText}>{displayName.charAt(0).toUpperCase()}</Text>
+                  </View>
+                )}
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.avatarEditLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{t.changePhoto}</Text>
-                  <Text style={[styles.avatarEditSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{avatarLoading ? t.loading : (isRTL ? 'اضغط لتغيير صورتك' : 'Tap to change your picture')}</Text>
+                  <Text style={[styles.avatarEditSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{avatarLoading ? t.loading : (isRTL ? 'اضغط لتغيير صورتك' : 'Tap to change')}</Text>
                 </View>
                 <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
               </Pressable>
+
               <View style={styles.editFields}>
-                <Text style={[styles.editFieldLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>{t.username}</Text>
-                <TextInput style={[styles.editInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} placeholder={t.usernamePlaceholder} placeholderTextColor={colors.textMuted} value={editName} onChangeText={setEditName} />
-                <Text style={[styles.editFieldLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>{t.profilePhone}</Text>
-                <TextInput style={[styles.editInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} placeholder={t.profilePhonePlaceholder} placeholderTextColor={colors.textMuted} value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" />
+                <Text style={[styles.editLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>{t.username}</Text>
+                <TextInput
+                  style={[styles.editInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
+                  placeholder={t.usernamePlaceholder}
+                  placeholderTextColor={colors.textMuted}
+                  value={editName}
+                  onChangeText={setEditName}
+                />
+                <Text style={[styles.editLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>{t.profilePhone}</Text>
+                <TextInput
+                  style={[styles.editInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
+                  placeholder={t.profilePhonePlaceholder}
+                  placeholderTextColor={colors.textMuted}
+                  value={editPhone}
+                  onChangeText={setEditPhone}
+                  keyboardType="phone-pad"
+                />
               </View>
-              <View style={[styles.editActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <Pressable style={[styles.cancelEditBtn, { borderColor: colors.border }]} onPress={() => setEditMode(false)}><Text style={[styles.cancelEditText, { color: colors.textSecondary }]}>{t.cancel}</Text></Pressable>
-                <Pressable style={[styles.saveEditBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]} onPress={handleSaveProfile} disabled={saving}>
-                  <MaterialIcons name="check" size={16} color="#fff" />
-                  <Text style={styles.saveEditText}>{saving ? t.loading : t.saveChanges}</Text>
+
+              <View style={[styles.editBtns, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                <Pressable style={[styles.editCancelBtn, { borderColor: colors.border }]} onPress={() => setEditMode(false)}>
+                  <Text style={[styles.editCancelText, { color: colors.textSecondary }]}>{t.cancel}</Text>
+                </Pressable>
+                <Pressable style={[styles.editSaveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]} onPress={handleSaveProfile} disabled={saving}>
+                  {saving ? <ActivityIndicator size="small" color="#fff" /> : <MaterialIcons name="check" size={16} color="#fff" />}
+                  <Text style={styles.editSaveText}>{saving ? t.loading : t.saveChanges}</Text>
                 </Pressable>
               </View>
             </View>
           ) : null}
 
-          {/* ══════════════════════════════════════════════
-              SETTINGS CARD
-          ══════════════════════════════════════════════ */}
-          <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-
-            {/* ── APPEARANCE SECTION ── */}
-            <SectionHeader
-              icon="palette"
-              label={isRTL ? 'المظهر' : 'Appearance'}
-              color={colors.primary}
-              bg={colors.primaryGhost}
-            />
-
-            {/* Dark mode */}
-            <View style={[styles.settingRow, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <View style={[styles.settingIconWrap, { backgroundColor: isDark ? '#1E2A3A' : '#FFF7ED' }]}>
-                <MaterialIcons name={isDark ? 'dark-mode' : 'light-mode'} size={20} color={isDark ? '#60A5FA' : '#F59E0B'} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{t.darkMode}</Text>
-                <Text style={[styles.settingSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{isDark ? t.darkModeActive : t.lightModeActive}</Text>
-              </View>
-              <AnimatedSwitch value={isDark} onValueChange={toggleTheme} colors={colors} />
-            </View>
-
-            {/* Language */}
-            <View style={[styles.settingRow, { borderBottomColor: colors.borderLight, borderBottomWidth: 1, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <View style={[styles.settingIconWrap, { backgroundColor: colors.primaryGhost }]}>
-                <MaterialIcons name="language" size={20} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{t.language}</Text>
-                <Text style={[styles.settingSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{t.languageSub}</Text>
-              </View>
-              <View style={[styles.langToggle, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: colors.background, borderColor: colors.border }]}>
-                {(['en', 'ar'] as Language[]).map(lang => (
-                  <Pressable key={lang} style={[styles.langOption, { backgroundColor: language === lang ? colors.primary : 'transparent' }]} onPress={() => setLanguage(lang)}>
-                    <Text style={[styles.langOptionText, { color: language === lang ? '#fff' : colors.textSecondary, fontWeight: language === lang ? '700' : '500' }]}>{lang === 'en' ? 'EN' : 'ع'}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-
-            {/* ── SECURITY & PRIVACY SECTION ── */}
-            <SectionHeader
-              icon="security"
-              label={isRTL ? 'الأمان والخصوصية' : 'Security & Privacy'}
-              color="#7C3AED"
-              bg="#EDE9FE"
-            />
-
-            {/* Change Password */}
-            <Pressable
-              style={[styles.settingRowPressable, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={handleChangePassword}
-            >
-              <View style={[styles.settingIconWrap, { backgroundColor: '#EDE9FE' }]}>
-                <MaterialIcons name="lock-reset" size={20} color="#7C3AED" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
-                  {isRTL ? 'تغيير كلمة المرور' : 'Change Password'}
-                </Text>
-                <Text style={[styles.settingSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
-                  {isRTL ? 'إرسال رابط إعادة تعيين عبر البريد' : 'Send reset link via email'}
-                </Text>
-              </View>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-            </Pressable>
-
-            {/* Linked Accounts */}
-            <Pressable
-              style={[styles.settingRowPressable, { borderBottomColor: colors.borderLight, borderBottomWidth: 1, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={() => showAlert(
-                isRTL ? 'ربط الحسابات' : 'Linked Accounts',
-                isRTL ? 'يمكنك تسجيل الدخول بـ Google أو Apple من صفحة تسجيل الدخول في أي وقت.' : 'You can sign in with Google or Apple from the login screen at any time.'
-              )}
-            >
-              <View style={[styles.settingIconWrap, { backgroundColor: '#EDE9FE' }]}>
-                <MaterialIcons name="link" size={20} color="#7C3AED" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
-                  {isRTL ? 'ربط حسابات التواصل الاجتماعي' : 'Linked Accounts'}
-                </Text>
-                <Text style={[styles.settingSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
-                  {isRTL ? 'Google · Apple' : 'Google · Apple'}
-                </Text>
-              </View>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-            </Pressable>
-
-            {/* ── HELP CENTER SECTION ── */}
-            <SectionHeader
-              icon="support-agent"
-              label={isRTL ? 'مركز المساعدة' : 'Help Center'}
-              color="#0A6E5C"
-              bg={colors.primaryGhost}
-            />
-
-            {/* WhatsApp */}
-            <View style={[styles.waCardWrap, { borderBottomColor: colors.borderLight }]}>
-              <Pressable style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1 }]} onPress={handleWhatsApp}>
-                <View style={styles.waIconBadge}><MaterialIcons name="whatsapp" size={28} color="#fff" /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.waCardTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t.contactSupport}</Text>
-                  <Text style={[styles.waCardSub, { textAlign: isRTL ? 'right' : 'left' }]}>{t.contactSupportSub}</Text>
-                </View>
-                <View style={styles.waArrow}><MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={18} color="#fff" /></View>
-              </Pressable>
-            </View>
-
-            {/* Facebook */}
-            <Pressable
-              style={[styles.settingRowPressable, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={() => openLink(FACEBOOK_URL)}
-            >
-              <View style={[styles.settingIconWrap, { backgroundColor: '#DBEAFE' }]}>
-                <MaterialIcons name="facebook" size={20} color="#1877F2" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'صفحة فيسبوك' : 'Facebook Page'}</Text>
-                <Text style={[styles.settingSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'تابعنا على فيسبوك' : 'Follow us on Facebook'}</Text>
-              </View>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-            </Pressable>
-
-            {/* Instagram */}
-            <Pressable
-              style={[styles.settingRowPressable, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={() => openLink(INSTAGRAM_URL)}
-            >
-              <View style={[styles.settingIconWrap, { backgroundColor: '#FCE7F3' }]}>
-                <MaterialIcons name="photo-camera" size={20} color="#C13584" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'صفحة إنستغرام' : 'Instagram Profile'}</Text>
-                <Text style={[styles.settingSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'تابعنا على إنستغرام' : 'Follow us on Instagram'}</Text>
-              </View>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-            </Pressable>
-
-            {/* FAQ */}
-            <Pressable
-              style={[styles.settingRowPressable, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={() => router.push('/faq')}
-            >
-              <View style={[styles.settingIconWrap, { backgroundColor: '#FEF3C7' }]}>
-                <MaterialIcons name="help-outline" size={20} color="#D97706" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'الأسئلة الشائعة' : 'FAQs'}</Text>
-                <Text style={[styles.settingSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'إجابات على الأسئلة الشائعة' : 'Answers to common questions'}</Text>
-              </View>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-            </Pressable>
-
-            {/* Bug Report Form */}
-            <Pressable
-              style={[styles.settingRowPressable, { borderBottomColor: colors.borderLight, borderBottomWidth: 1, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={() => router.push('/support-form')}
-            >
-              <View style={[styles.settingIconWrap, { backgroundColor: '#FEE2E2' }]}>
-                <MaterialIcons name="bug-report" size={20} color="#EF4444" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'الإبلاغ عن مشكلة' : 'Report a Bug'}</Text>
-                <Text style={[styles.settingSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'أرسل لقطة شاشة ووصف المشكلة' : 'Send a screenshot & issue description'}</Text>
-              </View>
-              <View style={[styles.newBadge, { backgroundColor: colors.primary }]}>
-                <Text style={styles.newBadgeText}>{isRTL ? 'جديد' : 'NEW'}</Text>
-              </View>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-            </Pressable>
-
-            {/* ── ACCOUNT SECTION ── */}
-            <SectionHeader
-              icon="manage-accounts"
-              label={isRTL ? 'الحساب' : 'Account'}
-              color={colors.error}
-              bg={colors.errorLight}
-            />
-
-            {/* Privacy Policy */}
-            <Pressable
-              style={[styles.settingRowPressable, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={() => router.push('/privacy')}
-            >
-              <View style={[styles.settingIconWrap, { backgroundColor: colors.primaryGhost }]}>
-                <MaterialIcons name="privacy-tip" size={20} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{t.privacyPolicy}</Text>
-                <Text style={[styles.settingSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{t.privacyPolicySub}</Text>
-              </View>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-            </Pressable>
-
-            {/* Logout */}
-            <Pressable
-              style={[styles.settingRowPressable, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={handleLogout}
-            >
-              <View style={[styles.settingIconWrap, { backgroundColor: colors.errorLight }]}>
-                <MaterialIcons name="logout" size={20} color={colors.error} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: colors.error, textAlign: isRTL ? 'right' : 'left' }]}>{t.signOut}</Text>
-              </View>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-            </Pressable>
-
-            {/* Delete Account */}
-            <Pressable
-              style={[styles.settingRowPressable, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={handleDeleteAccount}
-            >
-              <View style={[styles.settingIconWrap, { backgroundColor: '#FEE2E2' }]}>
-                <MaterialIcons name="delete-forever" size={20} color="#DC2626" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: '#DC2626', textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'حذف الحساب' : 'Delete Account'}</Text>
-                <Text style={[styles.settingSub, { color: '#EF4444', textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'حذف نهائي لجميع البيانات' : 'Permanently removes all your data'}</Text>
-              </View>
-              <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color="#EF4444" />
-            </Pressable>
+          {/* ── TAB SWITCHER ── */}
+          <View style={[styles.tabBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {[
+              { key: 'listings', icon: 'storefront', label: isRTL ? 'إعلاناتي' : 'My Listings', count: ads.length },
+              { key: 'settings', icon: 'settings', label: isRTL ? 'الإعدادات' : 'Settings', count: 0 },
+            ].map(tab => {
+              const isActive = activeTab === tab.key;
+              return (
+                <Pressable
+                  key={tab.key}
+                  style={[styles.tabBtn, isActive && { borderBottomColor: colors.primary, borderBottomWidth: 2.5 }]}
+                  onPress={() => setActiveTab(tab.key as any)}
+                >
+                  <MaterialIcons name={tab.icon as any} size={18} color={isActive ? colors.primary : colors.textMuted} />
+                  <Text style={[styles.tabBtnText, { color: isActive ? colors.primary : colors.textMuted, fontWeight: isActive ? '700' : '500' }]}>{tab.label}</Text>
+                  {tab.count > 0 ? (
+                    <View style={[styles.tabCount, { backgroundColor: isActive ? colors.primary : colors.border }]}>
+                      <Text style={[styles.tabCountText, { color: isActive ? '#fff' : colors.textMuted }]}>{tab.count}</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              );
+            })}
           </View>
 
-          {/* ── BLOCKED USERS ── */}
-          {blockedUsers.length > 0 ? (
-            <View style={[styles.blockedCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {/* ═══════════════════════ MY LISTINGS TAB ═══════════════════════ */}
+          {activeTab === 'listings' ? (
+            <View style={styles.listingsSection}>
+              {/* Post new button */}
               <Pressable
-                style={[styles.blockedHeader, { borderBottomColor: blockedExpanded ? colors.borderLight : 'transparent', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-                onPress={() => setBlockedExpanded(v => !v)}
+                style={[styles.postNewBtn, { backgroundColor: colors.primary }]}
+                onPress={() => router.push('/(tabs)/post')}
               >
-                <View style={[styles.blockedIconWrap, { backgroundColor: '#FEE2E2' }]}><MaterialIcons name="block" size={18} color="#EF4444" /></View>
-                <Text style={[styles.blockedTitle, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'المستخدمون المحظورون' : 'Blocked Users'}</Text>
-                <View style={[styles.blockedBadge, { backgroundColor: '#EF4444' }]}><Text style={styles.blockedBadgeText}>{blockedUsers.length}</Text></View>
-                <MaterialIcons name={blockedExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={colors.textMuted} style={{ marginLeft: isRTL ? 0 : 4, marginRight: isRTL ? 4 : 0 }} />
+                <MaterialIcons name="add" size={18} color="#fff" />
+                <Text style={styles.postNewText}>{t.postNew}</Text>
               </Pressable>
-              {blockedExpanded ? (
-                <View style={styles.blockedList}>
-                  {blockedUsers.map((bu, idx) => {
-                    const buName = bu.username || bu.email?.split('@')[0] || 'User';
-                    return (
-                      <View key={bu.id} style={[styles.blockedItem, { borderBottomColor: colors.borderLight, borderBottomWidth: idx === blockedUsers.length - 1 ? 0 : 1, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                        {bu.avatar_url ? (<Image source={{ uri: bu.avatar_url }} style={styles.blockedAvatar} contentFit="cover" transition={200} />) : (<View style={[styles.blockedAvatarPlaceholder, { backgroundColor: colors.primaryGhost }]}><Text style={[styles.blockedAvatarText, { color: colors.primary }]}>{buName.charAt(0).toUpperCase()}</Text></View>)}
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.blockedName, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{buName}</Text>
-                          <Text style={[styles.blockedEmail, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{bu.email}</Text>
-                        </View>
-                        <Pressable style={[styles.unblockBtn, { backgroundColor: colors.primaryGhost, opacity: unblockingId === bu.id ? 0.5 : 1 }]} onPress={() => handleUnblock(bu.id, buName)} disabled={unblockingId === bu.id}>
-                          <MaterialIcons name="lock-open" size={14} color={colors.primary} />
-                          <Text style={[styles.unblockBtnText, { color: colors.primary }]}>{isRTL ? 'رفع الحظر' : 'Unblock'}</Text>
-                        </Pressable>
-                      </View>
-                    );
-                  })}
+
+              {ads.length === 0 && !loading ? (
+                <View style={[styles.emptyListings, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[styles.emptyIcon, { backgroundColor: colors.primaryGhost }]}>
+                    <MaterialIcons name="storefront" size={32} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>{t.noListingsYet}</Text>
+                  <Text style={[styles.emptySub, { color: colors.textMuted }]}>{t.noListingsYetSub}</Text>
                 </View>
-              ) : null}
+              ) : (
+                ads.map(ad => (
+                  <View key={ad.id} style={styles.adRow}>
+                    <AdCard ad={ad} />
+                    <View style={[styles.adActions, { flexDirection: isRTL ? 'row' : 'row-reverse' }]}>
+                      {ad.status === 'active' || ad.status === 'featured' ? (
+                        <Pressable
+                          style={[styles.markSoldBtn, { backgroundColor: colors.successLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                          onPress={() => handleMarkSold(ad.id)}
+                        >
+                          <MaterialIcons name="check-circle-outline" size={14} color={colors.success} />
+                          <Text style={[styles.markSoldText, { color: colors.success }]}>{t.markAsSold}</Text>
+                        </Pressable>
+                      ) : (
+                        <View style={[styles.soldChip, { backgroundColor: colors.accentLight }]}>
+                          <Text style={[styles.soldChipText, { color: colors.accentDark }]}>✓ {t.sold.toUpperCase()}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))
+              )}
             </View>
           ) : null}
 
-          {/* ── MY LISTINGS ── */}
-          <View style={styles.listingsSection}>
-            <View style={[styles.listingsHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <View style={[styles.listingsTitleRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <MaterialIcons name="storefront" size={18} color={colors.primary} />
-                <Text style={[styles.listingsTitle, { color: colors.textPrimary }]}>{t.myListings}</Text>
-                <View style={[styles.listingsCountBadge, { backgroundColor: colors.primaryGhost }]}><Text style={[styles.listingsCount, { color: colors.primary }]}>{ads.length}</Text></View>
-              </View>
-              <Pressable style={[styles.postNewBtn, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: colors.primary }]} onPress={() => router.push('/(tabs)/post')}>
-                <MaterialIcons name="add" size={15} color="#fff" />
-                <Text style={styles.postNewText}>{t.postNew}</Text>
-              </Pressable>
-            </View>
-            {ads.length === 0 && !loading ? (
-              <View style={[styles.emptyListings, { backgroundColor: colors.surface }]}>
-                <MaterialIcons name="storefront" size={40} color={colors.textMuted} />
-                <Text style={[styles.emptyListingsTitle, { color: colors.textPrimary }]}>{t.noListingsYet}</Text>
-                <Text style={[styles.emptyListingsSub, { color: colors.textMuted }]}>{t.noListingsYetSub}</Text>
-              </View>
-            ) : (
-              ads.map(ad => (
-                <View key={ad.id} style={styles.adRow}>
-                  <AdCard ad={ad} />
-                  <View style={[styles.adActions, { flexDirection: isRTL ? 'row' : 'row-reverse' }]}>
-                    {ad.status === 'active' || ad.status === 'featured' ? (
-                      <Pressable style={[styles.markSoldBtn, { backgroundColor: colors.successLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]} onPress={() => handleMarkSold(ad.id)}>
-                        <MaterialIcons name="check-circle-outline" size={15} color={colors.success} />
-                        <Text style={[styles.markSoldText, { color: colors.success }]}>{t.markAsSold}</Text>
-                      </Pressable>
-                    ) : (
-                      <View style={[styles.soldChip, { backgroundColor: colors.accentLight }]}><Text style={[styles.soldChipText, { color: colors.accentDark }]}>✓ {t.sold.toUpperCase()}</Text></View>
-                    )}
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
+          {/* ═══════════════════════ SETTINGS TAB ═══════════════════════════ */}
+          {activeTab === 'settings' ? (
+            <View style={styles.settingsSection}>
 
-          {/* ── VERSION FOOTER ── */}
-          <View style={styles.versionFooter}>
-            <View style={[styles.versionDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.versionRow}>
-              <MaterialIcons name="info-outline" size={13} color={colors.textMuted} />
-              <Text style={[styles.versionText, { color: colors.textMuted }]}>
-                {isRTL ? `سوق قلقيلية · الإصدار ${APP_VERSION}` : `Souq Qalqilya · Version ${APP_VERSION}`}
-              </Text>
+              {/* ── APPEARANCE ── */}
+              <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <SectionHeader icon="palette" label={isRTL ? 'المظهر' : 'Appearance'} color={colors.primary} bg={colors.primaryGhost} />
+
+                <SettingRow
+                  icon={isDark ? 'dark-mode' : 'light-mode'}
+                  iconBg={isDark ? '#1E2A3A' : '#FFF7ED'}
+                  iconColor={isDark ? '#60A5FA' : '#F59E0B'}
+                  label={t.darkMode}
+                  sub={isDark ? t.darkModeActive : t.lightModeActive}
+                  isRTL={isRTL} colors={colors}
+                  right={<AnimatedSwitch value={isDark} onValueChange={toggleTheme} colors={colors} />}
+                />
+
+                <SettingRow
+                  icon="language"
+                  iconBg={colors.primaryGhost}
+                  iconColor={colors.primary}
+                  label={t.language}
+                  sub={t.languageSub}
+                  isRTL={isRTL} colors={colors}
+                  borderBottom={false}
+                  right={
+                    <View style={[styles.langToggle, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: colors.background, borderColor: colors.border }]}>
+                      {(['en', 'ar'] as Language[]).map(lang => (
+                        <Pressable key={lang} style={[styles.langOption, { backgroundColor: language === lang ? colors.primary : 'transparent' }]} onPress={() => setLanguage(lang)}>
+                          <Text style={[styles.langOptionText, { color: language === lang ? '#fff' : colors.textSecondary, fontWeight: language === lang ? '700' : '500' }]}>
+                            {lang === 'en' ? 'EN' : 'ع'}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  }
+                />
+              </View>
+
+              {/* ── SECURITY ── */}
+              <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <SectionHeader icon="security" label={isRTL ? 'الأمان والخصوصية' : 'Security & Privacy'} color="#7C3AED" bg="#EDE9FE" />
+
+                <SettingRow
+                  icon="lock-reset" iconBg="#EDE9FE" iconColor="#7C3AED"
+                  label={isRTL ? 'تغيير كلمة المرور' : 'Change Password'}
+                  sub={isRTL ? 'إرسال رابط إعادة تعيين' : 'Send a password reset link'}
+                  isRTL={isRTL} colors={colors} onPress={handleChangePassword}
+                />
+                <SettingRow
+                  icon="link" iconBg="#EDE9FE" iconColor="#7C3AED"
+                  label={isRTL ? 'ربط الحسابات' : 'Linked Accounts'}
+                  sub="Google · Apple"
+                  isRTL={isRTL} colors={colors} borderBottom={false}
+                  onPress={() => showAlert(isRTL ? 'ربط الحسابات' : 'Linked Accounts', isRTL ? 'يمكنك تسجيل الدخول بـ Google أو Apple من شاشة الدخول.' : 'Sign in with Google or Apple from the login screen.')}
+                />
+              </View>
+
+              {/* ── HELP CENTER ── */}
+              <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <SectionHeader icon="support-agent" label={isRTL ? 'مركز المساعدة' : 'Help Center'} color="#0A6E5C" bg={colors.primaryGhost} />
+
+                {/* WhatsApp */}
+                <View style={[styles.waWrap, { borderBottomColor: colors.borderLight }]}>
+                  <Pressable style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1 }]} onPress={handleWhatsApp}>
+                    <View style={styles.waIconBadge}><MaterialIcons name="whatsapp" size={26} color="#fff" /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.waTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t.contactSupport}</Text>
+                      <Text style={[styles.waSub, { textAlign: isRTL ? 'right' : 'left' }]}>{t.contactSupportSub}</Text>
+                    </View>
+                    <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={18} color="#fff" />
+                  </Pressable>
+                </View>
+
+                <SettingRow
+                  icon="facebook" iconBg="#DBEAFE" iconColor="#1877F2"
+                  label={isRTL ? 'صفحة فيسبوك' : 'Facebook Page'}
+                  sub={isRTL ? 'تابعنا على فيسبوك' : 'Follow us on Facebook'}
+                  isRTL={isRTL} colors={colors} onPress={() => openLink(FACEBOOK_URL)}
+                />
+                <SettingRow
+                  icon="photo-camera" iconBg="#FCE7F3" iconColor="#C13584"
+                  label={isRTL ? 'صفحة إنستغرام' : 'Instagram Profile'}
+                  sub={isRTL ? 'تابعنا على إنستغرام' : 'Follow us on Instagram'}
+                  isRTL={isRTL} colors={colors} onPress={() => openLink(INSTAGRAM_URL)}
+                />
+                <SettingRow
+                  icon="help-outline" iconBg="#FEF3C7" iconColor="#D97706"
+                  label={isRTL ? 'الأسئلة الشائعة' : 'FAQs'}
+                  sub={isRTL ? 'إجابات على الأسئلة الشائعة' : 'Common questions answered'}
+                  isRTL={isRTL} colors={colors} onPress={() => router.push('/faq')}
+                />
+                <SettingRow
+                  icon="bug-report" iconBg="#FEE2E2" iconColor="#EF4444"
+                  label={isRTL ? 'الإبلاغ عن مشكلة' : 'Report a Bug'}
+                  sub={isRTL ? 'أرسل وصف المشكلة' : 'Send an issue description'}
+                  isRTL={isRTL} colors={colors} borderBottom={false}
+                  onPress={() => router.push('/support-form')}
+                  right={
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={[styles.newBadge, { backgroundColor: colors.primary }]}>
+                        <Text style={styles.newBadgeText}>{isRTL ? 'جديد' : 'NEW'}</Text>
+                      </View>
+                      <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
+                    </View>
+                  }
+                />
+              </View>
+
+              {/* ── ACCOUNT ── */}
+              <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <SectionHeader icon="manage-accounts" label={isRTL ? 'الحساب' : 'Account'} color={colors.error} bg={colors.errorLight} />
+
+                <SettingRow
+                  icon="privacy-tip" iconBg={colors.primaryGhost} iconColor={colors.primary}
+                  label={t.privacyPolicy} sub={t.privacyPolicySub}
+                  isRTL={isRTL} colors={colors} onPress={() => router.push('/privacy')}
+                />
+                <SettingRow
+                  icon="logout" iconBg={colors.errorLight} iconColor={colors.error}
+                  label={t.signOut}
+                  isRTL={isRTL} colors={colors} danger onPress={handleLogout}
+                />
+                <SettingRow
+                  icon="delete-forever" iconBg="#FEE2E2" iconColor="#DC2626"
+                  label={isRTL ? 'حذف الحساب' : 'Delete Account'}
+                  sub={isRTL ? 'حذف نهائي لجميع البيانات' : 'Permanently removes all your data'}
+                  isRTL={isRTL} colors={colors} danger borderBottom={false}
+                  onPress={handleDeleteAccount}
+                />
+              </View>
+
+              {/* ── BLOCKED USERS ── */}
+              {blockedUsers.length > 0 ? (
+                <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Pressable
+                    style={[styles.blockedHead, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: blockedExpanded ? colors.borderLight : 'transparent' }]}
+                    onPress={() => setBlockedExpanded(v => !v)}
+                  >
+                    <View style={[styles.sRowIcon, { backgroundColor: '#FEE2E2' }]}>
+                      <MaterialIcons name="block" size={18} color="#EF4444" />
+                    </View>
+                    <Text style={[styles.sRowLabel, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
+                      {isRTL ? 'المستخدمون المحظورون' : 'Blocked Users'}
+                    </Text>
+                    <View style={styles.blockedBadge}><Text style={styles.blockedBadgeText}>{blockedUsers.length}</Text></View>
+                    <MaterialIcons name={blockedExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={colors.textMuted} />
+                  </Pressable>
+
+                  {blockedExpanded ? (
+                    <View style={styles.blockedList}>
+                      {blockedUsers.map((bu, idx) => {
+                        const buName = bu.username || bu.email?.split('@')[0] || 'User';
+                        return (
+                          <View key={bu.id} style={[styles.blockedItem, { borderBottomColor: colors.borderLight, borderBottomWidth: idx === blockedUsers.length - 1 ? 0 : 1, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                            {bu.avatar_url ? (
+                              <Image source={{ uri: bu.avatar_url }} style={styles.blockedAvatar} contentFit="cover" transition={200} />
+                            ) : (
+                              <View style={[styles.blockedAvatarPh, { backgroundColor: colors.primaryGhost }]}>
+                                <Text style={[styles.blockedAvatarText, { color: colors.primary }]}>{buName.charAt(0).toUpperCase()}</Text>
+                              </View>
+                            )}
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.blockedName, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{buName}</Text>
+                              <Text style={[styles.blockedEmail, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{bu.email}</Text>
+                            </View>
+                            <Pressable
+                              style={[styles.unblockBtn, { backgroundColor: colors.primaryGhost, opacity: unblockingId === bu.id ? 0.5 : 1 }]}
+                              onPress={() => handleUnblock(bu.id, buName)}
+                              disabled={unblockingId === bu.id}
+                            >
+                              <MaterialIcons name="lock-open" size={13} color={colors.primary} />
+                              <Text style={[styles.unblockBtnText, { color: colors.primary }]}>{isRTL ? 'رفع' : 'Unblock'}</Text>
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {/* ── VERSION FOOTER ── */}
+              <View style={styles.versionFooter}>
+                <View style={[styles.versionDot, { backgroundColor: colors.border }]} />
+                <View style={styles.versionRow}>
+                  <MaterialIcons name="info-outline" size={12} color={colors.textMuted} />
+                  <Text style={[styles.versionText, { color: colors.textMuted }]}>
+                    {isRTL ? `سوق قلقيلية · الإصدار ${APP_VERSION}` : `Souq Qalqilya · Version ${APP_VERSION}`}
+                  </Text>
+                </View>
+                <Text style={[styles.versionSub, { color: colors.border }]}>
+                  {isRTL ? 'بُني بـ ❤ من فريق بلانكتون' : 'Built with ❤ by Plankton Team'}
+                </Text>
+              </View>
+
+              <View style={{ height: 32 }} />
             </View>
-            <Text style={[styles.versionSub, { color: colors.border }]}>
-              {isRTL ? 'بُني بـ ❤ من فريق بلانكتون' : 'Built with ❤ by Plankton Team'}
-            </Text>
-          </View>
+          ) : null}
 
           <View style={{ height: 40 }} />
         </ScrollView>
       </View>
 
-      {/* ── DELETE ACCOUNT CONFIRMATION MODAL ── */}
+      {/* ── DELETE ACCOUNT MODAL ── */}
       <Modal visible={deleteConfirmVisible} transparent animationType="fade" statusBarTranslucent>
         <View style={styles.deleteOverlay}>
           <View style={[styles.deleteSheet, { backgroundColor: colors.surface }]}>
-            {/* Warning Icon */}
             <View style={styles.deleteIconWrap}>
               <View style={[styles.deleteIconOuter, { backgroundColor: '#FEE2E2' }]}>
-                <MaterialIcons name="delete-forever" size={36} color="#DC2626" />
+                <MaterialIcons name="delete-forever" size={34} color="#DC2626" />
               </View>
             </View>
-
-            {/* Title */}
             <Text style={[styles.deleteTitleText, { color: '#DC2626' }]}>
               {isRTL ? 'حذف الحساب نهائياً' : 'Permanently Delete Account'}
             </Text>
             <Text style={[styles.deleteSubText, { color: colors.textMuted }]}>
-              {isRTL
-                ? 'هذا الإجراء لا يمكن التراجع عنه. يرجى قراءة التحذيرات التالية:'
-                : 'This action cannot be undone. Please read the following warnings:'}
+              {isRTL ? 'هذا الإجراء لا يمكن التراجع عنه.' : 'This action cannot be undone.'}
             </Text>
-
-            {/* Warning bullets */}
             <View style={[styles.deleteWarningsCard, { backgroundColor: colors.errorLight, borderColor: '#FCA5A5' }]}>
               {[
-                isRTL ? 'سيتم حذف جميع إعلاناتك المنشورة بشكل دائم' : 'All your posted listings will be permanently deleted',
-                isRTL ? 'ستُحذف جميع محادثاتك ورسائلك نهائياً' : 'All your conversations and messages will be erased',
-                isRTL ? 'سيتم مسح صورك ووسائطك المرفوعة' : 'Your uploaded photos and media will be removed',
-                isRTL ? 'لن تتمكن من استرداد حسابك أو بياناتك أبداً' : 'You will never be able to recover your account or data',
+                isRTL ? 'سيتم حذف جميع إعلاناتك المنشورة' : 'All your listings will be permanently deleted',
+                isRTL ? 'ستُحذف جميع محادثاتك ورسائلك' : 'All your conversations will be erased',
+                isRTL ? 'لن تتمكن من استرداد حسابك أبداً' : 'Your account cannot be recovered',
               ].map((warn, i) => (
                 <View key={i} style={[styles.deleteWarnRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                  <MaterialIcons name="cancel" size={15} color="#DC2626" style={{ marginTop: 1, flexShrink: 0 }} />
+                  <MaterialIcons name="cancel" size={14} color="#DC2626" style={{ flexShrink: 0 }} />
                   <Text style={[styles.deleteWarnText, { color: '#7F1D1D', textAlign: isRTL ? 'right' : 'left' }]}>{warn}</Text>
                 </View>
               ))}
             </View>
-
-            {/* Final confirmation message */}
-            <View style={[styles.deleteConfirmBanner, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
-              <MaterialIcons name="warning" size={16} color="#D97706" />
-              <Text style={[styles.deleteConfirmBannerText, { color: '#92400E', textAlign: isRTL ? 'right' : 'left', flex: 1 }]}>
-                {isRTL
-                  ? 'هل أنت متأكد تماماً؟ هذا الإجراء نهائي ولا يمكن التراجع عنه.'
-                  : 'Are you absolutely sure? This action is final and irreversible.'}
-              </Text>
-            </View>
-
-            {/* Action buttons */}
             <View style={[styles.deleteActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <Pressable
-                style={[styles.deleteCancelBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
-                onPress={() => setDeleteConfirmVisible(false)}
-                disabled={deletingAccount}
-              >
-                <Text style={[styles.deleteCancelText, { color: colors.textSecondary }]}>
-                  {isRTL ? 'إلغاء' : 'Cancel'}
-                </Text>
+              <Pressable style={[styles.deleteCancelBtn, { borderColor: colors.border, backgroundColor: colors.background }]} onPress={() => setDeleteConfirmVisible(false)} disabled={deletingAccount}>
+                <Text style={[styles.deleteCancelText, { color: colors.textSecondary }]}>{isRTL ? 'إلغاء' : 'Cancel'}</Text>
               </Pressable>
-              <Pressable
-                style={[styles.deleteConfirmBtn, { opacity: deletingAccount ? 0.7 : 1 }]}
-                onPress={confirmDeleteAccount}
-                disabled={deletingAccount}
-              >
-                {deletingAccount ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
+              <Pressable style={[styles.deleteConfirmBtn, { opacity: deletingAccount ? 0.7 : 1 }]} onPress={confirmDeleteAccount} disabled={deletingAccount}>
+                {deletingAccount ? <ActivityIndicator size="small" color="#fff" /> : (
                   <>
-                    <MaterialIcons name="delete-forever" size={16} color="#fff" />
-                    <Text style={styles.deleteConfirmText}>
-                      {isRTL ? 'نعم، احذف حسابي' : 'Yes, Delete My Account'}
-                    </Text>
+                    <MaterialIcons name="delete-forever" size={15} color="#fff" />
+                    <Text style={styles.deleteConfirmText}>{isRTL ? 'نعم، احذف حسابي' : 'Delete My Account'}</Text>
                   </>
                 )}
               </Pressable>
@@ -873,100 +818,75 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Hero
-  hero: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl + 8, alignItems: 'center', paddingTop: Spacing.lg },
-  avatarContainer: { position: 'relative', marginBottom: Spacing.md },
-  avatarImg: { width: 96, height: 96, borderRadius: 48, borderWidth: 3, borderColor: 'rgba(255,255,255,0.5)' },
-  avatarPlaceholder: { width: 96, height: 96, borderRadius: 48, borderWidth: 3, borderColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { fontSize: 38, fontWeight: '800', color: '#fff' },
-  cameraOverlay: { position: 'absolute', bottom: 2, right: 2, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
-  heroName: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', marginBottom: 4, letterSpacing: -0.3 },
-  heroEmail: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)', marginBottom: Spacing.sm },
-  adminChip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 5, marginBottom: Spacing.md },
-  adminChipText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700', letterSpacing: 0.5 },
-  statsCard: { flexDirection: 'row', alignItems: 'center', borderRadius: Radius.xl, paddingVertical: 14, paddingHorizontal: Spacing.xl, gap: Spacing.xl, width: '100%', justifyContent: 'center', marginTop: 4 },
-  stat: { alignItems: 'center', gap: 2 },
+  // ── Guest
+  guestHero: { paddingTop: 60, paddingBottom: 48, alignItems: 'center', gap: 12 },
+  guestAvatarRing: { width: 96, height: 96, borderRadius: 48, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
+  guestAvatarInner: { width: 82, height: 82, borderRadius: 41, alignItems: 'center', justifyContent: 'center' },
+  guestHeroTitle: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  guestHeroSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)', textAlign: 'center', paddingHorizontal: 32 },
+  guestBody: { padding: Spacing.lg },
+  guestLoginBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: Radius.xl, ...Shadow.colored },
+  guestLoginText: { color: '#fff', fontSize: FontSize.md, fontWeight: '800' },
+
+  // ── Hero
+  hero: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl, alignItems: 'center', paddingTop: Spacing.lg },
+  avatarWrap: { position: 'relative', marginBottom: 12 },
+  avatarImg: { width: 92, height: 92, borderRadius: 46, borderWidth: 3, borderColor: 'rgba(255,255,255,0.45)' },
+  avatarPlaceholder: { width: 92, height: 92, borderRadius: 46, borderWidth: 3, borderColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: { fontSize: 34, fontWeight: '800', color: '#fff' },
+  avatarCamBtn: { position: 'absolute', bottom: 2, right: 2, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
+  heroName: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', marginBottom: 3, letterSpacing: -0.3 },
+  heroEmail: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.6)', marginBottom: Spacing.sm },
+  heroBadges: { flexDirection: 'row', gap: 8, marginBottom: Spacing.md },
+  heroBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
+  heroBadgeText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
+  statsRow: { flexDirection: 'row', alignItems: 'center', borderRadius: Radius.xl, paddingVertical: 14, paddingHorizontal: Spacing.xl, width: '100%', justifyContent: 'center', marginTop: 4 },
+  statItem: { alignItems: 'center', gap: 2, flex: 1 },
   statNum: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff' },
   statLabel: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.6)' },
-  statDivider: { width: 1, height: 32, backgroundColor: 'rgba(255,255,255,0.2)' },
+  statDiv: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.18)' },
 
-  // Tiles
-  tilesWrap: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, marginTop: 1 },
-  tilesGrid: { flexWrap: 'wrap', gap: Spacing.sm },
-  tile: { alignItems: 'center', gap: 6, paddingHorizontal: 6, paddingVertical: Spacing.md, borderRadius: Radius.lg, minWidth: 64, flex: 1 },
-  tileIcon: { width: 48, height: 48, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
-  tileLabel: { fontSize: FontSize.xs, fontWeight: '600', textAlign: 'center' },
+  // ── Quick Actions
+  actionsRow: { flexDirection: 'row', paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: 'transparent' },
+  actionTile: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: Spacing.sm },
+  actionIcon: { width: 48, height: 48, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
+  actionLabel: { fontSize: FontSize.xs, fontWeight: '600', textAlign: 'center' },
 
-  // Edit profile card
+  // ── Edit Card
   editCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: Radius.xl, borderWidth: 1, padding: Spacing.md, gap: Spacing.sm },
-  editCardHeader: { alignItems: 'center', gap: Spacing.sm, paddingBottom: Spacing.sm, borderBottomWidth: 1, marginBottom: 4 },
-  editCardIconWrap: { width: 32, height: 32, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center' },
+  editCardHead: { alignItems: 'center', gap: Spacing.sm, paddingBottom: Spacing.sm, borderBottomWidth: 1, marginBottom: 4 },
+  editCardIcon: { width: 30, height: 30, borderRadius: Radius.xs, alignItems: 'center', justifyContent: 'center' },
   editCardTitle: { fontSize: FontSize.md, fontWeight: '700' },
   avatarEditRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1 },
-  avatarSmall: { width: 48, height: 48, borderRadius: 24 },
-  avatarSmallPlaceholder: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  avatarSmall: { width: 46, height: 46, borderRadius: 23 },
+  avatarSmallPlaceholder: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
   avatarSmallText: { color: '#fff', fontWeight: '800', fontSize: FontSize.lg },
   avatarEditLabel: { fontSize: FontSize.sm, fontWeight: '600' },
   avatarEditSub: { fontSize: FontSize.xs, marginTop: 2 },
   editFields: { gap: Spacing.sm },
-  editFieldLabel: { fontSize: FontSize.sm, fontWeight: '600', marginBottom: 4 },
-  editInput: { height: 50, borderWidth: 1.5, borderRadius: Radius.md, paddingHorizontal: Spacing.md, fontSize: FontSize.md },
-  editActions: { gap: Spacing.sm, marginTop: 4 },
-  cancelEditBtn: { flex: 1, height: 46, borderRadius: Radius.lg, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  cancelEditText: { fontSize: FontSize.md, fontWeight: '600' },
-  saveEditBtn: { flex: 2, height: 46, borderRadius: Radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  saveEditText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+  editLabel: { fontSize: FontSize.sm, fontWeight: '600', marginBottom: 2 },
+  editInput: { height: 48, borderWidth: 1.5, borderRadius: Radius.md, paddingHorizontal: Spacing.md, fontSize: FontSize.md },
+  editBtns: { gap: Spacing.sm, marginTop: 4 },
+  editCancelBtn: { flex: 1, height: 44, borderRadius: Radius.lg, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  editCancelText: { fontSize: FontSize.md, fontWeight: '600' },
+  editSaveBtn: { flex: 2, height: 44, borderRadius: Radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  editSaveText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
 
-  // Settings card
-  settingsCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: Radius.xl, borderWidth: 1, overflow: 'hidden' },
-  settingRow: { alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.md, paddingVertical: 14, borderBottomWidth: 1 },
-  settingRowPressable: { alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.md, paddingVertical: 14, borderBottomWidth: 1 },
-  settingIconWrap: { width: 40, height: 40, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center' },
-  settingLabel: { fontSize: FontSize.md, fontWeight: '600' },
-  settingSub: { fontSize: FontSize.xs, marginTop: 2 },
-  langToggle: { borderRadius: Radius.full, borderWidth: 1.5, overflow: 'hidden', flexDirection: 'row' },
-  langOption: { paddingHorizontal: 14, paddingVertical: 7, minWidth: 40, alignItems: 'center' },
-  langOptionText: { fontSize: FontSize.sm },
-  newBadge: { borderRadius: Radius.full, paddingHorizontal: 7, paddingVertical: 3, marginRight: 4 },
-  newBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  // ── Tab Bar
+  tabBar: { flexDirection: 'row', marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: Radius.xl, borderWidth: 1, overflow: 'hidden' },
+  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderBottomWidth: 2.5, borderBottomColor: 'transparent' },
+  tabBtnText: { fontSize: FontSize.sm },
+  tabCount: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: Radius.full, minWidth: 20, alignItems: 'center' },
+  tabCountText: { fontSize: 10, fontWeight: '800' },
 
-  // WhatsApp card
-  waCardWrap: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: 1 },
-  waCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: '#25D366', borderRadius: Radius.xl, paddingVertical: 14, paddingHorizontal: Spacing.md, shadowColor: '#25D366', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6 },
-  waIconBadge: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)' },
-  waCardTitle: { fontSize: FontSize.md, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  waCardSub: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.8)', lineHeight: 16 },
-  waArrow: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
-
-  // Blocked users
-  blockedCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: Radius.xl, borderWidth: 1, overflow: 'hidden' },
-  blockedHeader: { alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: 14, borderBottomWidth: 1 },
-  blockedIconWrap: { width: 36, height: 36, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center' },
-  blockedTitle: { fontSize: FontSize.md, fontWeight: '700' },
-  blockedBadge: { borderRadius: Radius.full, minWidth: 22, height: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  blockedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-  blockedList: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm },
-  blockedItem: { alignItems: 'center', gap: Spacing.md, paddingVertical: 12 },
-  blockedAvatar: { width: 44, height: 44, borderRadius: 22 },
-  blockedAvatarPlaceholder: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  blockedAvatarText: { fontSize: FontSize.lg, fontWeight: '800' },
-  blockedName: { fontSize: FontSize.sm, fontWeight: '700' },
-  blockedEmail: { fontSize: FontSize.xs, marginTop: 2 },
-  unblockBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: Radius.full },
-  unblockBtnText: { fontSize: FontSize.xs, fontWeight: '700' },
-
-  // Listings
+  // ── Listings
   listingsSection: { padding: Spacing.lg, gap: Spacing.sm },
-  listingsHeader: { justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  listingsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  listingsTitle: { fontSize: FontSize.lg, fontWeight: '700' },
-  listingsCountBadge: { borderRadius: Radius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  listingsCount: { fontSize: FontSize.xs, fontWeight: '700' },
-  postNewBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: Spacing.md, paddingVertical: 8, borderRadius: Radius.full },
-  postNewText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
-  emptyListings: { borderRadius: Radius.xl, padding: Spacing.xxl, alignItems: 'center', gap: Spacing.sm },
-  emptyListingsTitle: { fontSize: FontSize.lg, fontWeight: '700' },
-  emptyListingsSub: { fontSize: FontSize.sm, textAlign: 'center' },
+  postNewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: Radius.xl, marginBottom: Spacing.sm, ...Shadow.colored },
+  postNewText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+  emptyListings: { borderRadius: Radius.xl, padding: Spacing.xxl, alignItems: 'center', gap: Spacing.sm, borderWidth: 1 },
+  emptyIcon: { width: 64, height: 64, borderRadius: Radius.xl, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  emptyTitle: { fontSize: FontSize.lg, fontWeight: '700' },
+  emptySub: { fontSize: FontSize.sm, textAlign: 'center' },
   adRow: { marginBottom: Spacing.sm },
   adActions: { justifyContent: 'flex-end', paddingTop: 6 },
   markSoldBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full },
@@ -974,80 +894,64 @@ const styles = StyleSheet.create({
   soldChip: { paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full },
   soldChipText: { fontSize: FontSize.xs, fontWeight: '700' },
 
-  // Delete Account Modal
-  deleteOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center', justifyContent: 'center',
-    padding: Spacing.lg,
-  },
-  deleteSheet: {
-    borderRadius: Radius.xxl,
-    padding: Spacing.lg,
-    width: '100%',
-    maxWidth: 380,
-    gap: Spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.28,
-    shadowRadius: 24,
-    elevation: 16,
-  },
-  deleteIconWrap: { alignItems: 'center', marginBottom: 4 },
-  deleteIconOuter: {
-    width: 76, height: 76, borderRadius: 38,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: '#FCA5A5',
-  },
-  deleteTitleText: {
-    fontSize: FontSize.xl, fontWeight: '800',
-    textAlign: 'center', letterSpacing: -0.3,
-  },
-  deleteSubText: {
-    fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20, marginTop: -4,
-  },
-  deleteWarningsCard: {
-    borderRadius: Radius.lg, borderWidth: 1.5,
-    padding: Spacing.md, gap: 10,
-  },
-  deleteWarnRow: { alignItems: 'flex-start', gap: 8 },
-  deleteWarnText: { fontSize: FontSize.sm, lineHeight: 20, flex: 1 },
-  deleteConfirmBanner: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    borderRadius: Radius.md, borderWidth: 1.5, padding: Spacing.sm + 4,
-  },
-  deleteConfirmBannerText: { fontSize: FontSize.xs, lineHeight: 18, fontWeight: '600' },
-  deleteActions: { gap: Spacing.sm, marginTop: 4 },
-  deleteCancelBtn: {
-    flex: 1, height: 50, borderRadius: Radius.lg,
-    borderWidth: 1.5, alignItems: 'center', justifyContent: 'center',
-  },
-  deleteCancelText: { fontSize: FontSize.md, fontWeight: '600' },
-  deleteConfirmBtn: {
-    flex: 2, height: 50, borderRadius: Radius.lg,
-    backgroundColor: '#DC2626',
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    shadowColor: '#DC2626',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  deleteConfirmText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '800' },
+  // ── Settings
+  settingsSection: { padding: Spacing.lg, gap: Spacing.md },
+  settingsCard: { borderRadius: Radius.xl, borderWidth: 1, overflow: 'hidden', ...Shadow.xs },
+  sRowInner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.md, paddingVertical: 13 },
+  sRowIcon: { width: 40, height: 40, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  sRowLabel: { fontSize: FontSize.md, fontWeight: '600' },
+  sRowSub: { fontSize: FontSize.xs, marginTop: 2 },
+
+  // Language toggle
+  langToggle: { borderRadius: Radius.full, borderWidth: 1.5, overflow: 'hidden', flexDirection: 'row' },
+  langOption: { paddingHorizontal: 14, paddingVertical: 7, minWidth: 40, alignItems: 'center' },
+  langOptionText: { fontSize: FontSize.sm },
+
+  // WhatsApp card
+  waWrap: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: 1 },
+  waCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: '#25D366', borderRadius: Radius.xl, paddingVertical: 12, paddingHorizontal: Spacing.md, shadowColor: '#25D366', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
+  waIconBadge: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)' },
+  waTitle: { fontSize: FontSize.sm, fontWeight: '700', color: '#fff', marginBottom: 2 },
+  waSub: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.8)' },
+
+  // New badge
+  newBadge: { borderRadius: Radius.full, paddingHorizontal: 7, paddingVertical: 3 },
+  newBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+
+  // Blocked users
+  blockedHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: 13, borderBottomWidth: 1 },
+  blockedBadge: { backgroundColor: '#EF4444', borderRadius: Radius.full, minWidth: 22, height: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  blockedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  blockedList: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm },
+  blockedItem: { alignItems: 'center', gap: Spacing.md, paddingVertical: 11 },
+  blockedAvatar: { width: 42, height: 42, borderRadius: 21 },
+  blockedAvatarPh: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  blockedAvatarText: { fontSize: FontSize.lg, fontWeight: '800' },
+  blockedName: { fontSize: FontSize.sm, fontWeight: '700' },
+  blockedEmail: { fontSize: FontSize.xs, marginTop: 2 },
+  unblockBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.full },
+  unblockBtnText: { fontSize: FontSize.xs, fontWeight: '700' },
 
   // Version footer
   versionFooter: { alignItems: 'center', paddingVertical: Spacing.xl, gap: 8 },
-  versionDivider: { width: 48, height: 1.5, borderRadius: 99, marginBottom: 4 },
+  versionDot: { width: 40, height: 1.5, borderRadius: 99 },
   versionRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   versionText: { fontSize: FontSize.xs, fontWeight: '500' },
   versionSub: { fontSize: 10, fontWeight: '500' },
 
-  // Guest
-  guestOuter: { flex: 1 },
-  guestHeader: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl },
-  guestHeaderTitle: { fontSize: FontSize.xxl, fontWeight: '800', color: '#fff', letterSpacing: -0.4 },
-  guestBody: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: Spacing.md },
-  guestAvatarCircle: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
-  guestTitle: { fontSize: FontSize.xl, fontWeight: '700' },
-  guestSub: { fontSize: FontSize.md, textAlign: 'center', lineHeight: 22 },
-  guestBtn: { width: '100%', marginTop: Spacing.sm },
+  // Delete account modal
+  deleteOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: Spacing.lg },
+  deleteSheet: { borderRadius: Radius.xxl, padding: Spacing.lg, width: '100%', maxWidth: 360, gap: Spacing.md, ...Shadow.lg },
+  deleteIconWrap: { alignItems: 'center', marginBottom: 4 },
+  deleteIconOuter: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#FCA5A5' },
+  deleteTitleText: { fontSize: FontSize.xl, fontWeight: '800', textAlign: 'center', letterSpacing: -0.3 },
+  deleteSubText: { fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20, marginTop: -4 },
+  deleteWarningsCard: { borderRadius: Radius.lg, borderWidth: 1.5, padding: Spacing.md, gap: 9 },
+  deleteWarnRow: { alignItems: 'flex-start', gap: 8 },
+  deleteWarnText: { fontSize: FontSize.sm, lineHeight: 20, flex: 1 },
+  deleteActions: { gap: Spacing.sm, marginTop: 4 },
+  deleteCancelBtn: { flex: 1, height: 48, borderRadius: Radius.lg, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  deleteCancelText: { fontSize: FontSize.md, fontWeight: '600' },
+  deleteConfirmBtn: { flex: 2, height: 48, borderRadius: Radius.lg, backgroundColor: '#DC2626', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, shadowColor: '#DC2626', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6 },
+  deleteConfirmText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '800' },
 });
