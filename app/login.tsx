@@ -4,7 +4,13 @@ import {
   Platform, Pressable, ActivityIndicator, Modal, Animated,
   Dimensions, StatusBar,
 } from 'react-native';
-import * as AppleAuthentication from 'expo-apple-authentication';
+// Apple Authentication — only available on iOS/macOS, safe-imported
+let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
+try {
+  if (typeof navigator !== 'undefined' || true) {
+    AppleAuthentication = require('expo-apple-authentication');
+  }
+} catch (_) {}
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
@@ -93,6 +99,12 @@ export default function LoginScreen() {
   // ── Apple Sign-In ──
   const handleAppleSignIn = async () => {
     if (appleLoading) return;
+    if (!AppleAuthentication) {
+      return showAlert(
+        isAr ? 'غير متاح' : 'Not Available',
+        isAr ? 'تسجيل الدخول عبر Apple غير متاح حالياً.' : 'Apple Sign-In is not available on this device.'
+      );
+    }
     setAppleLoading(true);
     try {
       const credential = await AppleAuthentication.signInAsync({

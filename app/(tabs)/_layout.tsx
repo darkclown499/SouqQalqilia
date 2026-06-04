@@ -10,12 +10,13 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useConversations } from '@/hooks/useChat';
 import { useAuth } from '@/template';
 
-/** Red badge showing unread count */
-function UnreadBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
+/** Safe wrapper: only calls useConversations when a user is signed in */
+function UnreadBadgeWrapper({ colors }: { colors: any }) {
+  const { unreadCount } = useConversations();
+  if (unreadCount <= 0) return null;
   return (
     <View style={badge.wrap}>
-      <Text style={badge.text}>{count > 99 ? '99+' : String(count)}</Text>
+      <Text style={badge.text}>{unreadCount > 99 ? '99+' : String(unreadCount)}</Text>
     </View>
   );
 }
@@ -48,7 +49,6 @@ export default function TabLayout() {
   const { colors } = useTheme();
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { unreadCount } = useConversations();
 
   const tabBarStyle = {
     height: Platform.select({ ios: insets.bottom + 62, android: insets.bottom + 62, default: 70 }),
@@ -151,7 +151,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <View>
               <MaterialIcons name={focused ? 'chat-bubble' : 'chat-bubble-outline'} size={24} color={color} />
-              {user ? <UnreadBadge count={unreadCount} /> : null}
+              {user ? <UnreadBadgeWrapper colors={colors} /> : null}
             </View>
           ),
         }}

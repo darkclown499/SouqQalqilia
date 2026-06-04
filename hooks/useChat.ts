@@ -170,6 +170,16 @@ export function useConversations() {
   }, [fetchUnreadCount, setBadge]);
 
   const load = useCallback(async (showSpinner = false) => {
+    // Guard: don't query if not authenticated
+    const supabaseCheck = getSupabaseClient();
+    const { data: { user: currentUser } } = await supabaseCheck.auth.getUser();
+    if (!currentUser) {
+      setConversations([]);
+      setUnreadCount(0);
+      if (showSpinner) setLoading(false);
+      return;
+    }
+
     if (showSpinner) setLoading(true);
 
     try {
