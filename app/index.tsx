@@ -1,15 +1,14 @@
 // ── Preload ads for guest users (no auth) ───────────────────────────────────
-// Fires immediately at module level so cache is populated by the time
-// the user passes the splash screen and the tab renders.
 import { preloadAds } from '@/services/adsService';
+import { preloadBanners } from '@/services/bannersService';
 preloadAds().catch(() => {});
-
+preloadBanners().catch(() => {});
 
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  View, Text, StyleSheet, Dimensions, Animated, Platform,
+  View, Text, StyleSheet, Dimensions, Animated, Easing,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,152 +16,292 @@ import { ONBOARDING_SEEN_KEY } from './onboarding';
 
 const { width: W, height: H } = Dimensions.get('window');
 
-function SplashScreen({ onDone }: { onDone: () => void }) {
-  const insets = useSafeAreaInsets();
+const BG = '#0A6E5C';
+const BG_DARK = '#085A4C';
+const GOLD = '#E8C060';
+const WHITE = '#FFFFFF';
+const WHITE_DIM = 'rgba(255,255,255,0.65)';
 
-  // Animation values
-  const logoScale   = useRef(new Animated.Value(0.55)).current;
+const LOADING_MESSAGES = [
+  'جاري تحميل خيرات قلقيلية...',
+  'ثوانٍ وتصبح أسواق المدينة بين يديك...',
+  'نجلب لك أفضل العروض...',
+  'سوق قلقيلية في انتظارك...',
+];
+
+// ─── Phase 1: Launch Screen ──────────────────────────────────────────────────
+function LaunchPhase({ onDone }: { onDone: () => void }) {
+  const insets = useSafeAreaInsets();
   const logoOpacity = useRef(new Animated.Value(0)).current;
-  const textOpacity = useRef(new Animated.Value(0)).current;
-  const textY       = useRef(new Animated.Value(18)).current;
-  const tagOpacity  = useRef(new Animated.Value(0)).current;
-  const barWidth    = useRef(new Animated.Value(0)).current;
-  const shimmerX    = useRef(new Animated.Value(-W * 0.5)).current;
-  const dotScale1   = useRef(new Animated.Value(0.6)).current;
-  const dotScale2   = useRef(new Animated.Value(0.6)).current;
-  const dotScale3   = useRef(new Animated.Value(0.6)).current;
+  const logoScale   = useRef(new Animated.Value(0.82)).current;
+  const sloganOpacity = useRef(new Animated.Value(0)).current;
+  const sloganY     = useRef(new Animated.Value(14)).current;
   const screenOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Phase 1: Logo appears with spring bounce
+    // Step 1: fade + scale logo in
     Animated.parallel([
-      Animated.spring(logoScale, {
-        toValue: 1, damping: 12, stiffness: 120, useNativeDriver: true,
-      }),
       Animated.timing(logoOpacity, {
-        toValue: 1, duration: 420, useNativeDriver: true,
+        toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true,
       }),
-    ]).start(() => {
-      // Phase 2: Text slides up + progress bar starts
+      Animated.spring(logoScale, {
+        toValue: 1, damping: 14, stiffness: 100, useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Step 2: after 500ms, fade slogan in
+    setTimeout(() => {
       Animated.parallel([
-        Animated.timing(textOpacity, { toValue: 1, duration: 340, useNativeDriver: true }),
-        Animated.timing(textY, { toValue: 0, duration: 340, useNativeDriver: true }),
-        Animated.timing(tagOpacity, { toValue: 1, duration: 400, delay: 120, useNativeDriver: true }),
-        Animated.timing(barWidth, {
-          toValue: W * 0.62, duration: 1400, delay: 200, useNativeDriver: false,
+        Animated.timing(sloganOpacity, {
+          toValue: 1, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true,
+        }),
+        Animated.timing(sloganY, {
+          toValue: 0, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true,
         }),
       ]).start();
+    }, 500);
 
-      // Shimmer on progress bar
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(shimmerX, { toValue: W * 0.65, duration: 900, useNativeDriver: true }),
-          Animated.timing(shimmerX, { toValue: -W * 0.5, duration: 0, useNativeDriver: true }),
-        ])
-      ).start();
-
-      // Dot bounce loop
-      const dotAnim = (val: Animated.Value, delay: number) =>
-        Animated.loop(
-          Animated.sequence([
-            Animated.delay(delay),
-            Animated.spring(val, { toValue: 1.4, damping: 5, stiffness: 300, useNativeDriver: true }),
-            Animated.spring(val, { toValue: 0.6, damping: 8, stiffness: 200, useNativeDriver: true }),
-            Animated.delay(600),
-          ])
-        );
-      dotAnim(dotScale1, 0).start();
-      dotAnim(dotScale2, 180).start();
-      dotAnim(dotScale3, 360).start();
-    });
-
-    // Fade out after 1.6s — faster perceived startup
-    const timer = setTimeout(() => {
+    // Step 3: at 1.75s fade out and transition
+    const t = setTimeout(() => {
       Animated.timing(screenOpacity, {
-        toValue: 0, duration: 280, useNativeDriver: true,
+        toValue: 0, duration: 350, useNativeDriver: true,
       }).start(() => onDone());
-    }, 1600);
+    }, 1750);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(t);
   }, []);
 
   return (
-    <Animated.View style={[styles.splashOuter, { opacity: screenOpacity }]}>
-      {/* Background gradient-like layers */}
-      <View style={styles.bgTop} />
-      <View style={styles.bgBottom} />
+    <Animated.View style={[styles.fullScreen, { backgroundColor: BG, opacity: screenOpacity }]}>
+      {/* Subtle radial glow behind logo */}
+      <View style={styles.glow} />
 
-      {/* Decorative circles */}
-      <View style={[styles.deco, styles.deco1]} />
-      <View style={[styles.deco, styles.deco2]} />
-      <View style={[styles.deco, styles.deco3]} />
-
-      {/* Logo */}
-      <View style={styles.logoWrap}>
-        <Animated.View style={{
-          transform: [{ scale: logoScale }],
-          opacity: logoOpacity,
-        }}>
-          <Image
-            source={require('@/assets/images/souq-logo.png')}
-            style={styles.logoImg}
-            contentFit="contain"
-            transition={0}
-          />
-        </Animated.View>
-      </View>
-
-      {/* App name */}
-      <Animated.View style={{ opacity: textOpacity, transform: [{ translateY: textY }], alignItems: 'center' }}>
-        <Text style={styles.splashTitle}>سوق قلقيلية</Text>
-        <Animated.Text style={[styles.splashTagline, { opacity: tagOpacity }]}>
-          اشتري وبيع أي شيء في قلقيلية
-        </Animated.Text>
+      {/* Logo centered */}
+      <Animated.View
+        style={[
+          styles.logoCenter,
+          { opacity: logoOpacity, transform: [{ scale: logoScale }] },
+        ]}
+      >
+        <Image
+          source={require('@/assets/images/app-logo-transparent.png')}
+          style={styles.logoImgMain}
+          contentFit="contain"
+          transition={0}
+        />
       </Animated.View>
 
-      {/* Progress bar */}
-      <View style={styles.barTrack}>
-        <Animated.View style={[styles.barFill, { width: barWidth }]}>
-          {/* Shimmer sweep */}
-          <Animated.View
-            style={[styles.shimmer, { transform: [{ translateX: shimmerX }] }]}
-          />
-        </Animated.View>
-      </View>
-
-      {/* Dots */}
-      <View style={styles.dotsRow}>
-        {[dotScale1, dotScale2, dotScale3].map((s, i) => (
-          <Animated.View
-            key={i}
-            style={[
-              styles.dot,
-              { transform: [{ scale: s }], backgroundColor: i === 1 ? '#E8A020' : '#0A6E5C' },
-            ]}
-          />
-        ))}
-      </View>
-
-      {/* Footer */}
-      <View style={[styles.splashFooter, { paddingBottom: insets.bottom + 20 }]}>
-        <Text style={styles.footerBrand}>Powered by Plankton</Text>
-      </View>
+      {/* Slogan pinned to bottom */}
+      <Animated.View
+        style={[
+          styles.sloganWrap,
+          {
+            opacity: sloganOpacity,
+            transform: [{ translateY: sloganY }],
+            bottom: insets.bottom + 64,
+          },
+        ]}
+      >
+        <View style={styles.sloganLine} />
+        <Text style={styles.sloganText}>سوق قلقيلية.. خيرات بلادنا بين يديك</Text>
+        <View style={styles.sloganLine} />
+      </Animated.View>
     </Animated.View>
   );
 }
 
+// ─── Phase 2: Loading Screen ─────────────────────────────────────────────────
+function LoadingPhase({ onDone }: { onDone: () => void }) {
+  const insets = useSafeAreaInsets();
+
+  const screenOpacity = useRef(new Animated.Value(0)).current;
+  const logoY         = useRef(new Animated.Value(20)).current;
+  const logoOpacity   = useRef(new Animated.Value(0)).current;
+  const barWidth      = useRef(new Animated.Value(0)).current;
+  const shimmerX      = useRef(new Animated.Value(-200)).current;
+  const contentOpacity = useRef(new Animated.Value(0)).current;
+
+  const [msgIndex, setMsgIndex] = useState(0);
+  const msgOpacity = useRef(new Animated.Value(0)).current;
+
+  // Fade in full screen, then animate components
+  useEffect(() => {
+    Animated.timing(screenOpacity, {
+      toValue: 1, duration: 280, useNativeDriver: true,
+    }).start(() => {
+      // Logo slides down from offset + fades in
+      Animated.parallel([
+        Animated.timing(logoOpacity, {
+          toValue: 1, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true,
+        }),
+        Animated.timing(logoY, {
+          toValue: 0, duration: 450, easing: Easing.out(Easing.back(1.1)), useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Progress bar + content fade in
+        Animated.parallel([
+          Animated.timing(contentOpacity, {
+            toValue: 1, duration: 350, useNativeDriver: true,
+          }),
+          Animated.timing(barWidth, {
+            toValue: W * 0.68,
+            duration: 2200,
+            easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
+            useNativeDriver: false,
+          }),
+        ]).start();
+
+        // Shimmer loop
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(shimmerX, {
+              toValue: W * 0.75, duration: 1000, easing: Easing.linear, useNativeDriver: true,
+            }),
+            Animated.timing(shimmerX, {
+              toValue: -200, duration: 0, useNativeDriver: true,
+            }),
+            Animated.delay(400),
+          ])
+        ).start();
+      });
+    });
+
+    // Rotating messages
+    const fadeMsgIn = () => {
+      Animated.timing(msgOpacity, {
+        toValue: 1, duration: 380, useNativeDriver: true,
+      }).start();
+    };
+
+    fadeMsgIn();
+    const cycle = setInterval(() => {
+      Animated.timing(msgOpacity, {
+        toValue: 0, duration: 280, useNativeDriver: true,
+      }).start(() => {
+        setMsgIndex(i => (i + 1) % LOADING_MESSAGES.length);
+        Animated.timing(msgOpacity, {
+          toValue: 1, duration: 380, useNativeDriver: true,
+        }).start();
+      });
+    }, 1600);
+
+    // Complete after 2.8s
+    const t = setTimeout(() => {
+      clearInterval(cycle);
+      Animated.timing(screenOpacity, {
+        toValue: 0, duration: 350, useNativeDriver: true,
+      }).start(() => onDone());
+    }, 2800);
+
+    return () => {
+      clearTimeout(t);
+      clearInterval(cycle);
+    };
+  }, []);
+
+  return (
+    <Animated.View style={[styles.fullScreen, { backgroundColor: BG, opacity: screenOpacity }]}>
+      <View style={styles.glow} />
+
+      {/* Logo — shifted slightly above center */}
+      <Animated.View
+        style={[
+          styles.logoAboveCenter,
+          { opacity: logoOpacity, transform: [{ translateY: logoY }] },
+        ]}
+      >
+        <Image
+          source={require('@/assets/images/app-logo-transparent.png')}
+          style={styles.logoImgLoading}
+          contentFit="contain"
+          transition={0}
+        />
+        <Text style={styles.appTitleLoading}>سوق قلقيلية</Text>
+      </Animated.View>
+
+      {/* Progress bar + rotating text */}
+      <Animated.View style={[styles.bottomContent, { opacity: contentOpacity, paddingBottom: insets.bottom + 80 }]}>
+        {/* Rotating message */}
+        <Animated.Text style={[styles.loadingMsg, { opacity: msgOpacity }]}>
+          {LOADING_MESSAGES[msgIndex]}
+        </Animated.Text>
+
+        {/* Progress bar */}
+        <View style={styles.progressTrack}>
+          <Animated.View style={[styles.progressFill, { width: barWidth }]}>
+            <Animated.View
+              style={[styles.progressShimmer, { transform: [{ translateX: shimmerX }] }]}
+            />
+          </Animated.View>
+        </View>
+
+        {/* Dots */}
+        <LoadingDots />
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+// ─── Animated loading dots ───────────────────────────────────────────────────
+function LoadingDots() {
+  const dots = [
+    useRef(new Animated.Value(0.4)).current,
+    useRef(new Animated.Value(0.4)).current,
+    useRef(new Animated.Value(0.4)).current,
+  ];
+
+  useEffect(() => {
+    dots.forEach((dot, i) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 200),
+          Animated.timing(dot, {
+            toValue: 1, duration: 400, useNativeDriver: true,
+          }),
+          Animated.timing(dot, {
+            toValue: 0.4, duration: 400, useNativeDriver: true,
+          }),
+          Animated.delay((dots.length - i - 1) * 200),
+        ])
+      ).start();
+    });
+  }, []);
+
+  return (
+    <View style={styles.dotsWrap}>
+      {dots.map((d, i) => (
+        <Animated.View
+          key={i}
+          style={[
+            styles.loadingDot,
+            {
+              opacity: d,
+              backgroundColor: i === 1 ? GOLD : 'rgba(255,255,255,0.8)',
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+// ─── Root ────────────────────────────────────────────────────────────────────
 export default function RootScreen() {
-  const [splashDone, setSplashDone] = useState(false);
+  const [phase, setPhase] = useState<'launch' | 'loading' | 'done'>('launch');
   const [route, setRoute] = useState<{ showOnboarding: boolean } | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(ONBOARDING_SEEN_KEY).then((val) => {
+    AsyncStorage.getItem(ONBOARDING_SEEN_KEY).then(val => {
       setRoute({ showOnboarding: !val });
     });
   }, []);
 
-  if (!splashDone) {
-    return <SplashScreen onDone={() => setSplashDone(true)} />;
+  if (phase === 'launch') {
+    return <LaunchPhase onDone={() => setPhase('loading')} />;
+  }
+
+  if (phase === 'loading') {
+    return <LoadingPhase onDone={() => setPhase('done')} />;
   }
 
   if (!route) return null;
@@ -172,142 +311,131 @@ export default function RootScreen() {
   return <Redirect href="/(tabs)" />;
 }
 
+// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  splashOuter: {
-    flex: 1,
-    backgroundColor: '#F7FBF9',
+  fullScreen: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
 
-  // Background layers for depth
-  bgTop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0A6E5C',
-    height: H * 0.42,
-    top: 0,
-    borderBottomLeftRadius: W * 0.5,
-    borderBottomRightRadius: W * 0.5,
-    transform: [{ scaleX: 1.6 }],
-  },
-  bgBottom: {
-    ...StyleSheet.absoluteFillObject,
-    top: H * 0.38,
-    backgroundColor: '#F7FBF9',
-  },
-
-  // Decorative soft circles
-  deco: {
+  // Radial glow
+  glow: {
     position: 'absolute',
-    borderRadius: 999,
-    opacity: 0.1,
-  },
-  deco1: {
-    width: W * 0.7, height: W * 0.7,
-    top: -W * 0.18, left: -W * 0.18,
-    backgroundColor: '#fff',
-  },
-  deco2: {
-    width: W * 0.5, height: W * 0.5,
-    top: -W * 0.08, right: -W * 0.14,
-    backgroundColor: '#E8A020',
-    opacity: 0.15,
-  },
-  deco3: {
-    width: W * 0.36, height: W * 0.36,
-    bottom: H * 0.12, right: -W * 0.1,
-    backgroundColor: '#0A6E5C',
-    opacity: 0.08,
+    width: W * 1.2,
+    height: W * 1.2,
+    borderRadius: W * 0.6,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    top: H * 0.5 - W * 0.6,
+    left: -W * 0.1,
   },
 
-  // Logo
-  logoWrap: {
+  // ── Phase 1 ──
+  logoCenter: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
-    // Card behind logo
-    width: W * 0.52,
-    height: W * 0.52,
-    borderRadius: W * 0.26,
-    backgroundColor: '#fff',
-    shadowColor: '#0A6E5C',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    elevation: 16,
   },
-  logoImg: {
-    width: W * 0.42,
-    height: W * 0.42,
+  logoImgMain: {
+    width: W * 0.46,
+    height: W * 0.46,
   },
 
-  // Text
-  splashTitle: {
-    fontSize: 34,
+  sloganWrap: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    alignItems: 'center',
+    gap: 10,
+  },
+  sloganLine: {
+    width: 48,
+    height: 1.5,
+    backgroundColor: GOLD,
+    opacity: 0.7,
+    borderRadius: 99,
+  },
+  sloganText: {
+    color: GOLD,
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 0.4,
+    lineHeight: 26,
+    textShadowColor: 'rgba(0,0,0,0.15)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+
+  // ── Phase 2 ──
+  logoAboveCenter: {
+    alignItems: 'center',
+    marginTop: -H * 0.1,
+    gap: 14,
+  },
+  logoImgLoading: {
+    width: W * 0.36,
+    height: W * 0.36,
+  },
+  appTitleLoading: {
+    color: WHITE,
+    fontSize: 26,
     fontWeight: '800',
-    color: '#0A4A3C',
-    letterSpacing: 0.5,
-    marginTop: 28,
-    textAlign: 'center',
-  },
-  splashTagline: {
-    fontSize: 14,
-    color: '#4A8A7C',
-    fontWeight: '500',
-    marginTop: 6,
-    textAlign: 'center',
     letterSpacing: 0.3,
+    textAlign: 'center',
+    opacity: 0.95,
   },
 
-  // Progress bar
-  barTrack: {
-    width: W * 0.62,
-    height: 5,
-    backgroundColor: '#D1E8E2',
-    borderRadius: 99,
-    overflow: 'hidden',
-    marginTop: 36,
-  },
-  barFill: {
-    height: '100%',
-    backgroundColor: '#0A6E5C',
-    borderRadius: 99,
-    overflow: 'hidden',
-  },
-  shimmer: {
-    position: 'absolute',
-    top: 0,
-    width: W * 0.25,
-    height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.45)',
-    borderRadius: 99,
-    transform: [{ skewX: '-20deg' }],
-  },
-
-  // Dots
-  dotsRow: {
-    flexDirection: 'row',
-    gap: 9,
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-
-  // Footer
-  splashFooter: {
+  bottomContent: {
     position: 'absolute',
     bottom: 0,
+    left: 0,
+    right: 0,
     alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 32,
   },
-  footerBrand: {
-    fontSize: 12,
-    color: '#A0B8B2',
+
+  loadingMsg: {
+    color: WHITE_DIM,
+    fontSize: 13.5,
     fontWeight: '500',
-    letterSpacing: 0.5,
+    textAlign: 'center',
+    letterSpacing: 0.2,
+    lineHeight: 20,
+  },
+
+  progressTrack: {
+    width: W * 0.68,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 99,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: GOLD,
+    borderRadius: 99,
+    overflow: 'hidden',
+  },
+  progressShimmer: {
+    position: 'absolute',
+    top: 0,
+    width: 80,
+    height: '100%',
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 99,
+  },
+
+  dotsWrap: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  loadingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
 });
