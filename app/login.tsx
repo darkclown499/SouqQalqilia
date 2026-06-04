@@ -156,9 +156,20 @@ export default function LoginScreen() {
           : 'Please fill in your Firebase config in constants/firebaseConfig.ts to enable phone login'
       );
     }
-    const trimmed = phoneNumber.trim();
-    if (!trimmed || trimmed.length < 7)
-      return showAlert(isAr ? 'رقم غير صحيح' : 'Invalid Number', isAr ? 'أدخل رقم هاتف صحيح مع رمز الدولة' : 'Enter a valid phone number with country code');
+    // Build full E.164 phone number: combine +970 prefix with the entered digits
+    const digits = phoneNumber.trim().replace(/[\s\-()]/g, '');
+    if (!digits || digits.length < 7)
+      return showAlert(isAr ? 'رقم غير صحيح' : 'Invalid Number', isAr ? 'أدخل رقم الهاتف بدون رمز الدولة (مثال: 591234567)' : 'Enter your number without country code (e.g. 591234567)');
+
+    // If user already typed a full international number keep it, otherwise prepend +970
+    let fullPhone: string;
+    if (digits.startsWith('+')) {
+      fullPhone = digits;
+    } else {
+      // Strip leading zero (0591... → 591...) then add +970
+      fullPhone = '+970' + digits.replace(/^0+/, '');
+    }
+
     if (phoneLoading || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setPhoneLoading(true);
@@ -166,7 +177,11 @@ export default function LoginScreen() {
       const app = getFirebaseApp();
       if (!app) throw new Error('Firebase not available');
       const auth = getAuth(app);
-      const result = await signInWithPhoneNumber(auth, trimmed, recaptchaRef.current);
+
+      if (!recaptchaRef.current)
+        throw new Error(isAr ? 'لم يتم تحميل reCAPTCHA بعد، أعد المحاولة' : 'reCAPTCHA not ready, please try again');
+
+      const result = await signInWithPhoneNumber(auth, fullPhone, recaptchaRef.current);
       setConfirmationResult(result);
       setPhoneStep('otp');
       setPhoneResend(60);
@@ -660,19 +675,20 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, loading, onSend, colors,
         </View>
         <TextInput
           style={[s.phoneInput, { color: colors.textPrimary }]}
-          placeholder={isAr ? 'رقم الهاتف' : 'Phone number'}
+          placeholder={isAr ? '591234567' : '591234567'}
           placeholderTextColor={colors.textMuted}
           value={phoneNumber}
-          onChangeText={v => setPhoneNumber(v.replace(/[^+0-9]/g, ''))}
-          keyboardType="phone-pad"
+          onChangeText={v => setPhoneNumber(v.replace(/[^0-9]/g, ''))}
+          keyboardType="number-pad"
           autoFocus
           returnKeyType="send"
           onSubmitEditing={onSend}
+          maxLength={12}
         />
       </View>
 
       <Text style={[s.phoneHint, { color: colors.textMuted }]}>
-        {isAr ? 'مثال: +970591234567' : 'Example: +970591234567'}
+        {isAr ? 'أدخل الرقم بدون صفر أو رمز الدولة — مثال: 591234567' : 'Enter number without 0 or country code — e.g. 591234567'}
       </Text>
 
       <Pressable
