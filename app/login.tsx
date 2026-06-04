@@ -23,7 +23,7 @@ import { APP_NAME, APP_NAME_AR } from '@/constants/config';
 import type { Language } from '@/constants/i18n';
 import { FIREBASE_CONFIG, isFirebaseConfigured } from '@/constants/firebaseConfig';
 
-const FIREBASE_READY = isFirebaseConfigured();
+const FIREBASE_READY = true; // Phone tab always visible
 
 function getFirebaseApp() {
   try {
@@ -69,8 +69,8 @@ export default function LoginScreen() {
 
   // ── Tab state ──────────────────────────────────────────────────────────────
   // Default to email if Firebase not configured, phone if configured
-  const [activeTab, setActiveTab] = useState<MainTab>(FIREBASE_READY ? 'phone' : 'email');
-  const tabIndicator = useRef(new Animated.Value(FIREBASE_READY ? 0 : 1)).current;
+  const [activeTab, setActiveTab] = useState<MainTab>('phone');
+  const tabIndicator = useRef(new Animated.Value(0)).current;
 
   const switchTab = useCallback((tab: MainTab) => {
     setActiveTab(tab);
@@ -148,6 +148,14 @@ export default function LoginScreen() {
 
   // ── Phone: Send code ───────────────────────────────────────────────────────
   const handleSendPhoneCode = async () => {
+    if (!isFirebaseConfigured()) {
+      return showAlert(
+        isAr ? 'إعداد مطلوب' : 'Setup Required',
+        isAr
+          ? 'يرجى ملء بيانات Firebase في ملف constants/firebaseConfig.ts لتفعيل تسجيل الدخول بالهاتف'
+          : 'Please fill in your Firebase config in constants/firebaseConfig.ts to enable phone login'
+      );
+    }
     const trimmed = phoneNumber.trim();
     if (!trimmed || trimmed.length < 7)
       return showAlert(isAr ? 'رقم غير صحيح' : 'Invalid Number', isAr ? 'أدخل رقم هاتف صحيح مع رمز الدولة' : 'Enter a valid phone number with country code');
@@ -379,7 +387,7 @@ export default function LoginScreen() {
     outputRange: ['0%', '100%'],
   });
 
-  const showPhoneTab = FIREBASE_READY;
+  const showPhoneTab = true;
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
