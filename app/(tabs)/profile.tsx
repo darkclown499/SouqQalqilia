@@ -611,14 +611,7 @@ export default function ProfileScreen() {
                   icon="lock-reset" iconBg="#EDE9FE" iconColor="#7C3AED"
                   label={isRTL ? 'تغيير كلمة المرور' : 'Change Password'}
                   sub={isRTL ? 'إرسال رابط إعادة تعيين' : 'Send a password reset link'}
-                  isRTL={isRTL} colors={colors} onPress={handleChangePassword}
-                />
-                <SettingRow
-                  icon="link" iconBg="#EDE9FE" iconColor="#7C3AED"
-                  label={isRTL ? 'ربط الحسابات' : 'Linked Accounts'}
-                  sub="Google · Apple"
-                  isRTL={isRTL} colors={colors} borderBottom={false}
-                  onPress={() => showAlert(isRTL ? 'ربط الحسابات' : 'Linked Accounts', isRTL ? 'يمكنك تسجيل الدخول بـ Google أو Apple من شاشة الدخول.' : 'Sign in with Google or Apple from the login screen.')}
+                  isRTL={isRTL} colors={colors} onPress={handleChangePassword} borderBottom={false}
                 />
               </View>
 
