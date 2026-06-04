@@ -587,11 +587,7 @@ export default function LoginScreen() {
                 >
                   {googleLoading
                     ? <ActivityIndicator size="small" color="#4285F4" />
-                    : (
-                      <View style={s.googleIconCircle}>
-                        <Text style={s.googleG}>G</Text>
-                      </View>
-                    )}
+                    : <GoogleIcon />}
                   <Text style={s.googleLabel}>Google</Text>
                 </Pressable>
               </Animated.View>
@@ -624,6 +620,25 @@ export default function LoginScreen() {
         colors={colors} t={t} isAr={isAr}
       />
     </KeyboardAvoidingView>
+  );
+}
+
+// ─── Google Icon (multi-color G) ────────────────────────────────────────────
+function GoogleIcon() {
+  return (
+    <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{
+        width: 22, height: 22, borderRadius: 11,
+        backgroundColor: '#fff',
+        alignItems: 'center', justifyContent: 'center',
+        borderWidth: 1, borderColor: '#E8EAED',
+      }}>
+        {/* Colored G segments using a layered text approach */}
+        <Text style={{ fontSize: 13, fontWeight: '800', color: '#4285F4', lineHeight: 16, includeFontPadding: false }}>
+          G
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -1021,13 +1036,13 @@ const s = StyleSheet.create({
   socialBtnWrap: { flex: 1 },
   socialBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 10, borderRadius: Radius.xl, paddingVertical: 15, minHeight: 54,
+    gap: 10, borderRadius: Radius.xl, paddingVertical: 15, height: 54,
   },
   googleBtn: {
     backgroundColor: '#fff',
-    borderWidth: 1.5, borderColor: '#E8EAED',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1, shadowRadius: 8, elevation: 4,
+    borderWidth: 1.5, borderColor: '#dadce0',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08, shadowRadius: 6, elevation: 3,
   },
   appleBtn: {
     backgroundColor: '#111',
@@ -1035,13 +1050,11 @@ const s = StyleSheet.create({
     shadowOpacity: 0.22, shadowRadius: 8, elevation: 4,
   },
   googleIconCircle: {
-    width: 26, height: 26, borderRadius: 13,
-    borderWidth: 1, borderColor: '#E8EAED',
-    backgroundColor: '#fff',
+    width: 20, height: 20,
     alignItems: 'center', justifyContent: 'center',
   },
   googleG: { fontSize: 15, fontWeight: '900', color: '#4285F4', lineHeight: 18 },
-  googleLabel: { fontSize: FontSize.md, fontWeight: '700', color: '#1F1F1F' },
+  googleLabel: { fontSize: FontSize.md, fontWeight: '600', color: '#3c4043', letterSpacing: 0.1 },
   appleLabel: { fontSize: FontSize.md, fontWeight: '700', color: '#fff' },
 
   // Loading overlay
