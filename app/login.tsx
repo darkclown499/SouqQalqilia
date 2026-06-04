@@ -30,7 +30,8 @@ import type { Language } from '@/constants/i18n';
 // ─── Firebase setup ─────────────────────────────────────────────────────
 // Firebase web credentials are intentionally public — they identify your project.
 // Update these values from Firebase Console → Project Settings → Your apps → Web
-import { FIREBASE_CONFIG } from '@/constants/firebaseConfig';
+import { FIREBASE_CONFIG, isFirebaseConfigured } from '@/constants/firebaseConfig';
+const FIREBASE_READY = isFirebaseConfigured();
 
 function getFirebaseApp() {
   try {
@@ -522,8 +523,8 @@ export default function LoginScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="light-content" backgroundColor="#0A6E5C" />
 
-      {/* Firebase reCAPTCHA verifier — must be in the component tree */}
-      {Platform.OS !== 'web' ? (
+      {/* Firebase reCAPTCHA verifier — only rendered when Firebase config is filled in */}
+      {Platform.OS !== 'web' && FIREBASE_READY ? (
         <FirebaseRecaptchaVerifierModal
           ref={recaptchaVerifierRef}
           firebaseConfig={FIREBASE_CONFIG}
@@ -624,9 +625,9 @@ export default function LoginScreen() {
           ]}
         >
           {/* ─ Login/Register/Phone Tabs ─ */}
-          {(mode === 'login' || mode === 'register' || mode === 'phone') ? (
+          {(mode === 'login' || mode === 'register' || (mode === 'phone' && FIREBASE_READY)) ? (
             <View style={[s.tabs, { backgroundColor: colors.background }]}>
-              {(['login', 'register', 'phone'] as const).map(tab => (
+              {((['login', 'register', ...(FIREBASE_READY ? ['phone'] : [])] as const) as Array<'login'|'register'|'phone'>).map(tab => (
                 <Pressable
                   key={tab}
                   style={[
@@ -693,7 +694,7 @@ export default function LoginScreen() {
           ) : null}
 
           {/* ─ Mode: Phone Number Entry ─ */}
-          {mode === 'phone' ? (
+          {mode === 'phone' && FIREBASE_READY ? (
             <PhoneForm
               phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber}
               loading={phoneLoading}
@@ -704,7 +705,7 @@ export default function LoginScreen() {
           ) : null}
 
           {/* ─ Mode: Phone OTP ─ */}
-          {mode === 'phone_otp' ? (
+          {mode === 'phone_otp' && FIREBASE_READY ? (
             <PhoneOtpForm
               phoneNumber={phoneNumber}
               otp={phoneOtp} setOtp={setPhoneOtp}
@@ -748,7 +749,7 @@ export default function LoginScreen() {
               </Text>
             </Text>
           ) : null}
-          {mode === 'phone' ? (
+          {mode === 'phone' && FIREBASE_READY ? (
             <Text style={[s.footerHint, { color: colors.textMuted }]}>
               {isAr ? 'لديك حساب؟ ' : 'Have an account? '}
               <Text style={[s.footerLink, { color: colors.primary }]} onPress={() => switchMode('login')}>
@@ -759,7 +760,7 @@ export default function LoginScreen() {
         </Animated.View>
 
         {/* ── Social Buttons ── */}
-        {(mode === 'login' || mode === 'register' || mode === 'phone') && Platform.OS !== 'web' ? (
+        {(mode === 'login' || mode === 'register' || (mode === 'phone' && FIREBASE_READY)) && Platform.OS !== 'web' ? (
           <View style={[s.socialSection, { maxWidth: maxCardWidth, width: '100%', alignSelf: 'center' }]}>
             <View style={s.dividerRow}>
               <View style={s.dividerLine} />

@@ -22,3 +22,13 @@ export const FIREBASE_CONFIG = {
   storageBucket: '',     // ← typically: <projectId>.appspot.com
   messagingSenderId: '', // ← from Firebase project settings (optional)
 };
+
+/** Returns true only when all required Firebase fields are filled in. */
+export function isFirebaseConfigured(): boolean {
+  return (
+    !!FIREBASE_CONFIG.apiKey &&
+    !!FIREBASE_CONFIG.projectId &&
+    !!FIREBASE_CONFIG.appId &&
+    !!FIREBASE_CONFIG.authDomain
+  );
+}
