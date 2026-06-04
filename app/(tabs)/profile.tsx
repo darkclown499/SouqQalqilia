@@ -295,22 +295,38 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleChangePassword = async () => {
+  const handleChangePassword = () => {
     if (!user?.email) return;
-    try {
-      const supabase = getSupabaseClient();
-      const redirectTo = Platform.OS === 'web'
-        ? (typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '')
-        : 'souqqalqilya://auth/callback';
-      const { error } = await supabase.auth.resetPasswordForEmail(user.email, { redirectTo });
-      if (error) throw error;
-      showAlert(
-        isRTL ? 'تم الإرسال' : 'Email Sent',
-        isRTL ? `تم إرسال رابط تغيير كلمة المرور إلى ${user.email}` : `A password reset link has been sent to ${user.email}`
-      );
-    } catch (e: any) {
-      showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to send reset link');
-    }
+    showAlert(
+      isRTL ? 'تغيير كلمة المرور' : 'Change Password',
+      isRTL
+        ? `هل تريد إرسال رابط تغيير كلمة المرور إلى ${user.email}؟`
+        : `Send a password reset link to ${user.email}?`,
+      [
+        { text: isRTL ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isRTL ? 'إرسال الرابط' : 'Send Link',
+          onPress: async () => {
+            try {
+              const supabase = getSupabaseClient();
+              const redirectTo = Platform.OS === 'web'
+                ? (typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '')
+                : 'souqqalqilya://auth/callback';
+              const { error } = await supabase.auth.resetPasswordForEmail(user.email!, { redirectTo });
+              if (error) throw error;
+              showAlert(
+                isRTL ? 'تم الإرسال' : 'Email Sent',
+                isRTL
+                  ? `تم إرسال رابط تغيير كلمة المرور إلى ${user.email}`
+                  : `A password reset link has been sent to ${user.email}`
+              );
+            } catch (e: any) {
+              showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to send reset link');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleWhatsApp = () => {
