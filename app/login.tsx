@@ -238,7 +238,23 @@ export default function LoginScreen() {
           refresh_token: data.session.refresh_token,
         });
         if (sessErr) throw new Error(sessErr.message);
-        router.replace('/(tabs)');
+
+        // Smart routing: check if user has a name set
+        try {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('username')
+            .eq('id', data.session.user?.id ?? data.user?.id ?? '')
+            .maybeSingle();
+          const hasName = profile?.username && profile.username.trim().length > 0;
+          if (hasName) {
+            router.replace('/(tabs)');
+          } else {
+            router.replace('/complete-profile');
+          }
+        } catch {
+          router.replace('/(tabs)');
+        }
       } else {
         throw new Error('No session returned');
       }

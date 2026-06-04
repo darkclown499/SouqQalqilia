@@ -71,32 +71,38 @@ serve(async (req) => {
         .maybeSingle();
 
       if (!profileData?.id) {
-        // New user — create Supabase account via signUp (avoids IP restrictions on admin.createUser)
-        const { data: signUpData, error: signUpError } = await supabaseAdmin.auth.signUp({
+        // New user — use admin.createUser with email_confirm:true to bypass email confirmation
+        const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
           email: syntheticEmail,
           password: syntheticPassword,
-          options: {
-            data: { phone: phoneNumber, auth_method: 'firebase_phone' },
-          },
+          email_confirm: true,
+          phone: phoneNumber,
+          user_metadata: { phone: phoneNumber, auth_method: 'firebase_phone' },
         });
 
-        if (signUpError) {
-          // If user already exists but not in profiles yet, continue to sign-in
-          if (!signUpError.message?.includes('already registered') && !signUpError.message?.includes('User already registered')) {
-            console.error('SignUp error:', signUpError);
-            throw new Error(`Failed to create user: ${signUpError?.message}`);
+        if (createError) {
+          // If user already exists (race condition), continue to sign-in
+          if (!createError.message?.includes('already been registered') && !createError.message?.includes('already registered')) {
+            console.error('admin.createUser error:', createError);
+            throw new Error(`Failed to create user: ${createError?.message}`);
           }
-        } else if (signUpData?.user) {
-          // Store phone in profile — trigger may already handle this, but update just in case
+        } else if (createData?.user) {
+          // Store phone in profile — trigger may already handle this, but upsert just in case
           await supabaseAdmin
             .from('user_profiles')
             .upsert({
-              id: signUpData.user.id,
+              id: createData.user.id,
               email: syntheticEmail,
               phone: phoneNumber,
-              username: phoneNumber,
+              username: '',
             }, { onConflict: 'id', ignoreDuplicates: false })
             .then(() => {}).catch(() => {});
+        }
+      } else {
+        // Existing user — ensure email is confirmed in case it was created via signUp before
+        const { data: adminUser } = await supabaseAdmin.auth.admin.getUserById(profileData.id);
+        if (adminUser?.user && !adminUser.user.email_confirmed_at) {
+          await supabaseAdmin.auth.admin.updateUserById(profileData.id, { email_confirm: true }).catch(() => {});
         }
       }
 

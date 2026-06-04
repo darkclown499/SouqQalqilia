@@ -183,6 +183,7 @@ export default function RootLayout() {
                 <Stack.Screen name="privacy" options={{ headerShown: false }} />
                 <Stack.Screen name="faq" options={{ headerShown: false }} />
                 <Stack.Screen name="support-form" options={{ headerShown: false }} />
+                <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
               </Stack>
             </AuthProvider>
           </LanguageProvider>
