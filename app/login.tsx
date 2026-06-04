@@ -100,6 +100,7 @@ export default function LoginScreen() {
   // ── Phone Auth state ───────────────────────────────────────────────────────
   const [phoneStep, setPhoneStep] = useState<'input' | 'otp'>('input');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [countryCode, setCountryCode] = useState<'+970' | '+972'>('+970');
   const [phoneOtp, setPhoneOtp] = useState('');
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneResend, setPhoneResend] = useState(0);
@@ -172,13 +173,13 @@ export default function LoginScreen() {
     if (!digits || digits.length < 7)
       return showAlert(isAr ? 'رقم غير صحيح' : 'Invalid Number', isAr ? 'أدخل رقم الهاتف بدون رمز الدولة (مثال: 591234567)' : 'Enter your number without country code (e.g. 591234567)');
 
-    // If user already typed a full international number keep it, otherwise prepend +970
+    // If user already typed a full international number keep it, otherwise prepend selected country code
     let fullPhone: string;
     if (digits.startsWith('+')) {
       fullPhone = digits;
     } else {
-      // Strip leading zero (0591... → 591...) then add +970
-      fullPhone = '+970' + digits.replace(/^0+/, '');
+      // Strip leading zero (0591... → 591...) then add selected country code
+      fullPhone = countryCode + digits.replace(/^0+/, '');
     }
 
     if (phoneLoading || isSubmittingRef.current) return;
@@ -543,6 +544,8 @@ export default function LoginScreen() {
               <PhoneInputPanel
                 phoneNumber={phoneNumber}
                 setPhoneNumber={setPhoneNumber}
+                countryCode={countryCode}
+                setCountryCode={setCountryCode}
                 loading={phoneLoading}
                 onSend={handleSendPhoneCode}
                 recaptchaReady={recaptchaReady}
@@ -550,7 +553,7 @@ export default function LoginScreen() {
               />
             ) : (
               <PhoneOtpPanel
-                phoneNumber={phoneNumber}
+                phoneNumber={countryCode + phoneNumber}
                 otp={phoneOtp}
                 setOtp={setPhoneOtp}
                 resendCooldown={phoneResend}
@@ -672,8 +675,17 @@ export default function LoginScreen() {
   );
 }
 
+// ── Country code options ──────────────────────────────────────────────────────
+const COUNTRY_CODES = [
+  { code: '+970' as const, flag: '🇵🇸', label: 'فلسطين / Palestine' },
+  { code: '+972' as const, flag: '🇮🇱', label: 'إسرائيل / Israel' },
+];
+
 // ─── Phone Input Panel ─────────────────────────────────────────────────────────
-function PhoneInputPanel({ phoneNumber, setPhoneNumber, loading, onSend, recaptchaReady, colors, isAr }: any) {
+function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryCode, loading, onSend, recaptchaReady, colors, isAr }: any) {
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode) ?? COUNTRY_CODES[0];
+
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
@@ -689,13 +701,18 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, loading, onSend, recaptc
       </View>
 
       <View style={[s.phoneRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
-        <View style={[s.countryTag, { borderRightColor: colors.border }]}>
-          <Text style={s.flagEmoji}>🇵🇸</Text>
-          <Text style={[s.countryCode, { color: colors.primary }]}>+970</Text>
-        </View>
+        {/* Country code picker button */}
+        <Pressable
+          style={[s.countryTag, { borderRightColor: colors.border }]}
+          onPress={() => setShowCountryPicker(true)}
+        >
+          <Text style={s.flagEmoji}>{selectedCountry.flag}</Text>
+          <Text style={[s.countryCode, { color: colors.primary }]}>{selectedCountry.code}</Text>
+          <MaterialIcons name="arrow-drop-down" size={16} color={colors.textMuted} />
+        </Pressable>
         <TextInput
           style={[s.phoneInput, { color: colors.textPrimary }]}
-          placeholder={isAr ? '591234567' : '591234567'}
+          placeholder="591234567"
           placeholderTextColor={colors.textMuted}
           value={phoneNumber}
           onChangeText={v => setPhoneNumber(v.replace(/[^0-9]/g, ''))}
@@ -706,6 +723,34 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, loading, onSend, recaptc
           maxLength={12}
         />
       </View>
+
+      {/* Country Code Picker Modal */}
+      <Modal visible={showCountryPicker} transparent animationType="slide" onRequestClose={() => setShowCountryPicker(false)}>
+        <Pressable style={s.pickerOverlay} onPress={() => setShowCountryPicker(false)}>
+          <View style={[s.pickerSheet, { backgroundColor: colors.surface }]}>
+            <View style={[s.pickerHeader, { borderBottomColor: colors.border }]}>
+              <View style={[s.eulaSheetHandle, { backgroundColor: colors.border }]} />
+              <Text style={[s.panelTitle, { color: colors.textPrimary, fontSize: 16 }]}>
+                {isAr ? 'اختر رمز الدولة' : 'Select Country Code'}
+              </Text>
+            </View>
+            {COUNTRY_CODES.map(c => (
+              <Pressable
+                key={c.code}
+                style={[s.pickerOption, { borderBottomColor: colors.borderLight }, c.code === countryCode && { backgroundColor: colors.primaryGhost }]}
+                onPress={() => { setCountryCode(c.code); setShowCountryPicker(false); }}
+              >
+                <Text style={s.pickerFlag}>{c.flag}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.pickerLabel, { color: colors.textPrimary }]}>{c.label}</Text>
+                </View>
+                <Text style={[s.pickerCode, { color: colors.primary }]}>{c.code}</Text>
+                {c.code === countryCode ? <MaterialIcons name="check-circle" size={18} color={colors.primary} /> : null}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
 
       <Text style={[s.phoneHint, { color: colors.textMuted }]}>
         {isAr ? 'أدخل الرقم بدون صفر أو رمز الدولة — مثال: 591234567' : 'Enter number without 0 or country code — e.g. 591234567'}
@@ -1180,11 +1225,20 @@ const s = StyleSheet.create({
 
   // Phone row
   phoneRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: Radius.md, overflow: 'hidden', height: 54 },
-  countryTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: '100%', borderRightWidth: 1, gap: 4 },
+  countryTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, height: '100%', borderRightWidth: 1, gap: 3 },
   flagEmoji: { fontSize: 18 },
   countryCode: { fontSize: FontSize.sm, fontWeight: '700' },
   phoneInput: { flex: 1, paddingHorizontal: 14, fontSize: FontSize.md, height: '100%' },
   phoneHint: { fontSize: FontSize.xs, marginTop: -6 },
+
+  // Country picker
+  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  pickerSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 32 },
+  pickerHeader: { alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, marginBottom: 8 },
+  pickerOption: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, gap: 12, borderBottomWidth: 1 },
+  pickerFlag: { fontSize: 28 },
+  pickerLabel: { fontSize: FontSize.md, fontWeight: '600' },
+  pickerCode: { fontSize: FontSize.md, fontWeight: '800' },
 
   // 6-digit OTP boxes
   otpBoxRow: { flexDirection: 'row', justifyContent: 'center', gap: 8 },

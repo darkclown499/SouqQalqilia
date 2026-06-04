@@ -71,24 +71,33 @@ serve(async (req) => {
         .maybeSingle();
 
       if (!profileData?.id) {
-        // New user — create Supabase account
-        const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        // New user — create Supabase account via signUp (avoids IP restrictions on admin.createUser)
+        const { data: signUpData, error: signUpError } = await supabaseAdmin.auth.signUp({
           email: syntheticEmail,
           password: syntheticPassword,
-          email_confirm: true,
-          user_metadata: { phone: phoneNumber, auth_method: 'firebase_phone' },
+          options: {
+            data: { phone: phoneNumber, auth_method: 'firebase_phone' },
+          },
         });
 
-        if (createError || !newUser.user) {
-          console.error('Create user error:', createError);
-          throw new Error(`Failed to create user: ${createError?.message}`);
+        if (signUpError) {
+          // If user already exists but not in profiles yet, continue to sign-in
+          if (!signUpError.message?.includes('already registered') && !signUpError.message?.includes('User already registered')) {
+            console.error('SignUp error:', signUpError);
+            throw new Error(`Failed to create user: ${signUpError?.message}`);
+          }
+        } else if (signUpData?.user) {
+          // Store phone in profile — trigger may already handle this, but update just in case
+          await supabaseAdmin
+            .from('user_profiles')
+            .upsert({
+              id: signUpData.user.id,
+              email: syntheticEmail,
+              phone: phoneNumber,
+              username: phoneNumber,
+            }, { onConflict: 'id', ignoreDuplicates: false })
+            .then(() => {}).catch(() => {});
         }
-
-        // Store phone in profile
-        await supabaseAdmin
-          .from('user_profiles')
-          .update({ phone: phoneNumber, username: phoneNumber })
-          .eq('id', newUser.user.id);
       }
 
       // 4. Sign in to get a Supabase session
