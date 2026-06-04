@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { CategoryCard, EmptyState } from '@/components';
+import { SkeletonCategoriesGrid } from '@/components/feature/SkeletonCard';
 import { useCategories } from '@/hooks/useCategories';
 import { getCategoryName } from '@/services/categoriesService';
 import { Spacing, FontSize, Radius } from '@/constants/theme';
@@ -39,23 +40,27 @@ export default function CategoriesScreen() {
         </View>
       </View>
 
-      <FlatList
-        data={categories}
-        keyExtractor={item => item.id}
-        numColumns={2}
-        renderItem={renderItem}
-        contentContainerStyle={styles.grid}
-        showsVerticalScrollIndicator={false}
-        windowSize={5}
-        maxToRenderPerBatch={12}
-        initialNumToRender={12}
-        removeClippedSubviews={true}
-        ListEmptyComponent={
-          !loading ? (
-            <EmptyState icon="category" title={t.noCategories} subtitle={t.noCategoriesSub} />
-          ) : null
-        }
-      />
+      {loading && categories.length === 0 ? (
+        <SkeletonCategoriesGrid count={10} />
+      ) : (
+        <FlatList
+          data={categories}
+          keyExtractor={item => item.id}
+          numColumns={2}
+          renderItem={renderItem}
+          contentContainerStyle={styles.grid}
+          showsVerticalScrollIndicator={false}
+          windowSize={5}
+          maxToRenderPerBatch={12}
+          initialNumToRender={12}
+          removeClippedSubviews={true}
+          ListEmptyComponent={
+            !loading ? (
+              <EmptyState icon="category" title={t.noCategories} subtitle={t.noCategoriesSub} />
+            ) : null
+          }
+        />
+      )}
     </View>
   );
 }

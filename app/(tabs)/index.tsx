@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { AdCard, EmptyState } from '@/components';
-import { SkeletonGrid } from '@/components/feature/SkeletonCard';
+import { SkeletonHomeFeed } from '@/components/feature/SkeletonCard';
 import { InterstitialAdOverlay } from '@/components/feature/InterstitialAdOverlay';
 import { useAds } from '@/hooks/useAds';
 import { useCategories } from '@/hooks/useCategories';
@@ -389,7 +389,7 @@ export default function HomeScreen() {
 
       {/* ── CONTENT ── */}
       {loading && ads.length === 0 ? (
-        <SkeletonGrid count={6} />
+        <SkeletonHomeFeed />
       ) : (
         <FlatList
           data={feedRows}
