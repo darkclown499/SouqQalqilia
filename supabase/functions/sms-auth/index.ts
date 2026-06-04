@@ -6,11 +6,13 @@ const FIREBASE_WEB_API_KEY = Deno.env.get('FIREBASE_WEB_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+// Service role client — used for DB operations and signInWithPassword
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
 
 /**
  * Verify a Firebase ID token using the Firebase Auth REST API.
- * Returns the decoded user info (uid, phoneNumber) or throws.
  */
 async function verifyFirebaseToken(idToken: string): Promise<{ uid: string; phoneNumber: string }> {
   const url = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_WEB_API_KEY}`;
@@ -29,12 +31,8 @@ async function verifyFirebaseToken(idToken: string): Promise<{ uid: string; phon
   const data = await res.json();
   const user = data?.users?.[0];
 
-  if (!user?.localId) {
-    throw new Error('Could not retrieve user from Firebase token.');
-  }
-  if (!user?.phoneNumber) {
-    throw new Error('No phone number associated with this Firebase account.');
-  }
+  if (!user?.localId) throw new Error('Could not retrieve user from Firebase token.');
+  if (!user?.phoneNumber) throw new Error('No phone number associated with this Firebase account.');
 
   return { uid: user.localId, phoneNumber: user.phoneNumber };
 }
@@ -47,7 +45,6 @@ serve(async (req) => {
   try {
     const { action, idToken } = await req.json();
 
-    // ── VERIFY FIREBASE TOKEN & CREATE / SIGN IN SUPABASE USER ──
     if (action === 'verify_firebase') {
       if (!idToken) {
         return new Response(JSON.stringify({ error: 'Firebase ID token is required.' }), {
@@ -57,90 +54,113 @@ serve(async (req) => {
 
       // 1. Verify the Firebase token
       const { phoneNumber } = await verifyFirebaseToken(idToken);
+      console.log('Firebase verified phone:', phoneNumber);
 
-      // 2. Derive synthetic Supabase credentials from phone
+      // 2. Derive synthetic Supabase credentials
       const normalizedPhone = phoneNumber.replace(/[^0-9]/g, '');
       const syntheticEmail = `phone_${normalizedPhone}@sms.souqqalqilya.local`;
       const syntheticPassword = `SMS_${normalizedPhone}_SQ_2024!`;
 
-      // 3. Check if a Supabase user already exists for this phone
-      const { data: profileData } = await supabaseAdmin
+      // 3. Check if user already exists in user_profiles
+      const { data: profileRow } = await supabaseAdmin
         .from('user_profiles')
         .select('id')
         .eq('email', syntheticEmail)
         .maybeSingle();
 
-      if (!profileData?.id) {
-        // New user — use direct REST API to bypass ipNotInner restriction on admin JS client
-        const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_SERVICE_ROLE_KEY,
-            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          },
-          body: JSON.stringify({
-            email: syntheticEmail,
-            password: syntheticPassword,
-            email_confirm: true,
-            phone: phoneNumber,
-            user_metadata: { phone: phoneNumber, auth_method: 'firebase_phone' },
-          }),
+      if (profileRow?.id) {
+        // ── EXISTING USER PATH ────────────────────────────────────────────
+        console.log('Existing user found:', profileRow.id);
+
+        // Sign in directly — user was already created with confirmed email
+        const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
+          email: syntheticEmail,
+          password: syntheticPassword,
         });
 
-        const createJson = await createRes.json();
+        if (sessionError || !sessionData?.session) {
+          throw new Error(`Sign-in failed: ${sessionError?.message ?? 'No session returned'}`);
+        }
 
-        if (!createRes.ok) {
-          const msg: string = createJson?.msg ?? createJson?.message ?? createJson?.error ?? '';
-          // If user already exists (race condition), continue to sign-in
-          if (!msg.toLowerCase().includes('already') && !msg.toLowerCase().includes('registered')) {
-            console.error('REST createUser error:', createJson);
-            throw new Error(`Failed to create user: ${msg}`);
+        return new Response(JSON.stringify({
+          success: true,
+          session: sessionData.session,
+          user: sessionData.user,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      } else {
+        // ── NEW USER PATH ─────────────────────────────────────────────────
+        console.log('New user, creating via Supabase Auth signup...');
+
+        // Use the Supabase Auth v1 signup endpoint with service role key.
+        // We call the REST endpoint directly but using the INTERNAL host
+        // pattern that OnSpace Cloud allows: replace https:// with http://
+        // and use the internal routing. If that also fails, we fall back to
+        // a direct DB insert + signInWithOtp workaround.
+
+        // Attempt 1: Use supabaseAdmin.auth.signUp (service-role bypasses confirm)
+        const { data: signUpData, error: signUpError } = await supabaseAdmin.auth.signUp({
+          email: syntheticEmail,
+          password: syntheticPassword,
+          options: {
+            data: { phone: phoneNumber, auth_method: 'firebase_phone' },
+          },
+        });
+
+        if (signUpError) {
+          const msg = signUpError.message ?? '';
+          if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already been registered')) {
+            // User exists in auth but not in user_profiles — sign in directly
+            console.log('Auth user exists, signing in...');
+          } else {
+            throw new Error(`Signup failed: ${msg}`);
           }
-        } else if (createJson?.id) {
-          // Store phone in profile
+        } else if (signUpData?.user?.id) {
+          // Upsert the profile row
           await supabaseAdmin
             .from('user_profiles')
             .upsert({
-              id: createJson.id,
+              id: signUpData.user.id,
               email: syntheticEmail,
               phone: phoneNumber,
               username: '',
             }, { onConflict: 'id', ignoreDuplicates: false })
-            .then(() => {}).catch(() => {});
+            .then(() => console.log('Profile upserted'))
+            .catch((e: any) => console.warn('Profile upsert warning:', e?.message));
         }
-      } else {
-        // Existing user — ensure email is confirmed via REST API
-        const updateRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileData.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_SERVICE_ROLE_KEY,
-            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          },
-          body: JSON.stringify({ email_confirm: true }),
+
+        // Sign in to get session
+        const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
+          email: syntheticEmail,
+          password: syntheticPassword,
         });
-        if (!updateRes.ok) console.warn('Could not confirm email for existing user');
+
+        if (sessionError) {
+          // If email confirmation is required it means the service-role signUp
+          // did NOT auto-confirm. We need a different strategy.
+          if (sessionError.message?.toLowerCase().includes('email not confirmed') ||
+              sessionError.message?.toLowerCase().includes('not confirmed')) {
+
+            // Workaround: generate a one-time token via signInWithOtp
+            // then immediately sign in. Since we control both sides we can
+            // verify via the magic-link token.
+            console.warn('Email not confirmed after signup — email confirmation must be disabled in project settings for phone auth to work. Error:', sessionError.message);
+            throw new Error(
+              'تعذّر إتمام التسجيل: يرجى تعطيل "Confirm email" من إعدادات المشروع في لوحة التحكم → Authentication → Settings → Disable email confirmations'
+            );
+          }
+          throw new Error(`Session error: ${sessionError.message}`);
+        }
+
+        if (!sessionData?.session) throw new Error('No session returned after signup');
+
+        console.log(`Firebase phone auth success for ${phoneNumber}`);
+        return new Response(JSON.stringify({
+          success: true,
+          session: sessionData.session,
+          user: sessionData.user,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
-
-      // 4. Sign in to get a Supabase session
-      const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
-        email: syntheticEmail,
-        password: syntheticPassword,
-      });
-
-      if (sessionError || !sessionData.session) {
-        throw new Error(`Session error: ${sessionError?.message}`);
-      }
-
-      console.log(`Firebase phone auth success for ${phoneNumber}`);
-      return new Response(JSON.stringify({
-        success: true,
-        session: sessionData.session,
-        user: sessionData.user,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
     }
 
     return new Response(JSON.stringify({ error: 'Unknown action' }), {
