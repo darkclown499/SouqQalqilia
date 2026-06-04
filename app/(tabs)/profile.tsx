@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Switch, TextInput,
-  KeyboardAvoidingView, Platform, Linking, Animated as RNAnimated,
+  KeyboardAvoidingView, Platform, Linking, Animated as RNAnimated, Modal, ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -147,6 +147,8 @@ export default function ProfileScreen() {
   const [blockedUsers, setBlockedUsers] = useState<{ id: string; username: string; email: string; avatar_url: string | null }[]>([]);
   const [blockedExpanded, setBlockedExpanded] = useState(false);
   const [unblockingId, setUnblockingId] = useState<string | null>(null);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
 
@@ -266,33 +268,34 @@ export default function ProfileScreen() {
   };
 
   const handleDeleteAccount = () => {
-    showAlert(
-      isRTL ? 'حذف الحساب' : 'Delete Account',
-      isRTL ? 'هل أنت متأكد من حذف حسابك نهائياً؟ سيؤدي هذا إلى مسح كافة بياناتك ولا يمكن التراجع عن هذا الإجراء.' : 'Are you sure you want to permanently delete your account? This will erase all your data and cannot be undone.',
-      [
-        { text: t.cancel, style: 'cancel' },
-        {
-          text: isRTL ? 'تأكيد الحذف' : 'Confirm Delete', style: 'destructive',
-          onPress: async () => {
-            try {
-              const supabase = getSupabaseClient();
-              const { data: { session } } = await supabase.auth.getSession();
-              if (!session?.access_token) return showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'لا توجد جلسة نشطة. يرجى تسجيل الدخول مجدداً.' : 'No active session. Please sign in again.');
-              const { data, error } = await supabase.functions.invoke('delete-account', { body: {}, headers: { Authorization: `Bearer ${session.access_token}` } });
-              if (error) {
-                let errorMessage = error.message;
-                try { const text = await (error as any).context?.text?.(); if (text) { const parsed = JSON.parse(text); errorMessage = parsed?.error ?? text; } } catch { }
-                return showAlert(isRTL ? 'فشل الحذف' : 'Delete Failed', errorMessage);
-              }
-              await supabase.auth.signOut();
-              router.replace('/login');
-            } catch (e: any) {
-              showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to delete account.');
-            }
-          },
-        },
-      ]
-    );
+    setDeleteConfirmVisible(true);
+  };
+
+  const confirmDeleteAccount = async () => {
+    setDeletingAccount(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setDeleteConfirmVisible(false);
+        return showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'لا توجد جلسة نشطة. يرجى تسجيل الدخول مجدداً.' : 'No active session. Please sign in again.');
+      }
+      const { error } = await supabase.functions.invoke('delete-account', { body: {}, headers: { Authorization: `Bearer ${session.access_token}` } });
+      if (error) {
+        let errorMessage = error.message;
+        try { const text = await (error as any).context?.text?.(); if (text) { const parsed = JSON.parse(text); errorMessage = parsed?.error ?? text; } } catch { }
+        setDeleteConfirmVisible(false);
+        return showAlert(isRTL ? 'فشل الحذف' : 'Delete Failed', errorMessage);
+      }
+      await supabase.auth.signOut();
+      setDeleteConfirmVisible(false);
+      router.replace('/login');
+    } catch (e: any) {
+      setDeleteConfirmVisible(false);
+      showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to delete account.');
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   const handleChangePassword = () => {
@@ -785,6 +788,84 @@ export default function ProfileScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
       </View>
+
+      {/* ── DELETE ACCOUNT CONFIRMATION MODAL ── */}
+      <Modal visible={deleteConfirmVisible} transparent animationType="fade" statusBarTranslucent>
+        <View style={styles.deleteOverlay}>
+          <View style={[styles.deleteSheet, { backgroundColor: colors.surface }]}>
+            {/* Warning Icon */}
+            <View style={styles.deleteIconWrap}>
+              <View style={[styles.deleteIconOuter, { backgroundColor: '#FEE2E2' }]}>
+                <MaterialIcons name="delete-forever" size={36} color="#DC2626" />
+              </View>
+            </View>
+
+            {/* Title */}
+            <Text style={[styles.deleteTitleText, { color: '#DC2626' }]}>
+              {isRTL ? 'حذف الحساب نهائياً' : 'Permanently Delete Account'}
+            </Text>
+            <Text style={[styles.deleteSubText, { color: colors.textMuted }]}>
+              {isRTL
+                ? 'هذا الإجراء لا يمكن التراجع عنه. يرجى قراءة التحذيرات التالية:'
+                : 'This action cannot be undone. Please read the following warnings:'}
+            </Text>
+
+            {/* Warning bullets */}
+            <View style={[styles.deleteWarningsCard, { backgroundColor: colors.errorLight, borderColor: '#FCA5A5' }]}>
+              {[
+                isRTL ? 'سيتم حذف جميع إعلاناتك المنشورة بشكل دائم' : 'All your posted listings will be permanently deleted',
+                isRTL ? 'ستُحذف جميع محادثاتك ورسائلك نهائياً' : 'All your conversations and messages will be erased',
+                isRTL ? 'سيتم مسح صورك ووسائطك المرفوعة' : 'Your uploaded photos and media will be removed',
+                isRTL ? 'لن تتمكن من استرداد حسابك أو بياناتك أبداً' : 'You will never be able to recover your account or data',
+              ].map((warn, i) => (
+                <View key={i} style={[styles.deleteWarnRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                  <MaterialIcons name="cancel" size={15} color="#DC2626" style={{ marginTop: 1, flexShrink: 0 }} />
+                  <Text style={[styles.deleteWarnText, { color: '#7F1D1D', textAlign: isRTL ? 'right' : 'left' }]}>{warn}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Final confirmation message */}
+            <View style={[styles.deleteConfirmBanner, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
+              <MaterialIcons name="warning" size={16} color="#D97706" />
+              <Text style={[styles.deleteConfirmBannerText, { color: '#92400E', textAlign: isRTL ? 'right' : 'left', flex: 1 }]}>
+                {isRTL
+                  ? 'هل أنت متأكد تماماً؟ هذا الإجراء نهائي ولا يمكن التراجع عنه.'
+                  : 'Are you absolutely sure? This action is final and irreversible.'}
+              </Text>
+            </View>
+
+            {/* Action buttons */}
+            <View style={[styles.deleteActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              <Pressable
+                style={[styles.deleteCancelBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+                onPress={() => setDeleteConfirmVisible(false)}
+                disabled={deletingAccount}
+              >
+                <Text style={[styles.deleteCancelText, { color: colors.textSecondary }]}>
+                  {isRTL ? 'إلغاء' : 'Cancel'}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.deleteConfirmBtn, { opacity: deletingAccount ? 0.7 : 1 }]}
+                onPress={confirmDeleteAccount}
+                disabled={deletingAccount}
+              >
+                {deletingAccount ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <MaterialIcons name="delete-forever" size={16} color="#fff" />
+                    <Text style={styles.deleteConfirmText}>
+                      {isRTL ? 'نعم، احذف حسابي' : 'Yes, Delete My Account'}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -892,6 +973,66 @@ const styles = StyleSheet.create({
   markSoldText: { fontSize: FontSize.sm, fontWeight: '600' },
   soldChip: { paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full },
   soldChipText: { fontSize: FontSize.xs, fontWeight: '700' },
+
+  // Delete Account Modal
+  deleteOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center', justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  deleteSheet: {
+    borderRadius: Radius.xxl,
+    padding: Spacing.lg,
+    width: '100%',
+    maxWidth: 380,
+    gap: Spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  deleteIconWrap: { alignItems: 'center', marginBottom: 4 },
+  deleteIconOuter: {
+    width: 76, height: 76, borderRadius: 38,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 3, borderColor: '#FCA5A5',
+  },
+  deleteTitleText: {
+    fontSize: FontSize.xl, fontWeight: '800',
+    textAlign: 'center', letterSpacing: -0.3,
+  },
+  deleteSubText: {
+    fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20, marginTop: -4,
+  },
+  deleteWarningsCard: {
+    borderRadius: Radius.lg, borderWidth: 1.5,
+    padding: Spacing.md, gap: 10,
+  },
+  deleteWarnRow: { alignItems: 'flex-start', gap: 8 },
+  deleteWarnText: { fontSize: FontSize.sm, lineHeight: 20, flex: 1 },
+  deleteConfirmBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    borderRadius: Radius.md, borderWidth: 1.5, padding: Spacing.sm + 4,
+  },
+  deleteConfirmBannerText: { fontSize: FontSize.xs, lineHeight: 18, fontWeight: '600' },
+  deleteActions: { gap: Spacing.sm, marginTop: 4 },
+  deleteCancelBtn: {
+    flex: 1, height: 50, borderRadius: Radius.lg,
+    borderWidth: 1.5, alignItems: 'center', justifyContent: 'center',
+  },
+  deleteCancelText: { fontSize: FontSize.md, fontWeight: '600' },
+  deleteConfirmBtn: {
+    flex: 2, height: 50, borderRadius: Radius.lg,
+    backgroundColor: '#DC2626',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  deleteConfirmText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '800' },
 
   // Version footer
   versionFooter: { alignItems: 'center', paddingVertical: Spacing.xl, gap: 8 },
