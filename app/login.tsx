@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, KeyboardAvoidingView,
   Platform, Pressable, ActivityIndicator, Modal, Animated,
+  Dimensions, StatusBar,
 } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Image } from 'expo-image';
@@ -17,13 +18,28 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { APP_NAME, APP_NAME_AR } from '@/constants/config';
 import type { Language } from '@/constants/i18n';
 
-type Mode = 'login' | 'register' | 'otp';
+type Mode = 'login' | 'register' | 'otp' | 'forgot' | 'forgot_sent';
+
+// ─── Responsive helpers ───────────────────────────────────────────────────────
+function useDimensions() {
+  const [dims, setDims] = useState(() => Dimensions.get('window'));
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ window }) => setDims(window));
+    return () => sub?.remove();
+  }, []);
+  return dims;
+}
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
+  const dims = useDimensions();
+  const W = dims.width;
+  const isSmall = W < 360;
+  const isTablet = W >= 600;
+
   const { signInWithPassword, sendOTP, verifyOTPAndLogin, operationLoading } = useAuth();
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (Platform.OS !== 'web' && typeof WebBrowser.warmUpAsync === 'function') WebBrowser.warmUpAsync();
     return () => { if (Platform.OS !== 'web' && typeof WebBrowser.coolDownAsync === 'function') WebBrowser.coolDownAsync(); };
   }, []);
@@ -43,6 +59,7 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [eulaAccepted, setEulaAccepted] = useState(false);
   const [eulaModalVisible, setEulaModalVisible] = useState(false);
@@ -50,6 +67,28 @@ export default function LoginScreen() {
   const isSubmittingRef = useRef(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const googleScale = useRef(new Animated.Value(1)).current;
+  const appleScale = useRef(new Animated.Value(1)).current;
+
+  // Card enter animation
+  const cardY = useRef(new Animated.Value(24)).current;
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(cardOpacity, { toValue: 1, duration: 420, useNativeDriver: true }),
+      Animated.spring(cardY, { toValue: 0, damping: 18, stiffness: 120, useNativeDriver: true }),
+    ]).start();
+  }, [mode]);
+
+  const resetCardAnim = useCallback(() => {
+    cardOpacity.setValue(0);
+    cardY.setValue(20);
+  }, []);
+
+  const switchMode = useCallback((newMode: Mode) => {
+    resetCardAnim();
+    setMode(newMode);
+  }, []);
 
   // ── Apple Sign-In ──
   const handleAppleSignIn = async () => {
@@ -83,13 +122,19 @@ export default function LoginScreen() {
 
   const onGooglePressIn = useCallback(() => {
     Animated.spring(googleScale, { toValue: 0.96, useNativeDriver: true, speed: 24, bounciness: 4 }).start();
-  }, [googleScale]);
+  }, []);
   const onGooglePressOut = useCallback(() => {
     Animated.spring(googleScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }).start();
-  }, [googleScale]);
+  }, []);
+  const onApplePressIn = useCallback(() => {
+    Animated.spring(appleScale, { toValue: 0.96, useNativeDriver: true, speed: 24, bounciness: 4 }).start();
+  }, []);
+  const onApplePressOut = useCallback(() => {
+    Animated.spring(appleScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }).start();
+  }, []);
 
-  // Countdown timer for resend button
-  React.useEffect(() => {
+  // Countdown timer for resend
+  useEffect(() => {
     if (resendCooldown <= 0) {
       if (cooldownRef.current) { clearInterval(cooldownRef.current); cooldownRef.current = null; }
       return;
@@ -101,7 +146,6 @@ export default function LoginScreen() {
   const togglePassword = useCallback(() => setShowPassword(v => !v), []);
   const toggleConfirmPassword = useCallback(() => setShowConfirmPassword(v => !v), []);
 
-  // ── Email format validator ──
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim());
 
   // ── Email Login ──
@@ -109,7 +153,7 @@ export default function LoginScreen() {
     if (!email.trim() || !password) return showAlert(t.missingFields, t.fillAllFields);
     if (!isValidEmail(email)) return showAlert(
       isAr ? 'بريد غير صحيح' : 'Invalid Email',
-      isAr ? 'يرجى إدخال بريد إلكتروني صحيح مثل: example@gmail.com' : 'Please enter a valid email address, e.g. example@gmail.com'
+      isAr ? 'يرجى إدخال بريد إلكتروني صحيح' : 'Please enter a valid email address'
     );
     if (operationLoading || verifying || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
@@ -122,13 +166,42 @@ export default function LoginScreen() {
     }
   };
 
-  // ── Email Register: Send OTP ──
+  // ── Forgot Password ──
+  const handleForgotPassword = async () => {
+    if (!email.trim()) return showAlert(
+      isAr ? 'البريد الإلكتروني مطلوب' : 'Email Required',
+      isAr ? 'يرجى إدخال بريدك الإلكتروني أولاً' : 'Please enter your email address first'
+    );
+    if (!isValidEmail(email)) return showAlert(
+      isAr ? 'بريد غير صحيح' : 'Invalid Email',
+      isAr ? 'يرجى إدخال بريد إلكتروني صحيح' : 'Please enter a valid email address'
+    );
+    if (forgotLoading) return;
+    setForgotLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      const redirectTo = Platform.OS === 'web'
+        ? (typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '')
+        : 'souqqalqilya://auth/callback';
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo });
+      if (error) {
+        showAlert(isAr ? 'خطأ' : 'Error', error.message);
+      } else {
+        resetCardAnim();
+        setMode('forgot_sent');
+      }
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  // ── Register: Send OTP ──
   const handleSendOTP = async () => {
     if (!eulaAccepted) return showAlert(isAr ? 'الموافقة مطلوبة' : 'Agreement Required', t.eulaMustAgree);
     if (!email.trim() || !password) return showAlert(t.missingFields, t.fillAllFields);
     if (!isValidEmail(email)) return showAlert(
       isAr ? 'بريد غير صحيح' : 'Invalid Email',
-      isAr ? 'يرجى إدخال بريد إلكتروني صحيح مثل: example@gmail.com' : 'Please enter a valid email address, e.g. example@gmail.com'
+      isAr ? 'يرجى إدخال بريد إلكتروني صحيح' : 'Please enter a valid email address'
     );
     if (password !== confirmPassword) return showAlert(t.passwordMismatch, t.passwordsDontMatch);
     if (password.length < 6) return showAlert(t.weakPassword, t.passwordMin6);
@@ -137,6 +210,7 @@ export default function LoginScreen() {
     try {
       const { error } = await sendOTP(email.trim().toLowerCase());
       if (error) return showAlert('Error', error);
+      resetCardAnim();
       setMode('otp');
       setResendCooldown(60);
     } finally {
@@ -152,13 +226,13 @@ export default function LoginScreen() {
       const { error } = await sendOTP(email.trim().toLowerCase());
       if (error) return showAlert('Error', error);
       setResendCooldown(60);
-      showAlert(isAr ? 'تم الإرسال' : 'Code Sent', isAr ? 'تم إرسال رمز جديد إلى بريدك الإلكتروني' : 'A new verification code was sent to your email.');
+      showAlert(isAr ? 'تم الإرسال' : 'Code Sent', isAr ? 'تم إرسال رمز جديد إلى بريدك الإلكتروني' : 'A new code was sent to your email.');
     } finally {
       isSubmittingRef.current = false;
     }
   };
 
-  // ── Email Register: Verify OTP ──
+  // ── Verify OTP ──
   const handleVerifyOTP = async () => {
     if (!otp || otp.length < 4) return showAlert(t.enterCode, t.enterCodeMsg);
     if (verifying) return;
@@ -179,15 +253,11 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     if (googleLoading) return;
     setGoogleLoading(true);
-
     const supabase = getSupabaseClient();
 
-    // ── WEB ──
     if (Platform.OS === 'web') {
       try {
-        const redirectTo = typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback`
-          : '';
+        const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '';
         const { error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: { redirectTo, skipBrowserRedirect: false, queryParams: { prompt: 'select_account', access_type: 'offline' } },
@@ -201,9 +271,6 @@ export default function LoginScreen() {
       return;
     }
 
-    // ── MOBILE ──
-    // Step 1: Register auth state listener BEFORE opening browser
-    // This catches SIGNED_IN even if the deep link redirect isn't captured
     let authResolved = false;
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (authResolved) return;
@@ -224,18 +291,13 @@ export default function LoginScreen() {
 
       if (error || !data?.url) {
         subscription.unsubscribe();
-        showAlert(
-          isAr ? 'خطأ في الاتصال' : 'Connection Error',
-          error?.message ?? (isAr ? 'تعذّر الاتصال بـ Google' : 'Could not connect to Google')
-        );
+        showAlert(isAr ? 'خطأ في الاتصال' : 'Connection Error', error?.message ?? (isAr ? 'تعذّر الاتصال بـ Google' : 'Could not connect to Google'));
         setGoogleLoading(false);
         return;
       }
 
-      // Step 2: Open browser
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo) as { type: string; url?: string };
 
-      // Step 3: Handle direct success (deep link was captured — works on real APK)
       if (result.type === 'success' && result.url) {
         const parsed = new URL(result.url);
         const params = new URLSearchParams(parsed.searchParams);
@@ -273,16 +335,11 @@ export default function LoginScreen() {
             }
           }
         }
-        // onAuthStateChange will fire SIGNED_IN → handled above
         return;
       }
 
-      // Step 4: Browser closed without deep link (preview env / Android)
-      // Poll for session for up to 15 seconds — Supabase may have set it
-      // via onAuthStateChange while the browser was open.
       if (!authResolved) {
         let attempts = 0;
-        const maxAttempts = 10; // 10 × 1.5s = 15s
         const poll = setInterval(async () => {
           attempts++;
           const { data: { session } } = await supabase.auth.getSession();
@@ -292,16 +349,14 @@ export default function LoginScreen() {
             clearInterval(poll);
             setGoogleLoading(false);
             router.replace('/(tabs)');
-          } else if (attempts >= maxAttempts && !authResolved) {
+          } else if (attempts >= 10 && !authResolved) {
             authResolved = true;
             subscription.unsubscribe();
             clearInterval(poll);
             setGoogleLoading(false);
             showAlert(
               isAr ? 'لم يكتمل تسجيل الدخول' : 'Sign-in not completed',
-              isAr
-                ? 'يرجى إكمال تسجيل الدخول في المتصفح والعودة للتطبيق، أو المحاولة مجدداً.'
-                : 'Please complete sign-in in the browser and return to the app, or try again.'
+              isAr ? 'يرجى المحاولة مجدداً.' : 'Please try again.'
             );
           }
         }, 1500);
@@ -313,66 +368,119 @@ export default function LoginScreen() {
     }
   };
 
+  // ── Responsive values ──
+  const hPad = isTablet ? 48 : Spacing.lg;
+  const logoSize = isSmall ? 72 : isTablet ? 120 : 88;
+  const maxCardWidth = isTablet ? 480 : undefined;
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <StatusBar barStyle="light-content" backgroundColor="#0A6E5C" />
+
+      {/* ── Verifying overlay ── */}
       <Modal visible={verifying} transparent animationType="none" statusBarTranslucent>
-        <View style={styles.loadingOverlay}>
-          <View style={styles.loadingBox}>
+        <View style={s.overlay}>
+          <View style={s.overlayBox}>
             <ActivityIndicator size="large" color="#0A6E5C" />
-            <Text style={styles.loadingText}>{isAr ? 'جارٍ التحقق...' : 'Verifying...'}</Text>
+            <Text style={s.overlayText}>{isAr ? 'جارٍ التحقق...' : 'Verifying...'}</Text>
           </View>
         </View>
       </Modal>
 
       <ScrollView
-        style={[styles.scroll, { backgroundColor: colors.primary }]}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 }]}
+        style={[s.scroll, { backgroundColor: '#0A6E5C' }]}
+        contentContainerStyle={[
+          s.scrollContent,
+          {
+            paddingTop: insets.top + 12,
+            paddingBottom: insets.bottom + 40,
+            paddingHorizontal: hPad,
+            alignItems: isTablet ? 'center' : 'stretch',
+          },
+        ]}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {/* Language Selector */}
-        <View style={[styles.langRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
-          {(['en', 'ar'] as Language[]).map(lang => (
+        {/* ── Top bar: Language + Back ── */}
+        <View style={[s.topBar, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+          {(mode === 'forgot' || mode === 'otp') ? (
             <Pressable
-              key={lang}
-              style={[styles.langPill, language === lang ? { backgroundColor: 'rgba(255,255,255,0.9)' } : { backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.3)' }]}
-              onPress={() => setLanguage(lang)}
+              style={s.backBtn}
+              onPress={() => switchMode(mode === 'otp' ? 'register' : 'login')}
+              hitSlop={10}
             >
-              <MaterialIcons name="language" size={13} color={language === lang ? colors.primary : 'rgba(255,255,255,0.8)'} />
-              <Text style={[styles.langPillText, { color: language === lang ? colors.primary : 'rgba(255,255,255,0.85)' }, language === lang && { fontWeight: '700' }]}>
-                {lang === 'en' ? 'English' : 'العربية'}
-              </Text>
+              <MaterialIcons
+                name={isAr ? 'arrow-forward' : 'arrow-back'}
+                size={20}
+                color="rgba(255,255,255,0.9)"
+              />
             </Pressable>
-          ))}
+          ) : <View style={{ width: 36 }} />}
+
+          <View style={[s.langRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+            {(['ar', 'en'] as Language[]).map(lang => (
+              <Pressable
+                key={lang}
+                style={[
+                  s.langPill,
+                  language === lang
+                    ? { backgroundColor: 'rgba(255,255,255,0.95)' }
+                    : { backgroundColor: 'rgba(255,255,255,0.14)', borderColor: 'rgba(255,255,255,0.25)' },
+                ]}
+                onPress={() => setLanguage(lang)}
+              >
+                <Text style={[s.langText, { color: language === lang ? '#0A6E5C' : 'rgba(255,255,255,0.88)' }]}>
+                  {lang === 'en' ? 'EN' : 'ع'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
-        {/* Hero */}
-        <View style={styles.hero}>
-          <View style={styles.logoRing}>
+        {/* ── Hero ── */}
+        <View style={[s.hero, { maxWidth: maxCardWidth, width: '100%', alignSelf: 'center' }]}>
+          <View style={[s.logoWrap, { width: logoSize, height: logoSize, borderRadius: logoSize * 0.22 }]}>
             <Image
               source={require('@/assets/images/app-logo-bg.png')}
-              style={styles.logoImage}
-              contentFit="contain"
+              style={{ width: logoSize, height: logoSize, borderRadius: logoSize * 0.22 }}
+              contentFit="cover"
               transition={200}
             />
           </View>
-          <View style={styles.appNameHeroRow}>
-            <Text style={styles.appName}>{isAr ? APP_NAME_AR : APP_NAME}</Text>
-          </View>
-          <Text style={styles.tagline}>{t.tagline}</Text>
+          <Text style={[s.heroTitle, { fontSize: isSmall ? FontSize.xl : FontSize.xxl + 2 }]}>
+            {isAr ? APP_NAME_AR : APP_NAME}
+          </Text>
+          <Text style={s.heroSub}>{t.tagline}</Text>
         </View>
 
-        {/* Card */}
-        <View style={[styles.card, { backgroundColor: colors.surface, ...Shadow.lg }]}>
-          {/* Login / Register tabs */}
-          {mode !== 'otp' ? (
-            <View style={[styles.tabs, { backgroundColor: colors.background }]}>
+        {/* ── Main Card ── */}
+        <Animated.View
+          style={[
+            s.card,
+            {
+              backgroundColor: colors.surface,
+              maxWidth: maxCardWidth,
+              width: '100%',
+              alignSelf: 'center',
+              transform: [{ translateY: cardY }],
+              opacity: cardOpacity,
+              ...Shadow.lg,
+            },
+          ]}
+        >
+          {/* ─ Login/Register Tabs ─ */}
+          {(mode === 'login' || mode === 'register') ? (
+            <View style={[s.tabs, { backgroundColor: colors.background }]}>
               {(['login', 'register'] as const).map(tab => (
                 <Pressable
                   key={tab}
-                  style={[styles.tab, mode === tab && [styles.tabActive, { backgroundColor: colors.primary, ...Shadow.colored }]]}
-                  onPress={() => setMode(tab)}
+                  style={[
+                    s.tab,
+                    mode === tab && [s.tabActive, { backgroundColor: colors.primary }],
+                  ]}
+                  onPress={() => switchMode(tab)}
                 >
-                  <Text style={[styles.tabText, { color: colors.textMuted }, mode === tab && styles.tabTextActive]}>
+                  <Text style={[s.tabText, { color: mode === tab ? '#fff' : colors.textMuted }]}>
                     {tab === 'login' ? t.signIn : t.register}
                   </Text>
                 </Pressable>
@@ -380,271 +488,569 @@ export default function LoginScreen() {
             </View>
           ) : null}
 
+          {/* ─ Mode: Login ─ */}
+          {mode === 'login' ? (
+            <LoginForm
+              email={email} setEmail={setEmail}
+              password={password} setPassword={setPassword}
+              showPassword={showPassword} togglePassword={togglePassword}
+              loading={operationLoading}
+              onLogin={handleLogin}
+              onForgot={() => switchMode('forgot')}
+              colors={colors} t={t} isAr={isAr}
+            />
+          ) : null}
+
+          {/* ─ Mode: Register ─ */}
+          {mode === 'register' ? (
+            <RegisterForm
+              email={email} setEmail={setEmail}
+              password={password} setPassword={setPassword}
+              confirmPassword={confirmPassword} setConfirmPassword={setConfirmPassword}
+              showPassword={showPassword} togglePassword={togglePassword}
+              showConfirmPassword={showConfirmPassword} toggleConfirmPassword={toggleConfirmPassword}
+              eulaAccepted={eulaAccepted} setEulaAccepted={setEulaAccepted}
+              onOpenEula={() => setEulaModalVisible(true)}
+              loading={operationLoading}
+              onSend={handleSendOTP}
+              colors={colors} t={t} isAr={isAr}
+              router={router}
+            />
+          ) : null}
+
+          {/* ─ Mode: OTP ─ */}
           {mode === 'otp' ? (
-            <>
-              <View style={styles.otpHeader}>
-                <View style={[styles.otpIconWrap, { backgroundColor: colors.primaryGhost }]}>
-                  <MaterialIcons name="mark-email-unread" size={32} color={colors.primary} />
-                </View>
-                <Text style={[styles.otpTitle, { color: colors.textPrimary }]}>{t.checkEmail}</Text>
-                <Text style={[styles.otpSub, { color: colors.textSecondary }]}>{t.codeSentTo}</Text>
-                <Text style={[styles.otpEmail, { color: colors.primary }]}>{email}</Text>
-              </View>
-              <Input label={t.verificationCode} placeholder="0  0  0  0" value={otp} onChangeText={setOtp} keyboardType="number-pad" maxLength={4} textAlign="center" returnKeyType="done" onSubmitEditing={handleVerifyOTP} />
-              <Button label={t.verifyCreate} onPress={handleVerifyOTP} loading={operationLoading} size="lg" />
-              <Pressable
-                style={[styles.resendBtn, { opacity: resendCooldown > 0 ? 0.5 : 1 }]}
-                onPress={handleResendOTP}
-                disabled={resendCooldown > 0}
-              >
-                <MaterialIcons name="refresh" size={15} color={resendCooldown > 0 ? colors.textMuted : colors.primary} />
-                <Text style={[styles.resendText, { color: resendCooldown > 0 ? colors.textMuted : colors.primary }]}>
-                  {resendCooldown > 0
-                    ? (isAr ? `إعادة الإرسال (${resendCooldown}ث)` : `Resend Code (${resendCooldown}s)`)
-                    : (isAr ? 'إعادة إرسال الرمز' : 'Resend Code')}
-                </Text>
-              </Pressable>
-              <Pressable style={styles.link} onPress={() => setMode('register')}>
-                <Text style={[styles.linkText, { color: colors.primary }]}>{t.backToRegistration}</Text>
-              </Pressable>
-            </>
-          ) : mode === 'login' ? (
-            <>
-              <View style={styles.formHeader}>
-                <Text style={[styles.formTitle, { color: colors.textPrimary }]}>{t.welcomeBack}</Text>
-                <Text style={[styles.formSub, { color: colors.textMuted }]}>{t.signInAccount}</Text>
-              </View>
-              <Input label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-              <Input label={t.password} placeholder={t.passwordPlaceholder} value={password} onChangeText={setPassword} secureTextEntry={!showPassword}
-                rightElement={<Pressable onPress={togglePassword} hitSlop={8}><MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={20} color={colors.textMuted} /></Pressable>}
-              />
-              <Button label={t.signIn} onPress={handleLogin} loading={operationLoading} size="lg" />
-            </>
-          ) : (
-            <>
-              <View style={styles.formHeader}>
-                <Text style={[styles.formTitle, { color: colors.textPrimary }]}>{t.createAccount}</Text>
-                <Text style={[styles.formSub, { color: colors.textMuted }]}>{t.joinToBuySell}</Text>
-              </View>
-              <Input label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-              <Input label={t.password} placeholder={t.minPassword} value={password} onChangeText={setPassword} secureTextEntry={!showPassword}
-                rightElement={<Pressable onPress={togglePassword} hitSlop={8}><MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={20} color={colors.textMuted} /></Pressable>}
-              />
-              <Input label={t.confirmPassword} placeholder={t.repeatPassword} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showConfirmPassword}
-                rightElement={<Pressable onPress={toggleConfirmPassword} hitSlop={8}><MaterialIcons name={showConfirmPassword ? 'visibility' : 'visibility-off'} size={20} color={colors.textMuted} /></Pressable>}
-              />
-              {/* EULA checkbox */}
-              <Pressable
-                style={[styles.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}
-                onPress={() => setEulaAccepted(v => !v)}
-              >
-                <View style={[styles.eulaCheckbox, { borderColor: eulaAccepted ? colors.primary : colors.border, backgroundColor: eulaAccepted ? colors.primary : 'transparent' }]}>
-                  {eulaAccepted ? <MaterialIcons name="check" size={13} color="#fff" /> : null}
-                </View>
-                <Text style={[styles.eulaText, { color: colors.textSecondary, textAlign: isAr ? 'right' : 'left' }]}>
-                  {t.eulaAgree + ' '}
-                  <Text style={[styles.eulaLink, { color: colors.primary }]} onPress={() => setEulaModalVisible(true)}>
-                    {t.eulaTerms}
-                  </Text>
-                  {' ' + t.eulaAnd + ' '}
-                  <Text style={[styles.eulaLink, { color: colors.primary }]} onPress={() => router.push('/privacy')}>
-                    {t.eulaPrivacy}
-                  </Text>
-                </Text>
-              </Pressable>
+            <OtpForm
+              email={email}
+              otp={otp} setOtp={setOtp}
+              resendCooldown={resendCooldown}
+              loading={operationLoading}
+              onVerify={handleVerifyOTP}
+              onResend={handleResendOTP}
+              onBack={() => switchMode('register')}
+              colors={colors} t={t} isAr={isAr}
+            />
+          ) : null}
 
-              <Button label={t.continueCode} onPress={handleSendOTP} loading={operationLoading} size="lg" />
-            </>
-          )}
+          {/* ─ Mode: Forgot Password ─ */}
+          {mode === 'forgot' ? (
+            <ForgotForm
+              email={email} setEmail={setEmail}
+              loading={forgotLoading}
+              onSend={handleForgotPassword}
+              onBack={() => switchMode('login')}
+              colors={colors} isAr={isAr}
+            />
+          ) : null}
 
-          {mode !== 'otp' ? (
-            <Text style={styles.footerHint}>
+          {/* ─ Mode: Forgot Sent ─ */}
+          {mode === 'forgot_sent' ? (
+            <ForgotSentScreen
+              email={email}
+              onBack={() => switchMode('login')}
+              colors={colors} isAr={isAr}
+            />
+          ) : null}
+
+          {/* Footer hint */}
+          {(mode === 'login' || mode === 'register') ? (
+            <Text style={[s.footerHint, { color: colors.textMuted }]}>
               {mode === 'login' ? t.noAccount : t.haveAccount}
-              <Text style={styles.footerLink} onPress={() => setMode(mode === 'login' ? 'register' : 'login')}>
+              <Text
+                style={[s.footerLink, { color: colors.primary }]}
+                onPress={() => switchMode(mode === 'login' ? 'register' : 'login')}
+              >
                 {mode === 'login' ? t.register : t.signIn}
               </Text>
             </Text>
           ) : null}
-        </View>
+        </Animated.View>
 
-      {/* EULA Modal */}
-      <Modal visible={eulaModalVisible} animationType="slide" transparent onRequestClose={() => setEulaModalVisible(false)}>
-        <View style={styles.eulaModalOverlay}>
-          <View style={[styles.eulaModalSheet, { backgroundColor: colors.surface }]}>
-            <View style={[styles.eulaModalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.eulaModalTitle, { color: colors.textPrimary }]}>
-                {isAr ? 'شروط الاستخدام (EULA)' : 'Terms of Use (EULA)'}
-              </Text>
-              <Pressable onPress={() => setEulaModalVisible(false)} hitSlop={8}>
-                <MaterialIcons name="close" size={22} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            <ScrollView style={styles.eulaModalBody} showsVerticalScrollIndicator={false}>
-              <Text style={[styles.eulaModalText, { color: colors.textSecondary }]}>
-                {t.eulaContent}
-              </Text>
-            </ScrollView>
-            <Pressable
-              style={[styles.eulaAcceptBtn, { backgroundColor: colors.primary }]}
-              onPress={() => { setEulaAccepted(true); setEulaModalVisible(false); }}
-            >
-              <MaterialIcons name="check-circle" size={18} color="#fff" />
-              <Text style={styles.eulaAcceptBtnText}>{isAr ? 'أوافق وأقبل الشروط' : 'I Agree & Accept'}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-        {/* Social Login — Google on Android, Apple on iOS, both shown */}
-        {Platform.OS !== 'web' ? (
-          <>
-            <View style={styles.dividerRow}>
-              <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
-              <Text style={[styles.dividerText, { color: 'rgba(255,255,255,0.55)' }]}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
-              <View style={[styles.dividerLine, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
+        {/* ── Social Buttons ── */}
+        {(mode === 'login' || mode === 'register') && Platform.OS !== 'web' ? (
+          <View style={[s.socialSection, { maxWidth: maxCardWidth, width: '100%', alignSelf: 'center' }]}>
+            <View style={s.dividerRow}>
+              <View style={s.dividerLine} />
+              <Text style={s.dividerText}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
+              <View style={s.dividerLine} />
             </View>
 
-            <View style={styles.socialRow}>
-              {/* Google — Android & iOS */}
-              <Animated.View style={[styles.socialBtnWrap, { transform: [{ scale: googleScale }] }]}>
+            <View style={s.socialRow}>
+              {/* Google */}
+              <Animated.View style={[s.socialBtnWrap, { transform: [{ scale: googleScale }] }]}>
                 <Pressable
-                  style={[styles.socialBtn, styles.googleSocialBtn, googleLoading && styles.googleBtnLoading]}
+                  style={[s.socialBtn, s.googleBtn, googleLoading && { opacity: 0.7 }]}
                   onPress={handleGoogleSignIn}
                   disabled={googleLoading}
                   onPressIn={onGooglePressIn}
                   onPressOut={onGooglePressOut}
-                  accessibilityLabel={isAr ? 'تسجيل الدخول عبر Google' : 'Sign in with Google'}
                 >
                   {googleLoading
                     ? <ActivityIndicator size="small" color="#4285F4" />
                     : (
-                      <View style={styles.socialIconCircle}>
-                        <Text style={styles.googleGLetter}>G</Text>
+                      <View style={s.googleIconCircle}>
+                        <Text style={s.googleG}>G</Text>
                       </View>
                     )}
-                  <Text style={[styles.socialBtnLabel, { color: '#1F1F1F' }]} numberOfLines={1}>
-                    Google
-                  </Text>
+                  <Text style={s.googleLabel}>Google</Text>
                 </Pressable>
               </Animated.View>
 
-              {/* Apple — iOS & Android (Apple requires showing on iOS; optional on Android) */}
-              <Animated.View style={styles.socialBtnWrap}>
+              {/* Apple */}
+              <Animated.View style={[s.socialBtnWrap, { transform: [{ scale: appleScale }] }]}>
                 <Pressable
-                  style={[styles.socialBtn, styles.appleSocialBtn, { opacity: appleLoading ? 0.7 : 1 }]}
+                  style={[s.socialBtn, s.appleBtn, appleLoading && { opacity: 0.7 }]}
                   onPress={handleAppleSignIn}
                   disabled={appleLoading}
-                  accessibilityLabel={isAr ? 'تسجيل الدخول عبر Apple' : 'Sign in with Apple'}
+                  onPressIn={onApplePressIn}
+                  onPressOut={onApplePressOut}
                 >
                   {appleLoading
                     ? <ActivityIndicator size="small" color="#fff" />
-                    : (
-                      <View style={styles.appleIconWrap}>
-                        <FontAwesome name="apple" size={20} color="#fff" />
-                      </View>
-                    )}
-                  <Text style={[styles.socialBtnLabel, { color: '#fff' }]} numberOfLines={1}>
-                    Apple
-                  </Text>
+                    : <FontAwesome name="apple" size={19} color="#fff" />}
+                  <Text style={s.appleLabel}>Apple</Text>
                 </Pressable>
               </Animated.View>
             </View>
-          </>
+          </View>
         ) : null}
       </ScrollView>
+
+      {/* EULA Modal */}
+      <EulaModal
+        visible={eulaModalVisible}
+        onClose={() => setEulaModalVisible(false)}
+        onAccept={() => { setEulaAccepted(true); setEulaModalVisible(false); }}
+        colors={colors} t={t} isAr={isAr}
+      />
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  // EULA
-  eulaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8, marginTop: 4 },
-  eulaCheckbox: { width: 20, height: 20, borderRadius: 5, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0 },
-  eulaText: { flex: 1, fontSize: FontSize.xs, lineHeight: 18 },
-  eulaLink: { fontWeight: '700' },
-  eulaModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  eulaModalSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%', paddingBottom: 32 },
-  eulaModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.lg, borderBottomWidth: 1 },
-  eulaModalTitle: { fontSize: FontSize.lg, fontWeight: '800' },
-  eulaModalBody: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
-  eulaModalText: { fontSize: FontSize.sm, lineHeight: 22 },
-  eulaAcceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginHorizontal: Spacing.lg, marginTop: Spacing.md, paddingVertical: 14, borderRadius: Radius.lg },
-  eulaAcceptBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function LoginForm({ email, setEmail, password, setPassword, showPassword, togglePassword, loading, onLogin, onForgot, colors, t, isAr }: any) {
+  return (
+    <View style={s.formBody}>
+      <View style={s.formHeader}>
+        <Text style={[s.formTitle, { color: colors.textPrimary }]}>{t.welcomeBack}</Text>
+        <Text style={[s.formSub, { color: colors.textMuted }]}>{t.signInAccount}</Text>
+      </View>
+      <Input
+        label={t.emailAddress}
+        placeholder={t.emailPlaceholder}
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <View>
+        <Input
+          label={t.password}
+          placeholder={t.passwordPlaceholder}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword}
+          rightElement={
+            <Pressable onPress={togglePassword} hitSlop={8}>
+              <MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={20} color={colors.textMuted} />
+            </Pressable>
+          }
+        />
+        {/* Forgot password link */}
+        <Pressable style={[s.forgotLink, { alignSelf: isAr ? 'flex-start' : 'flex-end' }]} onPress={onForgot} hitSlop={8}>
+          <Text style={[s.forgotText, { color: colors.primary }]}>
+            {isAr ? 'نسيت كلمة المرور؟' : 'Forgot password?'}
+          </Text>
+        </Pressable>
+      </View>
+      <Button label={t.signIn} onPress={onLogin} loading={loading} size="lg" />
+    </View>
+  );
+}
+
+function RegisterForm({ email, setEmail, password, setPassword, confirmPassword, setConfirmPassword, showPassword, togglePassword, showConfirmPassword, toggleConfirmPassword, eulaAccepted, setEulaAccepted, onOpenEula, loading, onSend, colors, t, isAr, router }: any) {
+  return (
+    <View style={s.formBody}>
+      <View style={s.formHeader}>
+        <Text style={[s.formTitle, { color: colors.textPrimary }]}>{t.createAccount}</Text>
+        <Text style={[s.formSub, { color: colors.textMuted }]}>{t.joinToBuySell}</Text>
+      </View>
+      <Input label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+      <Input
+        label={t.password}
+        placeholder={t.minPassword}
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry={!showPassword}
+        rightElement={<Pressable onPress={togglePassword} hitSlop={8}><MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={20} color={colors.textMuted} /></Pressable>}
+      />
+      <Input
+        label={t.confirmPassword}
+        placeholder={t.repeatPassword}
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
+        secureTextEntry={!showConfirmPassword}
+        rightElement={<Pressable onPress={toggleConfirmPassword} hitSlop={8}><MaterialIcons name={showConfirmPassword ? 'visibility' : 'visibility-off'} size={20} color={colors.textMuted} /></Pressable>}
+      />
+      {/* EULA */}
+      <Pressable
+        style={[s.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}
+        onPress={() => setEulaAccepted((v: boolean) => !v)}
+      >
+        <View style={[
+          s.eulaCheck,
+          { borderColor: eulaAccepted ? colors.primary : colors.border, backgroundColor: eulaAccepted ? colors.primary : 'transparent' },
+        ]}>
+          {eulaAccepted ? <MaterialIcons name="check" size={13} color="#fff" /> : null}
+        </View>
+        <Text style={[s.eulaText, { color: colors.textSecondary, textAlign: isAr ? 'right' : 'left' }]}>
+          {t.eulaAgree + ' '}
+          <Text style={[s.eulaHighlight, { color: colors.primary }]} onPress={onOpenEula}>{t.eulaTerms}</Text>
+          {' ' + t.eulaAnd + ' '}
+          <Text style={[s.eulaHighlight, { color: colors.primary }]} onPress={() => router.push('/privacy')}>{t.eulaPrivacy}</Text>
+        </Text>
+      </Pressable>
+      <Button label={t.continueCode} onPress={onSend} loading={loading} size="lg" />
+    </View>
+  );
+}
+
+function OtpForm({ email, otp, setOtp, resendCooldown, loading, onVerify, onResend, onBack, colors, t, isAr }: any) {
+  return (
+    <View style={s.formBody}>
+      <View style={s.centeredHeader}>
+        <View style={[s.iconCircle, { backgroundColor: colors.primaryGhost }]}>
+          <MaterialIcons name="mark-email-unread" size={32} color={colors.primary} />
+        </View>
+        <Text style={[s.formTitle, { color: colors.textPrimary, textAlign: 'center' }]}>{t.checkEmail}</Text>
+        <Text style={[s.formSub, { color: colors.textMuted, textAlign: 'center' }]}>{t.codeSentTo}</Text>
+        <View style={[s.emailPill, { backgroundColor: colors.primaryGhost }]}>
+          <MaterialIcons name="email" size={14} color={colors.primary} />
+          <Text style={[s.emailPillText, { color: colors.primary }]} numberOfLines={1}>{email}</Text>
+        </View>
+      </View>
+      <Input
+        label={t.verificationCode}
+        placeholder="•  •  •  •"
+        value={otp}
+        onChangeText={setOtp}
+        keyboardType="number-pad"
+        maxLength={4}
+        textAlign="center"
+        returnKeyType="done"
+        onSubmitEditing={onVerify}
+      />
+      <Button label={t.verifyCreate} onPress={onVerify} loading={loading} size="lg" />
+      <Pressable
+        style={[s.resendBtn, { opacity: resendCooldown > 0 ? 0.5 : 1 }]}
+        onPress={onResend}
+        disabled={resendCooldown > 0}
+      >
+        <MaterialIcons name="refresh" size={15} color={resendCooldown > 0 ? colors.textMuted : colors.primary} />
+        <Text style={[s.resendText, { color: resendCooldown > 0 ? colors.textMuted : colors.primary }]}>
+          {resendCooldown > 0
+            ? (isAr ? `إعادة الإرسال (${resendCooldown}ث)` : `Resend Code (${resendCooldown}s)`)
+            : (isAr ? 'إعادة إرسال الرمز' : 'Resend Code')}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function ForgotForm({ email, setEmail, loading, onSend, onBack, colors, isAr }: any) {
+  return (
+    <View style={s.formBody}>
+      <View style={s.centeredHeader}>
+        <View style={[s.iconCircle, { backgroundColor: '#FEF3C7' }]}>
+          <MaterialIcons name="lock-reset" size={32} color="#D97706" />
+        </View>
+        <Text style={[s.formTitle, { color: colors.textPrimary, textAlign: 'center' }]}>
+          {isAr ? 'نسيت كلمة المرور؟' : 'Forgot Password?'}
+        </Text>
+        <Text style={[s.formSub, { color: colors.textMuted, textAlign: 'center' }]}>
+          {isAr
+            ? 'أدخل بريدك الإلكتروني وسنرسل لك رابط لإعادة تعيين كلمة المرور'
+            : 'Enter your email and we will send you a reset link'}
+        </Text>
+      </View>
+      <Input
+        label={isAr ? 'البريد الإلكتروني' : 'Email Address'}
+        placeholder={isAr ? 'example@email.com' : 'you@example.com'}
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <Button
+        label={isAr ? 'إرسال رابط الاسترداد' : 'Send Reset Link'}
+        onPress={onSend}
+        loading={loading}
+        size="lg"
+      />
+      <Pressable style={s.backRow} onPress={onBack} hitSlop={8}>
+        <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={16} color={colors.primary} />
+        <Text style={[s.backRowText, { color: colors.primary }]}>
+          {isAr ? 'العودة لتسجيل الدخول' : 'Back to Sign In'}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function ForgotSentScreen({ email, onBack, colors, isAr }: any) {
+  return (
+    <View style={s.formBody}>
+      <View style={s.centeredHeader}>
+        <View style={[s.iconCircle, { backgroundColor: '#D1FAE5' }]}>
+          <MaterialIcons name="check-circle" size={36} color="#10B981" />
+        </View>
+        <Text style={[s.formTitle, { color: colors.textPrimary, textAlign: 'center' }]}>
+          {isAr ? 'تم الإرسال!' : 'Email Sent!'}
+        </Text>
+        <Text style={[s.formSub, { color: colors.textMuted, textAlign: 'center', lineHeight: 22 }]}>
+          {isAr
+            ? 'تم إرسال رابط إعادة تعيين كلمة المرور إلى'
+            : 'A password reset link was sent to'}
+        </Text>
+        <View style={[s.emailPill, { backgroundColor: colors.primaryGhost }]}>
+          <MaterialIcons name="email" size={14} color={colors.primary} />
+          <Text style={[s.emailPillText, { color: colors.primary }]} numberOfLines={1}>{email}</Text>
+        </View>
+        <Text style={[s.formSub, { color: colors.textMuted, textAlign: 'center', marginTop: 8 }]}>
+          {isAr
+            ? 'تحقق من صندوق الوارد أو مجلد السبام'
+            : 'Check your inbox or spam folder'}
+        </Text>
+      </View>
+      <Pressable style={[s.backRow, { justifyContent: 'center', marginTop: 8 }]} onPress={onBack} hitSlop={8}>
+        <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={16} color={colors.primary} />
+        <Text style={[s.backRowText, { color: colors.primary }]}>
+          {isAr ? 'العودة لتسجيل الدخول' : 'Back to Sign In'}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function EulaModal({ visible, onClose, onAccept, colors, t, isAr }: any) {
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={s.eulaOverlay}>
+        <View style={[s.eulaSheet, { backgroundColor: colors.surface }]}>
+          <View style={[s.eulaSheetHeader, { borderBottomColor: colors.border }]}>
+            <View style={[s.eulaSheetHandle, { backgroundColor: colors.border }]} />
+            <Text style={[s.eulaSheetTitle, { color: colors.textPrimary }]}>
+              {isAr ? 'شروط الاستخدام' : 'Terms of Use'}
+            </Text>
+            <Pressable onPress={onClose} hitSlop={8} style={[s.eulaCloseBtn, { backgroundColor: colors.background }]}>
+              <MaterialIcons name="close" size={18} color={colors.textMuted} />
+            </Pressable>
+          </View>
+          <ScrollView style={s.eulaBody} showsVerticalScrollIndicator={false}>
+            <Text style={[s.eulaBodyText, { color: colors.textSecondary }]}>{t.eulaContent}</Text>
+          </ScrollView>
+          <Pressable style={[s.eulaAcceptBtn, { backgroundColor: colors.primary }]} onPress={onAccept}>
+            <MaterialIcons name="check-circle" size={18} color="#fff" />
+            <Text style={s.eulaAcceptLabel}>{isAr ? 'أوافق وأقبل الشروط' : 'I Agree & Accept'}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { paddingHorizontal: Spacing.lg },
-  langRow: { justifyContent: 'flex-end', gap: Spacing.sm, marginBottom: Spacing.sm },
-  langPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1 },
-  langPillText: { fontSize: FontSize.sm },
-  hero: { alignItems: 'center', marginBottom: Spacing.xl, paddingVertical: Spacing.md },
-  logoRing: { width: 100, height: 100, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.md, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.15)' },
-  logoImage: { width: 90, height: 90, borderRadius: 16 },
-  appNameHeroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 4 },
-  appName: { fontSize: FontSize.xxxl, fontWeight: '800', color: '#fff', letterSpacing: -0.8 },
-  heroBetaBadge: { backgroundColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'center', shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 4, elevation: 3 },
-  heroBetaBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2, lineHeight: 13 },
-  tagline: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)', textAlign: 'center' },
-  card: { borderRadius: Radius.xxl, padding: Spacing.lg },
-  tabs: { flexDirection: 'row', borderRadius: Radius.md, padding: 4, marginBottom: Spacing.lg, gap: 4 },
-  tab: { flex: 1, paddingVertical: 11, alignItems: 'center', borderRadius: Radius.sm },
-  tabActive: {},
-  tabText: { fontSize: FontSize.md, fontWeight: '600' },
-  tabTextActive: { color: '#fff' },
-  formHeader: { marginBottom: Spacing.lg },
-  formTitle: { fontSize: FontSize.xl, fontWeight: '800', marginBottom: 4, letterSpacing: -0.3 },
-  formSub: { fontSize: FontSize.sm },
-  otpHeader: { alignItems: 'center', marginBottom: Spacing.lg, gap: 6 },
-  otpIconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  otpTitle: { fontSize: FontSize.xl, fontWeight: '800', letterSpacing: -0.3 },
-  otpSub: { fontSize: FontSize.sm },
-  otpEmail: { fontSize: FontSize.md, fontWeight: '600' },
-  resendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: Spacing.md, paddingVertical: 10 },
-  resendText: { fontSize: FontSize.sm, fontWeight: '600' },
-  link: { alignItems: 'center', marginTop: Spacing.xs },
-  linkText: { fontSize: FontSize.sm, fontWeight: '600' },
-  footerHint: { textAlign: 'center', fontSize: FontSize.sm, color: 'rgba(255,255,255,0.4)', marginTop: Spacing.md },
-  footerLink: { color: 'rgba(255,255,255,0.9)', fontWeight: '700' },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.md },
-  dividerLine: { flex: 1, height: 1 },
-  dividerText: { fontSize: FontSize.xs, fontWeight: '600' },
-  // ── Social buttons row ──
-  socialRow: {
-    flexDirection: 'row', gap: Spacing.sm,
-    marginTop: Spacing.sm,
+  scrollContent: { flexGrow: 1 },
+
+  // Top bar
+  topBar: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
   },
+  backBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  langRow: { flexDirection: 'row', gap: 6 },
+  langPill: {
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: Radius.full, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+    minWidth: 40,
+  },
+  langText: { fontSize: FontSize.sm, fontWeight: '700' },
+
+  // Hero
+  hero: { alignItems: 'center', paddingVertical: Spacing.md, marginBottom: Spacing.xl },
+  logoWrap: {
+    overflow: 'hidden',
+    marginBottom: Spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    elevation: 10,
+  },
+  heroTitle: {
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.6,
+    marginBottom: 4,
+  },
+  heroSub: {
+    fontSize: FontSize.sm,
+    color: 'rgba(255,255,255,0.65)',
+    textAlign: 'center',
+  },
+
+  // Card
+  card: {
+    borderRadius: Radius.xxl,
+    overflow: 'hidden',
+  },
+
+  // Tabs
+  tabs: {
+    flexDirection: 'row',
+    margin: Spacing.lg,
+    marginBottom: 0,
+    borderRadius: Radius.md,
+    padding: 4,
+    gap: 4,
+  },
+  tab: {
+    flex: 1, paddingVertical: 11, alignItems: 'center',
+    borderRadius: Radius.sm,
+  },
+  tabActive: {},
+  tabText: { fontSize: FontSize.md, fontWeight: '700' },
+
+  // Form
+  formBody: { padding: Spacing.lg, gap: Spacing.md },
+  formHeader: { marginBottom: 4 },
+  formTitle: { fontSize: FontSize.xl + 1, fontWeight: '800', marginBottom: 3, letterSpacing: -0.3 },
+  formSub: { fontSize: FontSize.sm, lineHeight: 20 },
+  centeredHeader: { alignItems: 'center', gap: 8, marginBottom: 4 },
+  iconCircle: {
+    width: 68, height: 68, borderRadius: 34,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
+  },
+
+  // Forgot link
+  forgotLink: { marginTop: -4, paddingVertical: 4 },
+  forgotText: { fontSize: FontSize.sm, fontWeight: '600' },
+
+  // Email pill
+  emailPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: Radius.full,
+    maxWidth: '90%',
+  },
+  emailPillText: { fontSize: FontSize.sm, fontWeight: '600', flexShrink: 1 },
+
+  // OTP resend
+  resendBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 6, paddingVertical: 10,
+  },
+  resendText: { fontSize: FontSize.sm, fontWeight: '600' },
+
+  // Back row
+  backRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 10, marginTop: -4,
+  },
+  backRowText: { fontSize: FontSize.sm, fontWeight: '600' },
+
+  // Footer
+  footerHint: {
+    textAlign: 'center', fontSize: FontSize.sm,
+    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg,
+    marginTop: -4,
+  },
+  footerLink: { fontWeight: '700' },
+
+  // EULA inline
+  eulaRow: { alignItems: 'flex-start', gap: 10, marginTop: -4 },
+  eulaCheck: {
+    width: 20, height: 20, borderRadius: 5,
+    borderWidth: 2, alignItems: 'center', justifyContent: 'center',
+    marginTop: 1, flexShrink: 0,
+  },
+  eulaText: { flex: 1, fontSize: FontSize.xs, lineHeight: 18 },
+  eulaHighlight: { fontWeight: '700' },
+
+  // EULA Modal
+  eulaOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  eulaSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '82%' },
+  eulaSheetHandle: { width: 40, height: 4, borderRadius: 99, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
+  eulaSheetHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+  },
+  eulaSheetTitle: { flex: 1, fontSize: FontSize.lg, fontWeight: '800', textAlign: 'center' },
+  eulaCloseBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  eulaBody: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
+  eulaBodyText: { fontSize: FontSize.sm, lineHeight: 24 },
+  eulaAcceptBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, margin: Spacing.lg, marginTop: Spacing.md,
+    paddingVertical: 15, borderRadius: Radius.xl,
+  },
+  eulaAcceptLabel: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+
+  // Social section
+  socialSection: { marginTop: Spacing.xl },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginBottom: Spacing.lg },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.22)' },
+  dividerText: { fontSize: FontSize.xs, fontWeight: '600', color: 'rgba(255,255,255,0.55)' },
+  socialRow: { flexDirection: 'row', gap: Spacing.sm },
   socialBtnWrap: { flex: 1 },
   socialBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 10,
-    borderRadius: Radius.xl, paddingVertical: 15,
-    minHeight: 54,
+    gap: 10, borderRadius: Radius.xl, paddingVertical: 15, minHeight: 54,
   },
-  googleSocialBtn: {
+  googleBtn: {
     backgroundColor: '#fff',
     borderWidth: 1.5, borderColor: '#E8EAED',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.10, shadowRadius: 8, elevation: 5,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1, shadowRadius: 8, elevation: 4,
   },
-  appleSocialBtn: {
-    backgroundColor: '#000',
-    borderWidth: 1.5, borderColor: '#000',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 8, elevation: 5,
+  appleBtn: {
+    backgroundColor: '#111',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22, shadowRadius: 8, elevation: 4,
   },
-  googleBtnLoading: { borderColor: '#D2E3FC', backgroundColor: '#F8FBFF' },
-  socialIconCircle: {
+  googleIconCircle: {
     width: 26, height: 26, borderRadius: 13,
     borderWidth: 1, borderColor: '#E8EAED',
     backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center',
   },
-  googleGLetter: { fontSize: 15, fontWeight: '900', color: '#4285F4', lineHeight: 18 },
-  appleIconWrap: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
-  appleLogoText: { fontSize: 20, color: '#fff', lineHeight: 22, marginTop: -2 },
-  socialBtnLabel: { fontSize: FontSize.md, fontWeight: '700', letterSpacing: 0.1 },
-  // legacy (kept for safety)
-  googleIconBox: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  googleTextCol: { flex: 1, alignItems: 'center' },
-  googleBtnText: { color: '#1F1F1F', fontSize: FontSize.md, fontWeight: '700', letterSpacing: 0.1 },
-  googleBtnSub: { color: '#5F6368', fontSize: 11, marginTop: 2, textAlign: 'center' },
-  loadingOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
-  loadingBox: { backgroundColor: '#fff', borderRadius: 16, padding: 28, alignItems: 'center', gap: 14, minWidth: 140, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 10, elevation: 8 },
-  loadingText: { fontSize: FontSize.md, fontWeight: '600', color: '#1a1a1a' },
+  googleG: { fontSize: 15, fontWeight: '900', color: '#4285F4', lineHeight: 18 },
+  googleLabel: { fontSize: FontSize.md, fontWeight: '700', color: '#1F1F1F' },
+  appleLabel: { fontSize: FontSize.md, fontWeight: '700', color: '#fff' },
+
+  // Loading overlay
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  overlayBox: {
+    backgroundColor: '#fff', borderRadius: 18, padding: 28,
+    alignItems: 'center', gap: 14, minWidth: 140,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18, shadowRadius: 12, elevation: 8,
+  },
+  overlayText: { fontSize: FontSize.md, fontWeight: '600', color: '#1a1a1a' },
 });
