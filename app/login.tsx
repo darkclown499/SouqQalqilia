@@ -4,12 +4,10 @@ import {
   Platform, Pressable, ActivityIndicator, Modal, Animated,
   Dimensions, StatusBar, TextInput,
 } from 'react-native';
-// Apple Authentication — iOS only
-let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
-try { AppleAuthentication = require('expo-apple-authentication'); } catch (_) {}
+// Apple Authentication removed — not used on any platform
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
@@ -55,9 +53,9 @@ export default function LoginScreen() {
   }, []);
 
   // ── Tab state ──────────────────────────────────────────────────────────────
-  // Phone tab is always available (Twilio direct — no Firebase dependency)
-  const showPhoneTab = true;
-  const [activeTab, setActiveTab] = useState<MainTab>('phone');
+  // Phone tab (Twilio) → iOS only | Android uses email + Google only
+  const showPhoneTab = Platform.OS === 'ios';
+  const [activeTab, setActiveTab] = useState<MainTab>(Platform.OS === 'ios' ? 'phone' : 'email');
   const tabIndicator = useRef(new Animated.Value(0)).current;
 
   const switchTab = useCallback((tab: MainTab) => {
@@ -98,8 +96,8 @@ export default function LoginScreen() {
   const phoneResendRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Social ─────────────────────────────────────────────────────────────────
+  // Google: Android only | Apple: removed from all platforms
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [appleLoading, setAppleLoading] = useState(false);
 
   const isSubmittingRef = useRef(false);
 
@@ -380,23 +378,7 @@ export default function LoginScreen() {
     }
   };
 
-  // ── Apple Sign-In ──────────────────────────────────────────────────────────
-  const handleAppleSignIn = async () => {
-    if (appleLoading) return;
-    if (!AppleAuthentication) return showAlert(isAr ? 'غير متاح' : 'Not Available', isAr ? 'تسجيل الدخول عبر Apple غير متاح.' : 'Apple Sign-In is not available.');
-    setAppleLoading(true);
-    try {
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME, AppleAuthentication.AppleAuthenticationScope.EMAIL],
-      });
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken ?? '' });
-      if (error) showAlert(isAr ? 'خطأ' : 'Error', error.message);
-      else router.replace('/(tabs)');
-    } catch (e: any) {
-      if (e?.code !== 'ERR_REQUEST_CANCELED') showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Apple sign-in failed');
-    } finally { setAppleLoading(false); }
-  };
+  // Apple Sign-In removed from all platforms per product decision
 
   // ── Tab width for indicator ────────────────────────────────────────────────
   const cardMaxW = isTablet ? 460 : W - 32;
@@ -608,32 +590,23 @@ export default function LoginScreen() {
           ) : null}
         </Animated.View>
 
-        {/* ── SOCIAL LOGIN ── */}
-        {Platform.OS !== 'web' && (emailMode === 'login' || emailMode === 'register' || activeTab === 'phone') ? (
+        {/* ── SOCIAL LOGIN — Android only (Google), hidden on iOS) ── */}
+        {Platform.OS === 'android' && (emailMode === 'login' || emailMode === 'register') ? (
           <View style={[s.socialSection, { alignSelf: 'center', maxWidth: cardMaxW, width: '100%' }]}>
             <View style={s.dividerRow}>
               <View style={s.divLine} />
               <Text style={s.divText}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
               <View style={s.divLine} />
             </View>
-            <View style={s.socialRow}>
-              <SocialButton
-                icon={<GoogleG />}
-                label="Google"
-                loading={googleLoading}
-                onPress={handleGoogleSignIn}
-                style={[s.googleBtn, { borderColor: isDark ? colors.border : '#DADCE0' }]}
-                labelStyle={{ color: isDark ? colors.textPrimary : '#3C4043', fontWeight: '600' }}
-              />
-              <SocialButton
-                icon={<FontAwesome5 name="apple" size={18} color="#fff" solid />}
-                label="Apple"
-                loading={appleLoading}
-                onPress={handleAppleSignIn}
-                style={s.appleBtn}
-                labelStyle={s.appleLabel}
-              />
-            </View>
+            {/* Full-width Google button — only social option on Android */}
+            <SocialButton
+              icon={<GoogleG />}
+              label="Google"
+              loading={googleLoading}
+              onPress={handleGoogleSignIn}
+              style={[s.googleBtn, { borderColor: isDark ? colors.border : '#DADCE0' }]}
+              labelStyle={{ color: isDark ? colors.textPrimary : '#3C4043', fontWeight: '600' }}
+            />
           </View>
         ) : null}
       </ScrollView>
