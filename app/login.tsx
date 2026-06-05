@@ -206,18 +206,34 @@ export default function LoginScreen() {
       const auth = getAuth(app);
 
       if (!recaptchaRef.current || !recaptchaReady) {
-      return showAlert(
-        isAr ? 'جارٍ التهيئة' : 'Please wait',
-        isAr ? 'جارٍ تحميل نظام التحقق، انتظر لحظة وأعد المحاولة' : 'Security check is loading, please wait a moment and try again'
-      );
-    }
+        setPhoneLoading(false);
+        isSubmittingRef.current = false;
+        return showAlert(
+          isAr ? 'جارٍ التهيئة' : 'Please wait',
+          isAr ? 'جارٍ تحميل نظام التحقق، انتظر لحظة وأعد المحاولة' : 'Security check is loading, please wait a moment and try again'
+        );
+      }
 
       const result = await signInWithPhoneNumber(auth, fullPhone, recaptchaRef.current);
       setConfirmationResult(result);
       setPhoneStep('otp');
       setPhoneResend(60);
     } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Failed to send code');
+      // Map common Firebase error codes to user-friendly messages
+      let msg: string = e?.message ?? 'Failed to send code';
+      const code: string = e?.code ?? '';
+      if (code === 'auth/invalid-app-credential' || code.includes('39')) {
+        msg = isAr
+          ? 'فشل التحقق الأمني. يرجى المحاولة مرة أخرى أو إعادة تشغيل التطبيق.'
+          : 'Security check failed. Please try again or restart the app.';
+      } else if (code === 'auth/too-many-requests') {
+        msg = isAr ? 'طلبات كثيرة جداً. حاول لاحقاً.' : 'Too many requests. Please try later.';
+      } else if (code === 'auth/invalid-phone-number') {
+        msg = isAr ? 'رقم الهاتف غير صحيح.' : 'Invalid phone number format.';
+      } else if (code === 'auth/quota-exceeded') {
+        msg = isAr ? 'تم تجاوز حصة الرسائل. حاول لاحقاً.' : 'SMS quota exceeded. Please try later.';
+      }
+      showAlert(isAr ? 'خطأ' : 'Error', msg);
     } finally {
       setPhoneLoading(false);
       isSubmittingRef.current = false;
@@ -462,7 +478,7 @@ export default function LoginScreen() {
             if (r && !recaptchaReady) setRecaptchaReady(true);
           }}
           firebaseConfig={FIREBASE_CONFIG}
-          attemptInvisibleVerification
+          attemptInvisibleVerification={false}
           title={isAr ? 'التحقق من رقم الهاتف' : 'Verify Phone Number'}
           cancelLabel={isAr ? 'إلغاء' : 'Cancel'}
         />
