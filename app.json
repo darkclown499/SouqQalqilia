@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "devices": ["iphone"],
-      "bundleIdentifier": "app.onspace.souq_qalqilya",
+      "bundleIdentifier": "app.plankton.souq-qalqilya",
       "buildNumber": "9",
       "usesAppleSignIn": true,
       "googleServicesFile": "./GoogleService-Info.plist",
