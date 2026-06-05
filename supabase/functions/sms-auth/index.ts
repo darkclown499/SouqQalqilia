@@ -6,9 +6,9 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
-// Use env var if set, otherwise fall back to the configured Verify Service SID
+// SouqQalqilia_WhatsApp_Service — linked to whatsapp:+15559658976, status: Online
 const TWILIO_VERIFY_SERVICE_SID =
-  Deno.env.get('TWILIO_VERIFY_SERVICE_SID') || 'VA513792923343334886d6f9b815dbf431';
+  Deno.env.get('TWILIO_VERIFY_SERVICE_SID') || 'VA41169795e10e4201ebcf32b0cff20e65';
 
 // Service role client — full privileges, no auth headers
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -160,6 +160,7 @@ const twilioAuth = () => `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKE
  *
  * Custom Arabic template (set in Twilio Console → Verify → Services → Messaging):
  * 'أهلاً بك في سوق قلقيلية! رمز التحقق الخاص بك هو: {{code}}. سيصلك هذا الرمز عبر واتساب فقط.'
+ * Sender: whatsapp:+15559658976 (SouqQalqilia_WhatsApp_Service)
  */
 async function sendVerifyOtp(phone: string): Promise<void> {
   console.log(`Sending WhatsApp Verify OTP to ${phone} via Service ${TWILIO_VERIFY_SERVICE_SID}`);
