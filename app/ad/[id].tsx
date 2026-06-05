@@ -160,7 +160,11 @@ export default function AdDetailScreen() {
 
   const images = (ad.ad_images ?? []).sort((a, b) => a.position - b.position);
   const seller = ad.user_profiles;
-  const sellerName = seller?.username || seller?.email?.split('@')[0] || 'Seller';
+  const isPhoneUser = (seller?.email ?? '').includes('@sms.souqqalqilya.local');
+  const sellerName = seller?.username ||
+    (isPhoneUser
+      ? (seller?.phone || (seller?.email ?? '').replace(/^phone_(\d+)@sms\.souqqalqilya\.local$/, '+$1'))
+      : (seller?.email?.split('@')[0] ?? 'Seller'));
   const isOwner = user?.id === ad.user_id;
   const isFree = ad.price === 0;
   const hasPhone = !!(ad.phone_number?.trim());
@@ -541,15 +545,23 @@ function AdDetailScrollContent({
             <Text style={[styles.cardLabel, { color: colors.primary }]}>{t.seller}</Text>
             <View style={styles.sellerRow}>
               {seller?.avatar_url ? (
-                <Image source={{ uri: seller.avatar_url }} style={styles.sellerAvatarImg} contentFit="cover" transition={200} />
+                <Pressable onPress={() => router.push(`/seller/${ad.user_id}` as any)}>
+                  <Image source={{ uri: seller.avatar_url }} style={styles.sellerAvatarImg} contentFit="cover" transition={200} />
+                </Pressable>
               ) : (
-                <View style={[styles.sellerAvatar, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.sellerAvatarText}>{sellerName.charAt(0).toUpperCase()}</Text>
-                </View>
+                <Pressable onPress={() => router.push(`/seller/${ad.user_id}` as any)}>
+                  <View style={[styles.sellerAvatar, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.sellerAvatarText}>{sellerName.charAt(0).toUpperCase()}</Text>
+                  </View>
+                </Pressable>
               )}
               <View style={styles.sellerInfo}>
                 <Text style={[styles.sellerName, { color: colors.textPrimary }]}>{sellerName}</Text>
-                {/* Email is hidden from public view for privacy */}
+                <Pressable onPress={() => router.push(`/seller/${ad.user_id}` as any)} hitSlop={4}>
+                  <Text style={[styles.sellerEmail, { color: colors.primary, fontSize: FontSize.xs, fontWeight: '600', marginTop: 2 }]}>
+                    {isAr ? 'عرض الملف الشخصي' : 'View Profile'}
+                  </Text>
+                </Pressable>
               </View>
               <View style={[styles.sellerBadge, { backgroundColor: sellerVerified ? '#DBEAFE' : colors.accentLight }]}>
                 <MaterialIcons name={sellerVerified ? 'verified' : 'person'} size={14} color={sellerVerified ? '#2563EB' : colors.accent} />

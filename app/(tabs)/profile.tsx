@@ -370,8 +370,10 @@ export default function ProfileScreen() {
 
   // For phone-auth users, show real phone number instead of synthetic email
   const isPhoneUser = (user.email ?? '').includes('@sms.souqqalqilya.local');
+  // Derive display contact: prefer stored editPhone, fallback to extracting from synthetic email
+  const extractedPhone = (user.email ?? '').replace(/^phone_(\d+)@sms\.souqqalqilya\.local$/, '+$1');
   const displayEmail = isPhoneUser
-    ? (editPhone || (user.email ?? '').replace(/^phone_(\d+)@sms\.souqqalqilya\.local$/, '+$1'))
+    ? (editPhone || extractedPhone)
     : (user.email ?? '');
   const displayName = localDisplayName ?? user.username ?? user.email?.split('@')[0] ?? 'User';
   const activeAds = ads.filter(a => a.status === 'active' || a.status === 'featured');

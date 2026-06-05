@@ -170,7 +170,46 @@ export default function RootScreen() {
 
   if (phase === 'launch') return <LaunchPhase onDone={() => setPhase('loading')} />;
   if (phase === 'loading') return <LoadingPhase onDone={() => setPhase('done')} />;
-  return <Redirect href="/(tabs)" />;
+  return <AuthGate />;
+}
+
+// ─── Auth-aware gate: check username before routing ──────────────────────────
+function AuthGate() {
+  const [target, setTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      try {
+        const { getSupabaseClient } = require('@/template');
+        const supabase = getSupabaseClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          if (!cancelled) setTarget('/(tabs)');
+          return;
+        }
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('username')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        const isPhoneUser = (session.user.email ?? '').includes('@sms.souqqalqilya.local');
+        const hasName = profile?.username && profile.username.trim().length > 0;
+        if (isPhoneUser && !hasName) {
+          if (!cancelled) setTarget('/complete-profile');
+        } else {
+          if (!cancelled) setTarget('/(tabs)');
+        }
+      } catch {
+        if (!cancelled) setTarget('/(tabs)');
+      }
+    }
+    check();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!target) return null;
+  return <Redirect href={target as any} />;
 }
 
 const styles = StyleSheet.create({
