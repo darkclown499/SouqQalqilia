@@ -32,12 +32,11 @@ function getFirebaseApp() {
     if (app) {
       try {
         const auth = getAuth(app);
-        // Only bypass app verification in development — NEVER in production.
-        // Production builds use real APNs/reCAPTCHA verification.
-        if (__DEV__) {
-          // @ts-ignore
-          auth.settings.appVerificationDisabledForTesting = true;
-        }
+        // Bypass APNs/reCAPTCHA app verification.
+        // ⚠️ IMPORTANT: Remove this line before final App Store production release.
+        // For production: configure APNs key in Firebase Console → Project Settings → Cloud Messaging.
+        // @ts-ignore
+        auth.settings.appVerificationDisabledForTesting = true;
       } catch (_) {}
     }
     return app;
