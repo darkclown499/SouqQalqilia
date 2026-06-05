@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "devices": ["iphone"],
-      "bundleIdentifier": "app.onspace.souq_qalqilya",
+      "bundleIdentifier": "app.plankton.souq-qalqilya",
       "buildNumber": "9",
       "usesAppleSignIn": true,
       "googleServicesFile": "./GoogleService-Info.plist",
@@ -25,7 +25,7 @@
       }
     },
     "android": {
-      "package": "app.onspace.souq_qalqilya",
+      "package": "app.plankton.souq-qalqilya",
       "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/plankton-logo.png",
