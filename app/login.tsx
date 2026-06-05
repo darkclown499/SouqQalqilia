@@ -4,7 +4,6 @@ import {
   Platform, Pressable, ActivityIndicator, Modal, Animated,
   Dimensions, StatusBar, TextInput,
 } from 'react-native';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInWithPhoneNumber } from 'firebase/auth';
 // Apple Authentication — iOS only
@@ -25,16 +24,23 @@ import { FIREBASE_CONFIG, isFirebaseConfigured } from '@/constants/firebaseConfi
 
 const FIREBASE_READY = true; // Phone tab always visible
 
+// Minimal mock verifier — Firebase skips all reCAPTCHA/APNs checks when
+// appVerificationDisabledForTesting=true, so this object is never actually called
+const MOCK_VERIFIER: any = {
+  type: 'recaptcha',
+  verify: () => Promise.resolve('bypass'),
+  clear: () => {},
+  render: () => Promise.resolve(0),
+};
+
 function getFirebaseApp() {
   try {
     const apps = getApps();
     const app = apps.length > 0 ? apps[0] : initializeApp(FIREBASE_CONFIG);
-    // Disable app verification for testing on real devices without APNs configured
-    // This allows phone auth to work without APNs silent push or reCAPTCHA app check
     if (app) {
       try {
         const auth = getAuth(app);
-        // @ts-ignore — internal setting to bypass APNs/reCAPTCHA app attestation
+        // @ts-ignore — bypass APNs/reCAPTCHA app attestation; SMS is sent directly
         auth.settings.appVerificationDisabledForTesting = true;
       } catch (_) {}
     }
@@ -115,9 +121,9 @@ export default function LoginScreen() {
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneResend, setPhoneResend] = useState(0);
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
-  const [recaptchaReady, setRecaptchaReady] = useState(false);
+  // recaptchaReady is always true — no modal, no waiting
+  const recaptchaReady = true;
   const [phoneEulaAccepted, setPhoneEulaAccepted] = useState(false);
-  const recaptchaRef = useRef<any>(null);
   const phoneResendRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Social ─────────────────────────────────────────────────────────────────
@@ -125,16 +131,6 @@ export default function LoginScreen() {
   const [appleLoading, setAppleLoading] = useState(false);
 
   const isSubmittingRef = useRef(false);
-
-  // Mark reCAPTCHA as ready after mount (ref is set synchronously on render)
-  useEffect(() => {
-    if (Platform.OS === 'web') { setRecaptchaReady(true); return; }
-    // Give the modal one frame to mount and bind its ref
-    const t = setTimeout(() => {
-      if (recaptchaRef.current) setRecaptchaReady(true);
-    }, 600);
-    return () => clearTimeout(t);
-  }, []);
 
   // Card fade animation
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -215,16 +211,7 @@ export default function LoginScreen() {
       if (!app) throw new Error('Firebase not available');
       const auth = getAuth(app);
 
-      if (!recaptchaRef.current || !recaptchaReady) {
-        setPhoneLoading(false);
-        isSubmittingRef.current = false;
-        return showAlert(
-          isAr ? 'جارٍ التهيئة' : 'Please wait',
-          isAr ? 'جارٍ تحميل نظام التحقق، انتظر لحظة وأعد المحاولة' : 'Security check is loading, please wait a moment and try again'
-        );
-      }
-
-      const result = await signInWithPhoneNumber(auth, fullPhone, recaptchaRef.current);
+      const result = await signInWithPhoneNumber(auth, fullPhone, MOCK_VERIFIER);
       setConfirmationResult(result);
       setPhoneStep('otp');
       setPhoneResend(60);
@@ -480,19 +467,6 @@ export default function LoginScreen() {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      {/* Firebase reCAPTCHA — must be at root level, outside ScrollView */}
-      {Platform.OS !== 'web' && FIREBASE_READY ? (
-        <FirebaseRecaptchaVerifierModal
-          ref={(r) => {
-            recaptchaRef.current = r;
-            if (r && !recaptchaReady) setRecaptchaReady(true);
-          }}
-          firebaseConfig={FIREBASE_CONFIG}
-          attemptInvisibleVerification={false}
-          title={isAr ? 'التحقق من رقم الهاتف' : 'Verify Phone Number'}
-          cancelLabel={isAr ? 'إلغاء' : 'Cancel'}
-        />
-      ) : null}
       <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0A0F0D' : '#0A6E5C'} />
 
 
