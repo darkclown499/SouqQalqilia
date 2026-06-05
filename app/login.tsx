@@ -32,8 +32,12 @@ function getFirebaseApp() {
     if (app) {
       try {
         const auth = getAuth(app);
-        // @ts-ignore — bypass APNs/reCAPTCHA app attestation; SMS is sent directly
-        auth.settings.appVerificationDisabledForTesting = true;
+        // Only bypass app verification in development — NEVER in production.
+        // Production builds use real APNs/reCAPTCHA verification.
+        if (__DEV__) {
+          // @ts-ignore
+          auth.settings.appVerificationDisabledForTesting = true;
+        }
       } catch (_) {}
     }
     return app;
