@@ -477,9 +477,9 @@ export default function LoginScreen() {
               {/* Tab buttons */}
               <View style={s.tabBtns}>
                 <Pressable style={s.tabBtn} onPress={() => { switchTab('phone'); setPhoneStep('input'); }}>
-                  <MaterialIcons name="smartphone" size={15} color={activeTab === 'phone' ? '#fff' : colors.textMuted} />
+                  <Text style={{ fontSize: 13 }}>💬</Text>
                   <Text style={[s.tabBtnText, { color: activeTab === 'phone' ? '#fff' : colors.textMuted }]}>
-                    {isAr ? 'رقم الهاتف' : 'Phone'}
+                    {isAr ? 'واتساب' : 'WhatsApp'}
                   </Text>
                 </Pressable>
                 <Pressable style={s.tabBtn} onPress={() => { switchTab('email'); setEmailMode('login'); }}>
@@ -636,14 +636,14 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
-        <View style={[s.panelIconWrap, { backgroundColor: colors.primaryGhost }]}>
-          <MaterialIcons name="phone-android" size={28} color={colors.primary} />
+        <View style={[s.panelIconWrap, { backgroundColor: '#E7F9EE' }]}>
+          <Text style={{ fontSize: 28 }}>💬</Text>
         </View>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>
-          {isAr ? 'الدخول برقم الهاتف' : 'Sign in with Phone'}
+          {isAr ? 'الدخول عبر واتساب' : 'Sign in via WhatsApp'}
         </Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>
-          {isAr ? 'سيصلك رمز تحقق مكون من 6 أرقام' : 'You will receive a 6-digit verification code'}
+          {isAr ? 'سيصلك رمز تحقق مكون من 6 أرقام عبر واتساب' : 'You will receive a 6-digit code via WhatsApp'}
         </Text>
       </View>
 
@@ -703,6 +703,14 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
         {isAr ? 'أدخل الرقم بدون صفر أو رمز الدولة — مثال: 591234567' : 'Enter number without 0 or country code — e.g. 591234567'}
       </Text>
 
+      {/* WhatsApp info banner */}
+      <View style={[s.waBanner, { backgroundColor: '#E7F9EE', borderColor: '#25D366' }]}>
+        <Text style={{ fontSize: 14 }}>💬</Text>
+        <Text style={[s.waBannerText, { color: '#1A7A40' }]}>
+          {isAr ? 'سيصلك الرمز عبر واتساب — تأكد أن رقمك مرتبط بحساب واتساب' : 'Code will arrive via WhatsApp — make sure your number is linked to WhatsApp'}
+        </Text>
+      </View>
+
       {/* EULA Acceptance */}
       <Pressable style={[s.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]} onPress={() => setEulaAccepted(!eulaAccepted)}>
         <View style={[s.eulaCheck, { borderColor: eulaAccepted ? colors.primary : colors.border, backgroundColor: eulaAccepted ? colors.primary : 'transparent' }]}>
@@ -734,8 +742,8 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
         {loading
           ? <ActivityIndicator size="small" color="#fff" />
           : <>
-              <MaterialIcons name="send" size={16} color="#fff" />
-              <Text style={s.primaryBtnText}>{isAr ? 'إرسال رمز التحقق' : 'Send Verification Code'}</Text>
+              <Text style={{ fontSize: 15 }}>💬</Text>
+              <Text style={s.primaryBtnText}>{isAr ? 'إرسال رمز واتساب' : 'Send WhatsApp Code'}</Text>
             </>}
       </Pressable>
     </View>
@@ -782,18 +790,18 @@ function PhoneOtpPanel({ phoneNumber, otp, setOtp, resendCooldown, loading, onVe
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
-        <View style={[s.panelIconWrap, { backgroundColor: colors.primaryGhost }]}>
-          <MaterialIcons name="sms" size={28} color={colors.primary} />
+        <View style={[s.panelIconWrap, { backgroundColor: '#E7F9EE' }]}>
+          <Text style={{ fontSize: 28 }}>💬</Text>
         </View>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>
-          {isAr ? 'أدخل رمز التحقق' : 'Enter Verification Code'}
+          {isAr ? 'رمز واتساب' : 'WhatsApp Code'}
         </Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>
-          {isAr ? 'تم إرسال رمز إلى' : 'Code sent to'}
+          {isAr ? 'تم إرسال رمز التحقق عبر واتساب إلى' : 'WhatsApp verification code sent to'}
         </Text>
-        <View style={[s.phonePill, { backgroundColor: colors.primaryGhost }]}>
-          <MaterialIcons name="phone" size={13} color={colors.primary} />
-          <Text style={[s.phonePillText, { color: colors.primary }]}>{phoneNumber}</Text>
+        <View style={[s.phonePill, { backgroundColor: '#E7F9EE' }]}>
+          <Text style={{ fontSize: 12 }}>💬</Text>
+          <Text style={[s.phonePillText, { color: '#1A7A40' }]}>{phoneNumber}</Text>
         </View>
       </View>
 
@@ -1215,6 +1223,10 @@ const s = StyleSheet.create({
   // Primary button
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: Radius.xl, shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 6 },
   primaryBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700', letterSpacing: 0.2 },
+
+  // WhatsApp banner
+  waBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: Radius.md, borderWidth: 1, marginTop: -4 },
+  waBannerText: { flex: 1, fontSize: FontSize.xs, lineHeight: 18, fontWeight: '500' },
 
   // Resend row
   resendRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: -4 },
