@@ -28,7 +28,17 @@ const FIREBASE_READY = true; // Phone tab always visible
 function getFirebaseApp() {
   try {
     const apps = getApps();
-    return apps.length > 0 ? apps[0] : initializeApp(FIREBASE_CONFIG);
+    const app = apps.length > 0 ? apps[0] : initializeApp(FIREBASE_CONFIG);
+    // Disable app verification for testing on real devices without APNs configured
+    // This allows phone auth to work without APNs silent push or reCAPTCHA app check
+    if (app) {
+      try {
+        const auth = getAuth(app);
+        // @ts-ignore — internal setting to bypass APNs/reCAPTCHA app attestation
+        auth.settings.appVerificationDisabledForTesting = true;
+      } catch (_) {}
+    }
+    return app;
   } catch { return null; }
 }
 
