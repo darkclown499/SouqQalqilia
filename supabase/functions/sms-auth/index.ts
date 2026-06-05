@@ -6,7 +6,8 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
-// SouqQalqilia_WhatsApp_Service — linked to whatsapp:+15559658976, status: Online
+// SouqQalqiliawp — WhatsApp Verify Service, template: verification_code (pending Meta approval)
+// Sender: whatsapp:+15559658976. Once Meta approves the template, OTP delivery works automatically.
 const TWILIO_VERIFY_SERVICE_SID =
   Deno.env.get('TWILIO_VERIFY_SERVICE_SID') || 'VA41169795e10e4201ebcf32b0cff20e65';
 
@@ -192,7 +193,10 @@ async function sendVerifyOtp(phone: string): Promise<void> {
       else if (code === 60205) errMsg = 'لا يمكن إرسال رمز WhatsApp لهذا الرقم. تأكد أن الرقم مرتبط بحساب واتساب.';
       else if (code === 63016) errMsg = 'قناة WhatsApp غير مُفعَّلة في Verify Service. فعّلها من Twilio Console → Verify → Services.';
       else if (code === 63038) errMsg = 'رقم الهاتف لا يدعم WhatsApp. جرّب رقماً مختلفاً.';
-
+      else if (code === 63025 || (json?.message ?? '').toLowerCase().includes('template')) {
+        errMsg = 'قالب WhatsApp لم يُعتمد بعد من Meta. يرجى الانتظار 24-48 ساعة حتى تتم الموافقة على القالب.';
+        console.warn('WhatsApp template pending Meta approval. Service SID:', TWILIO_VERIFY_SERVICE_SID);
+      }
       else if (code === 20429) errMsg = 'طلبات كثيرة جداً. انتظر دقيقة وأعد المحاولة.';
       else if (code === 20404) errMsg = 'Verify Service غير موجود. تحقق من Service SID.';
       else errMsg = json?.message ?? errMsg;
