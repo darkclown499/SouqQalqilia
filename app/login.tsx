@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInWithPhoneNumber } from 'firebase/auth';
+import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 // Apple Authentication — iOS only
 let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
 try { AppleAuthentication = require('expo-apple-authentication'); } catch (_) {}
@@ -23,15 +24,6 @@ import type { Language } from '@/constants/i18n';
 import { FIREBASE_CONFIG, isFirebaseConfigured } from '@/constants/firebaseConfig';
 
 const FIREBASE_READY = true; // Phone tab always visible
-
-// Minimal mock verifier — Firebase skips all reCAPTCHA/APNs checks when
-// appVerificationDisabledForTesting=true, so this object is never actually called
-const MOCK_VERIFIER: any = {
-  type: 'recaptcha',
-  verify: () => Promise.resolve('bypass'),
-  clear: () => {},
-  render: () => Promise.resolve(0),
-};
 
 function getFirebaseApp() {
   try {
@@ -121,8 +113,8 @@ export default function LoginScreen() {
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneResend, setPhoneResend] = useState(0);
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
-  // recaptchaReady is always true — no modal, no waiting
-  const recaptchaReady = true;
+  const [recaptchaReady, setRecaptchaReady] = useState(false);
+  const recaptchaRef = useRef<any>(null);
   const [phoneEulaAccepted, setPhoneEulaAccepted] = useState(false);
   const phoneResendRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -211,7 +203,8 @@ export default function LoginScreen() {
       if (!app) throw new Error('Firebase not available');
       const auth = getAuth(app);
 
-      const result = await signInWithPhoneNumber(auth, fullPhone, MOCK_VERIFIER);
+      if (!recaptchaRef.current) throw new Error(isAr ? 'جارٍ التهيئة، أعد المحاولة' : 'Initializing, please retry');
+      const result = await signInWithPhoneNumber(auth, fullPhone, recaptchaRef.current);
       setConfirmationResult(result);
       setPhoneStep('otp');
       setPhoneResend(60);
@@ -463,13 +456,24 @@ export default function LoginScreen() {
   });
 
   const showPhoneTab = true;
+  const firebaseApp = getFirebaseApp();
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0A0F0D' : '#0A6E5C'} />
 
-
+      {/* FirebaseRecaptchaVerifierModal — invisible, required for JS SDK on React Native */}
+      {firebaseApp ? (
+        <FirebaseRecaptchaVerifierModal
+          ref={recaptchaRef}
+          firebaseConfig={FIREBASE_CONFIG}
+          attemptInvisibleVerification={true}
+          onVerify={() => setRecaptchaReady(true)}
+          title=""
+          cancelLabel=" "
+        />
+      ) : null}
 
       {/* Verifying overlay */}
       <Modal visible={verifying} transparent animationType="none" statusBarTranslucent>
