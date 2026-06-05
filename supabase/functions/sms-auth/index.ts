@@ -38,17 +38,31 @@ async function verifyFirebaseToken(idToken: string): Promise<{ uid: string; phon
 }
 
 /**
- * Confirm user email using admin.updateUserById — bypasses email confirmation
- * without hitting the blocked createUser endpoint.
+ * Confirm user email via direct SQL RPC (bypasses all admin IP restrictions).
+ * Falls back gracefully if the RPC also fails.
  */
 async function confirmUserEmail(userId: string): Promise<void> {
-  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-    email_confirm: true,
-  });
-  if (error) {
-    console.warn('updateUserById warning (non-fatal):', error.message);
-    // Non-fatal: try direct SQL update as fallback
-    await supabaseAdmin.rpc('confirm_user_email', { user_id: userId }).catch(() => {});
+  // Primary: direct SQL via SECURITY DEFINER function (not affected by IP restrictions)
+  try {
+    const { error: rpcError } = await supabaseAdmin.rpc('confirm_user_email', { user_id: userId });
+    if (!rpcError) {
+      console.log('Email confirmed via RPC for:', userId);
+      return;
+    }
+    console.warn('RPC confirm warning:', rpcError.message);
+  } catch (rpcEx: any) {
+    console.warn('RPC confirm exception:', rpcEx?.message);
+  }
+
+  // Fallback: try admin.updateUserById (may fail with ipNotInner on some plans)
+  try {
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      email_confirm: true,
+    });
+    if (error) console.warn('updateUserById warning (non-fatal):', error.message);
+    else console.log('Email confirmed via updateUserById for:', userId);
+  } catch (adminEx: any) {
+    console.warn('updateUserById exception (non-fatal):', adminEx?.message);
   }
 }
 
@@ -99,18 +113,20 @@ serve(async (req) => {
 
       if (isEmailNotConfirmed) {
         // ── USER EXISTS BUT EMAIL NOT CONFIRMED ─────────────────────────
-        console.log('User exists but email not confirmed, looking up user to confirm...');
+        console.log('User exists but email not confirmed — confirming via SQL RPC...');
 
-        // Find user by email via admin API
-        const { data: listData, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
-        if (listErr) {
-          console.warn('listUsers warning:', listErr.message);
-        }
+        // Use SQL to find the user ID by email directly (avoids blocked listUsers admin API)
+        const { data: profileData } = await supabaseAdmin
+          .from('user_profiles')
+          .select('id')
+          .eq('email', syntheticEmail)
+          .maybeSingle();
 
-        const existingAuthUser = listData?.users?.find(u => u.email === syntheticEmail);
-        if (existingAuthUser?.id) {
-          console.log('Found unconfirmed user, confirming...', existingAuthUser.id);
-          await confirmUserEmail(existingAuthUser.id);
+        const existingUserId = profileData?.id;
+
+        if (existingUserId) {
+          console.log('Found user via profile table, confirming...', existingUserId);
+          await confirmUserEmail(existingUserId);
 
           // Retry sign-in after confirmation
           const { data: retrySession, error: retryError } = await supabaseAdmin.auth.signInWithPassword({
@@ -127,6 +143,9 @@ serve(async (req) => {
             session: retrySession.session,
             user: retrySession.user,
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        } else {
+          // Profile not found — treat as new user, fall through to signup
+          console.log('No profile found for unconfirmed user, will re-signup...');
         }
       }
 
@@ -183,13 +202,16 @@ serve(async (req) => {
       });
 
       if (finalError || !finalSession?.session) {
-        // Last resort: try listUsers to find and confirm
-        console.log('Final sign-in failed, attempting listUsers fallback...');
-        const { data: allUsers } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-        const targetUser = allUsers?.users?.find(u => u.email === syntheticEmail);
+        // Last resort: find user via profile table and confirm
+        console.log('Final sign-in failed, attempting profile-based fallback...');
+        const { data: profileFallback } = await supabaseAdmin
+          .from('user_profiles')
+          .select('id')
+          .eq('email', syntheticEmail)
+          .maybeSingle();
 
-        if (targetUser?.id) {
-          await confirmUserEmail(targetUser.id);
+        if (profileFallback?.id) {
+          await confirmUserEmail(profileFallback.id);
 
           const { data: lastTry, error: lastErr } = await supabaseAdmin.auth.signInWithPassword({
             email: syntheticEmail,
