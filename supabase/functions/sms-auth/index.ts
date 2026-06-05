@@ -154,16 +154,19 @@ const TWILIO_VERIFY_BASE = `https://verify.twilio.com/v2/Services/${TWILIO_VERIF
 const twilioAuth = () => `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`)}`;
 
 /**
- * Send OTP via Twilio Verify Service.
- * Twilio handles code generation, SMS delivery, expiry (10 min), and rate limiting.
- * Uses: POST /v2/Services/{ServiceSid}/Verifications  with To + Channel=sms
+ * Send OTP via Twilio Verify Service — delivered via WhatsApp (cheaper than SMS).
+ * Twilio handles code generation, delivery, expiry (10 min), and rate limiting.
+ * Uses: POST /v2/Services/{ServiceSid}/Verifications  with To + Channel=whatsapp
+ *
+ * Custom Arabic template (set in Twilio Console → Verify → Services → Messaging):
+ * 'أهلاً بك في سوق قلقيلية! رمز التحقق الخاص بك هو: {{code}}. سيصلك هذا الرمز عبر واتساب فقط.'
  */
 async function sendVerifyOtp(phone: string): Promise<void> {
-  console.log(`Sending Verify OTP to ${phone} via Service ${TWILIO_VERIFY_SERVICE_SID}`);
+  console.log(`Sending WhatsApp Verify OTP to ${phone} via Service ${TWILIO_VERIFY_SERVICE_SID}`);
 
   const body = new URLSearchParams();
-  body.append('To', phone);       // E.164 format e.g. +970591234567
-  body.append('Channel', 'sms');  // Deliver via SMS
+  body.append('To', phone);              // E.164 format e.g. +970591234567
+  body.append('Channel', 'whatsapp');    // Deliver via WhatsApp — NOT SMS
 
   const res = await fetch(`${TWILIO_VERIFY_BASE}/Verifications`, {
     method: 'POST',
@@ -185,7 +188,10 @@ async function sendVerifyOtp(phone: string): Promise<void> {
       if (code === 21608) errMsg = 'رقم الهاتف غير مُفعَّل في Twilio. تأكد من ترقية الحساب إلى Paid.';
       else if (code === 60200) errMsg = 'رقم الهاتف غير صالح.';
       else if (code === 60203) errMsg = 'تم تجاوز الحد الأقصى لمحاولات الإرسال. انتظر قليلاً وأعد المحاولة.';
-      else if (code === 60205) errMsg = 'لا يمكن إرسال رمز SMS لهذا الرقم.';
+      else if (code === 60205) errMsg = 'لا يمكن إرسال رمز WhatsApp لهذا الرقم. تأكد أن الرقم مرتبط بحساب واتساب.';
+      else if (code === 63016) errMsg = 'قناة WhatsApp غير مُفعَّلة في Verify Service. فعّلها من Twilio Console → Verify → Services.';
+      else if (code === 63038) errMsg = 'رقم الهاتف لا يدعم WhatsApp. جرّب رقماً مختلفاً.';
+
       else if (code === 20429) errMsg = 'طلبات كثيرة جداً. انتظر دقيقة وأعد المحاولة.';
       else if (code === 20404) errMsg = 'Verify Service غير موجود. تحقق من Service SID.';
       else errMsg = json?.message ?? errMsg;
