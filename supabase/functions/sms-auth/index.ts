@@ -6,7 +6,9 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
-const TWILIO_VERIFY_SERVICE_SID = Deno.env.get('TWILIO_VERIFY_SERVICE_SID') ?? '';
+// Use env var if set, otherwise fall back to the configured Verify Service SID
+const TWILIO_VERIFY_SERVICE_SID =
+  Deno.env.get('TWILIO_VERIFY_SERVICE_SID') || 'VA513792923343334886d6f9b815dbf431';
 
 // Service role client — full privileges, no auth headers
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -147,62 +149,82 @@ async function getOrCreatePhoneUser(phoneNumber: string) {
 
 // ─── Twilio Verify API helpers ────────────────────────────────────────────────
 
+// Twilio Verify REST API — no Twilio Node SDK needed in Deno
 const TWILIO_VERIFY_BASE = `https://verify.twilio.com/v2/Services/${TWILIO_VERIFY_SERVICE_SID}`;
 const twilioAuth = () => `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`)}`;
 
 /**
  * Send OTP via Twilio Verify Service.
  * Twilio handles code generation, SMS delivery, expiry (10 min), and rate limiting.
+ * Uses: POST /v2/Services/{ServiceSid}/Verifications  with To + Channel=sms
  */
 async function sendVerifyOtp(phone: string): Promise<void> {
+  console.log(`Sending Verify OTP to ${phone} via Service ${TWILIO_VERIFY_SERVICE_SID}`);
+
+  const body = new URLSearchParams();
+  body.append('To', phone);       // E.164 format e.g. +970591234567
+  body.append('Channel', 'sms');  // Deliver via SMS
+
   const res = await fetch(`${TWILIO_VERIFY_BASE}/Verifications`, {
     method: 'POST',
     headers: {
       Authorization: twilioAuth(),
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({ To: phone, Channel: 'sms' }).toString(),
+    body: body.toString(),
   });
 
+  const text = await res.text();
+
   if (!res.ok) {
-    const text = await res.text();
     console.error('Twilio Verify send error:', text);
+    let errMsg = 'فشل إرسال رمز التحقق.';
     try {
       const json = JSON.parse(text);
       const code: number = json?.code ?? 0;
-      if (code === 60200) throw new Error('رقم الهاتف غير صالح.');
-      if (code === 60203) throw new Error('تم تجاوز الحد الأقصى لمحاولات الإرسال. انتظر قليلاً وأعد المحاولة.');
-      if (code === 60205) throw new Error('لا يمكن إرسال رمز SMS لهذا الرقم.');
-      if (code === 20429) throw new Error('طلبات كثيرة جداً. انتظر دقيقة وأعد المحاولة.');
-      throw new Error(json?.message ?? 'فشل إرسال رمز التحقق.');
-    } catch (e: any) {
-      if (e.message !== 'فشل إرسال رمز التحقق.' && !e.message.startsWith('Unexpected')) throw e;
-    }
-    throw new Error('فشل إرسال رمز التحقق. تحقق من الرقم وأعد المحاولة.');
+      if (code === 21608) errMsg = 'رقم الهاتف غير مُفعَّل في Twilio. تأكد من ترقية الحساب إلى Paid.';
+      else if (code === 60200) errMsg = 'رقم الهاتف غير صالح.';
+      else if (code === 60203) errMsg = 'تم تجاوز الحد الأقصى لمحاولات الإرسال. انتظر قليلاً وأعد المحاولة.';
+      else if (code === 60205) errMsg = 'لا يمكن إرسال رمز SMS لهذا الرقم.';
+      else if (code === 20429) errMsg = 'طلبات كثيرة جداً. انتظر دقيقة وأعد المحاولة.';
+      else if (code === 20404) errMsg = 'Verify Service غير موجود. تحقق من Service SID.';
+      else errMsg = json?.message ?? errMsg;
+    } catch (_) {}
+    throw new Error(errMsg);
   }
+
+  console.log('Twilio Verify send success:', text);
 }
 
 /**
  * Check OTP via Twilio Verify Service.
+ * Uses: POST /v2/Services/{ServiceSid}/VerificationCheck  with To + Code
  * Returns true if code is valid and approved.
  */
 async function checkVerifyOtp(phone: string, code: string): Promise<boolean> {
+  console.log(`Checking Verify OTP for ${phone}`);
+
+  const body = new URLSearchParams();
+  body.append('To', phone);   // E.164 format
+  body.append('Code', code);  // 6-digit OTP from user
+
   const res = await fetch(`${TWILIO_VERIFY_BASE}/VerificationCheck`, {
     method: 'POST',
     headers: {
       Authorization: twilioAuth(),
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({ To: phone, Code: code }).toString(),
+    body: body.toString(),
   });
 
+  const text = await res.text();
+
   if (!res.ok) {
-    const text = await res.text();
     console.error('Twilio Verify check error:', text);
     try {
       const json = JSON.parse(text);
       const errCode: number = json?.code ?? 0;
-      // 20404 = verification not found or already used/expired
+      // 20404 = verification not found, already used, or expired → treat as wrong code
       if (errCode === 20404) return false;
       throw new Error(json?.message ?? 'خطأ في التحقق من الرمز.');
     } catch (e: any) {
@@ -211,8 +233,9 @@ async function checkVerifyOtp(phone: string, code: string): Promise<boolean> {
     throw new Error('خطأ في التحقق من الرمز.');
   }
 
-  const json = await res.json();
-  // Twilio returns status: "approved" when correct, "pending" when wrong
+  const json = JSON.parse(text);
+  console.log('Twilio Verify check status:', json?.status);
+  // Twilio returns status: 'approved' = correct, 'pending' = wrong code
   return json?.status === 'approved';
 }
 
