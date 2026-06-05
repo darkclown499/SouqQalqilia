@@ -4,9 +4,6 @@ import {
   Platform, Pressable, ActivityIndicator, Modal, Animated,
   Dimensions, StatusBar, TextInput,
 } from 'react-native';
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, signInWithPhoneNumber } from 'firebase/auth';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 // Apple Authentication — iOS only
 let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
 try { AppleAuthentication = require('expo-apple-authentication'); } catch (_) {}
@@ -21,27 +18,6 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { APP_NAME, APP_NAME_AR } from '@/constants/config';
 import type { Language } from '@/constants/i18n';
-import { FIREBASE_CONFIG, isFirebaseConfigured } from '@/constants/firebaseConfig';
-
-const FIREBASE_READY = true; // Phone tab always visible
-
-function getFirebaseApp() {
-  try {
-    const apps = getApps();
-    const app = apps.length > 0 ? apps[0] : initializeApp(FIREBASE_CONFIG);
-    if (app) {
-      try {
-        const auth = getAuth(app);
-        // Bypass APNs/reCAPTCHA app verification.
-        // ⚠️ IMPORTANT: Remove this line before final App Store production release.
-        // For production: configure APNs key in Firebase Console → Project Settings → Cloud Messaging.
-        // @ts-ignore
-        auth.settings.appVerificationDisabledForTesting = true;
-      } catch (_) {}
-    }
-    return app;
-  } catch { return null; }
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type MainTab = 'phone' | 'email';
@@ -115,10 +91,8 @@ export default function LoginScreen() {
   const [phoneOtp, setPhoneOtp] = useState('');
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneResend, setPhoneResend] = useState(0);
-  const [confirmationResult, setConfirmationResult] = useState<any>(null);
-  // appVerificationDisabledForTesting=true skips real reCAPTCHA — always ready
-  const [recaptchaReady, setRecaptchaReady] = useState(true);
-  const recaptchaRef = useRef<any>(null);
+  // Full phone in E.164 format used for OTP send/verify
+  const [fullPhoneForOtp, setFullPhoneForOtp] = useState('');
   const [phoneEulaAccepted, setPhoneEulaAccepted] = useState(false);
   const phoneResendRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -161,28 +135,20 @@ export default function LoginScreen() {
   // ── Helpers ────────────────────────────────────────────────────────────────
   const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
 
-  // ── Phone: Send code ───────────────────────────────────────────────────────
+  // ── Phone: Send code (via Twilio Edge Function — no Firebase) ───────────────
   const handleSendPhoneCode = async () => {
-    if (!isFirebaseConfigured()) {
-      return showAlert(
-        isAr ? 'إعداد مطلوب' : 'Setup Required',
-        isAr
-          ? 'يرجى ملء بيانات Firebase في ملف constants/firebaseConfig.ts لتفعيل تسجيل الدخول بالهاتف'
-          : 'Please fill in your Firebase config in constants/firebaseConfig.ts to enable phone login'
-      );
-    }
     if (!phoneEulaAccepted) {
       return showAlert(
         isAr ? 'الموافقة مطلوبة' : 'Agreement Required',
         isAr ? 'يجب الموافقة على شروط الاستخدام وسياسة الخصوصية للمتابعة' : 'You must agree to the Terms of Use and Privacy Policy to continue'
       );
     }
-    // Build full E.164 phone number: combine +970 prefix with the entered digits
+    // Build full E.164 phone number
     const digits = phoneNumber.trim().replace(/[\s\-()]/g, '');
-    // +970 (Palestine): 9 digits, +972 (Israel): 9-10 digits
     const minLen = 9;
     const maxLen = countryCode === '+972' ? 10 : 9;
-    if (!digits || digits.replace(/^0+/, '').length < minLen || digits.replace(/^0+/, '').length > maxLen)
+    const stripped = digits.replace(/^0+/, '');
+    if (!digits || stripped.length < minLen || stripped.length > maxLen)
       return showAlert(
         isAr ? 'رقم غير صحيح' : 'Invalid Number',
         isAr
@@ -190,64 +156,48 @@ export default function LoginScreen() {
           : `Enter your number without country code (${countryCode === '+972' ? '9-10' : '9'} digits)`
       );
 
-    // If user already typed a full international number keep it, otherwise prepend selected country code
-    let fullPhone: string;
-    if (digits.startsWith('+')) {
-      fullPhone = digits;
-    } else {
-      // Strip leading zero (0591... → 591...) then add selected country code
-      fullPhone = countryCode + digits.replace(/^0+/, '');
-    }
+    const fullPhone = digits.startsWith('+') ? digits : (countryCode + stripped);
 
     if (phoneLoading || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setPhoneLoading(true);
     try {
-      const app = getFirebaseApp();
-      if (!app) throw new Error('Firebase not available');
-      const auth = getAuth(app);
-
-      if (!recaptchaRef.current) throw new Error(isAr ? 'جارٍ التهيئة، أعد المحاولة' : 'Initializing, please retry');
-      const result = await signInWithPhoneNumber(auth, fullPhone, recaptchaRef.current);
-      setConfirmationResult(result);
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.functions.invoke('sms-auth', {
+        body: { action: 'send_otp', phone: fullPhone },
+      });
+      if (error) {
+        let msg = error.message;
+        try {
+          const { FunctionsHttpError } = await import('@supabase/supabase-js');
+          if (error instanceof FunctionsHttpError) msg = await error.context?.text() || msg;
+        } catch {}
+        throw new Error(msg);
+      }
+      if (!data?.success) throw new Error(data?.error ?? isAr ? 'فشل إرسال الرمز' : 'Failed to send code');
+      setFullPhoneForOtp(fullPhone);
       setPhoneStep('otp');
       setPhoneResend(60);
     } catch (e: any) {
-      // Map common Firebase error codes to user-friendly messages
-      let msg: string = e?.message ?? 'Failed to send code';
-      const code: string = e?.code ?? '';
-      if (code === 'auth/invalid-app-credential' || code.includes('39')) {
-        msg = isAr
-          ? 'فشل التحقق الأمني. يرجى المحاولة مرة أخرى أو إعادة تشغيل التطبيق.'
-          : 'Security check failed. Please try again or restart the app.';
-      } else if (code === 'auth/too-many-requests') {
-        msg = isAr ? 'طلبات كثيرة جداً. حاول لاحقاً.' : 'Too many requests. Please try later.';
-      } else if (code === 'auth/invalid-phone-number') {
-        msg = isAr ? 'رقم الهاتف غير صحيح.' : 'Invalid phone number format.';
-      } else if (code === 'auth/quota-exceeded') {
-        msg = isAr ? 'تم تجاوز حصة الرسائل. حاول لاحقاً.' : 'SMS quota exceeded. Please try later.';
-      }
-      showAlert(isAr ? 'خطأ' : 'Error', msg);
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? (isAr ? 'فشل إرسال رمز التحقق' : 'Failed to send verification code'));
     } finally {
       setPhoneLoading(false);
       isSubmittingRef.current = false;
     }
   };
 
-  // ── Phone: Verify OTP ─────────────────────────────────────────────────────
+  // ── Phone: Verify OTP (via Edge Function) ─────────────────────────────────
   const handleVerifyPhoneOtp = async () => {
     if (!phoneOtp || phoneOtp.length < 6)
       return showAlert(isAr ? 'الرمز مطلوب' : 'Code Required', isAr ? 'أدخل رمز التحقق المكون من 6 أرقام' : 'Enter the 6-digit code');
-    if (!confirmationResult)
+    if (!fullPhoneForOtp)
       return showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'أعد إرسال الرمز' : 'Please resend the code');
     if (phoneLoading) return;
     setPhoneLoading(true);
     try {
-      const credential = await confirmationResult.confirm(phoneOtp.trim());
-      const idToken = await credential.user.getIdToken();
       const supabase = getSupabaseClient();
       const { data, error } = await supabase.functions.invoke('sms-auth', {
-        body: { action: 'verify_firebase', idToken },
+        body: { action: 'verify_otp', phone: fullPhoneForOtp, otp: phoneOtp.trim() },
       });
       if (error) {
         let msg = error.message;
@@ -272,19 +222,16 @@ export default function LoginScreen() {
             .eq('id', data.session.user?.id ?? data.user?.id ?? '')
             .maybeSingle();
           const hasName = profile?.username && profile.username.trim().length > 0;
-          if (hasName) {
-            router.replace('/(tabs)');
-          } else {
-            router.replace('/complete-profile');
-          }
+          if (hasName) router.replace('/(tabs)');
+          else router.replace('/complete-profile');
         } catch {
           router.replace('/(tabs)');
         }
       } else {
-        throw new Error('No session returned');
+        throw new Error(data?.error ?? 'No session returned');
       }
     } catch (e: any) {
-      showAlert(isAr ? 'فشل التحقق' : 'Verification Failed', e?.message ?? 'Incorrect code');
+      showAlert(isAr ? 'فشل التحقق' : 'Verification Failed', e?.message ?? (isAr ? 'الرمز غير صحيح' : 'Incorrect code'));
     } finally {
       setPhoneLoading(false);
     }
@@ -459,26 +406,10 @@ export default function LoginScreen() {
     outputRange: ['0%', '100%'],
   });
 
-  const showPhoneTab = true;
-  const firebaseApp = getFirebaseApp();
-
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0A0F0D' : '#0A6E5C'} />
-
-      {/* FirebaseRecaptchaVerifierModal — invisible, required for JS SDK on React Native */}
-      {firebaseApp ? (
-        <FirebaseRecaptchaVerifierModal
-          ref={recaptchaRef}
-          firebaseConfig={FIREBASE_CONFIG}
-          attemptInvisibleVerification={true}
-          onVerify={() => setRecaptchaReady(true)}
-          onError={() => setRecaptchaReady(true)}
-          title=""
-          cancelLabel=" "
-        />
-      ) : null}
 
       {/* Verifying overlay */}
       <Modal visible={verifying} transparent animationType="none" statusBarTranslucent>
@@ -588,7 +519,6 @@ export default function LoginScreen() {
                 setCountryCode={setCountryCode}
                 loading={phoneLoading}
                 onSend={handleSendPhoneCode}
-                recaptchaReady={recaptchaReady}
                 eulaAccepted={phoneEulaAccepted}
                 setEulaAccepted={setPhoneEulaAccepted}
                 onOpenEula={() => setEulaModalVisible(true)}
@@ -596,7 +526,7 @@ export default function LoginScreen() {
               />
             ) : (
               <PhoneOtpPanel
-                phoneNumber={countryCode + phoneNumber}
+                phoneNumber={fullPhoneForOtp || (countryCode + phoneNumber)}
                 otp={phoneOtp}
                 setOtp={setPhoneOtp}
                 resendCooldown={phoneResend}
@@ -604,7 +534,7 @@ export default function LoginScreen() {
                 onVerify={handleVerifyPhoneOtp}
                 onResend={() => {
                   setPhoneOtp('');
-                  setConfirmationResult(null);
+                  setFullPhoneForOtp('');
                   setPhoneStep('input');
                 }}
                 onBack={() => setPhoneStep('input')}
@@ -725,7 +655,7 @@ const COUNTRY_CODES = [
 ];
 
 // ─── Phone Input Panel ─────────────────────────────────────────────────────────
-function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryCode, loading, onSend, recaptchaReady, eulaAccepted, setEulaAccepted, onOpenEula, colors, isAr, router }: any) {
+function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryCode, loading, eulaAccepted, setEulaAccepted, onOpenEula, onSend, colors, isAr, router }: any) {
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode) ?? COUNTRY_CODES[0];
 
@@ -820,20 +750,15 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
         style={({ pressed }) => [
           s.primaryBtn,
           {
-            backgroundColor: (!recaptchaReady || loading || !eulaAccepted) ? colors.textMuted : colors.primary,
+            backgroundColor: (loading || !eulaAccepted) ? colors.textMuted : colors.primary,
             opacity: pressed ? 0.85 : 1,
           },
         ]}
         onPress={onSend}
-        disabled={loading || !recaptchaReady || !eulaAccepted}
+        disabled={loading || !eulaAccepted}
       >
         {loading
           ? <ActivityIndicator size="small" color="#fff" />
-          : !recaptchaReady
-          ? <>
-              <ActivityIndicator size="small" color="#fff" />
-              <Text style={s.primaryBtnText}>{isAr ? 'جارٍ التهيئة...' : 'Initializing...'}</Text>
-            </>
           : <>
               <MaterialIcons name="send" size={16} color="#fff" />
               <Text style={s.primaryBtnText}>{isAr ? 'إرسال رمز التحقق' : 'Send Verification Code'}</Text>

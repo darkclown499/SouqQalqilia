@@ -2,68 +2,142 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
-const FIREBASE_WEB_API_KEY = Deno.env.get('FIREBASE_WEB_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
+const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
+const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER') ?? '';
 
 // Service role client
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-/**
- * Verify a Firebase ID token using the Firebase Auth REST API.
- */
-async function verifyFirebaseToken(idToken: string): Promise<{ uid: string; phoneNumber: string }> {
-  const url = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_WEB_API_KEY}`;
+/** Generate a 6-digit OTP */
+function generateOtp(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/** Send SMS via Twilio */
+async function sendSmsTwilio(to: string, body: string): Promise<void> {
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+  const creds = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+  const form = new URLSearchParams({ To: to, From: TWILIO_PHONE_NUMBER, Body: body });
+
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken }),
+    headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
   });
 
   if (!res.ok) {
     const text = await res.text();
-    console.error('Firebase token verification failed:', text);
-    throw new Error('رمز Firebase غير صالح أو منتهي الصلاحية. يرجى المحاولة مجدداً.');
+    console.error('Twilio error:', text);
+    throw new Error('فشل إرسال رسالة التحقق. تحقق من رقم الهاتف وأعد المحاولة.');
   }
-
-  const data = await res.json();
-  const user = data?.users?.[0];
-
-  if (!user?.localId) throw new Error('تعذّر استرداد بيانات المستخدم من Firebase.');
-  if (!user?.phoneNumber) throw new Error('لا يوجد رقم هاتف مرتبط بهذا الحساب.');
-
-  return { uid: user.localId, phoneNumber: user.phoneNumber };
 }
 
 /**
  * Confirm user email via direct SQL RPC (bypasses all admin IP restrictions).
- * Falls back gracefully if the RPC also fails.
  */
 async function confirmUserEmail(userId: string): Promise<void> {
-  // Primary: direct SQL via SECURITY DEFINER function (not affected by IP restrictions)
   try {
-    const { error: rpcError } = await supabaseAdmin.rpc('confirm_user_email', { user_id: userId });
-    if (!rpcError) {
-      console.log('Email confirmed via RPC for:', userId);
-      return;
-    }
-    console.warn('RPC confirm warning:', rpcError.message);
-  } catch (rpcEx: any) {
-    console.warn('RPC confirm exception:', rpcEx?.message);
+    const { error } = await supabaseAdmin.rpc('confirm_user_email', { user_id: userId });
+    if (!error) { console.log('Email confirmed via RPC for:', userId); return; }
+    console.warn('RPC confirm warning:', error.message);
+  } catch (ex: any) {
+    console.warn('RPC confirm exception:', ex?.message);
   }
-
-  // Fallback: try admin.updateUserById (may fail with ipNotInner on some plans)
   try {
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      email_confirm: true,
-    });
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, { email_confirm: true });
     if (error) console.warn('updateUserById warning (non-fatal):', error.message);
     else console.log('Email confirmed via updateUserById for:', userId);
-  } catch (adminEx: any) {
-    console.warn('updateUserById exception (non-fatal):', adminEx?.message);
+  } catch (ex: any) {
+    console.warn('updateUserById exception (non-fatal):', ex?.message);
   }
+}
+
+/** Create or sign-in a Supabase user for the given phone number. Returns session. */
+async function getOrCreatePhoneUser(phoneNumber: string) {
+  const normalizedPhone = phoneNumber.replace(/[^0-9+]/g, '');
+  const digits = normalizedPhone.replace(/[^0-9]/g, '');
+  const syntheticEmail = `phone_${digits}@sms.souqqalqilya.local`;
+  const syntheticPassword = `SMS_${digits}_SQ_2024!`;
+
+  // 1. Try signing in (existing user)
+  const { data: existing, error: signInErr } = await supabaseAdmin.auth.signInWithPassword({
+    email: syntheticEmail,
+    password: syntheticPassword,
+  });
+
+  if (!signInErr && existing?.session) {
+    console.log('Existing user signed in:', phoneNumber);
+    return existing.session;
+  }
+
+  const signInMsg = signInErr?.message?.toLowerCase() ?? '';
+  const isUnconfirmed = signInMsg.includes('email not confirmed') || signInMsg.includes('not confirmed');
+
+  if (isUnconfirmed) {
+    // User exists but unconfirmed — find via profile and confirm
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles').select('id').eq('email', syntheticEmail).maybeSingle();
+
+    if (profile?.id) {
+      await confirmUserEmail(profile.id);
+      const { data: retry, error: retryErr } = await supabaseAdmin.auth.signInWithPassword({
+        email: syntheticEmail, password: syntheticPassword,
+      });
+      if (!retryErr && retry?.session) return retry.session;
+    }
+  }
+
+  // 2. New user — sign up
+  console.log('Creating new user for:', phoneNumber);
+  const { data: signUp, error: signUpErr } = await supabaseAdmin.auth.signUp({
+    email: syntheticEmail,
+    password: syntheticPassword,
+    options: { data: { phone: normalizedPhone, auth_method: 'sms_otp' } },
+  });
+
+  if (signUpErr) {
+    const msg = signUpErr.message?.toLowerCase() ?? '';
+    if (!msg.includes('already registered') && !msg.includes('already been registered')) {
+      throw new Error(`فشل إنشاء الحساب: ${signUpErr.message}`);
+    }
+  }
+
+  const newId = signUp?.user?.id;
+  if (newId) {
+    await confirmUserEmail(newId);
+    await supabaseAdmin.from('user_profiles').upsert({
+      id: newId,
+      email: syntheticEmail,
+      phone: normalizedPhone,
+      username: '',
+    }, { onConflict: 'id', ignoreDuplicates: false });
+  }
+
+  // 3. Final sign-in
+  const { data: final, error: finalErr } = await supabaseAdmin.auth.signInWithPassword({
+    email: syntheticEmail, password: syntheticPassword,
+  });
+
+  if (!finalErr && final?.session) return final.session;
+
+  // Last resort: find via profile
+  const { data: fallbackProfile } = await supabaseAdmin
+    .from('user_profiles').select('id').eq('email', syntheticEmail).maybeSingle();
+  if (fallbackProfile?.id) {
+    await confirmUserEmail(fallbackProfile.id);
+    const { data: last, error: lastErr } = await supabaseAdmin.auth.signInWithPassword({
+      email: syntheticEmail, password: syntheticPassword,
+    });
+    if (!lastErr && last?.session) return last.session;
+    throw new Error(`تعذّر تسجيل الدخول: ${lastErr?.message ?? 'لا توجد جلسة'}`);
+  }
+
+  throw new Error(`تعذّر تسجيل الدخول بعد إنشاء الحساب: ${finalErr?.message ?? 'لا توجد جلسة'}`);
 }
 
 serve(async (req) => {
@@ -72,172 +146,109 @@ serve(async (req) => {
   }
 
   try {
-    const { action, idToken } = await req.json();
+    const body = await req.json();
+    const { action } = body;
 
-    if (action === 'verify_firebase') {
-      if (!idToken) {
-        return new Response(JSON.stringify({ error: 'Firebase ID token مطلوب.' }), {
+    // ── ACTION: send_otp ──────────────────────────────────────────────────────
+    if (action === 'send_otp') {
+      const { phone } = body;
+      if (!phone) {
+        return new Response(JSON.stringify({ error: 'رقم الهاتف مطلوب.' }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      // 1. Verify the Firebase token and extract phone number
-      const { phoneNumber } = await verifyFirebaseToken(idToken);
-      console.log('Firebase verified phone:', phoneNumber);
+      // Rate limit: max 3 active OTPs per phone in last 10 minutes
+      const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const { count } = await supabaseAdmin
+        .from('phone_otps')
+        .select('*', { count: 'exact', head: true })
+        .eq('phone', phone)
+        .eq('used', false)
+        .gte('created_at', tenMinsAgo);
 
-      // 2. Derive synthetic Supabase credentials
-      const normalizedPhone = phoneNumber.replace(/[^0-9]/g, '');
-      const syntheticEmail = `phone_${normalizedPhone}@sms.souqqalqilya.local`;
-      const syntheticPassword = `SMS_${normalizedPhone}_SQ_2024!`;
+      if ((count ?? 0) >= 3) {
+        return new Response(JSON.stringify({ error: 'طلبات كثيرة جداً. انتظر 10 دقائق وأعد المحاولة.' }), {
+          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
-      // 3. Try to sign in first (handles existing users)
-      const { data: existingSession, error: signInError } = await supabaseAdmin.auth.signInWithPassword({
-        email: syntheticEmail,
-        password: syntheticPassword,
+      const otp = generateOtp();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+
+      // Store OTP
+      const { error: insertErr } = await supabaseAdmin.from('phone_otps').insert({
+        phone,
+        otp_code: otp,
+        expires_at: expiresAt,
+        used: false,
       });
 
-      if (!signInError && existingSession?.session) {
-        // ── EXISTING CONFIRMED USER ─────────────────────────────────────
-        console.log('Existing user signed in successfully');
-        return new Response(JSON.stringify({
-          success: true,
-          session: existingSession.session,
-          user: existingSession.user,
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (insertErr) {
+        console.error('OTP insert error:', insertErr);
+        throw new Error('فشل حفظ رمز التحقق.');
       }
 
-      // Sign-in failed — could be: user doesn't exist, OR email not confirmed
-      const signInMsg = signInError?.message?.toLowerCase() ?? '';
-      const isEmailNotConfirmed = signInMsg.includes('email not confirmed') || signInMsg.includes('not confirmed');
-      const isInvalidCreds = signInMsg.includes('invalid login credentials') || signInMsg.includes('invalid_credentials');
+      // Send via Twilio
+      const msg = `رمز التحقق لسوق قلقيلية: ${otp}\nصالح لمدة 10 دقائق.\nVerification code for Souq Qalqilya: ${otp}`;
+      await sendSmsTwilio(phone, msg);
 
-      if (isEmailNotConfirmed) {
-        // ── USER EXISTS BUT EMAIL NOT CONFIRMED ─────────────────────────
-        console.log('User exists but email not confirmed — confirming via SQL RPC...');
-
-        // Use SQL to find the user ID by email directly (avoids blocked listUsers admin API)
-        const { data: profileData } = await supabaseAdmin
-          .from('user_profiles')
-          .select('id')
-          .eq('email', syntheticEmail)
-          .maybeSingle();
-
-        const existingUserId = profileData?.id;
-
-        if (existingUserId) {
-          console.log('Found user via profile table, confirming...', existingUserId);
-          await confirmUserEmail(existingUserId);
-
-          // Retry sign-in after confirmation
-          const { data: retrySession, error: retryError } = await supabaseAdmin.auth.signInWithPassword({
-            email: syntheticEmail,
-            password: syntheticPassword,
-          });
-
-          if (retryError || !retrySession?.session) {
-            throw new Error(`فشل تسجيل الدخول بعد التأكيد: ${retryError?.message ?? 'لا توجد جلسة'}`);
-          }
-
-          return new Response(JSON.stringify({
-            success: true,
-            session: retrySession.session,
-            user: retrySession.user,
-          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        } else {
-          // Profile not found — treat as new user, fall through to signup
-          console.log('No profile found for unconfirmed user, will re-signup...');
-        }
-      }
-
-      if (!isInvalidCreds && !isEmailNotConfirmed) {
-        // Unexpected sign-in error
-        throw new Error(`خطأ في تسجيل الدخول: ${signInError?.message}`);
-      }
-
-      // ── NEW USER PATH ─────────────────────────────────────────────────
-      console.log('New user — creating account...');
-
-      const { data: signUpData, error: signUpError } = await supabaseAdmin.auth.signUp({
-        email: syntheticEmail,
-        password: syntheticPassword,
-        options: {
-          data: { phone: phoneNumber, auth_method: 'firebase_phone' },
-        },
+      console.log(`OTP sent to ${phone}`);
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
 
-      if (signUpError) {
-        const msg = signUpError.message ?? '';
-        const alreadyExists = msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already been registered');
-        if (!alreadyExists) {
-          throw new Error(`فشل إنشاء الحساب: ${msg}`);
-        }
-        // Already registered — treat as unconfirmed, try listUsers approach
+    // ── ACTION: verify_otp ────────────────────────────────────────────────────
+    if (action === 'verify_otp') {
+      const { phone, otp } = body;
+      if (!phone || !otp) {
+        return new Response(JSON.stringify({ error: 'رقم الهاتف ورمز التحقق مطلوبان.' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
 
-      const newUserId = signUpData?.user?.id;
+      // Find latest unused, unexpired OTP for this phone
+      const { data: otpRow, error: otpErr } = await supabaseAdmin
+        .from('phone_otps')
+        .select('*')
+        .eq('phone', phone)
+        .eq('otp_code', otp)
+        .eq('used', false)
+        .gte('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (newUserId) {
-        console.log('User created, confirming email for:', newUserId);
-
-        // Confirm email using admin.updateUserById
-        await confirmUserEmail(newUserId);
-
-        // Upsert profile row
-        const { error: profileErr } = await supabaseAdmin
-          .from('user_profiles')
-          .upsert({
-            id: newUserId,
-            email: syntheticEmail,
-            phone: phoneNumber,
-            username: '',
-          }, { onConflict: 'id', ignoreDuplicates: false });
-
-        if (profileErr) console.warn('Profile upsert warning:', profileErr.message);
+      if (otpErr) {
+        console.error('OTP query error:', otpErr);
+        throw new Error('خطأ في التحقق من الرمز.');
       }
 
-      // Sign in after creation + confirmation
-      const { data: finalSession, error: finalError } = await supabaseAdmin.auth.signInWithPassword({
-        email: syntheticEmail,
-        password: syntheticPassword,
+      if (!otpRow) {
+        return new Response(JSON.stringify({ error: 'الرمز غير صحيح أو منتهي الصلاحية.' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Mark OTP as used
+      await supabaseAdmin.from('phone_otps').update({ used: true }).eq('id', otpRow.id);
+
+      // Get or create Supabase user
+      const session = await getOrCreatePhoneUser(phone);
+
+      console.log(`Phone auth success for ${phone}`);
+      return new Response(JSON.stringify({ success: true, session, user: session.user }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
 
-      if (finalError || !finalSession?.session) {
-        // Last resort: find user via profile table and confirm
-        console.log('Final sign-in failed, attempting profile-based fallback...');
-        const { data: profileFallback } = await supabaseAdmin
-          .from('user_profiles')
-          .select('id')
-          .eq('email', syntheticEmail)
-          .maybeSingle();
-
-        if (profileFallback?.id) {
-          await confirmUserEmail(profileFallback.id);
-
-          const { data: lastTry, error: lastErr } = await supabaseAdmin.auth.signInWithPassword({
-            email: syntheticEmail,
-            password: syntheticPassword,
-          });
-
-          if (lastErr || !lastTry?.session) {
-            throw new Error(`تعذّر تسجيل الدخول: ${lastErr?.message ?? 'لا توجد جلسة'}`);
-          }
-
-          return new Response(JSON.stringify({
-            success: true,
-            session: lastTry.session,
-            user: lastTry.user,
-          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-
-        throw new Error(`تعذّر تسجيل الدخول بعد إنشاء الحساب: ${finalError?.message ?? 'لا توجد جلسة'}`);
-      }
-
-      console.log(`Firebase phone auth success for ${phoneNumber}`);
-      return new Response(JSON.stringify({
-        success: true,
-        session: finalSession.session,
-        user: finalSession.user,
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    // ── LEGACY ACTION: verify_firebase ────────────────────────────────────────
+    // Keep for backward compatibility but Firebase flow is now deprecated
+    if (action === 'verify_firebase') {
+      return new Response(JSON.stringify({ error: 'استخدام Firebase phone auth لم يعد مدعوماً. استخدم send_otp و verify_otp بدلاً من ذلك.' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     return new Response(JSON.stringify({ error: 'إجراء غير معروف' }), {
