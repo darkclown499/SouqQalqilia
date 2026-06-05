@@ -55,7 +55,8 @@ export default function LoginScreen() {
   }, []);
 
   // ── Tab state ──────────────────────────────────────────────────────────────
-  // Default to email if Firebase not configured, phone if configured
+  // Phone tab is always available (Twilio direct — no Firebase dependency)
+  const showPhoneTab = true;
   const [activeTab, setActiveTab] = useState<MainTab>('phone');
   const tabIndicator = useRef(new Animated.Value(0)).current;
 
