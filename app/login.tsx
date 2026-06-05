@@ -106,6 +106,7 @@ export default function LoginScreen() {
   const [phoneResend, setPhoneResend] = useState(0);
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
   const [recaptchaReady, setRecaptchaReady] = useState(false);
+  const [phoneEulaAccepted, setPhoneEulaAccepted] = useState(false);
   const recaptchaRef = useRef<any>(null);
   const phoneResendRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -166,6 +167,12 @@ export default function LoginScreen() {
         isAr
           ? 'يرجى ملء بيانات Firebase في ملف constants/firebaseConfig.ts لتفعيل تسجيل الدخول بالهاتف'
           : 'Please fill in your Firebase config in constants/firebaseConfig.ts to enable phone login'
+      );
+    }
+    if (!phoneEulaAccepted) {
+      return showAlert(
+        isAr ? 'الموافقة مطلوبة' : 'Agreement Required',
+        isAr ? 'يجب الموافقة على شروط الاستخدام وسياسة الخصوصية للمتابعة' : 'You must agree to the Terms of Use and Privacy Policy to continue'
       );
     }
     // Build full E.164 phone number: combine +970 prefix with the entered digits
@@ -573,7 +580,10 @@ export default function LoginScreen() {
                 loading={phoneLoading}
                 onSend={handleSendPhoneCode}
                 recaptchaReady={recaptchaReady}
-                colors={colors} isAr={isAr}
+                eulaAccepted={phoneEulaAccepted}
+                setEulaAccepted={setPhoneEulaAccepted}
+                onOpenEula={() => setEulaModalVisible(true)}
+                colors={colors} isAr={isAr} router={router}
               />
             ) : (
               <PhoneOtpPanel
@@ -706,7 +716,7 @@ const COUNTRY_CODES = [
 ];
 
 // ─── Phone Input Panel ─────────────────────────────────────────────────────────
-function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryCode, loading, onSend, recaptchaReady, colors, isAr }: any) {
+function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryCode, loading, onSend, recaptchaReady, eulaAccepted, setEulaAccepted, onOpenEula, colors, isAr, router }: any) {
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode) ?? COUNTRY_CODES[0];
 
@@ -780,16 +790,33 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
         {isAr ? 'أدخل الرقم بدون صفر أو رمز الدولة — مثال: 591234567' : 'Enter number without 0 or country code — e.g. 591234567'}
       </Text>
 
+      {/* EULA Acceptance */}
+      <Pressable style={[s.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]} onPress={() => setEulaAccepted(!eulaAccepted)}>
+        <View style={[s.eulaCheck, { borderColor: eulaAccepted ? colors.primary : colors.border, backgroundColor: eulaAccepted ? colors.primary : 'transparent' }]}>
+          {eulaAccepted ? <MaterialIcons name="check" size={11} color="#fff" /> : null}
+        </View>
+        <Text style={[s.eulaText, { color: colors.textSecondary, textAlign: isAr ? 'right' : 'left' }]}>
+          {isAr ? 'أوافق على ' : 'I agree to the '}
+          <Text style={[s.eulaHighlight, { color: colors.primary }]} onPress={onOpenEula}>
+            {isAr ? 'شروط الاستخدام' : 'Terms of Use'}
+          </Text>
+          {isAr ? ' و' : ' and '}
+          <Text style={[s.eulaHighlight, { color: colors.primary }]} onPress={() => router.push('/privacy')}>
+            {isAr ? 'سياسة الخصوصية' : 'Privacy Policy'}
+          </Text>
+        </Text>
+      </Pressable>
+
       <Pressable
         style={({ pressed }) => [
           s.primaryBtn,
           {
-            backgroundColor: (!recaptchaReady || loading) ? colors.textMuted : colors.primary,
+            backgroundColor: (!recaptchaReady || loading || !eulaAccepted) ? colors.textMuted : colors.primary,
             opacity: pressed ? 0.85 : 1,
           },
         ]}
         onPress={onSend}
-        disabled={loading || !recaptchaReady}
+        disabled={loading || !recaptchaReady || !eulaAccepted}
       >
         {loading
           ? <ActivityIndicator size="small" color="#fff" />
