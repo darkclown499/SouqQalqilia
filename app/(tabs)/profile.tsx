@@ -208,6 +208,15 @@ export default function ProfileScreen() {
       { text: t.cancel, style: 'cancel' },
       {
         text: t.signOut, style: 'destructive', onPress: async () => {
+          // Sign out from Firebase too if user logged in via phone
+          if (isPhoneUser) {
+            try {
+              const { getApps, getApp } = require('firebase/app');
+              const { getAuth, signOut: firebaseSignOut } = require('firebase/auth');
+              const apps = getApps();
+              if (apps.length > 0) await firebaseSignOut(getAuth(getApp())).catch(() => {});
+            } catch (_) {}
+          }
           const { error } = await logout();
           if (error) showAlert('Error', error);
         },
@@ -295,6 +304,14 @@ export default function ProfileScreen() {
   };
 
   const handleChangePassword = () => {
+    if (isPhoneUser) {
+      return showAlert(
+        isRTL ? 'مستخدم هاتف' : 'Phone User',
+        isRTL
+          ? 'حسابك مرتبط برقم الهاتف فقط. لا توجد كلمة مرور لتغييرها.'
+          : 'Your account is linked to your phone number only. There is no password to change.'
+      );
+    }
     if (!user?.email) return;
     showAlert(
       isRTL ? 'تغيير كلمة المرور' : 'Change Password',
@@ -351,6 +368,11 @@ export default function ProfileScreen() {
     );
   }
 
+  // For phone-auth users, show real phone number instead of synthetic email
+  const isPhoneUser = (user.email ?? '').includes('@sms.souqqalqilya.local');
+  const displayEmail = isPhoneUser
+    ? (editPhone || (user.email ?? '').replace(/^phone_(\d+)@sms\.souqqalqilya\.local$/, '+$1'))
+    : (user.email ?? '');
   const displayName = localDisplayName ?? user.username ?? user.email?.split('@')[0] ?? 'User';
   const activeAds = ads.filter(a => a.status === 'active' || a.status === 'featured');
   const soldAds = ads.filter(a => a.status === 'sold');
@@ -378,7 +400,7 @@ export default function ProfileScreen() {
 
             {/* Name + badges */}
             <Text style={styles.heroName}>{displayName}</Text>
-            <Text style={styles.heroEmail}>{user.email}</Text>
+            <Text style={styles.heroEmail}>{displayEmail}</Text>
 
             <View style={styles.heroBadges}>
               {isAdmin ? (

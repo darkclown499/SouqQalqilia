@@ -170,8 +170,16 @@ export default function LoginScreen() {
     }
     // Build full E.164 phone number: combine +970 prefix with the entered digits
     const digits = phoneNumber.trim().replace(/[\s\-()]/g, '');
-    if (!digits || digits.length < 7)
-      return showAlert(isAr ? 'رقم غير صحيح' : 'Invalid Number', isAr ? 'أدخل رقم الهاتف بدون رمز الدولة (مثال: 591234567)' : 'Enter your number without country code (e.g. 591234567)');
+    // +970 (Palestine): 9 digits, +972 (Israel): 9-10 digits
+    const minLen = 9;
+    const maxLen = countryCode === '+972' ? 10 : 9;
+    if (!digits || digits.replace(/^0+/, '').length < minLen || digits.replace(/^0+/, '').length > maxLen)
+      return showAlert(
+        isAr ? 'رقم غير صحيح' : 'Invalid Number',
+        isAr
+          ? `أدخل رقم الهاتف بدون رمز الدولة (${countryCode === '+972' ? '9-10' : '9'} أرقام)`
+          : `Enter your number without country code (${countryCode === '+972' ? '9-10' : '9'} digits)`
+      );
 
     // If user already typed a full international number keep it, otherwise prepend selected country code
     let fullPhone: string;

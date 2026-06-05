@@ -41,6 +41,7 @@ export default function PostAdScreen() {
   const [categoryId, setCategoryId] = useState('');
   const [phonePrefix, setPhonePrefix] = useState('+970');
   const [phoneLocal, setPhoneLocal] = useState('');
+  const [phonePrefilled, setPhonePrefilled] = useState(false);
   const [condition, setCondition] = useState<Condition>('used');
   const [images, setImages] = useState<ImageItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -49,6 +50,33 @@ export default function PostAdScreen() {
 
   const rtl = { flexDirection: isRTL ? ('row-reverse' as const) : ('row' as const) };
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
+
+  // Auto-fill phone from user profile on first load
+  React.useEffect(() => {
+    if (!user || phonePrefilled) return;
+    getSupabaseClient()
+      .from('user_profiles')
+      .select('phone')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.phone) {
+          const raw = data.phone as string;
+          // Match +972 or +970 prefix
+          const match = raw.match(/^(\+97[02])(\d+)$/);
+          if (match) {
+            setPhonePrefix(match[1] as '+970' | '+972');
+            // Strip leading zero just in case
+            setPhoneLocal(match[2].replace(/^0/, ''));
+          } else {
+            // No prefix — just store as-is (up to 9 digits)
+            setPhoneLocal(raw.replace(/[^0-9]/g, '').slice(0, 9));
+          }
+          setPhonePrefilled(true);
+        }
+      })
+      .catch(() => {});
+  }, [user]);
 
   if (!user) {
     return (
@@ -111,6 +139,7 @@ export default function PostAdScreen() {
     setPhoneLocal('');
     setCondition('used');
     setPhonePrefix('+970');
+    setPhonePrefilled(false);
   };
 
   const handleAiImprove = async () => {
