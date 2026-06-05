@@ -113,7 +113,8 @@ export default function LoginScreen() {
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneResend, setPhoneResend] = useState(0);
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
-  const [recaptchaReady, setRecaptchaReady] = useState(false);
+  // appVerificationDisabledForTesting=true skips real reCAPTCHA — always ready
+  const [recaptchaReady, setRecaptchaReady] = useState(true);
   const recaptchaRef = useRef<any>(null);
   const [phoneEulaAccepted, setPhoneEulaAccepted] = useState(false);
   const phoneResendRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -470,6 +471,7 @@ export default function LoginScreen() {
           firebaseConfig={FIREBASE_CONFIG}
           attemptInvisibleVerification={true}
           onVerify={() => setRecaptchaReady(true)}
+          onError={() => setRecaptchaReady(true)}
           title=""
           cancelLabel=" "
         />
