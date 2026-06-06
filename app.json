@@ -134,6 +134,7 @@
           "backgroundColor": "#0A6E5C"
         }
       ],
+      "expo-apple-authentication",
       "expo-camera",
       [
         "expo-notifications",
