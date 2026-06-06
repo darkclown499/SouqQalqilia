@@ -53,7 +53,7 @@ export default function LoginScreen() {
   }, []);
 
   // ── Tab state ──────────────────────────────────────────────────────────────
-  // Phone tab (Twilio) → iOS only | Android uses email + Google only
+  // Phone tab (Twilio SMS) → iOS only | Android uses email + Google only
   const showPhoneTab = Platform.OS === 'ios';
   const [activeTab, setActiveTab] = useState<MainTab>(Platform.OS === 'ios' ? 'phone' : 'email');
   const tabIndicator = useRef(new Animated.Value(0)).current;
@@ -134,7 +134,7 @@ export default function LoginScreen() {
   // ── Helpers ────────────────────────────────────────────────────────────────
   const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
 
-  // ── Phone: Send code (via Twilio Edge Function — no Firebase) ───────────────
+  // ── Phone: Send code (via Twilio SMS Edge Function) ────────────────────────
   const handleSendPhoneCode = async () => {
     if (!phoneEulaAccepted) {
       return showAlert(
@@ -382,12 +382,6 @@ export default function LoginScreen() {
 
   // ── Tab width for indicator ────────────────────────────────────────────────
   const cardMaxW = isTablet ? 460 : W - 32;
-  // We can't use cardMaxW directly in Animated — use a ratio approach
-  // Indicator translates to 50% of card width for right tab
-  const tabIndicatorTranslate = tabIndicator.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
-  });
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -477,9 +471,9 @@ export default function LoginScreen() {
               {/* Tab buttons */}
               <View style={s.tabBtns}>
                 <Pressable style={s.tabBtn} onPress={() => { switchTab('phone'); setPhoneStep('input'); }}>
-                  <Text style={{ fontSize: 13 }}>💬</Text>
+                  <MaterialIcons name="smartphone" size={15} color={activeTab === 'phone' ? '#fff' : colors.textMuted} />
                   <Text style={[s.tabBtnText, { color: activeTab === 'phone' ? '#fff' : colors.textMuted }]}>
-                    {isAr ? 'واتساب' : 'WhatsApp'}
+                    {isAr ? 'الهاتف' : 'Phone'}
                   </Text>
                 </Pressable>
                 <Pressable style={s.tabBtn} onPress={() => { switchTab('email'); setEmailMode('login'); }}>
@@ -636,14 +630,14 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
-        <View style={[s.panelIconWrap, { backgroundColor: '#E7F9EE' }]}>
-          <Text style={{ fontSize: 28 }}>💬</Text>
+        <View style={[s.panelIconWrap, { backgroundColor: '#E8F0FE' }]}>
+          <MaterialIcons name="phone-android" size={28} color="#1A73E8" />
         </View>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>
-          {isAr ? 'الدخول عبر واتساب' : 'Sign in via WhatsApp'}
+          {isAr ? 'الدخول عبر رقم الهاتف' : 'Sign in via Phone'}
         </Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>
-          {isAr ? 'سيصلك رمز تحقق مكون من 6 أرقام عبر واتساب' : 'You will receive a 6-digit code via WhatsApp'}
+          {isAr ? 'سيصلك رمز تحقق مكون من 6 أرقام عبر SMS' : 'You will receive a 6-digit code via SMS'}
         </Text>
       </View>
 
@@ -703,11 +697,11 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
         {isAr ? 'أدخل الرقم بدون صفر أو رمز الدولة — مثال: 591234567' : 'Enter number without 0 or country code — e.g. 591234567'}
       </Text>
 
-      {/* WhatsApp info banner */}
-      <View style={[s.waBanner, { backgroundColor: '#E7F9EE', borderColor: '#25D366' }]}>
-        <Text style={{ fontSize: 14 }}>💬</Text>
-        <Text style={[s.waBannerText, { color: '#1A7A40' }]}>
-          {isAr ? 'سيصلك الرمز عبر واتساب — تأكد أن رقمك مرتبط بحساب واتساب' : 'Code will arrive via WhatsApp — make sure your number is linked to WhatsApp'}
+      {/* SMS info banner */}
+      <View style={[s.waBanner, { backgroundColor: '#E8F0FE', borderColor: '#1A73E8' }]}>
+        <MaterialIcons name="sms" size={16} color="#1A73E8" />
+        <Text style={[s.waBannerText, { color: '#1558B0' }]}>
+          {isAr ? 'سيصلك رمز التحقق عبر رسالة نصية SMS' : 'You will receive a verification code via SMS'}
         </Text>
       </View>
 
@@ -742,8 +736,8 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
         {loading
           ? <ActivityIndicator size="small" color="#fff" />
           : <>
-              <Text style={{ fontSize: 15 }}>💬</Text>
-              <Text style={s.primaryBtnText}>{isAr ? 'إرسال رمز واتساب' : 'Send WhatsApp Code'}</Text>
+              <MaterialIcons name="send" size={16} color="#fff" />
+              <Text style={s.primaryBtnText}>{isAr ? 'إرسال رمز SMS' : 'Send SMS Code'}</Text>
             </>}
       </Pressable>
     </View>
@@ -754,8 +748,6 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
 function PhoneOtpPanel({ phoneNumber, otp, setOtp, resendCooldown, loading, onVerify, onResend, onBack, colors, isAr }: any) {
   // 6 individual digit inputs
   const inputRefs = useRef<(TextInput | null)[]>([]);
-
-  const digits = (otp + '      ').slice(0, 6).split('');
 
   const handleDigitChange = (idx: number, val: string) => {
     const cleaned = val.replace(/[^0-9]/g, '');
@@ -790,18 +782,18 @@ function PhoneOtpPanel({ phoneNumber, otp, setOtp, resendCooldown, loading, onVe
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
-        <View style={[s.panelIconWrap, { backgroundColor: '#E7F9EE' }]}>
-          <Text style={{ fontSize: 28 }}>💬</Text>
+        <View style={[s.panelIconWrap, { backgroundColor: '#E8F0FE' }]}>
+          <MaterialIcons name="sms" size={28} color="#1A73E8" />
         </View>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>
-          {isAr ? 'رمز واتساب' : 'WhatsApp Code'}
+          {isAr ? 'رمز SMS' : 'SMS Code'}
         </Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>
-          {isAr ? 'تم إرسال رمز التحقق عبر واتساب إلى' : 'WhatsApp verification code sent to'}
+          {isAr ? 'تم إرسال رمز التحقق عبر SMS إلى' : 'SMS verification code sent to'}
         </Text>
-        <View style={[s.phonePill, { backgroundColor: '#E7F9EE' }]}>
-          <Text style={{ fontSize: 12 }}>💬</Text>
-          <Text style={[s.phonePillText, { color: '#1A7A40' }]}>{phoneNumber}</Text>
+        <View style={[s.phonePill, { backgroundColor: '#E8F0FE' }]}>
+          <MaterialIcons name="phone" size={13} color="#1A73E8" />
+          <Text style={[s.phonePillText, { color: '#1A73E8' }]}>{phoneNumber}</Text>
         </View>
       </View>
 
@@ -1224,7 +1216,7 @@ const s = StyleSheet.create({
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: Radius.xl, shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 6 },
   primaryBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700', letterSpacing: 0.2 },
 
-  // WhatsApp banner
+  // SMS / info banner
   waBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: Radius.md, borderWidth: 1, marginTop: -4 },
   waBannerText: { flex: 1, fontSize: FontSize.xs, lineHeight: 18, fontWeight: '500' },
 
