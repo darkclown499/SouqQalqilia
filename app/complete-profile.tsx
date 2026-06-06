@@ -1,14 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, KeyboardAvoidingView, Platform,
-  Pressable, ActivityIndicator, Animated, StatusBar, TextInput,
-  ScrollView,
+  View, Text, StyleSheet, Pressable, Animated, StatusBar, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { Spacing, FontSize, Radius } from '@/constants/theme';
@@ -17,75 +14,35 @@ import { APP_NAME_AR, APP_NAME } from '@/constants/config';
 export default function CompleteProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
-  const { showAlert } = useAlert();
   const { colors, isDark } = useTheme();
   const { language } = useLanguage();
   const isAr = language === 'ar';
-
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [loading, setLoading] = useState(false);
 
   // Entrance animation
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardY = useRef(new Animated.Value(24)).current;
   const avatarScale = useRef(new Animated.Value(0.6)).current;
+  const checkScale = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(cardOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.spring(cardY, { toValue: 0, tension: 70, friction: 13, useNativeDriver: true }),
       Animated.spring(avatarScale, { toValue: 1, tension: 60, friction: 10, useNativeDriver: true, delay: 150 }),
+      Animated.spring(checkScale, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true, delay: 350 }),
     ]).start();
   }, []);
 
-  const handleSave = async () => {
-    const first = firstName.trim();
-    const last = lastName.trim();
-
-    if (!first) {
-      return showAlert(
-        isAr ? 'الاسم الأول مطلوب' : 'First Name Required',
-        isAr ? 'يرجى إدخال اسمك الأول على الأقل' : 'Please enter at least your first name'
-      );
-    }
-
-    if (!user?.id) {
-      return showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لم يتم التحقق من الهوية' : 'Not authenticated');
-    }
-
-    setLoading(true);
-    try {
-      const fullName = last ? `${first} ${last}` : first;
-      const supabase = getSupabaseClient();
-
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ username: fullName })
-        .eq('id', user.id);
-
-      if (error) throw new Error(error.message);
-
-      router.replace('/(tabs)');
-    } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Failed to save profile');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSkip = () => {
+  const handleStart = () => {
     router.replace('/(tabs)');
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <>
       <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0A0F0D' : '#0A6E5C'} />
       <ScrollView
         style={[s.scroll, { backgroundColor: isDark ? '#0A0F0D' : '#0A6E5C' }]}
-        contentContainerStyle={[s.container, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 40 }]}
-        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[s.container, { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 48 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* ── HERO ── */}
@@ -96,8 +53,10 @@ export default function CompleteProfileScreen() {
                 <MaterialIcons name="person" size={52} color="rgba(255,255,255,0.9)" />
               </View>
             </View>
-            {/* Glow */}
-            <View style={s.avatarGlow} />
+            {/* Animated check overlay */}
+            <Animated.View style={[s.checkBadge, { transform: [{ scale: checkScale }] }]}>
+              <MaterialIcons name="check" size={16} color="#fff" />
+            </Animated.View>
           </Animated.View>
 
           <View style={s.badge}>
@@ -108,12 +67,12 @@ export default function CompleteProfileScreen() {
           </View>
 
           <Text style={s.heroTitle}>
-            {isAr ? 'أكمل ملفك الشخصي' : 'Complete Your Profile'}
+            {isAr ? 'مرحباً بك في السوق! 🎉' : 'Welcome to the Marketplace! 🎉'}
           </Text>
           <Text style={s.heroSub}>
             {isAr
-              ? 'أضف اسمك حتى يتعرف عليك الآخرون في السوق'
-              : 'Add your name so others can recognize you in the marketplace'}
+              ? 'حسابك جاهز الآن، يمكنك البدء بالتسوق والبيع فوراً'
+              : 'Your account is ready. Start browsing and selling right away'}
           </Text>
         </View>
 
@@ -126,81 +85,75 @@ export default function CompleteProfileScreen() {
           ]}
         >
           <View style={s.cardContent}>
-            {/* Phone info pill */}
-            {user?.email && user.email.includes('@sms.') ? (
-              <View style={[s.phonePill, { backgroundColor: colors.primaryGhost }]}>
-                <MaterialIcons name="verified" size={14} color={colors.primary} />
-                <Text style={[s.phonePillText, { color: colors.primary }]}>
-                  {isAr ? 'تم التحقق برقم الهاتف' : 'Phone number verified'}
+
+            {/* Info box */}
+            <View style={[s.infoBox, { backgroundColor: colors.primaryGhost, borderColor: colors.primary + '33' }]}>
+              <View style={[s.infoIconWrap, { backgroundColor: colors.primary }]}>
+                <MaterialIcons name="person" size={20} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.infoTitle, { color: colors.textPrimary }]}>
+                  {isAr ? 'أكمل إعدادات حسابك' : 'Complete Your Account Settings'}
+                </Text>
+                <Text style={[s.infoDesc, { color: colors.textSecondary }]}>
+                  {isAr
+                    ? 'يمكنك إضافة اسمك وصورتك الشخصية وبيانات التواصل في أي وقت من خلال ملفك الشخصي'
+                    : 'You can add your name, profile photo, and contact details anytime from your profile page'}
                 </Text>
               </View>
-            ) : null}
-
-            <Text style={[s.sectionLabel, { color: colors.textSecondary }]}>
-              {isAr ? 'بياناتك الشخصية' : 'Your personal details'}
-            </Text>
-
-            {/* First Name */}
-            <NameInput
-              label={isAr ? 'الاسم الأول *' : 'First Name *'}
-              placeholder={isAr ? 'مثال: محمد' : 'e.g. John'}
-              value={firstName}
-              onChangeText={setFirstName}
-              iconName="person"
-              colors={colors}
-              autoFocus
-              returnKeyType="next"
-            />
-
-            {/* Last Name */}
-            <NameInput
-              label={isAr ? 'اسم العائلة (اختياري)' : 'Last Name (Optional)'}
-              placeholder={isAr ? 'مثال: أحمد' : 'e.g. Smith'}
-              value={lastName}
-              onChangeText={setLastName}
-              iconName="person-outline"
-              colors={colors}
-              returnKeyType="done"
-              onSubmitEditing={handleSave}
-            />
-
-            {/* Info note */}
-            <View style={[s.infoRow, { backgroundColor: colors.primaryGhost }]}>
-              <MaterialIcons name="info-outline" size={15} color={colors.primary} />
-              <Text style={[s.infoText, { color: colors.primary }]}>
-                {isAr
-                  ? 'سيظهر اسمك للمشترين والبائعين عند التواصل معهم'
-                  : 'Your name will be visible to buyers and sellers when you chat'}
-              </Text>
             </View>
 
-            {/* Save Button */}
+            {/* Feature hints */}
+            {[
+              {
+                icon: 'storefront',
+                color: '#0A6E5C',
+                bg: colors.primaryGhost,
+                label: isAr ? 'تصفح الإعلانات' : 'Browse Listings',
+                sub: isAr ? 'آلاف المنتجات بأسعار مناسبة' : 'Thousands of products at great prices',
+              },
+              {
+                icon: 'add-circle-outline',
+                color: '#7C3AED',
+                bg: '#EDE9FE',
+                label: isAr ? 'انشر إعلانك' : 'Post Your Ad',
+                sub: isAr ? 'بيع منتجاتك بسهولة وسرعة' : 'Sell your items quickly and easily',
+              },
+              {
+                icon: 'chat-bubble-outline',
+                color: '#D97706',
+                bg: '#FEF3C7',
+                label: isAr ? 'تواصل مع البائعين' : 'Chat with Sellers',
+                sub: isAr ? 'تفاوض مباشرة مع أصحاب الإعلانات' : 'Negotiate directly with ad owners',
+              },
+            ].map((item) => (
+              <View key={item.label} style={[s.featureRow, { borderColor: colors.borderLight }]}>
+                <View style={[s.featureIcon, { backgroundColor: item.bg }]}>
+                  <MaterialIcons name={item.icon as any} size={20} color={item.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.featureLabel, { color: colors.textPrimary }]}>{item.label}</Text>
+                  <Text style={[s.featureSub, { color: colors.textMuted }]}>{item.sub}</Text>
+                </View>
+                <MaterialIcons name={isAr ? 'chevron-left' : 'chevron-right'} size={18} color={colors.textMuted} />
+              </View>
+            ))}
+
+            {/* Start Button */}
             <Pressable
               style={({ pressed }) => [
-                s.saveBtn,
-                { backgroundColor: colors.primary, opacity: pressed || loading ? 0.85 : 1 },
+                s.startBtn,
+                { backgroundColor: colors.primary, opacity: pressed ? 0.88 : 1 },
               ]}
-              onPress={handleSave}
-              disabled={loading}
+              onPress={handleStart}
             >
-              {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <MaterialIcons name="check-circle" size={18} color="#fff" />
-                  <Text style={s.saveBtnText}>
-                    {isAr ? 'حفظ والمتابعة' : 'Save & Continue'}
-                  </Text>
-                </>
-              )}
+              <MaterialIcons name="rocket-launch" size={20} color="#fff" />
+              <Text style={s.startBtnText}>
+                {isAr ? 'ابدأ الآن' : 'Get Started'}
+              </Text>
+              <MaterialIcons name={isAr ? 'arrow-back' : 'arrow-forward'} size={18} color="rgba(255,255,255,0.8)" />
             </Pressable>
 
-            {/* Skip */}
-            <Pressable style={s.skipBtn} onPress={handleSkip} hitSlop={10}>
-              <Text style={[s.skipText, { color: colors.textMuted }]}>
-                {isAr ? 'تخطي الآن، سأضيف لاحقاً' : 'Skip for now, I will add it later'}
-              </Text>
-            </Pressable>
           </View>
         </Animated.View>
 
@@ -214,42 +167,9 @@ export default function CompleteProfileScreen() {
           <Text style={s.brandName}>{isAr ? APP_NAME_AR : APP_NAME}</Text>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </>
   );
 }
-
-// ── Name Input ────────────────────────────────────────────────────────────────
-// Wrapped in React.memo to prevent re-creation on every parent render
-// which would cause TextInput to lose focus on each keystroke
-const NameInput = React.memo(function NameInput({ label, placeholder, value, onChangeText, iconName, colors, autoFocus, returnKeyType, onSubmitEditing }: any) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <View style={s.inputGroup}>
-      <Text style={[s.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <View style={[
-        s.inputWrap,
-        { borderColor: focused ? colors.primary : colors.border, backgroundColor: colors.background },
-        focused && { borderWidth: 1.5, shadowColor: colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 3 },
-      ]}>
-        <MaterialIcons name={iconName} size={17} color={focused ? colors.primary : colors.textMuted} style={s.inputIcon} />
-        <TextInput
-          style={[s.inputField, { color: colors.textPrimary }]}
-          placeholder={placeholder}
-          placeholderTextColor={colors.textMuted}
-          value={value}
-          onChangeText={onChangeText}
-          autoCapitalize="words"
-          autoCorrect={false}
-          autoFocus={autoFocus}
-          returnKeyType={returnKeyType}
-          onSubmitEditing={onSubmitEditing}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-        />
-      </View>
-    </View>
-  );
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
@@ -268,11 +188,12 @@ const s = StyleSheet.create({
     width: 96, height: 96, borderRadius: 48,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarGlow: {
-    position: 'absolute', inset: -6,
-    borderRadius: 66,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+  checkBadge: {
+    position: 'absolute', bottom: 4, right: 4,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#10B981',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2.5, borderColor: '#0A6E5C',
   },
   badge: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -289,7 +210,7 @@ const s = StyleSheet.create({
   },
   heroSub: {
     fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)',
-    textAlign: 'center', lineHeight: 20, maxWidth: 280,
+    textAlign: 'center', lineHeight: 20, maxWidth: 300,
   },
 
   // Card
@@ -305,47 +226,39 @@ const s = StyleSheet.create({
   },
   cardContent: { padding: Spacing.lg, gap: Spacing.md },
 
-  // Phone pill
-  phonePill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: Radius.full, alignSelf: 'center',
+  // Info box
+  infoBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md,
+    padding: Spacing.md, borderRadius: Radius.lg, borderWidth: 1,
   },
-  phonePillText: { fontSize: FontSize.xs, fontWeight: '600' },
-
-  sectionLabel: { fontSize: FontSize.xs, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: -4 },
-
-  // Inputs
-  inputGroup: { gap: 6 },
-  inputLabel: { fontSize: FontSize.sm, fontWeight: '600', marginLeft: 2 },
-  inputWrap: {
-    flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1, borderRadius: Radius.md,
-    height: 54, paddingHorizontal: 14,
+  infoIconWrap: {
+    width: 40, height: 40, borderRadius: Radius.sm,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  inputIcon: { marginRight: 10 },
-  inputField: { flex: 1, fontSize: FontSize.md, height: '100%' },
+  infoTitle: { fontSize: FontSize.sm, fontWeight: '700', marginBottom: 3 },
+  infoDesc: { fontSize: FontSize.xs, lineHeight: 18 },
 
-  // Info row
-  infoRow: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    padding: 12, borderRadius: Radius.sm,
+  // Feature rows
+  featureRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    paddingVertical: 12, borderBottomWidth: 1,
   },
-  infoText: { flex: 1, fontSize: FontSize.xs, lineHeight: 17, fontWeight: '500' },
+  featureIcon: {
+    width: 42, height: 42, borderRadius: Radius.sm,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  featureLabel: { fontSize: FontSize.sm, fontWeight: '700', marginBottom: 2 },
+  featureSub: { fontSize: FontSize.xs, lineHeight: 16 },
 
-  // Save button
-  saveBtn: {
+  // Start button
+  startBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, height: 54, borderRadius: Radius.xl,
-    shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28, shadowRadius: 10, elevation: 6,
+    gap: 10, height: 56, borderRadius: Radius.xl,
+    shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.32, shadowRadius: 12, elevation: 8,
     marginTop: 4,
   },
-  saveBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700', letterSpacing: 0.2 },
-
-  // Skip
-  skipBtn: { alignItems: 'center', paddingVertical: 8, marginTop: -4 },
-  skipText: { fontSize: FontSize.sm, fontWeight: '500' },
+  startBtnText: { color: '#fff', fontSize: FontSize.lg, fontWeight: '800', letterSpacing: 0.2, flex: 1, textAlign: 'center', marginLeft: -18 },
 
   // Branding
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 28, opacity: 0.5 },
