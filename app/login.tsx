@@ -53,14 +53,12 @@ export default function LoginScreen() {
   }, []);
 
   // ── Tab state ──────────────────────────────────────────────────────────────
-  // Phone tab (Twilio SMS) → iOS only | Android uses email + Google only
   const showPhoneTab = Platform.OS === 'ios';
   const [activeTab, setActiveTab] = useState<MainTab>(Platform.OS === 'ios' ? 'phone' : 'email');
   const tabIndicator = useRef(new Animated.Value(0)).current;
 
   const switchTab = useCallback((tab: MainTab) => {
     setActiveTab(tab);
-    // Reset stuck submission flag when switching tabs
     isSubmittingRef.current = false;
     Animated.spring(tabIndicator, {
       toValue: tab === 'phone' ? 0 : 1,
@@ -92,13 +90,11 @@ export default function LoginScreen() {
   const [phoneOtp, setPhoneOtp] = useState('');
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneResend, setPhoneResend] = useState(0);
-  // Full phone in E.164 format used for OTP send/verify
   const [fullPhoneForOtp, setFullPhoneForOtp] = useState('');
   const [phoneEulaAccepted, setPhoneEulaAccepted] = useState(false);
   const phoneResendRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Social ─────────────────────────────────────────────────────────────────
-  // Google: Android only | Apple: removed from all platforms
   const [googleLoading, setGoogleLoading] = useState(false);
 
   const isSubmittingRef = useRef(false);
@@ -133,10 +129,9 @@ export default function LoginScreen() {
     return () => { if (cooldownRef.current) clearInterval(cooldownRef.current); };
   }, [resendCooldown > 0]);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
   const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
 
-  // ── Phone: Send code (via Twilio SMS Edge Function) ────────────────────────
+  // ── Phone: Send code ──────────────────────────────────────────────────────
   const handleSendPhoneCode = async () => {
     if (!phoneEulaAccepted) {
       return showAlert(
@@ -144,16 +139,12 @@ export default function LoginScreen() {
         isAr ? 'يجب الموافقة على شروط الاستخدام وسياسة الخصوصية للمتابعة' : 'You must agree to the Terms of Use and Privacy Policy to continue'
       );
     }
-    // Build full E.164 phone number
     const digits = phoneNumber.trim().replace(/[\s\-()]/g, '');
     const stripped = digits.replace(/^0+/, '');
-    // Relaxed validation: accept 7-12 digits to cover all Palestinian/Israeli formats
     if (!stripped || stripped.length < 7 || stripped.length > 12)
       return showAlert(
         isAr ? 'رقم غير صحيح' : 'Invalid Number',
-        isAr
-          ? 'أدخل رقم الهاتف بدون رمز الدولة — مثال: 591234567'
-          : 'Enter your number without country code — e.g. 591234567'
+        isAr ? 'أدخل رقم الهاتف بدون رمز الدولة — مثال: 591234567' : 'Enter your number without country code — e.g. 591234567'
       );
 
     const fullPhone = digits.startsWith('+') ? digits : (countryCode + stripped);
@@ -174,7 +165,7 @@ export default function LoginScreen() {
         } catch {}
         throw new Error(msg);
       }
-      if (!data?.success) throw new Error(data?.error ?? isAr ? 'فشل إرسال الرمز' : 'Failed to send code');
+      if (!data?.success) throw new Error(data?.error ?? (isAr ? 'فشل إرسال الرمز' : 'Failed to send code'));
       setFullPhoneForOtp(fullPhone);
       setPhoneStep('otp');
       setPhoneResend(60);
@@ -186,7 +177,7 @@ export default function LoginScreen() {
     }
   };
 
-  // ── Phone: Verify OTP (via Edge Function) ─────────────────────────────────
+  // ── Phone: Verify OTP ─────────────────────────────────────────────────────
   const handleVerifyPhoneOtp = async () => {
     if (!phoneOtp || phoneOtp.length < 6)
       return showAlert(isAr ? 'الرمز مطلوب' : 'Code Required', isAr ? 'أدخل رمز التحقق المكون من 6 أرقام' : 'Enter the 6-digit code');
@@ -214,7 +205,6 @@ export default function LoginScreen() {
         });
         if (sessErr) throw new Error(sessErr.message);
 
-        // Smart routing: check if user has a name set
         try {
           const { data: profile } = await supabase
             .from('user_profiles')
@@ -379,17 +369,12 @@ export default function LoginScreen() {
     }
   };
 
-  // Apple Sign-In removed from all platforms per product decision
-
-  // ── Tab width for indicator ────────────────────────────────────────────────
   const cardMaxW = isTablet ? 460 : W - 32;
 
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0A0F0D' : '#0A6E5C'} />
 
-      {/* Verifying overlay */}
       <Modal visible={verifying} transparent animationType="none" statusBarTranslucent>
         <View style={s.overlay}>
           <View style={[s.overlayBox, { backgroundColor: colors.surface }]}>
@@ -405,7 +390,6 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* ── TOP BAR ── */}
         <View style={[s.topBar, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
           <View style={[s.langRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
             {(['ar', 'en'] as Language[]).map(lang => (
@@ -422,25 +406,15 @@ export default function LoginScreen() {
           </View>
         </View>
 
-        {/* ── HERO ── */}
         <View style={[s.hero, { alignSelf: 'center', maxWidth: cardMaxW, width: '100%' }]}>
           <View style={s.logoOuter}>
-            <Image
-              source={require('@/assets/images/app-logo-bg.png')}
-              style={s.logoImg}
-              contentFit="cover"
-              transition={200}
-            />
-            {/* Glow ring */}
+            <Image source={require('@/assets/images/app-logo-bg.png')} style={s.logoImg} contentFit="cover" transition={200} />
             <View style={s.logoGlow} />
           </View>
-          <Text style={[s.heroTitle, isAr && { fontFamily: undefined }]}>
-            {isAr ? APP_NAME_AR : APP_NAME}
-          </Text>
+          <Text style={[s.heroTitle, isAr && { fontFamily: undefined }]}>{isAr ? APP_NAME_AR : APP_NAME}</Text>
           <Text style={s.heroSub}>{isAr ? 'اشتري وبيع في قلقيلية' : 'Buy & Sell in Qalqilya'}</Text>
         </View>
 
-        {/* ── MAIN CARD ── */}
         <Animated.View
           style={[
             s.card,
@@ -448,10 +422,8 @@ export default function LoginScreen() {
             { transform: [{ translateY: cardY }], opacity: cardOpacity },
           ]}
         >
-          {/* ── TAB SWITCHER ── */}
           {showPhoneTab ? (
             <View style={[s.tabContainer, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
-              {/* Sliding pill indicator */}
               <View style={s.tabTrack}>
                 <Animated.View
                   style={[
@@ -469,60 +441,42 @@ export default function LoginScreen() {
                   ]}
                 />
               </View>
-              {/* Tab buttons */}
               <View style={s.tabBtns}>
                 <Pressable style={s.tabBtn} onPress={() => { switchTab('phone'); setPhoneStep('input'); }}>
                   <MaterialIcons name="smartphone" size={15} color={activeTab === 'phone' ? '#fff' : colors.textMuted} />
-                  <Text style={[s.tabBtnText, { color: activeTab === 'phone' ? '#fff' : colors.textMuted }]}>
-                    {isAr ? 'الهاتف' : 'Phone'}
-                  </Text>
+                  <Text style={[s.tabBtnText, { color: activeTab === 'phone' ? '#fff' : colors.textMuted }]}>{isAr ? 'الهاتف' : 'Phone'}</Text>
                 </Pressable>
                 <Pressable style={s.tabBtn} onPress={() => { switchTab('email'); setEmailMode('login'); }}>
                   <MaterialIcons name="email" size={15} color={activeTab === 'email' ? '#fff' : colors.textMuted} />
-                  <Text style={[s.tabBtnText, { color: activeTab === 'email' ? '#fff' : colors.textMuted }]}>
-                    {isAr ? 'البريد الإلكتروني' : 'Email'}
-                  </Text>
+                  <Text style={[s.tabBtnText, { color: activeTab === 'email' ? '#fff' : colors.textMuted }]}>{isAr ? 'البريد الإلكتروني' : 'Email'}</Text>
                 </Pressable>
               </View>
             </View>
           ) : null}
 
-          {/* ── PHONE TAB CONTENT ── */}
           {activeTab === 'phone' && showPhoneTab ? (
             phoneStep === 'input' ? (
               <PhoneInputPanel
-                phoneNumber={phoneNumber}
-                setPhoneNumber={setPhoneNumber}
-                countryCode={countryCode}
-                setCountryCode={setCountryCode}
-                loading={phoneLoading}
-                onSend={handleSendPhoneCode}
-                eulaAccepted={phoneEulaAccepted}
-                setEulaAccepted={setPhoneEulaAccepted}
+                phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber}
+                countryCode={countryCode} setCountryCode={setCountryCode}
+                loading={phoneLoading} onSend={handleSendPhoneCode}
+                eulaAccepted={phoneEulaAccepted} setEulaAccepted={setPhoneEulaAccepted}
                 onOpenEula={() => setEulaModalVisible(true)}
                 colors={colors} isAr={isAr} router={router}
               />
             ) : (
               <PhoneOtpPanel
                 phoneNumber={fullPhoneForOtp || (countryCode + phoneNumber)}
-                otp={phoneOtp}
-                setOtp={setPhoneOtp}
-                resendCooldown={phoneResend}
-                loading={phoneLoading}
+                otp={phoneOtp} setOtp={setPhoneOtp}
+                resendCooldown={phoneResend} loading={phoneLoading}
                 onVerify={handleVerifyPhoneOtp}
-                onResend={() => {
-                  setPhoneOtp('');
-                  setFullPhoneForOtp('');
-                  setPhoneStep('input');
-                  isSubmittingRef.current = false;
-                }}
+                onResend={() => { setPhoneOtp(''); setFullPhoneForOtp(''); setPhoneStep('input'); isSubmittingRef.current = false; }}
                 onBack={() => setPhoneStep('input')}
                 colors={colors} isAr={isAr}
               />
             )
           ) : null}
 
-          {/* ── EMAIL TAB CONTENT ── */}
           {activeTab === 'email' ? (
             <>
               {emailMode === 'login' ? (
@@ -530,8 +484,7 @@ export default function LoginScreen() {
                   email={email} setEmail={setEmail}
                   password={password} setPassword={setPassword}
                   showPassword={showPassword} togglePassword={() => setShowPassword(v => !v)}
-                  loading={operationLoading}
-                  onLogin={handleLogin}
+                  loading={operationLoading} onLogin={handleLogin}
                   onForgot={() => setEmailMode('forgot')}
                   colors={colors} t={t} isAr={isAr}
                 />
@@ -550,8 +503,7 @@ export default function LoginScreen() {
               ) : emailMode === 'otp' ? (
                 <OtpPanel
                   email={email} otp={otp} setOtp={setOtp}
-                  resendCooldown={resendCooldown}
-                  loading={operationLoading}
+                  resendCooldown={resendCooldown} loading={operationLoading}
                   onVerify={handleVerifyOTP} onResend={handleResendOTP}
                   onBack={() => setEmailMode('register')}
                   colors={colors} t={t} isAr={isAr}
@@ -567,7 +519,6 @@ export default function LoginScreen() {
                 <ForgotSentPanel email={email} onBack={() => setEmailMode('login')} colors={colors} isAr={isAr} />
               ) : null}
 
-              {/* Login/Register switcher */}
               {(emailMode === 'login' || emailMode === 'register') ? (
                 <View style={[s.switcherRow, { borderTopColor: colors.border }]}>
                   <Text style={[s.switcherText, { color: colors.textMuted }]}>
@@ -586,7 +537,6 @@ export default function LoginScreen() {
           ) : null}
         </Animated.View>
 
-        {/* ── SOCIAL LOGIN — Android only (Google), hidden on iOS) ── */}
         {Platform.OS === 'android' && (emailMode === 'login' || emailMode === 'register') ? (
           <View style={[s.socialSection, { alignSelf: 'center', maxWidth: cardMaxW, width: '100%' }]}>
             <View style={s.dividerRow}>
@@ -594,7 +544,6 @@ export default function LoginScreen() {
               <Text style={s.divText}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
               <View style={s.divLine} />
             </View>
-            {/* Full-width Google button — only social option on Android */}
             <SocialButton
               icon={<GoogleG />}
               label="Google"
@@ -607,7 +556,6 @@ export default function LoginScreen() {
         ) : null}
       </ScrollView>
 
-      {/* EULA Modal */}
       <EulaModal
         visible={eulaModalVisible}
         onClose={() => setEulaModalVisible(false)}
@@ -624,8 +572,9 @@ const COUNTRY_CODES = [
   { code: '+972' as const, flag: '🇮🇱', label: 'إسرائيل / Israel' },
 ];
 
-// ─── Phone Input Panel ─────────────────────────────────────────────────────────
-function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryCode, loading, eulaAccepted, setEulaAccepted, onOpenEula, onSend, colors, isAr, router }: any) {
+// ─── Phone Input Panel ────────────────────────────────────────────────────────
+// React.memo prevents re-creation on every parent render → TextInput keeps focus
+const PhoneInputPanel = React.memo(function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryCode, loading, eulaAccepted, setEulaAccepted, onOpenEula, onSend, colors, isAr, router }: any) {
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode) ?? COUNTRY_CODES[0];
 
@@ -635,20 +584,12 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
         <View style={[s.panelIconWrap, { backgroundColor: '#E8F0FE' }]}>
           <MaterialIcons name="phone-android" size={28} color="#1A73E8" />
         </View>
-        <Text style={[s.panelTitle, { color: colors.textPrimary }]}>
-          {isAr ? 'الدخول عبر رقم الهاتف' : 'Sign in via Phone'}
-        </Text>
-        <Text style={[s.panelSub, { color: colors.textMuted }]}>
-          {isAr ? 'سيصلك رمز تحقق مكون من 6 أرقام عبر SMS' : 'You will receive a 6-digit code via SMS'}
-        </Text>
+        <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{isAr ? 'الدخول عبر رقم الهاتف' : 'Sign in via Phone'}</Text>
+        <Text style={[s.panelSub, { color: colors.textMuted }]}>{isAr ? 'سيصلك رمز تحقق مكون من 6 أرقام عبر SMS' : 'You will receive a 6-digit code via SMS'}</Text>
       </View>
 
       <View style={[s.phoneRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
-        {/* Country code picker button */}
-        <Pressable
-          style={[s.countryTag, { borderRightColor: colors.border }]}
-          onPress={() => setShowCountryPicker(true)}
-        >
+        <Pressable style={[s.countryTag, { borderRightColor: colors.border }]} onPress={() => setShowCountryPicker(true)}>
           <Text style={s.flagEmoji}>{selectedCountry.flag}</Text>
           <Text style={[s.countryCode, { color: colors.primary }]}>{selectedCountry.code}</Text>
           <MaterialIcons name="arrow-drop-down" size={16} color={colors.textMuted} />
@@ -667,15 +608,12 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
         />
       </View>
 
-      {/* Country Code Picker Modal */}
       <Modal visible={showCountryPicker} transparent animationType="slide" onRequestClose={() => setShowCountryPicker(false)}>
         <Pressable style={s.pickerOverlay} onPress={() => setShowCountryPicker(false)}>
           <View style={[s.pickerSheet, { backgroundColor: colors.surface }]}>
             <View style={[s.pickerHeader, { borderBottomColor: colors.border }]}>
               <View style={[s.eulaSheetHandle, { backgroundColor: colors.border }]} />
-              <Text style={[s.panelTitle, { color: colors.textPrimary, fontSize: 16 }]}>
-                {isAr ? 'اختر رمز الدولة' : 'Select Country Code'}
-              </Text>
+              <Text style={[s.panelTitle, { color: colors.textPrimary, fontSize: 16 }]}>{isAr ? 'اختر رمز الدولة' : 'Select Country Code'}</Text>
             </View>
             {COUNTRY_CODES.map(c => (
               <Pressable
@@ -695,65 +633,44 @@ function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryC
         </Pressable>
       </Modal>
 
-      <Text style={[s.phoneHint, { color: colors.textMuted }]}>
-        {isAr ? 'أدخل الرقم بدون صفر أو رمز الدولة — مثال: 591234567' : 'Enter number without 0 or country code — e.g. 591234567'}
-      </Text>
+      <Text style={[s.phoneHint, { color: colors.textMuted }]}>{isAr ? 'أدخل الرقم بدون صفر أو رمز الدولة — مثال: 591234567' : 'Enter number without 0 or country code — e.g. 591234567'}</Text>
 
-      {/* SMS info banner */}
       <View style={[s.waBanner, { backgroundColor: '#E8F0FE', borderColor: '#1A73E8' }]}>
         <MaterialIcons name="sms" size={16} color="#1A73E8" />
-        <Text style={[s.waBannerText, { color: '#1558B0' }]}>
-          {isAr ? 'سيصلك رمز التحقق عبر رسالة نصية SMS' : 'You will receive a verification code via SMS'}
-        </Text>
+        <Text style={[s.waBannerText, { color: '#1558B0' }]}>{isAr ? 'سيصلك رمز التحقق عبر رسالة نصية SMS' : 'You will receive a verification code via SMS'}</Text>
       </View>
 
-      {/* EULA Acceptance */}
       <Pressable style={[s.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]} onPress={() => setEulaAccepted(!eulaAccepted)}>
         <View style={[s.eulaCheck, { borderColor: eulaAccepted ? colors.primary : colors.border, backgroundColor: eulaAccepted ? colors.primary : 'transparent' }]}>
           {eulaAccepted ? <MaterialIcons name="check" size={11} color="#fff" /> : null}
         </View>
         <Text style={[s.eulaText, { color: colors.textSecondary, textAlign: isAr ? 'right' : 'left' }]}>
           {isAr ? 'أوافق على ' : 'I agree to the '}
-          <Text style={[s.eulaHighlight, { color: colors.primary }]} onPress={onOpenEula}>
-            {isAr ? 'شروط الاستخدام' : 'Terms of Use'}
-          </Text>
+          <Text style={[s.eulaHighlight, { color: colors.primary }]} onPress={onOpenEula}>{isAr ? 'شروط الاستخدام' : 'Terms of Use'}</Text>
           {isAr ? ' و' : ' and '}
-          <Text style={[s.eulaHighlight, { color: colors.primary }]} onPress={() => router.push('/privacy')}>
-            {isAr ? 'سياسة الخصوصية' : 'Privacy Policy'}
-          </Text>
+          <Text style={[s.eulaHighlight, { color: colors.primary }]} onPress={() => router.push('/privacy')}>{isAr ? 'سياسة الخصوصية' : 'Privacy Policy'}</Text>
         </Text>
       </Pressable>
 
       <Pressable
-        style={({ pressed }) => [
-          s.primaryBtn,
-          {
-            backgroundColor: (loading || !eulaAccepted) ? colors.textMuted : colors.primary,
-            opacity: pressed ? 0.85 : 1,
-          },
-        ]}
+        style={({ pressed }) => [s.primaryBtn, { backgroundColor: (loading || !eulaAccepted) ? colors.textMuted : colors.primary, opacity: pressed ? 0.85 : 1 }]}
         onPress={onSend}
         disabled={loading || !eulaAccepted}
       >
-        {loading
-          ? <ActivityIndicator size="small" color="#fff" />
-          : <>
-              <MaterialIcons name="send" size={16} color="#fff" />
-              <Text style={s.primaryBtnText}>{isAr ? 'إرسال رمز SMS' : 'Send SMS Code'}</Text>
-            </>}
+        {loading ? <ActivityIndicator size="small" color="#fff" /> : (
+          <><MaterialIcons name="send" size={16} color="#fff" /><Text style={s.primaryBtnText}>{isAr ? 'إرسال رمز SMS' : 'Send SMS Code'}</Text></>
+        )}
       </Pressable>
     </View>
   );
-}
+});
 
-// ─── Phone OTP Panel ───────────────────────────────────────────────────────────
-function PhoneOtpPanel({ phoneNumber, otp, setOtp, resendCooldown, loading, onVerify, onResend, onBack, colors, isAr }: any) {
-  // 6 individual digit inputs
+// ─── Phone OTP Panel ──────────────────────────────────────────────────────────
+const PhoneOtpPanel = React.memo(function PhoneOtpPanel({ phoneNumber, otp, setOtp, resendCooldown, loading, onVerify, onResend, onBack, colors, isAr }: any) {
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
   const handleDigitChange = (idx: number, val: string) => {
     const cleaned = val.replace(/[^0-9]/g, '');
-    // Allow paste of full code
     if (cleaned.length > 1) {
       const full = cleaned.slice(0, 6);
       setOtp(full);
@@ -787,19 +704,14 @@ function PhoneOtpPanel({ phoneNumber, otp, setOtp, resendCooldown, loading, onVe
         <View style={[s.panelIconWrap, { backgroundColor: '#E8F0FE' }]}>
           <MaterialIcons name="sms" size={28} color="#1A73E8" />
         </View>
-        <Text style={[s.panelTitle, { color: colors.textPrimary }]}>
-          {isAr ? 'رمز SMS' : 'SMS Code'}
-        </Text>
-        <Text style={[s.panelSub, { color: colors.textMuted }]}>
-          {isAr ? 'تم إرسال رمز التحقق عبر SMS إلى' : 'SMS verification code sent to'}
-        </Text>
+        <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{isAr ? 'رمز SMS' : 'SMS Code'}</Text>
+        <Text style={[s.panelSub, { color: colors.textMuted }]}>{isAr ? 'تم إرسال رمز التحقق عبر SMS إلى' : 'SMS verification code sent to'}</Text>
         <View style={[s.phonePill, { backgroundColor: '#E8F0FE' }]}>
           <MaterialIcons name="phone" size={13} color="#1A73E8" />
           <Text style={[s.phonePillText, { color: '#1A73E8' }]}>{phoneNumber}</Text>
         </View>
       </View>
 
-      {/* 6-digit input boxes */}
       <View style={s.otpBoxRow}>
         {Array.from({ length: 6 }).map((_, idx) => {
           const digit = otp[idx] ?? '';
@@ -808,14 +720,7 @@ function PhoneOtpPanel({ phoneNumber, otp, setOtp, resendCooldown, loading, onVe
             <TextInput
               key={idx}
               ref={r => { inputRefs.current[idx] = r; }}
-              style={[
-                s.otpBox,
-                {
-                  borderColor: isFilled ? colors.primary : colors.border,
-                  backgroundColor: isFilled ? colors.primaryGhost : colors.background,
-                  color: colors.textPrimary,
-                },
-              ]}
+              style={[s.otpBox, { borderColor: isFilled ? colors.primary : colors.border, backgroundColor: isFilled ? colors.primaryGhost : colors.background, color: colors.textPrimary }]}
               value={digit}
               onChangeText={v => handleDigitChange(idx, v)}
               onKeyPress={({ nativeEvent }) => handleKeyPress(idx, nativeEvent.key)}
@@ -834,21 +739,16 @@ function PhoneOtpPanel({ phoneNumber, otp, setOtp, resendCooldown, loading, onVe
         onPress={onVerify}
         disabled={loading}
       >
-        {loading
-          ? <ActivityIndicator size="small" color="#fff" />
-          : <>
-              <MaterialIcons name="verified-user" size={16} color="#fff" />
-              <Text style={s.primaryBtnText}>{isAr ? 'تحقق وتسجيل الدخول' : 'Verify & Sign In'}</Text>
-            </>}
+        {loading ? <ActivityIndicator size="small" color="#fff" /> : (
+          <><MaterialIcons name="verified-user" size={16} color="#fff" /><Text style={s.primaryBtnText}>{isAr ? 'تحقق وتسجيل الدخول' : 'Verify & Sign In'}</Text></>
+        )}
       </Pressable>
 
       <View style={s.resendRow}>
         <Pressable style={s.resendBtn} onPress={onResend} disabled={resendCooldown > 0} hitSlop={8}>
           <MaterialIcons name="refresh" size={14} color={resendCooldown > 0 ? colors.textMuted : colors.primary} />
           <Text style={[s.resendText, { color: resendCooldown > 0 ? colors.textMuted : colors.primary }]}>
-            {resendCooldown > 0
-              ? (isAr ? `إعادة الإرسال (${resendCooldown}ث)` : `Resend (${resendCooldown}s)`)
-              : (isAr ? 'إعادة الإرسال' : 'Resend Code')}
+            {resendCooldown > 0 ? (isAr ? `إعادة الإرسال (${resendCooldown}ث)` : `Resend (${resendCooldown}s)`) : (isAr ? 'إعادة الإرسال' : 'Resend Code')}
           </Text>
         </Pressable>
         <Pressable style={s.resendBtn} onPress={onBack} hitSlop={8}>
@@ -858,64 +758,47 @@ function PhoneOtpPanel({ phoneNumber, otp, setOtp, resendCooldown, loading, onVe
       </View>
     </View>
   );
-}
+});
 
 // ─── Login Panel ──────────────────────────────────────────────────────────────
-function LoginPanel({ email, setEmail, password, setPassword, showPassword, togglePassword, loading, onLogin, onForgot, colors, t, isAr }: any) {
+const LoginPanel = React.memo(function LoginPanel({ email, setEmail, password, setPassword, showPassword, togglePassword, loading, onLogin, onForgot, colors, t, isAr }: any) {
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{t.welcomeBack}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{t.signInAccount}</Text>
       </View>
-
-      <PremiumInput
-        label={t.emailAddress} placeholder={t.emailPlaceholder}
-        value={email} onChangeText={setEmail}
-        keyboardType="email-address" autoCapitalize="none" autoCorrect={false}
-        iconName="email" colors={colors}
-      />
+      <PremiumInput label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
       <PremiumInput
         label={t.password} placeholder={t.passwordPlaceholder}
         value={password} onChangeText={setPassword}
-        secureTextEntry={!showPassword}
-        iconName="lock"
-        rightElement={
-          <Pressable onPress={togglePassword} hitSlop={8}>
-            <MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} />
-          </Pressable>
-        }
+        secureTextEntry={!showPassword} iconName="lock"
+        rightElement={<Pressable onPress={togglePassword} hitSlop={8}><MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} /></Pressable>}
         colors={colors}
       />
-
       <Pressable style={[s.forgotLink, { alignSelf: isAr ? 'flex-start' : 'flex-end', marginTop: -6 }]} onPress={onForgot} hitSlop={8}>
         <Text style={[s.forgotText, { color: colors.primary }]}>{isAr ? 'نسيت كلمة المرور؟' : 'Forgot password?'}</Text>
       </Pressable>
-
-      <Pressable
-        style={({ pressed }) => [s.primaryBtn, { backgroundColor: colors.primary, opacity: pressed || loading ? 0.85 : 1 }]}
-        onPress={onLogin} disabled={loading}
-      >
-        {loading ? <ActivityIndicator size="small" color="#fff" />
-          : <><MaterialIcons name="login" size={16} color="#fff" /><Text style={s.primaryBtnText}>{t.signIn}</Text></>}
+      <Pressable style={({ pressed }) => [s.primaryBtn, { backgroundColor: colors.primary, opacity: pressed || loading ? 0.85 : 1 }]} onPress={onLogin} disabled={loading}>
+        {loading ? <ActivityIndicator size="small" color="#fff" /> : (
+          <><MaterialIcons name="login" size={16} color="#fff" /><Text style={s.primaryBtnText}>{t.signIn}</Text></>
+        )}
       </Pressable>
     </View>
   );
-}
+});
 
 // ─── Register Panel ───────────────────────────────────────────────────────────
-function RegisterPanel({ email, setEmail, password, setPassword, confirmPassword, setConfirmPassword, showPassword, togglePassword, showConfirmPassword, toggleConfirmPassword, eulaAccepted, setEulaAccepted, onOpenEula, loading, onSend, colors, t, isAr, router }: any) {
+const RegisterPanel = React.memo(function RegisterPanel({ email, setEmail, password, setPassword, confirmPassword, setConfirmPassword, showPassword, togglePassword, showConfirmPassword, toggleConfirmPassword, eulaAccepted, setEulaAccepted, onOpenEula, loading, onSend, colors, t, isAr, router }: any) {
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{t.createAccount}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{t.joinToBuySell}</Text>
       </View>
-
       <PremiumInput label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
       <PremiumInput label={t.password} placeholder={t.minPassword} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} iconName="lock" rightElement={<Pressable onPress={togglePassword} hitSlop={8}><MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} /></Pressable>} colors={colors} />
       <PremiumInput label={t.confirmPassword} placeholder={t.repeatPassword} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showConfirmPassword} iconName="lock-outline" rightElement={<Pressable onPress={toggleConfirmPassword} hitSlop={8}><MaterialIcons name={showConfirmPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} /></Pressable>} colors={colors} />
-
       <Pressable style={[s.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]} onPress={() => setEulaAccepted((v: boolean) => !v)}>
         <View style={[s.eulaCheck, { borderColor: eulaAccepted ? colors.primary : colors.border, backgroundColor: eulaAccepted ? colors.primary : 'transparent' }]}>
           {eulaAccepted ? <MaterialIcons name="check" size={11} color="#fff" /> : null}
@@ -927,17 +810,17 @@ function RegisterPanel({ email, setEmail, password, setPassword, confirmPassword
           <Text style={[s.eulaHighlight, { color: colors.primary }]} onPress={() => router.push('/privacy')}>{t.eulaPrivacy}</Text>
         </Text>
       </Pressable>
-
       <Pressable style={({ pressed }) => [s.primaryBtn, { backgroundColor: colors.primary, opacity: pressed || loading ? 0.85 : 1 }]} onPress={onSend} disabled={loading}>
-        {loading ? <ActivityIndicator size="small" color="#fff" />
-          : <><MaterialIcons name="person-add" size={16} color="#fff" /><Text style={s.primaryBtnText}>{t.continueCode}</Text></>}
+        {loading ? <ActivityIndicator size="small" color="#fff" /> : (
+          <><MaterialIcons name="person-add" size={16} color="#fff" /><Text style={s.primaryBtnText}>{t.continueCode}</Text></>
+        )}
       </Pressable>
     </View>
   );
-}
+});
 
 // ─── OTP Panel ────────────────────────────────────────────────────────────────
-function OtpPanel({ email, otp, setOtp, resendCooldown, loading, onVerify, onResend, onBack, colors, t, isAr }: any) {
+const OtpPanel = React.memo(function OtpPanel({ email, otp, setOtp, resendCooldown, loading, onVerify, onResend, onBack, colors, t, isAr }: any) {
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
@@ -951,7 +834,6 @@ function OtpPanel({ email, otp, setOtp, resendCooldown, loading, onVerify, onRes
           <Text style={[s.phonePillText, { color: colors.primary }]} numberOfLines={1}>{email}</Text>
         </View>
       </View>
-
       <PremiumInput
         label={t.verificationCode} placeholder="•  •  •  •"
         value={otp} onChangeText={setOtp}
@@ -959,28 +841,25 @@ function OtpPanel({ email, otp, setOtp, resendCooldown, loading, onVerify, onRes
         iconName="pin" colors={colors}
         inputStyle={{ textAlign: 'center', letterSpacing: 12, fontSize: FontSize.xl, fontWeight: '800' }}
       />
-
       <Pressable style={({ pressed }) => [s.primaryBtn, { backgroundColor: colors.primary, opacity: pressed || loading ? 0.85 : 1 }]} onPress={onVerify} disabled={loading}>
-        {loading ? <ActivityIndicator size="small" color="#fff" />
-          : <><MaterialIcons name="verified" size={16} color="#fff" /><Text style={s.primaryBtnText}>{t.verifyCreate}</Text></>}
+        {loading ? <ActivityIndicator size="small" color="#fff" /> : (
+          <><MaterialIcons name="verified" size={16} color="#fff" /><Text style={s.primaryBtnText}>{t.verifyCreate}</Text></>
+        )}
       </Pressable>
-
       <View style={s.resendRow}>
         <Pressable style={s.resendBtn} onPress={onResend} disabled={resendCooldown > 0} hitSlop={8}>
           <MaterialIcons name="refresh" size={14} color={resendCooldown > 0 ? colors.textMuted : colors.primary} />
           <Text style={[s.resendText, { color: resendCooldown > 0 ? colors.textMuted : colors.primary }]}>
-            {resendCooldown > 0
-              ? (isAr ? `إعادة الإرسال (${resendCooldown}ث)` : `Resend (${resendCooldown}s)`)
-              : (isAr ? 'إعادة الإرسال' : 'Resend Code')}
+            {resendCooldown > 0 ? (isAr ? `إعادة الإرسال (${resendCooldown}ث)` : `Resend (${resendCooldown}s)`) : (isAr ? 'إعادة الإرسال' : 'Resend Code')}
           </Text>
         </Pressable>
       </View>
     </View>
   );
-}
+});
 
 // ─── Forgot Panel ─────────────────────────────────────────────────────────────
-function ForgotPanel({ email, setEmail, loading, onSend, onBack, colors, isAr }: any) {
+const ForgotPanel = React.memo(function ForgotPanel({ email, setEmail, loading, onSend, onBack, colors, isAr }: any) {
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
@@ -988,14 +867,13 @@ function ForgotPanel({ email, setEmail, loading, onSend, onBack, colors, isAr }:
           <MaterialIcons name="lock-reset" size={28} color="#D97706" />
         </View>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{isAr ? 'نسيت كلمة المرور؟' : 'Forgot Password?'}</Text>
-        <Text style={[s.panelSub, { color: colors.textMuted }]}>
-          {isAr ? 'أدخل بريدك الإلكتروني وسنرسل لك رابط استرداد' : 'Enter your email and we will send a reset link'}
-        </Text>
+        <Text style={[s.panelSub, { color: colors.textMuted }]}>{isAr ? 'أدخل بريدك الإلكتروني وسنرسل لك رابط استرداد' : 'Enter your email and we will send a reset link'}</Text>
       </View>
       <PremiumInput label={isAr ? 'البريد الإلكتروني' : 'Email Address'} placeholder="you@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
       <Pressable style={({ pressed }) => [s.primaryBtn, { backgroundColor: '#D97706', opacity: pressed || loading ? 0.85 : 1 }]} onPress={onSend} disabled={loading}>
-        {loading ? <ActivityIndicator size="small" color="#fff" />
-          : <><MaterialIcons name="send" size={16} color="#fff" /><Text style={s.primaryBtnText}>{isAr ? 'إرسال رابط الاسترداد' : 'Send Reset Link'}</Text></>}
+        {loading ? <ActivityIndicator size="small" color="#fff" /> : (
+          <><MaterialIcons name="send" size={16} color="#fff" /><Text style={s.primaryBtnText}>{isAr ? 'إرسال رابط الاسترداد' : 'Send Reset Link'}</Text></>
+        )}
       </Pressable>
       <Pressable style={[s.resendBtn, { justifyContent: 'center', paddingVertical: 8 }]} onPress={onBack} hitSlop={8}>
         <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={14} color={colors.primary} />
@@ -1003,10 +881,10 @@ function ForgotPanel({ email, setEmail, loading, onSend, onBack, colors, isAr }:
       </Pressable>
     </View>
   );
-}
+});
 
 // ─── Forgot Sent Panel ────────────────────────────────────────────────────────
-function ForgotSentPanel({ email, onBack, colors, isAr }: any) {
+const ForgotSentPanel = React.memo(function ForgotSentPanel({ email, onBack, colors, isAr }: any) {
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
@@ -1014,16 +892,12 @@ function ForgotSentPanel({ email, onBack, colors, isAr }: any) {
           <MaterialIcons name="check-circle" size={32} color="#10B981" />
         </View>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{isAr ? 'تم الإرسال!' : 'Email Sent!'}</Text>
-        <Text style={[s.panelSub, { color: colors.textMuted }]}>
-          {isAr ? 'تم إرسال رابط استرداد كلمة المرور إلى' : 'A password reset link was sent to'}
-        </Text>
+        <Text style={[s.panelSub, { color: colors.textMuted }]}>{isAr ? 'تم إرسال رابط استرداد كلمة المرور إلى' : 'A password reset link was sent to'}</Text>
         <View style={[s.phonePill, { backgroundColor: colors.primaryGhost }]}>
           <MaterialIcons name="email" size={13} color={colors.primary} />
           <Text style={[s.phonePillText, { color: colors.primary }]} numberOfLines={1}>{email}</Text>
         </View>
-        <Text style={[s.panelSub, { color: colors.textMuted, marginTop: 4 }]}>
-          {isAr ? 'تحقق من صندوق الوارد أو مجلد السبام' : 'Check your inbox or spam folder'}
-        </Text>
+        <Text style={[s.panelSub, { color: colors.textMuted, marginTop: 4 }]}>{isAr ? 'تحقق من صندوق الوارد أو مجلد السبام' : 'Check your inbox or spam folder'}</Text>
       </View>
       <Pressable style={[s.resendBtn, { justifyContent: 'center', paddingVertical: 8 }]} onPress={onBack} hitSlop={8}>
         <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={14} color={colors.primary} />
@@ -1031,19 +905,16 @@ function ForgotSentPanel({ email, onBack, colors, isAr }: any) {
       </Pressable>
     </View>
   );
-}
+});
 
 // ─── Premium Input ────────────────────────────────────────────────────────────
-function PremiumInput({ label, placeholder, value, onChangeText, keyboardType, autoCapitalize, autoCorrect, secureTextEntry, iconName, rightElement, colors, maxLength, inputStyle, onSubmitEditing }: any) {
+// React.memo prevents re-creation → TextInput retains focus during typing
+const PremiumInput = React.memo(function PremiumInput({ label, placeholder, value, onChangeText, keyboardType, autoCapitalize, autoCorrect, secureTextEntry, iconName, rightElement, colors, maxLength, inputStyle, onSubmitEditing }: any) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={s.inputGroup}>
       <Text style={[s.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <View style={[
-        s.inputWrap,
-        { borderColor: focused ? colors.primary : colors.border, backgroundColor: colors.background },
-        focused && { borderWidth: 1.5 },
-      ]}>
+      <View style={[s.inputWrap, { borderColor: focused ? colors.primary : colors.border, backgroundColor: colors.background }, focused && { borderWidth: 1.5 }]}>
         <MaterialIcons name={iconName} size={16} color={focused ? colors.primary : colors.textMuted} style={s.inputIcon} />
         <TextInput
           style={[s.inputField, { color: colors.textPrimary }, inputStyle]}
@@ -1064,7 +935,7 @@ function PremiumInput({ label, placeholder, value, onChangeText, keyboardType, a
       </View>
     </View>
   );
-}
+});
 
 // ─── Social Button ─────────────────────────────────────────────────────────────
 function SocialButton({ icon, label, loading, onPress, style, labelStyle }: any) {
@@ -1121,78 +992,39 @@ function EulaModal({ visible, onClose, onAccept, colors, t, isAr }: any) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STYLES
-// ─────────────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingHorizontal: 16 },
-
-  // Top bar
   topBar: { justifyContent: 'flex-end', marginBottom: Spacing.md, paddingTop: 4 },
   langRow: { gap: 6 },
   langPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center', minWidth: 42 },
   langPillActive: { backgroundColor: 'rgba(255,255,255,0.95)', borderColor: 'transparent' },
   langPillInactive: { backgroundColor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.22)' },
   langText: { fontSize: FontSize.sm, fontWeight: '700' },
-
-  // Hero
   hero: { alignItems: 'center', paddingVertical: Spacing.lg, marginBottom: Spacing.lg },
-  logoOuter: {
-    width: 88, height: 88,
-    borderRadius: 24,
-    marginBottom: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 18,
-    elevation: 12,
-    position: 'relative',
-  },
+  logoOuter: { width: 88, height: 88, borderRadius: 24, marginBottom: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 18, elevation: 12, position: 'relative' },
   logoImg: { width: 88, height: 88, borderRadius: 24 },
-  logoGlow: {
-    position: 'absolute', inset: -4,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
+  logoGlow: { position: 'absolute', inset: -4, borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   heroTitle: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5, marginBottom: 4, textShadowColor: 'rgba(0,0,0,0.2)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   heroSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.6)', fontWeight: '500' },
-
-  // Card
-  card: {
-    borderRadius: 28,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.22,
-    shadowRadius: 28,
-    elevation: 16,
-  },
-
-  // Tab switcher
+  card: { borderRadius: 28, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.22, shadowRadius: 28, elevation: 16 },
   tabContainer: { margin: 16, marginBottom: 0, borderRadius: Radius.md, padding: 4, position: 'relative', overflow: 'hidden', height: 48 },
   tabTrack: { position: 'absolute', top: 4, left: 4, right: 4, bottom: 4 },
   tabIndicator: { position: 'absolute', top: 0, bottom: 0, borderRadius: Radius.sm - 2, shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
   tabBtns: { flexDirection: 'row', height: '100%', position: 'absolute', top: 0, left: 0, right: 0 },
   tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, zIndex: 1 },
   tabBtnText: { fontSize: FontSize.sm, fontWeight: '700' },
-
-  // Panel
   panelBody: { padding: Spacing.lg, gap: Spacing.md },
   panelHeader: { alignItems: 'center', gap: 6, marginBottom: 4 },
   panelIconWrap: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   panelTitle: { fontSize: FontSize.xl, fontWeight: '800', textAlign: 'center', letterSpacing: -0.3 },
   panelSub: { fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20 },
-
-  // Phone row
   phoneRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: Radius.md, overflow: 'hidden', height: 54 },
   countryTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, height: '100%', borderRightWidth: 1, gap: 3 },
   flagEmoji: { fontSize: 18 },
   countryCode: { fontSize: FontSize.sm, fontWeight: '700' },
   phoneInput: { flex: 1, paddingHorizontal: 14, fontSize: FontSize.md, height: '100%' },
   phoneHint: { fontSize: FontSize.xs, marginTop: -6 },
-
-  // Country picker
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   pickerSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 32 },
   pickerHeader: { alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, marginBottom: 8 },
@@ -1200,57 +1032,32 @@ const s = StyleSheet.create({
   pickerFlag: { fontSize: 28 },
   pickerLabel: { fontSize: FontSize.md, fontWeight: '600' },
   pickerCode: { fontSize: FontSize.md, fontWeight: '800' },
-
-  // 6-digit OTP boxes
   otpBoxRow: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
-  otpBox: {
-    width: 44, height: 54,
-    borderWidth: 1.5, borderRadius: Radius.md,
-    fontSize: FontSize.xl, fontWeight: '800',
-    textAlign: 'center',
-  },
-
-  // Phone pill
+  otpBox: { width: 44, height: 54, borderWidth: 1.5, borderRadius: Radius.md, fontSize: FontSize.xl, fontWeight: '800', textAlign: 'center' },
   phonePill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full, maxWidth: '88%' },
   phonePillText: { fontSize: FontSize.sm, fontWeight: '600', flexShrink: 1 },
-
-  // Primary button
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: Radius.xl, shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 6 },
   primaryBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700', letterSpacing: 0.2 },
-
-  // SMS / info banner
   waBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: Radius.md, borderWidth: 1, marginTop: -4 },
   waBannerText: { flex: 1, fontSize: FontSize.xs, lineHeight: 18, fontWeight: '500' },
-
-  // Resend row
   resendRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: -4 },
   resendBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6 },
   resendText: { fontSize: FontSize.sm, fontWeight: '600' },
-
-  // Forgot link
   forgotLink: { paddingVertical: 4 },
   forgotText: { fontSize: FontSize.sm, fontWeight: '600' },
-
-  // Premium Input
   inputGroup: { gap: 6 },
   inputLabel: { fontSize: FontSize.sm, fontWeight: '600', marginLeft: 2 },
   inputWrap: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: Radius.md, height: 52, paddingHorizontal: 12 },
   inputIcon: { marginRight: 10 },
   inputField: { flex: 1, fontSize: FontSize.md, height: '100%' },
   inputRight: { paddingLeft: 8 },
-
-  // EULA inline
   eulaRow: { alignItems: 'flex-start', gap: 10, marginTop: -4 },
   eulaCheck: { width: 20, height: 20, borderRadius: 5, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0 },
   eulaText: { flex: 1, fontSize: FontSize.xs, lineHeight: 18 },
   eulaHighlight: { fontWeight: '700' },
-
-  // Switcher row
   switcherRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 14, borderTopWidth: 1, marginTop: -4 },
   switcherText: { fontSize: FontSize.sm },
   switcherLink: { fontSize: FontSize.sm, fontWeight: '700' },
-
-  // Social
   socialSection: { marginTop: Spacing.xl },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.md },
   divLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.18)' },
@@ -1259,14 +1066,9 @@ const s = StyleSheet.create({
   socialBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: Radius.xl },
   socialLabel: { fontSize: FontSize.sm, fontWeight: '700' },
   googleBtn: { backgroundColor: '#fff', borderWidth: 1 },
-
-
-  // Overlay
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   overlayBox: { borderRadius: 20, padding: 28, alignItems: 'center', gap: 12, minWidth: 140, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 14, elevation: 8 },
   overlayText: { fontSize: FontSize.md, fontWeight: '600' },
-
-  // EULA Modal
   eulaOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   eulaSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '82%' },
   eulaSheetHandle: { width: 40, height: 4, borderRadius: 99, alignSelf: 'center', marginTop: 12, marginBottom: 4 },

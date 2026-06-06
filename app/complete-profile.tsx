@@ -219,7 +219,9 @@ export default function CompleteProfileScreen() {
 }
 
 // ── Name Input ────────────────────────────────────────────────────────────────
-function NameInput({ label, placeholder, value, onChangeText, iconName, colors, autoFocus, returnKeyType, onSubmitEditing }: any) {
+// Wrapped in React.memo to prevent re-creation on every parent render
+// which would cause TextInput to lose focus on each keystroke
+const NameInput = React.memo(function NameInput({ label, placeholder, value, onChangeText, iconName, colors, autoFocus, returnKeyType, onSubmitEditing }: any) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={s.inputGroup}>
@@ -247,7 +249,7 @@ function NameInput({ label, placeholder, value, onChangeText, iconName, colors, 
       </View>
     </View>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
