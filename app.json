@@ -25,7 +25,7 @@
     },
     "android": {
       "package": "app.plankton.souq_qalqilya",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/plankton-logo.png",
         "backgroundColor": "#ffffff"
