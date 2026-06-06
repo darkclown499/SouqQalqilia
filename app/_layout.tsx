@@ -5,8 +5,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, InteractionManager } from 'react-native';
+import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
+import { APP_VERSION } from '@/constants/config';
 
 // ── Configure notification handler SYNCHRONOUSLY at module level ─────────────
 // Must run before any notification arrives (foreground + background display)
@@ -68,7 +70,37 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   });
 }
 
+// ── Semver comparison: returns true if `current` < `minimum` ────────────────
+function isVersionOutdated(current: string, minimum: string): boolean {
+  const parse = (v: string) => v.split('.').map(n => parseInt(n, 10) || 0);
+  const [cMaj, cMin, cPat] = parse(current);
+  const [mMaj, mMin, mPat] = parse(minimum);
+  if (cMaj !== mMaj) return cMaj < mMaj;
+  if (cMin !== mMin) return cMin < mMin;
+  return cPat < mPat;
+}
+
 export default function RootLayout() {
+  const [forceUpdate, setForceUpdate] = useState<{ required: boolean; minVersion: string } | null>(null);
+
+  // ── Check minimum required version on mount ────────────────────────────────
+  useEffect(() => {
+    if (Platform.OS === 'web') return; // skip for web
+    const key = Platform.OS === 'ios' ? 'min_ios_version' : 'min_android_version';
+    getSupabaseClient()
+      .from('app_config')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle()
+      .then(({ data }) => {
+        const minVersion = data?.value ?? '1.0.0';
+        if (isVersionOutdated(APP_VERSION, minVersion)) {
+          setForceUpdate({ required: true, minVersion });
+        }
+      })
+      .catch(() => {}); // fail silently — never block app on network error
+  }, []);
+
   useEffect(() => {
     // ── Notification tap → open related chat conversation ────────────────────
     let notifSub: any = null;
@@ -162,6 +194,15 @@ export default function RootLayout() {
       }
     };
   }, []);
+
+  // ── Force update wall — rendered outside all providers intentionally ────────
+  if (forceUpdate?.required) {
+    return (
+      <SafeAreaProvider>
+        <ForceUpdateScreen currentVersion={APP_VERSION} minVersion={forceUpdate.minVersion} />
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <AlertProvider>
