@@ -4,16 +4,16 @@
 <dict>
     <!-- ─── App Identity ─────────────────────────────────────────────────── -->
     <key>CFBundleIdentifier</key>
-    <string>app.onspace.souq_qalqilya</string>
+    <string>app.plankton.souq-qalqilya</string>
 
     <key>CFBundleDisplayName</key>
     <string>Souq Qalqilya</string>
 
     <key>CFBundleShortVersionString</key>
-    <string>1.0.5</string>
+    <string>1.0.9</string>
 
     <key>CFBundleVersion</key>
-    <string>8</string>
+    <string>9</string>
 
     <!-- ─── Device Support ───────────────────────────────────────────────── -->
     <!-- iPhone only — iPad NOT supported -->
