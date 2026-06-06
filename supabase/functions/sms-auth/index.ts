@@ -164,11 +164,11 @@ const twilioAuth = () => `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKE
  * Sender: whatsapp:+15559658976 (SouqQalqilia_WhatsApp_Service)
  */
 async function sendVerifyOtp(phone: string): Promise<void> {
-  console.log(`Sending WhatsApp Verify OTP to ${phone} via Service ${TWILIO_VERIFY_SERVICE_SID}`);
+  console.log(`Sending SMS Verify OTP to ${phone} via Service ${TWILIO_VERIFY_SERVICE_SID}`);
 
   const body = new URLSearchParams();
   body.append('To', phone);              // E.164 format e.g. +970591234567
-  body.append('Channel', 'whatsapp');    // Deliver via WhatsApp — NOT SMS
+  body.append('Channel', 'sms');          // Temporary: deliver via SMS until Meta approves WhatsApp template
 
   const res = await fetch(`${TWILIO_VERIFY_BASE}/Verifications`, {
     method: 'POST',
