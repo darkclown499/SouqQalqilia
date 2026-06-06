@@ -60,6 +60,8 @@ export default function LoginScreen() {
 
   const switchTab = useCallback((tab: MainTab) => {
     setActiveTab(tab);
+    // Reset stuck submission flag when switching tabs
+    isSubmittingRef.current = false;
     Animated.spring(tabIndicator, {
       toValue: tab === 'phone' ? 0 : 1,
       useNativeDriver: true,
@@ -144,15 +146,14 @@ export default function LoginScreen() {
     }
     // Build full E.164 phone number
     const digits = phoneNumber.trim().replace(/[\s\-()]/g, '');
-    const minLen = 9;
-    const maxLen = countryCode === '+972' ? 10 : 9;
     const stripped = digits.replace(/^0+/, '');
-    if (!digits || stripped.length < minLen || stripped.length > maxLen)
+    // Relaxed validation: accept 7-12 digits to cover all Palestinian/Israeli formats
+    if (!stripped || stripped.length < 7 || stripped.length > 12)
       return showAlert(
         isAr ? 'رقم غير صحيح' : 'Invalid Number',
         isAr
-          ? `أدخل رقم الهاتف بدون رمز الدولة (${countryCode === '+972' ? '9-10' : '9'} أرقام)`
-          : `Enter your number without country code (${countryCode === '+972' ? '9-10' : '9'} digits)`
+          ? 'أدخل رقم الهاتف بدون رمز الدولة — مثال: 591234567'
+          : 'Enter your number without country code — e.g. 591234567'
       );
 
     const fullPhone = digits.startsWith('+') ? digits : (countryCode + stripped);
@@ -513,6 +514,7 @@ export default function LoginScreen() {
                   setPhoneOtp('');
                   setFullPhoneForOtp('');
                   setPhoneStep('input');
+                  isSubmittingRef.current = false;
                 }}
                 onBack={() => setPhoneStep('input')}
                 colors={colors} isAr={isAr}
