@@ -80,20 +80,44 @@ async function getOrCreatePhoneUser(phoneNumber: string) {
     return profile?.id ?? null;
   }
 
-  // Helper: confirm + reset password + sign in (handles credential mismatch)
-  async function resetAndSignIn(userId: string) {
-    console.log('Resetting password for existing user:', userId);
-    await confirmUserEmail(userId);
-    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+  // Helper: delete user from auth and recreate with correct password
+  // Used when updateUserById is blocked (IP restriction) — cleanest fix
+  async function deleteAndRecreate(userId: string, existingPhone?: string) {
+    console.log('Deleting and recreating user:', userId);
+    // Save profile data before delete
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles').select('username,phone,avatar_url').eq('id', userId).maybeSingle();
+    
+    // Delete from auth (cascades to user_profiles via FK)
+    const { error: delErr } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (delErr) console.warn('deleteUser (non-fatal):', delErr.message);
+    
+    // Recreate with correct password
+    const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+      email: syntheticEmail,
       password: syntheticPassword,
       email_confirm: true,
+      user_metadata: { phone: existingPhone ?? normalizedPhone, auth_method: 'sms_otp' },
     });
-    if (updateErr) console.warn('updateUserById password reset (non-fatal):', updateErr.message);
-    const { data: resetSession, error: resetErr } = await supabaseAdmin.auth.signInWithPassword({
+    if (createErr) throw new Error(`فشل إعادة إنشاء الحساب: ${createErr.message}`);
+    
+    const newId = newUser?.user?.id;
+    if (newId) {
+      // Restore profile
+      await supabaseAdmin.from('user_profiles').upsert({
+        id: newId,
+        email: syntheticEmail,
+        phone: existingPhone ?? normalizedPhone,
+        username: profile?.username ?? '',
+        avatar_url: profile?.avatar_url ?? null,
+      }, { onConflict: 'id', ignoreDuplicates: false });
+    }
+    
+    const { data: session, error: signInErr } = await supabaseAdmin.auth.signInWithPassword({
       email: syntheticEmail, password: syntheticPassword,
     });
-    if (!resetErr && resetSession?.session) return resetSession.session;
-    throw new Error(`تعذّر تسجيل الدخول بعد إعادة الضبط: ${resetErr?.message ?? 'لا توجد جلسة'}`);
+    if (!signInErr && session?.session) return session.session;
+    throw new Error(`تعذّر تسجيل الدخول بعد إعادة الإنشاء: ${signInErr?.message ?? 'لا توجد جلسة'}`);
   }
 
   // 1. Try signing in (existing user)
@@ -117,8 +141,8 @@ async function getOrCreatePhoneUser(phoneNumber: string) {
   if (isInvalidCreds || isUnconfirmed) {
     const existingId = await findUserId();
     if (existingId) {
-      console.log('User exists, resetting credentials:', existingId);
-      return await resetAndSignIn(existingId);
+      console.log('User exists, recreating with correct password:', existingId);
+      return await deleteAndRecreate(existingId, normalizedPhone);
     }
   }
 
@@ -133,18 +157,15 @@ async function getOrCreatePhoneUser(phoneNumber: string) {
   if (signUpErr) {
     const msg = signUpErr.message?.toLowerCase() ?? '';
     if (msg.includes('already registered') || msg.includes('already been registered')) {
-      // User exists in auth but not in profiles table — reset and sign in
+      // User exists in auth but not in profiles table — recreate
       const existingId = await findUserId();
-      // Try listing users to find by email if profile lookup failed
       if (!existingId) {
-        // Sign up returned already-registered, try admin password reset via update
         console.log('User in auth but no profile found, attempting recovery...');
-        // Get user from auth directly
         const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
         const authUser = users?.find((u: any) => u.email === syntheticEmail);
-        if (authUser) return await resetAndSignIn(authUser.id);
+        if (authUser) return await deleteAndRecreate(authUser.id, normalizedPhone);
       } else {
-        return await resetAndSignIn(existingId);
+        return await deleteAndRecreate(existingId, normalizedPhone);
       }
     } else {
       throw new Error(`فشل إنشاء الحساب: ${signUpErr.message}`);
@@ -169,9 +190,9 @@ async function getOrCreatePhoneUser(phoneNumber: string) {
 
   if (!finalErr && final?.session) return final.session;
 
-  // Last resort: reset password
+  // Last resort: recreate
   const fallbackId = newId ?? (await findUserId());
-  if (fallbackId) return await resetAndSignIn(fallbackId);
+  if (fallbackId) return await deleteAndRecreate(fallbackId, normalizedPhone);
 
   throw new Error(`تعذّر تسجيل الدخول بعد إنشاء الحساب: ${finalErr?.message ?? 'لا توجد جلسة'}`);
 }
