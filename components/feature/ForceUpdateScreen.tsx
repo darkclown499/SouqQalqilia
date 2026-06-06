@@ -10,8 +10,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 const { width: W } = Dimensions.get('window');
 
 // ── Store links ───────────────────────────────────────────────────────────────
-const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=app.plankton.souq-qalqilya';
-const APP_STORE_URL  = 'https://apps.apple.com/app/id6748892869';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=app.onspace.souq_qalqilya';
+const APP_STORE_URL  = 'https://apps.apple.com/sa/app/%D8%B3%D9%88%D9%82-%D9%82%D9%84%D9%82%D9%8A%D9%84%D9%8A%D8%A9/id6774318323?l=ar';
 
 interface Props {
   currentVersion: string;
