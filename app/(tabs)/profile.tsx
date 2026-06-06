@@ -208,15 +208,6 @@ export default function ProfileScreen() {
       { text: t.cancel, style: 'cancel' },
       {
         text: t.signOut, style: 'destructive', onPress: async () => {
-          // Sign out from Firebase too if user logged in via phone
-          if (isPhoneUser) {
-            try {
-              const { getApps, getApp } = require('firebase/app');
-              const { getAuth, signOut: firebaseSignOut } = require('firebase/auth');
-              const apps = getApps();
-              if (apps.length > 0) await firebaseSignOut(getAuth(getApp())).catch(() => {});
-            } catch (_) {}
-          }
           const { error } = await logout();
           if (error) showAlert('Error', error);
         },

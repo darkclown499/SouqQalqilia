@@ -13,7 +13,6 @@
       "devices": ["iphone"],
       "bundleIdentifier": "app.plankton.souq-qalqilya",
       "buildNumber": "9",
-      "usesAppleSignIn": true,
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSCameraUsageDescription": "Souq Qalqilya uses your camera exclusively to photograph items you are selling. Photos are taken only when you tap the camera button inside the Post Ad or Edit Listing screen, are uploaded to our servers, and displayed in your marketplace listing so buyers can view the product. No photos are taken automatically or shared with third parties.",
@@ -136,7 +135,6 @@
         }
       ],
       "expo-camera",
-      "expo-apple-authentication",
       [
         "expo-notifications",
         {
