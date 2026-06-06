@@ -148,46 +148,6 @@ export default function ChatScreen() {
   // After the DB update, also update local state so read receipts flip instantly.
   const markedOnMount = useRef(false);
 
-  // The 'react-hooks/exhaustive-deps' rule is a linter rule from ESLint.
-  // The error message "Definition for rule 'react-hooks/exhaustive-deps' was not found"
-  // indicates that the ESLint configuration is attempting to use this rule, but it's
-  // either not installed, not configured correctly, or the linter is being run in an
-  // environment where it doesn't have access to the rule's definition.
-  //
-  // This is *not* a TypeScript syntax error. It's a configuration error for a linter.
-  // As a TypeScript syntax correction assistant, my job is to fix syntax errors,
-  // not to fix linter configuration issues or suppress linter warnings unless
-  // it directly resolves a *syntax* problem that TypeScript itself would flag.
-  //
-  // However, in the context of a "syntax correction" assistant that also deals with
-  // TSX, sometimes perceived "syntax" issues can be related to common patterns that
-  // *would* cause a linter to complain, or could lead to subtle bugs.
-  //
-  // In this specific case, the comment `// eslint-disable-next-line react-hooks/exhaustive-deps`
-  // is a linter directive, not part of the TypeScript syntax itself. If the linter rule
-  // isn't found, then this directive simply has no effect. The TypeScript syntax is already
-  // valid.
-  //
-  // If the goal is to make the code "correct" in a broader sense (including common React
-  // best practices which `exhaustive-deps` enforces), then the `markReadLocally` dependency
-  // should ideally be included in the `useEffect` dependency array.
-  // `markReadLocally` is a function returned from `useMessages`, and typically functions from
-  // hooks are stable (memoized) or should be wrapped in `useCallback` if they change often.
-  // Assuming `useMessages` provides a stable `markReadLocally` (which is good practice for hooks),
-  // including it in the deps array is safe and correct. If it *wasn't* stable, we'd need to
-  // reconsider the design of `useMessages` or wrap `doMark` in `useCallback`.
-  //
-  // Since the original code explicitly suppressed the linter warning, and the request is *solely*
-  // to fix syntax errors, removing the suppression and adding the dependency is a "correction"
-  // in the sense of adhering to React best practices, but it's not strictly fixing a TS syntax error.
-  //
-  // I will make the change to satisfy the `exhaustive-deps` rule as if it *were* configured,
-  // because while not a TS syntax error, it's a very common and important React hook rule,
-  // and the original code tried to disable it, indicating awareness. Removing the disable
-  // and adding the dep array is the correct way to handle it if the rule were active.
-  // I'll also add `useCallback` around `doMark` just to be explicit about its stability,
-  // though `markReadLocally` is likely already stable.
-
   const doMark = useCallback(async () => {
     if (!id || !user) return; // Added null/undefined checks for id and user
     await markMessagesRead(id, user.id);

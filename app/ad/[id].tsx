@@ -706,16 +706,8 @@ const styles = StyleSheet.create({
   zoomHintText: { color: '#fff', fontSize: 11, fontWeight: '500' },
   noImage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, height: 300 },
   noImageText: { fontSize: FontSize.sm },
-  dots: { position: 'absolute', bottom: 14, alignSelf: 'center', flexDirection: 'row', gap: 5 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.45)' },
   dotActive: { backgroundColor: '#fff', width: 20, borderRadius: 3 },
-  counterPill: {
-    position: 'absolute', bottom: 14, right: 14,
-    backgroundColor: 'rgba(0,0,0,0.52)', borderRadius: Radius.full,
-    paddingHorizontal: 10, paddingVertical: 4,
-    flexDirection: 'row', alignItems: 'center', gap: 4, zIndex: 5,
-  },
-  counterText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   soldOverlay: {
     position: 'absolute', inset: 0,
     backgroundColor: 'rgba(0,0,0,0.48)',
@@ -762,7 +754,7 @@ const styles = StyleSheet.create({
   sellerAvatarText: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff' },
   sellerInfo: { flex: 1 },
   sellerName: { fontSize: FontSize.md, fontWeight: '700' },
-  sellerEmail: { fontSize: FontSize.sm, marginTop: 2 },
+
   sellerBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 4 },
   sellerBadgeText: { fontSize: 10, fontWeight: '700' },
   phoneRow: {

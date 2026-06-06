@@ -36,10 +36,7 @@ export default function MessagesScreen() {
     return unsub;
   }, [user?.id]);
 
-  // Don't filter — show conversations with blocked users but flagged
-  const filteredConversations = conversations;
-
-  const totalConvs = filteredConversations.length;
+  const totalConvs = conversations.length;
   const isAr = language === 'ar';
 
   const handleConvPress = useCallback((id: string) => {
@@ -117,7 +114,7 @@ export default function MessagesScreen() {
 
       {/* ── CONVERSATION LIST ── */}
       <FlatList
-        data={filteredConversations}
+        data={conversations}
         keyExtractor={item => item.id}
         renderItem={renderConversation}
         windowSize={5}

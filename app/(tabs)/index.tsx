@@ -459,8 +459,6 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  comingSoonBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: Spacing.md, borderBottomWidth: 1 },
-  comingSoonText: { fontSize: 11, fontWeight: '600' },
   container: { flex: 1 },
   header: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md, paddingTop: Spacing.sm },
   headerTop: { justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
@@ -468,8 +466,6 @@ const styles = StyleSheet.create({
   greeting: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.65)', marginBottom: 2, fontWeight: '500' },
   appNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   appName: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.6, lineHeight: 30 },
-  betaBadge: { backgroundColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3, alignSelf: 'center', shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.45, shadowRadius: 4, elevation: 3 },
-  betaBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2, lineHeight: 13 },
   headerActions: { gap: 8 },
   headerBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
   searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: Radius.xl, height: 48, paddingHorizontal: Spacing.sm, gap: 8 },

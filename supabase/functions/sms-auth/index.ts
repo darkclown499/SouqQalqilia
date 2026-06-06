@@ -6,10 +6,10 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
-// SouqQalqiliawp — WhatsApp Verify Service, template: verification_code (pending Meta approval)
-// Sender: whatsapp:+15559658976. Once Meta approves the template, OTP delivery works automatically.
-const TWILIO_VERIFY_SERVICE_SID =
-  Deno.env.get('TWILIO_VERIFY_SERVICE_SID') || 'VA41169795e10e4201ebcf32b0cff20e65';
+// Active Verify Service SID must be set via TWILIO_VERIFY_SERVICE_SID env variable in OnSpace Secrets.
+// SMS-enabled SID: VA513792923343334886d6f9b815dbf431
+// WhatsApp SID (use once Meta approves template): VA41169795e10e4201ebcf32b0cff20e65
+const TWILIO_VERIFY_SERVICE_SID = Deno.env.get('TWILIO_VERIFY_SERVICE_SID') ?? '';
 
 // Service role client — full privileges, no auth headers
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -157,11 +157,11 @@ async function getOrCreatePhoneUser(phoneNumber: string) {
   if (signUpErr) {
     const msg = signUpErr.message?.toLowerCase() ?? '';
     if (msg.includes('already registered') || msg.includes('already been registered')) {
-      // User exists in auth but not in profiles table — recreate
+      // User exists in auth but not in profiles table — query by email filter (cheaper than listUsers)
       const existingId = await findUserId();
       if (!existingId) {
         console.log('User in auth but no profile found, attempting recovery...');
-        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 50 });
         const authUser = users?.find((u: any) => u.email === syntheticEmail);
         if (authUser) return await deleteAndRecreate(authUser.id, normalizedPhone);
       } else {
@@ -204,20 +204,20 @@ const TWILIO_VERIFY_BASE = `https://verify.twilio.com/v2/Services/${TWILIO_VERIF
 const twilioAuth = () => `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`)}`;
 
 /**
- * Send OTP via Twilio Verify Service — delivered via WhatsApp (cheaper than SMS).
+ * Send OTP via Twilio Verify Service — delivered via SMS.
  * Twilio handles code generation, delivery, expiry (10 min), and rate limiting.
- * Uses: POST /v2/Services/{ServiceSid}/Verifications  with To + Channel=whatsapp
+ * Uses: POST /v2/Services/{ServiceSid}/Verifications  with To + Channel=sms
  *
- * Custom Arabic template (set in Twilio Console → Verify → Services → Messaging):
- * 'أهلاً بك في سوق قلقيلية! رمز التحقق الخاص بك هو: {{code}}. سيصلك هذا الرمز عبر واتساب فقط.'
- * Sender: whatsapp:+15559658976 (SouqQalqilia_WhatsApp_Service)
+ * To switch to WhatsApp once Meta approves the template:
+ *   1. Update TWILIO_VERIFY_SERVICE_SID secret to VA41169795e10e4201ebcf32b0cff20e65
+ *   2. Change Channel below from 'sms' to 'whatsapp'
  */
 async function sendVerifyOtp(phone: string): Promise<void> {
   console.log(`Sending SMS Verify OTP to ${phone} via Service ${TWILIO_VERIFY_SERVICE_SID}`);
 
   const body = new URLSearchParams();
-  body.append('To', phone);              // E.164 format e.g. +970591234567
-  body.append('Channel', 'sms');          // Temporary: deliver via SMS until Meta approves WhatsApp template
+  body.append('To', phone);     // E.164 format e.g. +970591234567
+  body.append('Channel', 'sms'); // Temporary: SMS until Meta approves WhatsApp template
 
   const res = await fetch(`${TWILIO_VERIFY_BASE}/Verifications`, {
     method: 'POST',
@@ -247,7 +247,7 @@ async function sendVerifyOtp(phone: string): Promise<void> {
         console.warn('WhatsApp template pending Meta approval. Service SID:', TWILIO_VERIFY_SERVICE_SID);
       }
       else if (code === 20429) errMsg = 'طلبات كثيرة جداً. انتظر دقيقة وأعد المحاولة.';
-      else if (code === 20404) errMsg = 'Verify Service غير موجود. تحقق من Service SID.';
+      else if (code === 20404) errMsg = 'Verify Service غير موجود. تحقق من Service SID في OnSpace Secrets.';
       else errMsg = json?.message ?? errMsg;
     } catch (_) {}
     throw new Error(errMsg);
@@ -320,6 +320,12 @@ serve(async (req) => {
         });
       }
 
+      if (!TWILIO_VERIFY_SERVICE_SID) {
+        return new Response(JSON.stringify({ error: 'TWILIO_VERIFY_SERVICE_SID غير مُعيَّن في متغيرات البيئة.' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       // Twilio Verify handles rate limiting, OTP generation, and SMS delivery
       await sendVerifyOtp(phone);
 
@@ -344,6 +350,12 @@ serve(async (req) => {
       if (!/^\d{6}$/.test(otp)) {
         return new Response(JSON.stringify({ error: 'رمز التحقق يجب أن يتكون من 6 أرقام.' }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (!TWILIO_VERIFY_SERVICE_SID) {
+        return new Response(JSON.stringify({ error: 'TWILIO_VERIFY_SERVICE_SID غير مُعيَّن في متغيرات البيئة.' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 

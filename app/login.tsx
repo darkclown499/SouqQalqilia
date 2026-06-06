@@ -1255,13 +1255,11 @@ const s = StyleSheet.create({
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.md },
   divLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.18)' },
   divText: { fontSize: FontSize.xs, fontWeight: '600', color: 'rgba(255,255,255,0.5)' },
-  socialRow: { flexDirection: 'row', gap: 10 },
   socialBtnWrap: { flex: 1 },
   socialBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: Radius.xl },
   socialLabel: { fontSize: FontSize.sm, fontWeight: '700' },
   googleBtn: { backgroundColor: '#fff', borderWidth: 1 },
-  appleBtn: { backgroundColor: '#111', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
-  appleLabel: { color: '#fff', fontWeight: '700', fontSize: FontSize.sm },
+
 
   // Overlay
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
