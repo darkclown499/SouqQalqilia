@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '@/template';
 import { STORAGE_BUCKET } from '@/constants/config';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 export async function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promise<{ uri: string; base64: string } | null> {
   if (source === 'camera') {
@@ -20,10 +20,10 @@ export async function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promi
     const asset = result.assets[0];
 
     try {
-      const manipulated = await ImageManipulator.manipulateAsync(
+      const manipulated = await manipulateAsync(
         asset.uri,
         [{ resize: { width: 1080 } }],
-        { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        { compress: 0.75, format: SaveFormat.JPEG, base64: true }
       );
       return { uri: manipulated.uri, base64: manipulated.base64 ?? '' };
     } catch {
@@ -47,10 +47,10 @@ export async function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promi
   const asset = result.assets[0];
 
   try {
-    const manipulated = await ImageManipulator.manipulateAsync(
+    const manipulated = await manipulateAsync(
       asset.uri,
       [{ resize: { width: 1080 } }],
-      { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      { compress: 0.75, format: SaveFormat.JPEG, base64: true }
     );
     return { uri: manipulated.uri, base64: manipulated.base64 ?? '' };
   } catch {
