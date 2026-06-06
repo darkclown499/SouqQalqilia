@@ -73,6 +73,29 @@ async function getOrCreatePhoneUser(phoneNumber: string) {
   const normalizedPhone = phoneNumber.replace(/[\s\-().]/g, '');
   const { email: syntheticEmail, password: syntheticPassword } = await getSyntheticCredentials(normalizedPhone);
 
+  // Helper: find existing auth user by email
+  async function findUserId(): Promise<string | null> {
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles').select('id').eq('email', syntheticEmail).maybeSingle();
+    return profile?.id ?? null;
+  }
+
+  // Helper: confirm + reset password + sign in (handles credential mismatch)
+  async function resetAndSignIn(userId: string) {
+    console.log('Resetting password for existing user:', userId);
+    await confirmUserEmail(userId);
+    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      password: syntheticPassword,
+      email_confirm: true,
+    });
+    if (updateErr) console.warn('updateUserById password reset (non-fatal):', updateErr.message);
+    const { data: resetSession, error: resetErr } = await supabaseAdmin.auth.signInWithPassword({
+      email: syntheticEmail, password: syntheticPassword,
+    });
+    if (!resetErr && resetSession?.session) return resetSession.session;
+    throw new Error(`تعذّر تسجيل الدخول بعد إعادة الضبط: ${resetErr?.message ?? 'لا توجد جلسة'}`);
+  }
+
   // 1. Try signing in (existing user)
   const { data: existing, error: signInErr } = await supabaseAdmin.auth.signInWithPassword({
     email: syntheticEmail,
@@ -85,22 +108,21 @@ async function getOrCreatePhoneUser(phoneNumber: string) {
   }
 
   const signInMsg = signInErr?.message?.toLowerCase() ?? '';
+  console.log('Initial sign-in failed:', signInMsg);
+
+  // 2. If user exists but credentials mismatch (password changed / key rotated)
+  const isInvalidCreds = signInMsg.includes('invalid login') || signInMsg.includes('invalid credentials');
   const isUnconfirmed = signInMsg.includes('email not confirmed') || signInMsg.includes('not confirmed');
 
-  if (isUnconfirmed) {
-    const { data: profile } = await supabaseAdmin
-      .from('user_profiles').select('id').eq('email', syntheticEmail).maybeSingle();
-
-    if (profile?.id) {
-      await confirmUserEmail(profile.id);
-      const { data: retry, error: retryErr } = await supabaseAdmin.auth.signInWithPassword({
-        email: syntheticEmail, password: syntheticPassword,
-      });
-      if (!retryErr && retry?.session) return retry.session;
+  if (isInvalidCreds || isUnconfirmed) {
+    const existingId = await findUserId();
+    if (existingId) {
+      console.log('User exists, resetting credentials:', existingId);
+      return await resetAndSignIn(existingId);
     }
   }
 
-  // 2. New user — sign up
+  // 3. New user — sign up
   console.log('Creating new user for:', normalizedPhone);
   const { data: signUp, error: signUpErr } = await supabaseAdmin.auth.signUp({
     email: syntheticEmail,
@@ -110,7 +132,21 @@ async function getOrCreatePhoneUser(phoneNumber: string) {
 
   if (signUpErr) {
     const msg = signUpErr.message?.toLowerCase() ?? '';
-    if (!msg.includes('already registered') && !msg.includes('already been registered')) {
+    if (msg.includes('already registered') || msg.includes('already been registered')) {
+      // User exists in auth but not in profiles table — reset and sign in
+      const existingId = await findUserId();
+      // Try listing users to find by email if profile lookup failed
+      if (!existingId) {
+        // Sign up returned already-registered, try admin password reset via update
+        console.log('User in auth but no profile found, attempting recovery...');
+        // Get user from auth directly
+        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        const authUser = users?.find((u: any) => u.email === syntheticEmail);
+        if (authUser) return await resetAndSignIn(authUser.id);
+      } else {
+        return await resetAndSignIn(existingId);
+      }
+    } else {
       throw new Error(`فشل إنشاء الحساب: ${signUpErr.message}`);
     }
   }
@@ -126,24 +162,16 @@ async function getOrCreatePhoneUser(phoneNumber: string) {
     }, { onConflict: 'id', ignoreDuplicates: false });
   }
 
-  // 3. Final sign-in
+  // 4. Final sign-in
   const { data: final, error: finalErr } = await supabaseAdmin.auth.signInWithPassword({
     email: syntheticEmail, password: syntheticPassword,
   });
 
   if (!finalErr && final?.session) return final.session;
 
-  // Last resort: look up via profile table
-  const { data: fallbackProfile } = await supabaseAdmin
-    .from('user_profiles').select('id').eq('email', syntheticEmail).maybeSingle();
-  if (fallbackProfile?.id) {
-    await confirmUserEmail(fallbackProfile.id);
-    const { data: last, error: lastErr } = await supabaseAdmin.auth.signInWithPassword({
-      email: syntheticEmail, password: syntheticPassword,
-    });
-    if (!lastErr && last?.session) return last.session;
-    throw new Error(`تعذّر تسجيل الدخول: ${lastErr?.message ?? 'لا توجد جلسة'}`);
-  }
+  // Last resort: reset password
+  const fallbackId = newId ?? (await findUserId());
+  if (fallbackId) return await resetAndSignIn(fallbackId);
 
   throw new Error(`تعذّر تسجيل الدخول بعد إنشاء الحساب: ${finalErr?.message ?? 'لا توجد جلسة'}`);
 }
