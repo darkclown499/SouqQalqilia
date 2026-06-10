@@ -30,42 +30,36 @@ const INSTAGRAM_URL = 'https://www.instagram.com/co.plankton?igsh=MWV4Z2RncTVoYW
 function AnimatedSwitch({ value, onValueChange, colors }: {
   value: boolean; onValueChange: (v: boolean) => void; colors: any;
 }) {
-  const translateX = useSharedValue(value ? 22 : 2);
+  const translateX = useSharedValue(value ? 24 : 3);
   const trackColor = useSharedValue(value ? 1 : 0);
-  const starOpacity = useSharedValue(value ? 1 : 0);
 
   const handleToggle = useCallback(() => {
     const next = !value;
-    translateX.value = withSpring(next ? 22 : 2, { damping: 12, stiffness: 200 });
+    translateX.value = withSpring(next ? 24 : 3, { damping: 12, stiffness: 200 });
     trackColor.value = withTiming(next ? 1 : 0, { duration: 280 });
-    starOpacity.value = withTiming(next ? 1 : 0, { duration: 240 });
     onValueChange(next);
   }, [value]);
 
   const thumbStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
+    zIndex: 10,
   }));
   const trackStyle = useAnimatedStyle(() => ({
-    backgroundColor: trackColor.value > 0.5 ? colors.primary : colors.border,
-  }));
-  const moonStyle = useAnimatedStyle(() => ({
-    opacity: starOpacity.value,
-    transform: [{ scale: withSpring(value ? 1 : 0.4, { damping: 12 }) }],
-  }));
-  const sunStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(value ? 0 : 1, { duration: 200 }),
-    transform: [{ scale: withSpring(value ? 0.4 : 1, { damping: 12 }) }],
+    backgroundColor: trackColor.value > 0.5 ? colors.primary : '#CBD5E1',
   }));
 
   return (
     <Pressable onPress={handleToggle} hitSlop={8}>
       <Animated.View style={[switchS.track, trackStyle]}>
-        <Animated.View style={[switchS.icon, moonStyle]}>
-          <MaterialIcons name="nightlight-round" size={14} color="#fff" />
-        </Animated.View>
-        <Animated.View style={[switchS.icon, sunStyle]}>
-          <MaterialIcons name="wb-sunny" size={14} color="#F59E0B" />
-        </Animated.View>
+        {/* Moon icon — left side (visible when ON/dark) */}
+        <View style={switchS.iconLeft}>
+          <MaterialIcons name="nightlight-round" size={13} color="rgba(255,255,255,0.85)" />
+        </View>
+        {/* Sun icon — right side (visible when OFF/light) */}
+        <View style={switchS.iconRight}>
+          <MaterialIcons name="wb-sunny" size={13} color="#F59E0B" />
+        </View>
+        {/* Thumb slides over the icons */}
         <Animated.View style={[switchS.thumb, thumbStyle]} />
       </Animated.View>
     </Pressable>
@@ -73,9 +67,10 @@ function AnimatedSwitch({ value, onValueChange, colors }: {
 }
 
 const switchS = StyleSheet.create({
-  track: { width: 50, height: 28, borderRadius: 14, position: 'relative', overflow: 'hidden', justifyContent: 'center' },
-  thumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.22, shadowRadius: 3, elevation: 3 },
-  icon: { position: 'absolute', alignItems: 'center', justifyContent: 'center', left: 0, right: 0, top: 0, bottom: 0 },
+  track: { width: 52, height: 28, borderRadius: 14, position: 'relative', overflow: 'hidden', justifyContent: 'center' },
+  thumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3, elevation: 4 },
+  iconLeft: { position: 'absolute', left: 5, alignItems: 'center', justifyContent: 'center', width: 18, height: 28 },
+  iconRight: { position: 'absolute', right: 5, alignItems: 'center', justifyContent: 'center', width: 18, height: 28 },
 });
 
 // ─── Section Header ───────────────────────────────────────────────────────────
@@ -139,6 +134,8 @@ export default function ProfileScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [bannerLoading, setBannerLoading] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<{ id: string; username: string; email: string; avatar_url: string | null }[]>([]);
   const [blockedExpanded, setBlockedExpanded] = useState(false);
@@ -156,11 +153,12 @@ export default function ProfileScreen() {
       checkIsAdmin().then(setIsAdmin);
       getSupabaseClient()
         .from('user_profiles')
-        .select('avatar_url, phone, is_verified')
+        .select('avatar_url, banner_url, phone, is_verified')
         .eq('id', user.id)
         .single()
         .then(({ data }) => {
           if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+          if (data?.banner_url) setBannerUrl(data.banner_url);
           if (data?.phone) setEditPhone(data.phone ?? '');
           setIsVerified(!!data?.is_verified);
         });
@@ -250,6 +248,24 @@ export default function ProfileScreen() {
       showAlert('Error', e.message ?? 'Failed to update avatar.');
     } finally {
       setAvatarLoading(false);
+    }
+  };
+
+  const handlePickBanner = async () => {
+    if (!user) return;
+    setBannerLoading(true);
+    try {
+      const img = await pickImage('gallery');
+      if (!img) return;
+      const { url, error } = await uploadImage(img.base64, user.id, 'banner');
+      if (error || !url) throw new Error(error ?? 'Upload failed');
+      const supabase = getSupabaseClient();
+      await supabase.from('user_profiles').update({ banner_url: url }).eq('id', user.id);
+      setBannerUrl(url);
+    } catch (e: any) {
+      showAlert('Error', e.message ?? 'Failed to update banner.');
+    } finally {
+      setBannerLoading(false);
     }
   };
 
@@ -390,6 +406,19 @@ export default function ProfileScreen() {
 
           {/* ── HERO ── */}
           <View style={[styles.hero, { backgroundColor: colors.primary }]}>
+            {/* Banner */}
+            <Pressable style={styles.bannerTouchArea} onPress={handlePickBanner} disabled={bannerLoading}>
+              {bannerUrl ? (
+                <Image source={{ uri: bannerUrl }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+              ) : (
+                <View style={[styles.bannerPlaceholder, { backgroundColor: 'rgba(0,0,0,0.15)' }]} />
+              )}
+              <View style={[styles.bannerEditBadge, { backgroundColor: 'rgba(0,0,0,0.38)' }]}>
+                <MaterialIcons name={bannerLoading ? 'hourglass-empty' : 'add-photo-alternate'} size={13} color="#fff" />
+                <Text style={styles.bannerEditText}>{isRTL ? 'تغيير الغلاف' : 'Edit Cover'}</Text>
+              </View>
+            </Pressable>
+
             {/* Avatar */}
             <Pressable style={styles.avatarWrap} onPress={handlePickAvatar} disabled={avatarLoading}>
               {avatarUrl ? (
@@ -424,7 +453,7 @@ export default function ProfileScreen() {
             </View>
 
             {/* Stats row */}
-            <View style={[styles.statsRow, { backgroundColor: 'rgba(0,0,0,0.12)' }]}>
+            <View style={[styles.statsRow, { backgroundColor: 'rgba(0,0,0,0.18)' }]}>
               {[
                 { num: activeAds.length, label: t.active, icon: 'storefront' },
                 { num: soldAds.length, label: t.sold, icon: 'check-circle-outline' },
@@ -473,6 +502,26 @@ export default function ProfileScreen() {
                 <Text style={[styles.editCardTitle, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>{t.editProfile}</Text>
                 <Pressable onPress={() => setEditMode(false)} hitSlop={8}><MaterialIcons name="close" size={20} color={colors.textMuted} /></Pressable>
               </View>
+
+              {/* Banner upload row */}
+              <Pressable
+                style={[styles.bannerEditRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderColor: colors.border, backgroundColor: colors.background }]}
+                onPress={handlePickBanner}
+                disabled={bannerLoading}
+              >
+                <View style={[styles.bannerThumbPreview, { backgroundColor: colors.primaryGhost, overflow: 'hidden' }]}>
+                  {bannerUrl ? (
+                    <Image source={{ uri: bannerUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                  ) : (
+                    <MaterialIcons name="panorama" size={22} color={colors.primary} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.avatarEditLabel, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{isRTL ? 'صورة الغلاف' : 'Cover Photo'}</Text>
+                  <Text style={[styles.avatarEditSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{bannerLoading ? (isRTL ? 'جارٍ الرفع...' : 'Uploading...') : (isRTL ? 'اضغط لتغيير الغلاف' : 'Tap to change cover')}</Text>
+                </View>
+                <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
+              </Pressable>
 
               {/* Avatar row */}
               <Pressable style={[styles.avatarEditRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderColor: colors.border, backgroundColor: colors.background }]} onPress={handlePickAvatar} disabled={avatarLoading}>
@@ -869,10 +918,14 @@ const styles = StyleSheet.create({
   guestLoginText: { color: '#fff', fontSize: FontSize.md, fontWeight: '800' },
 
   // ── Hero
-  hero: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl, alignItems: 'center', paddingTop: Spacing.lg },
-  avatarWrap: { position: 'relative', marginBottom: 12 },
-  avatarImg: { width: 92, height: 92, borderRadius: 46, borderWidth: 3, borderColor: 'rgba(255,255,255,0.45)' },
-  avatarPlaceholder: { width: 92, height: 92, borderRadius: 46, borderWidth: 3, borderColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
+  hero: { paddingBottom: Spacing.xxl, alignItems: 'center', paddingTop: 0, overflow: 'hidden' },
+  bannerTouchArea: { width: '100%', height: 110, position: 'relative', overflow: 'hidden', marginBottom: -(46) },
+  bannerPlaceholder: { width: '100%', height: 110 },
+  bannerEditBadge: { position: 'absolute', bottom: 8, right: 10, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  bannerEditText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  avatarWrap: { position: 'relative', marginBottom: 12, marginTop: 8 },
+  avatarImg: { width: 92, height: 92, borderRadius: 46, borderWidth: 4, borderColor: '#fff' },
+  avatarPlaceholder: { width: 92, height: 92, borderRadius: 46, borderWidth: 4, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { fontSize: 34, fontWeight: '800', color: '#fff' },
   avatarCamBtn: { position: 'absolute', bottom: 2, right: 2, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
   heroName: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', marginBottom: 3, letterSpacing: -0.3 },
@@ -892,6 +945,9 @@ const styles = StyleSheet.create({
   actionIcon: { width: 48, height: 48, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
   actionLabel: { fontSize: FontSize.xs, fontWeight: '600', textAlign: 'center' },
 
+  // ── Banner in edit
+  bannerEditRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, marginBottom: 4 },
+  bannerThumbPreview: { width: 64, height: 40, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center' },
   // ── Edit Card
   editCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: Radius.xl, borderWidth: 1, padding: Spacing.md, gap: Spacing.sm },
   editCardHead: { alignItems: 'center', gap: Spacing.sm, paddingBottom: Spacing.sm, borderBottomWidth: 1, marginBottom: 4 },
