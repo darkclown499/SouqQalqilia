@@ -32,6 +32,224 @@ import { Ad } from '@/services/adsService';
 
 type Tab = 'ads' | 'users' | 'banners' | 'interstitials' | 'stores';
 
+// ── Broadcast Notification Modal ──
+interface BroadcastModalProps {
+  visible: boolean;
+  onClose: () => void;
+  isAr: boolean;
+  colors: any;
+}
+function BroadcastModal({ visible, onClose, isAr, colors }: BroadcastModalProps) {
+  const { showAlert } = useAlert();
+  const [bTitle, setBTitle] = useState('');
+  const [bMessage, setBMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ sent: number; failed: number; total: number } | null>(null);
+
+  const reset = () => { setBTitle(''); setBMessage(''); setResult(null); };
+
+  const handleSend = async () => {
+    if (!bTitle.trim() || !bMessage.trim()) {
+      return showAlert(
+        isAr ? 'مطلوب' : 'Required',
+        isAr ? 'العنوان والرسالة مطلوبان' : 'Title and message are required.'
+      );
+    }
+    showAlert(
+      isAr ? 'تأكيد الإرسال' : 'Confirm Broadcast',
+      isAr
+        ? `سيتم إرسال هذا الإشعار لجميع المستخدمين. هل أنت متأكد؟`
+        : `This notification will be sent to all users. Are you sure?`,
+      [
+        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isAr ? 'إرسال الآن' : 'Send Now',
+          onPress: async () => {
+            setSending(true);
+            setResult(null);
+            try {
+              const { getSupabaseClient } = require('@/template');
+              const supabase = getSupabaseClient();
+              const { data: { session } } = await supabase.auth.getSession();
+              const { FunctionsHttpError } = await import('@supabase/supabase-js');
+              const { data, error } = await supabase.functions.invoke('push-notify', {
+                body: { action: 'broadcast', title: bTitle.trim(), message: bMessage.trim() },
+                headers: session?.access_token
+                  ? { Authorization: `Bearer ${session.access_token}` }
+                  : undefined,
+              });
+              if (error) {
+                let msg = error.message;
+                if (error instanceof FunctionsHttpError) {
+                  try { msg = await error.context?.text() || msg; } catch {}
+                }
+                throw new Error(msg);
+              }
+              setResult({ sent: data.sent ?? 0, failed: data.failed ?? 0, total: data.total ?? 0 });
+            } catch (e: any) {
+              showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Failed to send broadcast');
+            } finally {
+              setSending(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { reset(); onClose(); }}>
+      <Pressable style={bcastS.overlay} onPress={() => { reset(); onClose(); }}>
+        <Pressable style={[bcastS.sheet, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
+          <View style={[bcastS.handle, { backgroundColor: colors.border }]} />
+
+          {/* Header */}
+          <View style={[bcastS.header, { borderBottomColor: colors.borderLight }]}>
+            <View style={[bcastS.headerIcon, { backgroundColor: colors.primaryGhost }]}>
+              <MaterialIcons name="campaign" size={22} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[bcastS.headerTitle, { color: colors.textPrimary }]}>
+                {isAr ? 'إشعار جماعي' : 'Broadcast Notification'}
+              </Text>
+              <Text style={[bcastS.headerSub, { color: colors.textMuted }]}>
+                {isAr ? 'إرسال لجميع المستخدمين الذين لديهم الإشعارات مفعّلة' : 'Send to all users with push notifications enabled'}
+              </Text>
+            </View>
+            <Pressable onPress={() => { reset(); onClose(); }} hitSlop={8}>
+              <MaterialIcons name="close" size={20} color={colors.textMuted} />
+            </Pressable>
+          </View>
+
+          {/* Success result */}
+          {result ? (
+            <View style={[bcastS.resultBox, { backgroundColor: colors.successLight, borderColor: colors.success }]}>
+              <MaterialIcons name="check-circle" size={32} color={colors.success} />
+              <Text style={[bcastS.resultTitle, { color: colors.success }]}>
+                {isAr ? 'تم الإرسال!' : 'Broadcast sent!'}
+              </Text>
+              <Text style={[bcastS.resultSub, { color: colors.textSecondary }]}>
+                {isAr
+                  ? `✅ ${result.sent} وصل • ⚠️ ${result.failed} فشل • 📱 ${result.total} جهاز`
+                  : `✅ ${result.sent} delivered • ⚠️ ${result.failed} failed • 📱 ${result.total} devices`}
+              </Text>
+              <Pressable
+                style={[bcastS.resetBtn, { backgroundColor: colors.primary }]}
+                onPress={reset}
+              >
+                <Text style={bcastS.resetBtnText}>{isAr ? 'إرسال آخر' : 'Send another'}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={bcastS.body}>
+              <View style={bcastS.field}>
+                <Text style={[bcastS.fieldLabel, { color: colors.textSecondary }]}>
+                  {isAr ? 'عنوان الإشعار *' : 'Notification Title *'}
+                </Text>
+                <TextInput
+                  style={[bcastS.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+                  value={bTitle}
+                  onChangeText={setBTitle}
+                  placeholder={isAr ? 'مثال: عروض حصرية اليوم' : 'e.g. Exclusive deals today'}
+                  placeholderTextColor={colors.textMuted}
+                  maxLength={100}
+                />
+              </View>
+              <View style={bcastS.field}>
+                <Text style={[bcastS.fieldLabel, { color: colors.textSecondary }]}>
+                  {isAr ? 'نص الرسالة *' : 'Message *'}
+                </Text>
+                <TextInput
+                  style={[bcastS.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, height: 90, textAlignVertical: 'top', paddingTop: 12 }]}
+                  value={bMessage}
+                  onChangeText={setBMessage}
+                  placeholder={isAr ? 'اكتب رسالتك هنا...' : 'Write your message here...'}
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  maxLength={250}
+                />
+                <Text style={[bcastS.charCount, { color: colors.textMuted }]}>{bMessage.length}/250</Text>
+              </View>
+
+              {/* Preview card */}
+              {(bTitle.trim() || bMessage.trim()) ? (
+                <View style={[bcastS.preview, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
+                  <View style={bcastS.previewHeader}>
+                    <MaterialIcons name="notifications" size={14} color={colors.primary} />
+                    <Text style={[bcastS.previewApp, { color: colors.primary }]}>سوق قلقيلية</Text>
+                    <Text style={[bcastS.previewTime, { color: colors.textMuted }]}>now</Text>
+                  </View>
+                  <Text style={[bcastS.previewTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {bTitle || (isAr ? '...' : '...')}
+                  </Text>
+                  <Text style={[bcastS.previewBody, { color: colors.textSecondary }]} numberOfLines={2}>
+                    {bMessage || (isAr ? '...' : '...')}
+                  </Text>
+                </View>
+              ) : null}
+
+              <Pressable
+                style={[bcastS.sendBtn, { backgroundColor: colors.primary, opacity: sending ? 0.7 : 1 }]}
+                onPress={handleSend}
+                disabled={sending}
+              >
+                {sending
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <MaterialIcons name="send" size={18} color="#fff" />
+                }
+                <Text style={bcastS.sendBtnText}>
+                  {sending
+                    ? (isAr ? 'جاري الإرسال...' : 'Sending...')
+                    : (isAr ? 'إرسال لجميع المستخدمين' : 'Send to All Users')
+                  }
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const bcastS = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '88%' },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1,
+  },
+  headerIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 16, fontWeight: '700' },
+  headerSub: { fontSize: 12, marginTop: 2 },
+  body: { padding: 20, gap: 16 },
+  field: { gap: 6 },
+  fieldLabel: { fontSize: 13, fontWeight: '700' },
+  input: { borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  charCount: { fontSize: 11, textAlign: 'right', marginTop: -2 },
+  preview: { borderRadius: 14, borderWidth: 1, padding: 12, gap: 3 },
+  previewHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  previewApp: { fontSize: 11, fontWeight: '700', flex: 1 },
+  previewTime: { fontSize: 11 },
+  previewTitle: { fontSize: 14, fontWeight: '700' },
+  previewBody: { fontSize: 13, lineHeight: 18 },
+  sendBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 15, borderRadius: 16,
+    marginTop: 4,
+  },
+  sendBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  resultBox: {
+    margin: 20, borderRadius: 16, borderWidth: 1,
+    padding: 24, alignItems: 'center', gap: 8,
+  },
+  resultTitle: { fontSize: 18, fontWeight: '800' },
+  resultSub: { fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  resetBtn: { borderRadius: 12, paddingHorizontal: 24, paddingVertical: 10, marginTop: 8 },
+  resetBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+});
+
 // ── Full Edit Modal ──
 interface AdEditModalProps {
   ad: Ad | null;
@@ -219,6 +437,7 @@ export default function AdminScreen() {
   const [stLogoUploading, setStLogoUploading] = useState(false);
   const [editingAd, setEditingAd] = useState<Ad | null>(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
+  const [broadcastVisible, setBroadcastVisible] = useState(false);
 
   // Banner form
   const [showBannerForm, setShowBannerForm] = useState(false);
@@ -1037,6 +1256,14 @@ export default function AdminScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* Header */}
+      {/* Broadcast Modal */}
+      <BroadcastModal
+        visible={broadcastVisible}
+        onClose={() => setBroadcastVisible(false)}
+        isAr={isAr}
+        colors={colors}
+      />
+
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <MaterialIcons name="arrow-back" size={22} color="#fff" />
@@ -1045,9 +1272,13 @@ export default function AdminScreen() {
           <Text style={styles.headerTitle}>{t.adminPanel}</Text>
           <Text style={styles.headerSub}>{t.adminPanelSub}</Text>
         </View>
-        <View style={[styles.shieldIcon, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
-          <MaterialIcons name="admin-panel-settings" size={22} color="#fff" />
-        </View>
+        <Pressable
+          style={[styles.broadcastBtn, { backgroundColor: 'rgba(255,255,255,0.18)' }]}
+          onPress={() => setBroadcastVisible(true)}
+          hitSlop={4}
+        >
+          <MaterialIcons name="campaign" size={20} color="#fff" />
+        </Pressable>
       </View>
 
       {/* Tabs */}
@@ -1294,7 +1525,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   headerTitle: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   headerSub: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
-  shieldIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  broadcastBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   tabBar: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 4 },
   tabItem: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

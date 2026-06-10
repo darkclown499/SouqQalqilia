@@ -3,12 +3,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
 // ── In-memory deduplication ───────────────────────────────────────────────────
-// Key: `${recipient_id}:${conversation_id}` — Value: timestamp (ms)
-// Prevents sending multiple notifications for rapid messages in the same chat.
-// Note: resets on cold-start (Edge Function restarts) — this is acceptable
-// since a new cold-start means a new instance; the 8s window is generous enough.
 const lastNotified = new Map<string, number>();
-const DEDUP_WINDOW_MS = 8_000; // 8 seconds
+const DEDUP_WINDOW_MS = 8_000;
 
 function cleanupDedup() {
   const cutoff = Date.now() - DEDUP_WINDOW_MS * 20;
@@ -17,8 +13,73 @@ function cleanupDedup() {
   }
 }
 
+// ── Send a single Expo push notification ─────────────────────────────────────
+async function sendExpoPush(payload: object): Promise<{ ok: boolean; result?: any; error?: string }> {
+  const res = await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Accept-Encoding': 'gzip, deflate',
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    return { ok: false, error: `Expo API error ${res.status}: ${errText}` };
+  }
+  return { ok: true, result: await res.json() };
+}
+
+// ── Send a batch of up to 100 tokens via Expo Push API ───────────────────────
+async function sendExpoBatch(
+  tokens: string[],
+  title: string,
+  body: string,
+  data?: Record<string, any>
+): Promise<{ sent: number; failed: number }> {
+  const BATCH_SIZE = 100;
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
+    const batch = tokens.slice(i, i + BATCH_SIZE);
+    const payload = batch.map(token => ({
+      to: token,
+      title,
+      body,
+      sound: 'default',
+      channelId: 'messages',
+      data: data ?? {},
+      priority: 'high',
+    }));
+
+    const res = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      console.error(`[push-notify:broadcast] Batch ${i / BATCH_SIZE + 1} HTTP error ${res.status}`);
+      failed += batch.length;
+      continue;
+    }
+
+    const result = await res.json();
+    const tickets: any[] = Array.isArray(result?.data) ? result.data : [];
+    tickets.forEach((t: any) => { t?.status === 'ok' ? sent++ : failed++; });
+    console.log(`[push-notify:broadcast] Batch ${i / BATCH_SIZE + 1}: sent=${sent} failed=${failed}`);
+  }
+
+  return { sent, failed };
+}
+
 serve(async (req) => {
-  // ── CORS preflight ──────────────────────────────────────────────────────────
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -31,7 +92,99 @@ serve(async (req) => {
   try {
     const body = await req.json();
 
-    // ── 1. Badge reset shortcut ────────────────────────────────────────────────
+    // ── ACTION: broadcast ─────────────────────────────────────────────────────
+    // Sends a notification to ALL users who have a push_token.
+    // Requires: title (string), message (string)
+    // Optional: data (object)
+    if (body.action === 'broadcast') {
+      // Verify caller is an admin
+      const authHeader = req.headers.get('Authorization');
+      const token = authHeader?.replace('Bearer ', '');
+      if (!token) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      const userClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: `Bearer ${token}` } } }
+      );
+      const { data: { user }, error: userErr } = await userClient.auth.getUser(token);
+      if (userErr || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      const { data: profile } = await supabaseAdmin
+        .from('user_profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile?.is_admin) {
+        return new Response(
+          JSON.stringify({ error: 'Forbidden: Admin only' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      const { title, message, data: extraData } = body as {
+        title: string;
+        message: string;
+        data?: Record<string, any>;
+      };
+
+      if (!title?.trim() || !message?.trim()) {
+        return new Response(
+          JSON.stringify({ error: 'title and message are required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      // Fetch all push tokens (only valid ExponentPushToken format)
+      const { data: profiles, error: fetchErr } = await supabaseAdmin
+        .from('user_profiles')
+        .select('push_token')
+        .not('push_token', 'is', null)
+        .like('push_token', 'ExponentPushToken%');
+
+      if (fetchErr) {
+        return new Response(
+          JSON.stringify({ error: `Failed to fetch tokens: ${fetchErr.message}` }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      const tokens: string[] = (profiles ?? [])
+        .map((p: any) => p.push_token as string)
+        .filter(Boolean);
+
+      if (tokens.length === 0) {
+        return new Response(
+          JSON.stringify({ ok: true, sent: 0, failed: 0, total: 0 }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      console.log(`[push-notify:broadcast] Sending to ${tokens.length} devices...`);
+      const { sent, failed } = await sendExpoBatch(tokens, title.trim(), message.trim(), {
+        type: 'broadcast',
+        ...(extraData ?? {}),
+      });
+
+      console.log(`[push-notify:broadcast] Done. sent=${sent} failed=${failed} total=${tokens.length}`);
+      return new Response(
+        JSON.stringify({ ok: true, sent, failed, total: tokens.length }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // ── ACTION: reset_badge ───────────────────────────────────────────────────
     if (body.action === 'reset_badge') {
       const { user_id } = body as { user_id: string };
       if (!user_id) {
@@ -47,21 +200,14 @@ serve(async (req) => {
         .eq('id', user_id)
         .single();
 
-      if (pErr) {
-        console.error('[push-notify:reset_badge] Profile fetch error:', pErr.message);
-      }
+      if (pErr) console.error('[push-notify:reset_badge] Profile fetch error:', pErr.message);
 
       const pushToken: string | null = profile?.push_token ?? null;
       if (pushToken && pushToken.startsWith('ExponentPushToken')) {
         const res = await fetch('https://exp.host/--/api/v2/push/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({
-            to: pushToken,
-            badge: 0,
-            'content-available': 1,
-            priority: 'normal',
-          }),
+          body: JSON.stringify({ to: pushToken, badge: 0, 'content-available': 1, priority: 'normal' }),
         });
         const result = await res.json();
         console.log('[push-notify:reset_badge] Expo response:', JSON.stringify(result));
@@ -73,7 +219,7 @@ serve(async (req) => {
       );
     }
 
-    // ── 2. Send new message notification ──────────────────────────────────────
+    // ── ACTION: send message notification (default) ───────────────────────────
     const {
       recipient_id,
       sender_name,
@@ -93,12 +239,11 @@ serve(async (req) => {
       );
     }
 
-    // ── Deduplication check ────────────────────────────────────────────────────
+    // Deduplication
     if (conversation_id) {
       const dedupKey = `${recipient_id}:${conversation_id}`;
       const lastTime = lastNotified.get(dedupKey) ?? 0;
       const now = Date.now();
-
       if (now - lastTime < DEDUP_WINDOW_MS) {
         console.log(`[push-notify] Dedup skip — key=${dedupKey}, elapsed=${now - lastTime}ms`);
         return new Response(
@@ -106,51 +251,29 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
       }
-
       lastNotified.set(dedupKey, now);
       if (lastNotified.size > 500) cleanupDedup();
     }
 
-    // ── Fetch recipient profile and unread count in parallel ──────────────────
     const [profileResult, convResult] = await Promise.all([
-      supabaseAdmin
-        .from('user_profiles')
-        .select('push_token')
-        .eq('id', recipient_id)
-        .single(),
-      supabaseAdmin
-        .from('conversations')
-        .select('id')
-        .or(`buyer_id.eq.${recipient_id},seller_id.eq.${recipient_id}`),
+      supabaseAdmin.from('user_profiles').select('push_token').eq('id', recipient_id).single(),
+      supabaseAdmin.from('conversations').select('id').or(`buyer_id.eq.${recipient_id},seller_id.eq.${recipient_id}`),
     ]);
 
-    if (profileResult.error) {
-      console.error('[push-notify] Profile fetch error:', profileResult.error.message);
-    }
+    if (profileResult.error) console.error('[push-notify] Profile fetch error:', profileResult.error.message);
 
     const pushToken: string | null = profileResult.data?.push_token ?? null;
-
-    // ── Validate token ─────────────────────────────────────────────────────────
     if (!pushToken) {
       console.log(`[push-notify] No push token for recipient=${recipient_id}`);
-      return new Response(
-        JSON.stringify({ ok: true, skipped: 'no_token' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+      return new Response(JSON.stringify({ ok: true, skipped: 'no_token' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-
     if (!pushToken.startsWith('ExponentPushToken')) {
-      console.warn(`[push-notify] Invalid token format for recipient=${recipient_id}: ${pushToken.substring(0, 20)}...`);
-      return new Response(
-        JSON.stringify({ ok: true, skipped: 'invalid_token_format' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+      console.warn(`[push-notify] Invalid token format for recipient=${recipient_id}`);
+      return new Response(JSON.stringify({ ok: true, skipped: 'invalid_token_format' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // ── Calculate unread badge count ───────────────────────────────────────────
     const convIds: string[] = (convResult.data ?? []).map((c: any) => c.id);
     let unreadCount = 1;
-
     if (convIds.length > 0) {
       const { count, error: countErr } = await supabaseAdmin
         .from('messages')
@@ -158,67 +281,36 @@ serve(async (req) => {
         .is('read_at', null)
         .neq('sender_id', recipient_id)
         .in('conversation_id', convIds);
-
-      if (countErr) {
-        console.warn('[push-notify] Unread count error:', countErr.message);
-      } else {
-        unreadCount = count ?? 1;
-      }
+      if (countErr) console.warn('[push-notify] Unread count error:', countErr.message);
+      else unreadCount = count ?? 1;
     }
 
-    // ── Send via Expo Push API ─────────────────────────────────────────────────
-    const expoPayload = {
+    const { ok, result: expoResult, error: expoErr } = await sendExpoPush({
       to: pushToken,
       title: `سوق قلقيلية — ${sender_name}`,
       body: message_preview.substring(0, 100),
       sound: 'default',
       badge: unreadCount,
       'content-available': 1,
-      channelId: 'messages', // Android notification channel
-      data: {
-        type: 'new_message',
-        recipient_id,
-        conversation_id: conversation_id ?? null,
-        unread_count: unreadCount,
-      },
+      channelId: 'messages',
+      data: { type: 'new_message', recipient_id, conversation_id: conversation_id ?? null, unread_count: unreadCount },
       priority: 'high',
-    };
-
-    const expoRes = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-      },
-      body: JSON.stringify(expoPayload),
     });
 
-    if (!expoRes.ok) {
-      const errText = await expoRes.text();
-      console.error(`[push-notify] Expo API HTTP error ${expoRes.status}: ${errText}`);
-      return new Response(
-        JSON.stringify({ error: `Expo API error: ${expoRes.status}` }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+    if (!ok) {
+      console.error(`[push-notify] ${expoErr}`);
+      return new Response(JSON.stringify({ error: expoErr }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const expoResult = await expoRes.json();
-
-    // ── Check Expo-level errors in the response body ───────────────────────────
     const ticket = expoResult?.data;
     if (ticket?.status === 'error') {
       console.error(`[push-notify] Expo ticket error: ${ticket.message} (${ticket.details?.error})`);
-      // DeviceNotRegistered means the token is stale — clear it
       if (ticket.details?.error === 'DeviceNotRegistered') {
-        await supabaseAdmin
-          .from('user_profiles')
-          .update({ push_token: null })
-          .eq('id', recipient_id);
+        await supabaseAdmin.from('user_profiles').update({ push_token: null }).eq('id', recipient_id);
         console.log(`[push-notify] Cleared stale token for recipient=${recipient_id}`);
       }
     } else {
-      console.log(`[push-notify] Sent OK to recipient=${recipient_id}, badge=${unreadCount}, conv=${conversation_id ?? 'n/a'}`);
+      console.log(`[push-notify] Sent OK to recipient=${recipient_id}, badge=${unreadCount}`);
     }
 
     return new Response(
