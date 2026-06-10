@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, Pressable, Modal,
-  KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl, Animated,
+  KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl, Animated, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -77,6 +77,7 @@ export default function ChatScreen() {
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [text, setText] = useState('');
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [sending, setSending] = useState(false);
   const [otherTyping, setOtherTyping] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -120,6 +121,24 @@ export default function ChatScreen() {
     const interval = setInterval(check, 2000);
     return () => clearInterval(interval);
   }, [id, user?.id, conversation]);
+
+  const QUICK_REPLIES_AR = [
+    'هل السعر قابل للتفاوض؟',
+    'هل المنتج لا يزال متاحاً؟',
+    'ما هو موقعك؟',
+    'هل يمكن التوصيل؟',
+    'هل يوجد عيوب في المنتج؟',
+    'متى يمكنني الاستلام؟',
+  ];
+  const QUICK_REPLIES_EN = [
+    'Is the price negotiable?',
+    'Is this still available?',
+    'Where is your location?',
+    'Can you deliver?',
+    'Any defects or issues?',
+    'When can I pick it up?',
+  ];
+  const quickReplies = isAr ? QUICK_REPLIES_AR : QUICK_REPLIES_EN;
 
   const handleTyping = (val: string) => {
     setText(val);
@@ -173,6 +192,11 @@ export default function ChatScreen() {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
     }
   }, [messages.length]);
+
+  const handleQuickReply = (reply: string) => {
+    setText(reply);
+    setShowQuickReplies(false);
+  };
 
   const handleSend = async () => {
     const content = text.trim();
@@ -680,6 +704,23 @@ export default function ChatScreen() {
           />
         )}
 
+        {/* ── QUICK REPLIES ── */}
+        {showQuickReplies ? (
+          <View style={[styles.quickRepliesWrap, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.quickRepliesContent, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+              {quickReplies.map((reply, i) => (
+                <Pressable
+                  key={i}
+                  style={({ pressed }) => [styles.quickReplyChip, { backgroundColor: pressed ? colors.primary : colors.primaryGhost, borderColor: colors.primary }]}
+                  onPress={() => handleQuickReply(reply)}
+                >
+                  <Text style={[styles.quickReplyText, { color: colors.primary }]} numberOfLines={1}>{reply}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
         {/* ── INPUT BAR ── */}
         <View style={[
           styles.inputBar,
@@ -690,6 +731,13 @@ export default function ChatScreen() {
             flexDirection: isAr ? 'row-reverse' : 'row',
           },
         ]}>
+          <Pressable
+            style={[styles.quickReplyToggleBtn, { backgroundColor: showQuickReplies ? colors.primary : colors.primaryGhost }]}
+            onPress={() => setShowQuickReplies(v => !v)}
+            hitSlop={4}
+          >
+            <MaterialIcons name="quickreply" size={20} color={showQuickReplies ? '#fff' : colors.primary} />
+          </Pressable>
           <TextInput
             style={[styles.textInput, {
               borderColor: colors.border,
@@ -849,5 +897,30 @@ const styles = StyleSheet.create({
   typingBubble: {
     borderRadius: Radius.lg, borderBottomLeftRadius: 4,
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+  },
+  quickRepliesWrap: {
+    borderTopWidth: 1,
+    paddingVertical: 8,
+  },
+  quickRepliesContent: {
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+    alignItems: 'center',
+  },
+  quickReplyChip: {
+    borderWidth: 1.5,
+    borderRadius: Radius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    maxWidth: 220,
+  },
+  quickReplyText: {
+    fontSize: FontSize.sm,
+    fontWeight: '600',
+  },
+  quickReplyToggleBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
   },
 });

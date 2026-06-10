@@ -214,6 +214,20 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const handleDeleteAd = (adId: string, adTitle: string) => {
+    showAlert(
+      isRTL ? 'حذف الإعلان' : 'Delete Listing',
+      isRTL ? `هل أنت متأكد من حذف "${adTitle}"؟` : `Delete "${adTitle}"?`,
+      [
+        { text: t.cancel, style: 'cancel' },
+        {
+          text: isRTL ? 'حذف' : 'Delete', style: 'destructive',
+          onPress: async () => { await updateAdStatus(adId, 'deleted'); load(); },
+        },
+      ]
+    );
+  };
+
   const handleMarkSold = (adId: string) => {
     showAlert(t.markAsSold, t.markAsSoldConfirm, [
       { text: t.cancel, style: 'cancel' },
@@ -556,20 +570,38 @@ export default function ProfileScreen() {
                 ads.map(ad => (
                   <View key={ad.id} style={styles.adRow}>
                     <AdCard ad={ad} />
-                    <View style={[styles.adActions, { flexDirection: isRTL ? 'row' : 'row-reverse' }]}>
+                    <View style={[styles.adActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                      {/* Edit button */}
+                      <Pressable
+                        style={[styles.adActionBtn, { backgroundColor: colors.primaryGhost, borderColor: colors.primary }]}
+                        onPress={() => router.push(`/edit-ad/${ad.id}` as any)}
+                      >
+                        <MaterialIcons name="edit" size={14} color={colors.primary} />
+                        <Text style={[styles.adActionBtnText, { color: colors.primary }]}>{isRTL ? 'تعديل' : 'Edit'}</Text>
+                      </Pressable>
+
                       {ad.status === 'active' || ad.status === 'featured' ? (
                         <Pressable
-                          style={[styles.markSoldBtn, { backgroundColor: colors.successLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                          style={[styles.adActionBtn, { backgroundColor: colors.successLight, borderColor: colors.success, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
                           onPress={() => handleMarkSold(ad.id)}
                         >
                           <MaterialIcons name="check-circle-outline" size={14} color={colors.success} />
-                          <Text style={[styles.markSoldText, { color: colors.success }]}>{t.markAsSold}</Text>
+                          <Text style={[styles.adActionBtnText, { color: colors.success }]}>{t.markAsSold}</Text>
                         </Pressable>
                       ) : (
                         <View style={[styles.soldChip, { backgroundColor: colors.accentLight }]}>
                           <Text style={[styles.soldChipText, { color: colors.accentDark }]}>✓ {t.sold.toUpperCase()}</Text>
                         </View>
                       )}
+
+                      {/* Delete button */}
+                      <Pressable
+                        style={[styles.adActionBtn, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]}
+                        onPress={() => handleDeleteAd(ad.id, ad.title)}
+                      >
+                        <MaterialIcons name="delete-outline" size={14} color="#EF4444" />
+                        <Text style={[styles.adActionBtnText, { color: '#EF4444' }]}>{isRTL ? 'حذف' : 'Delete'}</Text>
+                      </Pressable>
                     </View>
                   </View>
                 ))
@@ -895,9 +927,9 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: FontSize.lg, fontWeight: '700' },
   emptySub: { fontSize: FontSize.sm, textAlign: 'center' },
   adRow: { marginBottom: Spacing.sm },
-  adActions: { justifyContent: 'flex-end', paddingTop: 6 },
-  markSoldBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full },
-  markSoldText: { fontSize: FontSize.sm, fontWeight: '600' },
+  adActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 6 },
+  adActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1.5 },
+  adActionBtnText: { fontSize: FontSize.xs, fontWeight: '700' },
   soldChip: { paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full },
   soldChipText: { fontSize: FontSize.xs, fontWeight: '700' },
 

@@ -5,7 +5,27 @@ import {
   Dimensions, RefreshControl, ActivityIndicator, Linking, Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
+const MAX_RECENTLY_VIEWED = 6;
+
+async function addToRecentlyViewed(ad: Ad): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
+    const existing: Ad[] = raw ? JSON.parse(raw) : [];
+    const updated = [ad, ...existing.filter(a => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED);
+    await AsyncStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
+  } catch { /* ignore */ }
+}
+
+async function loadRecentlyViewed(): Promise<Ad[]> {
+  try {
+    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { AdCard, EmptyState } from '@/components';
@@ -98,6 +118,9 @@ export default function HomeScreen() {
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [recentlyViewed, setRecentlyViewed] = useState<Ad[]>([]);
+
+  useEffect(() => { loadRecentlyViewed().then(setRecentlyViewed); }, []);
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [banners, setBanners] = useState<Banner[]>(() => getBannersCache() ?? []);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
@@ -192,6 +215,12 @@ export default function HomeScreen() {
 
   const handleCategoryPress = useCallback((id: string | null) => {
     setSelectedCategory(id);
+  }, []);
+
+  // Track ad views for recently viewed
+  const handleAdView = useCallback((ad: Ad) => {
+    addToRecentlyViewed(ad);
+    setRecentlyViewed(prev => [ad, ...prev.filter(a => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
   }, []);
 
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
@@ -299,6 +328,44 @@ export default function HomeScreen() {
         </Pressable>
       ) : null}
 
+      {/* Recently Viewed Section */}
+      {recentlyViewed.length > 0 ? (
+        <View style={styles.recentSection}>
+          <View style={[styles.recentHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <MaterialIcons name="history" size={16} color={colors.primary} />
+            <Text style={[styles.recentHeaderTitle, { color: colors.textPrimary }]}>
+              {isAr ? 'آخر المشاهدات' : 'Recently Viewed'}
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.recentList, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            {recentlyViewed.map(ad => {
+              const thumb = (ad.ad_images ?? []).sort((a: any, b: any) => a.position - b.position)[0]?.url;
+              return (
+                <Pressable
+                  key={ad.id}
+                  style={({ pressed }) => [styles.recentCard, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.88 : 1 }]}
+                  onPress={() => router.push(`/ad/${ad.id}`)}
+                >
+                  {thumb ? (
+                    <Image source={{ uri: thumb }} style={styles.recentImg} contentFit="cover" transition={200} />
+                  ) : (
+                    <View style={[styles.recentImgPh, { backgroundColor: colors.surfaceTint }]}>
+                      <MaterialIcons name="image" size={20} color={colors.textMuted} />
+                    </View>
+                  )}
+                  <View style={styles.recentInfo}>
+                    <Text style={[styles.recentPrice, { color: colors.primary }]}>
+                      {ad.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${ad.price.toLocaleString()}`}
+                    </Text>
+                    <Text style={[styles.recentTitle, { color: colors.textPrimary }]} numberOfLines={1}>{ad.title}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+
       <View style={[styles.sectionRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t.categories}</Text>
         <Pressable style={[styles.seeAllBtn, { flexDirection: isRTL ? 'row-reverse' : 'row' }]} onPress={() => router.push('/(tabs)/categories')}>
@@ -350,7 +417,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, ads.length, handleCategoryPress, router, setSortBy]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, ads.length, recentlyViewed, handleCategoryPress, router, setSortBy]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -493,6 +560,16 @@ const styles = StyleSheet.create({
   sponsoredSub: { fontSize: FontSize.xs, lineHeight: 17 },
   sponsoredWaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#25D366', borderRadius: Radius.xl, paddingVertical: 12, shadowColor: '#25D366', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
   sponsoredWaBtnText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
+  recentSection: { marginBottom: Spacing.md },
+  recentHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: H_PAD, marginBottom: Spacing.sm },
+  recentHeaderTitle: { fontSize: FontSize.md, fontWeight: '700' },
+  recentList: { paddingHorizontal: H_PAD, gap: Spacing.sm, alignItems: 'flex-start' },
+  recentCard: { width: 110, borderRadius: Radius.lg, borderWidth: 1, overflow: 'hidden' },
+  recentImg: { width: 110, height: 80 },
+  recentImgPh: { width: 110, height: 80, alignItems: 'center', justifyContent: 'center' },
+  recentInfo: { padding: 7, gap: 2 },
+  recentPrice: { fontSize: FontSize.xs, fontWeight: '800' },
+  recentTitle: { fontSize: FontSize.xs, fontWeight: '500', lineHeight: 15 },
   bannerWrap: { width: '100%', borderRadius: Radius.xl, overflow: 'hidden', marginBottom: Spacing.lg + 4, position: 'relative', backgroundColor: '#0A6E5C' },
   bannerContent: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.md, paddingBottom: Spacing.lg, gap: 5 },
   bannerTitle: { fontSize: FontSize.xl + 2, fontWeight: '800', color: '#fff', letterSpacing: -0.5, lineHeight: 28, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
