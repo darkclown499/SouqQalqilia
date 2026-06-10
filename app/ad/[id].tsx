@@ -592,42 +592,76 @@ function AdDetailScrollContent({
           </View>
 
           {/* Seller card */}
-          <View style={[styles.sellerCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
-            <Text style={[styles.cardLabel, { color: colors.primary }]}>{t.seller}</Text>
-            <Pressable style={styles.sellerRow} onPress={() => router.push(`/seller/${ad.user_id}` as any)} hitSlop={4}>
-              {seller?.avatar_url ? (
-                <Image source={{ uri: seller.avatar_url }} style={styles.sellerAvatarImg} contentFit="cover" transition={200} />
-              ) : (
-                <View style={[styles.sellerAvatar, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.sellerAvatarText}>{sellerName.charAt(0).toUpperCase()}</Text>
-                </View>
-              )}
+          <View style={[styles.sellerCard, { backgroundColor: colors.surface, borderColor: colors.border, ...Shadow.sm }]}>
+            {/* Header label */}
+            <View style={[styles.sellerCardHeader, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+              <View style={[styles.sellerCardIconWrap, { backgroundColor: colors.primaryGhost }]}>
+                <MaterialIcons name="storefront" size={14} color={colors.primary} />
+              </View>
+              <Text style={[styles.cardLabel, { color: colors.primary }]}>{t.seller}</Text>
+            </View>
+
+            {/* Seller info row */}
+            <Pressable
+              style={[styles.sellerRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}
+              onPress={() => router.push(`/seller/${ad.user_id}` as any)}
+              hitSlop={4}
+            >
+              {/* Avatar */}
+              <View style={styles.sellerAvatarWrap}>
+                {seller?.avatar_url ? (
+                  <Image source={{ uri: seller.avatar_url }} style={styles.sellerAvatarImg} contentFit="cover" transition={200} />
+                ) : (
+                  <View style={[styles.sellerAvatar, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.sellerAvatarText}>{sellerName.charAt(0).toUpperCase()}</Text>
+                  </View>
+                )}
+                {sellerVerified ? (
+                  <View style={styles.sellerVerifiedDot}>
+                    <MaterialIcons name="verified" size={12} color="#2563EB" />
+                  </View>
+                ) : null}
+              </View>
+
               <View style={styles.sellerInfo}>
-                <Text style={[styles.sellerName, { color: colors.textPrimary }]}>{sellerName}</Text>
+                <Text style={[styles.sellerName, { color: colors.textPrimary }]} numberOfLines={1}>{sellerName}</Text>
+                <View style={[styles.sellerMeta, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+                  <View style={[styles.sellerBadge, { backgroundColor: sellerVerified ? '#DBEAFE' : colors.accentLight }]}>
+                    <MaterialIcons name={sellerVerified ? 'verified' : 'person'} size={11} color={sellerVerified ? '#2563EB' : colors.accent} />
+                    <Text style={[styles.sellerBadgeText, { color: sellerVerified ? '#1D4ED8' : colors.accentDark }]}>
+                      {sellerVerified ? (isAr ? 'موثّق' : 'Verified') : 'Member'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* View profile arrow */}
+              <View style={[styles.viewProfileBtn, { backgroundColor: colors.primaryGhost }]}>
                 <Text style={[styles.sellerViewProfile, { color: colors.primary }]}>
-                  {isAr ? 'عرض الملف الشخصي ←' : 'View profile →'}
+                  {isAr ? 'عرض الملف الشخصي' : 'View Profile'}
                 </Text>
+                <MaterialIcons name={isAr ? 'chevron-left' : 'chevron-right'} size={16} color={colors.primary} />
               </View>
-              <View style={[styles.sellerBadge, { backgroundColor: sellerVerified ? '#DBEAFE' : colors.accentLight }]} pointerEvents="none">
-                <MaterialIcons name={sellerVerified ? 'verified' : 'person'} size={14} color={sellerVerified ? '#2563EB' : colors.accent} />
-                <Text style={[styles.sellerBadgeText, { color: sellerVerified ? '#1D4ED8' : colors.accentDark }]}>
-                  {sellerVerified ? (isAr ? 'موثّق' : 'Verified') : 'Member'}
-                </Text>
-              </View>
-          </Pressable>
+            </Pressable>
+
+            {/* Phone row */}
             {hasPhone && user && (
-              <View style={[styles.phoneRow, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
-                <MaterialIcons name="phone" size={15} color={colors.primary} />
+              <View style={[styles.phoneRow, { backgroundColor: colors.surfaceTint, borderColor: colors.border, flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+                <View style={[styles.phoneIconWrap, { backgroundColor: colors.primaryGhost }]}>
+                  <MaterialIcons name="phone" size={15} color={colors.primary} />
+                </View>
                 <Text style={[styles.phoneText, { color: colors.textSecondary }]}>{ad.phone_number}</Text>
               </View>
             )}
+
+            {/* Report user */}
             {!isOwner && user ? (
               <Pressable
-                style={[styles.reportUserBtn, { borderColor: colors.errorLight ?? '#FEE2E2', backgroundColor: colors.errorLight ?? '#FFF5F5' }]}
+                style={[styles.reportUserBtn, { borderColor: colors.errorLight ?? '#FEE2E2', backgroundColor: colors.errorLight ?? '#FFF5F5', flexDirection: isAr ? 'row-reverse' : 'row' }]}
                 onPress={onReportUser}
                 hitSlop={4}
               >
-                <MaterialIcons name="flag" size={15} color={colors.error ?? '#EF4444'} />
+                <MaterialIcons name="flag" size={14} color={colors.error ?? '#EF4444'} />
                 <Text style={[styles.reportUserBtnText, { color: colors.error ?? '#EF4444' }]}>
                   {isAr ? 'الإبلاغ عن المستخدم' : 'Report User'}
                 </Text>
@@ -836,22 +870,34 @@ const styles = StyleSheet.create({
   descCard: { borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.sm },
   cardLabel: { fontSize: FontSize.sm, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   description: { fontSize: FontSize.md, lineHeight: 24 },
-  sellerCard: { borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.md },
+  sellerCard: { borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.md, borderWidth: 1 },
+  sellerCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  sellerCardIconWrap: { width: 24, height: 24, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   sellerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  sellerAvatarWrap: { position: 'relative' },
   sellerAvatar: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
   sellerAvatarImg: { width: 50, height: 50, borderRadius: 25 },
   sellerAvatarText: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff' },
-  sellerInfo: { flex: 1, gap: 2 },
+  sellerVerifiedDot: {
+    position: 'absolute', bottom: -2, right: -2,
+    width: 18, height: 18, borderRadius: 9,
+    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: '#fff',
+  },
+  sellerInfo: { flex: 1, gap: 4 },
+  sellerMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sellerName: { fontSize: FontSize.md, fontWeight: '700' },
   sellerViewProfile: { fontSize: FontSize.xs, fontWeight: '600' },
-  sellerBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 4 },
+  viewProfileBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: Radius.lg, paddingHorizontal: 10, paddingVertical: 7 },
+  sellerBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: Radius.full, paddingHorizontal: 7, paddingVertical: 3 },
   sellerBadgeText: { fontSize: 10, fontWeight: '700' },
   phoneRow: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
     borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: 10,
     borderWidth: 1,
   },
-  phoneText: { fontSize: FontSize.sm, fontWeight: '500', letterSpacing: 0.2 },
+  phoneIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  phoneText: { fontSize: FontSize.sm, fontWeight: '500', letterSpacing: 0.2, flex: 1 },
   promoteBtn: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
     borderRadius: Radius.xl, borderWidth: 1.5,

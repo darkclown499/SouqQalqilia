@@ -158,7 +158,6 @@ interface SellerProfile {
   phone: string | null;
   avatar_url: string | null;
   is_verified: boolean;
-  created_at?: string;
 }
 
 export default function SellerProfileScreen() {
@@ -187,7 +186,7 @@ export default function SellerProfileScreen() {
     const [profileRes, adsRes] = await Promise.all([
       getSupabaseClient()
         .from('user_profiles')
-        .select('id, username, email, phone, avatar_url, is_verified, created_at')
+        .select('id, username, email, phone, avatar_url, is_verified')
         .eq('id', id)
         .single(),
       fetchAds({ userId: id, limit: 60 }),
@@ -215,9 +214,7 @@ export default function SellerProfileScreen() {
 
   const initials = displayName.slice(0, 2).toUpperCase();
 
-  const joinDate = seller?.created_at
-    ? new Date(seller.created_at).toLocaleDateString(isAr ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'long' })
-    : null;
+  const joinDate = null; // created_at not available in user_profiles
 
   // ── Render ad item ──
   const renderItem = useCallback(({ item }: { item: Ad }) => (
