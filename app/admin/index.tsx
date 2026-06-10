@@ -21,9 +21,16 @@ import {
 import {
   fetchAllInterstitials, createInterstitial, updateInterstitial, deleteInterstitial, InterstitialAd,
 } from '@/services/interstitialService';
+import {
+  adminFetchAllStores, adminCreateStore, adminUpdateStore, adminDeleteStore, Store,
+} from '@/services/storesService';
+import { pickImage, uploadImage } from '@/services/imageService';
+import { Image } from 'expo-image';
+import { useCategories } from '@/hooks/useCategories';
+import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 
-type Tab = 'ads' | 'users' | 'banners' | 'interstitials';
+type Tab = 'ads' | 'users' | 'banners' | 'interstitials' | 'stores';
 
 // ── Full Edit Modal ──
 interface AdEditModalProps {
@@ -186,13 +193,30 @@ export default function AdminScreen() {
   const { t, language } = useLanguage();
   const isAr = language === 'ar';
 
+  const { categories } = useCategories();
   const [tab, setTab] = useState<Tab>('ads');
   const [ads, setAds] = useState<Ad[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [interstitials, setInterstitials] = useState<InterstitialAd[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const [adSearch, setAdSearch] = useState('');
+
+  // Store form state
+  const [showStoreForm, setShowStoreForm] = useState(false);
+  const [editingStore, setEditingStore] = useState<Store | null>(null);
+  const [stName, setStName] = useState('');
+  const [stNameAr, setStNameAr] = useState('');
+  const [stDesc, setStDesc] = useState('');
+  const [stDescAr, setStDescAr] = useState('');
+  const [stLogoUrl, setStLogoUrl] = useState('');
+  const [stPhone, setStPhone] = useState('');
+  const [stWhatsapp, setStWhatsapp] = useState('');
+  const [stAddress, setStAddress] = useState('');
+  const [stCategoryId, setStCategoryId] = useState('');
+  const [stSaving, setStSaving] = useState(false);
+  const [stLogoUploading, setStLogoUploading] = useState(false);
   const [editingAd, setEditingAd] = useState<Ad | null>(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
 
@@ -218,12 +242,18 @@ export default function AdminScreen() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    if (tab === 'ads') {
+    if (tab === 'stores') {
+      const { data } = await adminFetchAllStores();
+      setStores(data);
+    } else if (tab === 'ads') {
       const { data } = await adminFetchAllAds();
       setAds(data);
     } else if (tab === 'users') {
       const { data } = await adminFetchAllUsers();
       setUsers(data);
+    } else if (tab === 'banners') {
+      const { data } = await fetchAllBanners();
+      setBanners(data);
     } else if (tab === 'banners') {
       const { data } = await fetchAllBanners();
       setBanners(data);
@@ -341,6 +371,88 @@ export default function AdminScreen() {
           text: isAr ? 'تأكيد' : 'Confirm',
           onPress: async () => {
             const { error } = await adminSetUserAdmin(u.id, makeAdmin);
+            if (error) showAlert('Error', error);
+            else loadData();
+          },
+        },
+      ]
+    );
+  };
+
+  // ── Store handlers ──
+  const openStoreForm = (store?: Store) => {
+    if (store) {
+      setEditingStore(store);
+      setStName(store.name);
+      setStNameAr(store.name_ar);
+      setStDesc(store.description);
+      setStDescAr(store.description_ar);
+      setStLogoUrl(store.logo_url);
+      setStPhone(store.phone);
+      setStWhatsapp(store.whatsapp);
+      setStAddress(store.address);
+      setStCategoryId(store.category_id);
+    } else {
+      setEditingStore(null);
+      setStName(''); setStNameAr(''); setStDesc(''); setStDescAr('');
+      setStLogoUrl(''); setStPhone(''); setStWhatsapp(''); setStAddress('');
+      setStCategoryId(categories[0]?.id ?? '');
+    }
+    setShowStoreForm(true);
+  };
+
+  const handlePickStoreLogo = async () => {
+    setStLogoUploading(true);
+    try {
+      const result = await pickImage('gallery');
+      if (result) {
+        const storeId = editingStore?.id ?? `tmp_${Date.now()}`;
+        const { url } = await uploadImage(result.base64, 'store', storeId);
+        if (url) setStLogoUrl(url);
+      }
+    } catch (_) {}
+    setStLogoUploading(false);
+  };
+
+  const handleSaveStore = async () => {
+    if (!stName.trim()) {
+      return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'اسم المتجر مطلوب' : 'Store name is required.');
+    }
+    if (!stCategoryId) {
+      return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى اختيار التصنيف' : 'Please select a category.');
+    }
+    setStSaving(true);
+    const payload = {
+      name: stName.trim(),
+      name_ar: stNameAr.trim(),
+      description: stDesc.trim(),
+      description_ar: stDescAr.trim(),
+      logo_url: stLogoUrl.trim(),
+      phone: stPhone.trim(),
+      whatsapp: stWhatsapp.trim(),
+      address: stAddress.trim(),
+      category_id: stCategoryId,
+      is_active: true,
+      position: stores.length,
+    };
+    const { error } = editingStore
+      ? await adminUpdateStore(editingStore.id, payload)
+      : await adminCreateStore(payload);
+    setStSaving(false);
+    if (error) { showAlert('Error', error); return; }
+    setShowStoreForm(false);
+    loadData();
+  };
+
+  const handleDeleteStore = (id: string, name: string) => {
+    showAlert(
+      isAr ? 'حذف المتجر' : 'Delete Store',
+      isAr ? `حذف "${name}"؟` : `Delete "${name}"?`,
+      [
+        { text: t.cancel, style: 'cancel' },
+        {
+          text: t.delete, style: 'destructive', onPress: async () => {
+            const { error } = await adminDeleteStore(id);
             if (error) showAlert('Error', error);
             else loadData();
           },
@@ -693,7 +805,135 @@ export default function AdminScreen() {
     { key: 'users', icon: 'people', label: t.allUsers, count: users.length },
     { key: 'banners', icon: 'view-carousel', label: t.manageBanners, count: banners.length },
     { key: 'interstitials', icon: 'play-circle-outline', label: isAr ? 'إعلانات' : 'Full-Screen', count: interstitials.length },
+    { key: 'stores', icon: 'store', label: isAr ? 'المتاجر' : 'Stores', count: stores.length },
   ];
+
+  // ── Store form inline component ──
+  const StoreForm = () => {
+    const selectedCat = categories.find(c => c.id === stCategoryId);
+    return (
+      <View style={[styles.inlineForm, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={styles.inlineFormHeader}>
+          <MaterialIcons name="store" size={18} color={colors.primary} />
+          <Text style={[styles.inlineFormTitle, { color: colors.textPrimary, flex: 1 }]}>
+            {editingStore ? (isAr ? 'تعديل المتجر' : 'Edit Store') : (isAr ? 'إضافة متجر' : 'Add Store')}
+          </Text>
+          <Pressable onPress={() => setShowStoreForm(false)} hitSlop={8}>
+            <MaterialIcons name="close" size={18} color={colors.textMuted} />
+          </Pressable>
+        </View>
+
+        {/* Logo Upload */}
+        <Text style={[styles.inlineFieldLabel, { color: colors.textSecondary }]}>
+          {isAr ? 'شعار المتجر' : 'Store Logo'}
+        </Text>
+        <View style={[storeFormS.logoRow]}>
+          {stLogoUrl ? (
+            <Image source={{ uri: stLogoUrl }} style={storeFormS.logoPreview} contentFit="cover" />
+          ) : (
+            <View style={[storeFormS.logoPlaceholder, { backgroundColor: colors.surfaceTint }]}>
+              <MaterialIcons name="store" size={28} color={colors.textMuted} />
+            </View>
+          )}
+          <Pressable
+            style={[storeFormS.logoPickBtn, { borderColor: colors.primary, backgroundColor: colors.primaryGhost }]}
+            onPress={handlePickStoreLogo}
+            disabled={stLogoUploading}
+          >
+            {stLogoUploading
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <MaterialIcons name="add-photo-alternate" size={18} color={colors.primary} />
+            }
+            <Text style={[storeFormS.logoPickBtnText, { color: colors.primary }]}>
+              {stLogoUploading
+                ? (isAr ? 'جاري الرفع...' : 'Uploading...')
+                : (isAr ? 'رفع صورة' : 'Upload Image')
+              }
+            </Text>
+          </Pressable>
+          {stLogoUrl ? (
+            <Pressable onPress={() => setStLogoUrl('')} hitSlop={8}>
+              <MaterialIcons name="delete" size={20} color={colors.error} />
+            </Pressable>
+          ) : null}
+        </View>
+
+        {/* Or enter URL manually */}
+        <View style={styles.inlineField}>
+          <Text style={[styles.inlineFieldLabel, { color: colors.textMuted }]}>
+            {isAr ? 'أو أدخل رابط الصورة يدوياً' : 'Or enter image URL manually'}
+          </Text>
+          <TextInput
+            style={[styles.inlineInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+            value={stLogoUrl}
+            onChangeText={setStLogoUrl}
+            placeholder="https://..."
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+          />
+        </View>
+
+        {/* Names */}
+        {[
+          { label: isAr ? 'اسم المتجر (إنجليزي) *' : 'Store Name (English) *', value: stName, onChange: setStName },
+          { label: isAr ? 'اسم المتجر (عربي)' : 'Store Name (Arabic)', value: stNameAr, onChange: setStNameAr },
+          { label: isAr ? 'الوصف (إنجليزي)' : 'Description (English)', value: stDesc, onChange: setStDesc },
+          { label: isAr ? 'الوصف (عربي)' : 'Description (Arabic)', value: stDescAr, onChange: setStDescAr },
+          { label: isAr ? 'رقم الهاتف' : 'Phone', value: stPhone, onChange: setStPhone },
+          { label: isAr ? 'واتساب' : 'WhatsApp', value: stWhatsapp, onChange: setStWhatsapp },
+          { label: isAr ? 'العنوان' : 'Address', value: stAddress, onChange: setStAddress },
+        ].map(f => (
+          <View key={f.label} style={styles.inlineField}>
+            <Text style={[styles.inlineFieldLabel, { color: colors.textSecondary }]}>{f.label}</Text>
+            <TextInput
+              style={[styles.inlineInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+              value={f.value}
+              onChangeText={f.onChange}
+              placeholder=""
+              placeholderTextColor={colors.textMuted}
+            />
+          </View>
+        ))}
+
+        {/* Category selector */}
+        <Text style={[styles.inlineFieldLabel, { color: colors.textSecondary }]}>
+          {isAr ? 'التصنيف *' : 'Category *'}
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={storeFormS.catRow}>
+          {categories.map(cat => {
+            const isSel = stCategoryId === cat.id;
+            return (
+              <Pressable
+                key={cat.id}
+                style={[storeFormS.catChip, {
+                  backgroundColor: isSel ? cat.color + '20' : colors.background,
+                  borderColor: isSel ? cat.color : colors.border,
+                }]}
+                onPress={() => setStCategoryId(cat.id)}
+              >
+                <MaterialIcons name={cat.icon as any} size={14} color={isSel ? cat.color : colors.textMuted} />
+                <Text style={[storeFormS.catChipText, { color: isSel ? cat.color : colors.textSecondary, fontWeight: isSel ? '700' : '500' }]}>
+                  {getCategoryName(cat, language)}
+                </Text>
+                {isSel ? <MaterialIcons name="check-circle" size={13} color={cat.color} /> : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <Pressable
+          style={[styles.formSaveBtn, { backgroundColor: colors.primary, opacity: stSaving ? 0.7 : 1 }]}
+          onPress={handleSaveStore}
+          disabled={stSaving}
+        >
+          <MaterialIcons name="check" size={16} color="#fff" />
+          <Text style={styles.formSaveBtnText}>
+            {stSaving ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (editingStore ? (isAr ? 'حفظ التعديلات' : 'Save Changes') : (isAr ? 'إضافة المتجر' : 'Add Store'))}
+          </Text>
+        </Pressable>
+      </View>
+    );
+  };
 
   // ── Banner / Interstitial inline form renderer ──
   const BannerForm = () => (
@@ -941,6 +1181,91 @@ export default function AdminScreen() {
         />
       )}
 
+      {tab === 'stores' ? (
+        <FlatList
+          data={stores}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => {
+            const cat = categories.find(c => c.id === item.category_id);
+            const catLabel = cat ? getCategoryName(cat, language) : '';
+            return (
+              <View style={[styles.bannerCard, { backgroundColor: colors.surface, borderColor: colors.border, ...Shadow.xs }]}>
+                <View style={styles.bannerPreview}>
+                  {item.logo_url ? (
+                    <Image source={{ uri: item.logo_url }} style={[styles.bannerImgWrap, { borderRadius: Radius.md }]} contentFit="cover" />
+                  ) : (
+                    <View style={[styles.bannerImgWrap, { backgroundColor: colors.primaryGhost, alignItems: 'center', justifyContent: 'center' }]}>
+                      <MaterialIcons name="store" size={22} color={colors.primary} />
+                    </View>
+                  )}
+                  <View style={styles.bannerInfo}>
+                    <Text style={[styles.bannerName, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {item.name_ar ? `${item.name} / ${item.name_ar}` : item.name}
+                    </Text>
+                    {catLabel ? (
+                      <View style={[styles.metaChip, { backgroundColor: (cat?.color ?? colors.primary) + '15', alignSelf: 'flex-start' }]}>
+                        <MaterialIcons name={(cat?.icon as any) ?? 'category'} size={11} color={cat?.color ?? colors.primary} />
+                        <Text style={[styles.metaText, { color: cat?.color ?? colors.primary }]}>{catLabel}</Text>
+                      </View>
+                    ) : null}
+                    {item.phone ? <Text style={[styles.bannerSub, { color: colors.textMuted }]}>{item.phone}</Text> : null}
+                    {item.address ? <Text style={[styles.bannerUrl, { color: colors.textMuted }]} numberOfLines={1}>{item.address}</Text> : null}
+                  </View>
+                  <View style={[styles.bannerStatus, { backgroundColor: item.is_active ? colors.successLight : colors.borderLight }]}>
+                    <Text style={[styles.bannerStatusText, { color: item.is_active ? colors.success : colors.textMuted }]}>
+                      {item.is_active ? t.bannerActive : t.bannerInactive}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.cardActions, { borderTopColor: colors.borderLight }]}>
+                  <Pressable style={[styles.actionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => openStoreForm(item)}>
+                    <MaterialIcons name="edit" size={14} color={colors.primary} />
+                    <Text style={[styles.actionBtnText, { color: colors.primary }]}>{t.edit}</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.actionBtn, { backgroundColor: item.is_active ? colors.borderLight : colors.successLight }]}
+                    onPress={() => adminUpdateStore(item.id, { is_active: !item.is_active }).then(() => loadData())}
+                  >
+                    <MaterialIcons name={item.is_active ? 'visibility-off' : 'visibility'} size={14} color={item.is_active ? colors.textMuted : colors.success} />
+                    <Text style={[styles.actionBtnText, { color: item.is_active ? colors.textMuted : colors.success }]}>
+                      {item.is_active ? (isAr ? 'إخفاء' : 'Hide') : (isAr ? 'إظهار' : 'Show')}
+                    </Text>
+                  </Pressable>
+                  <Pressable style={[styles.actionBtn, { backgroundColor: colors.errorLight }]} onPress={() => handleDeleteStore(item.id, item.name)}>
+                    <MaterialIcons name="delete-outline" size={14} color={colors.error} />
+                    <Text style={[styles.actionBtnText, { color: colors.error }]}>{t.delete}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          }}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            <>
+              <Pressable
+                style={[styles.addBtn, { backgroundColor: showStoreForm ? colors.border : colors.primary }]}
+                onPress={() => openStoreForm()}
+              >
+                <MaterialIcons name="add" size={18} color="#fff" />
+                <Text style={styles.addBtnText}>{isAr ? 'إضافة متجر جديد' : 'Add New Store'}</Text>
+              </Pressable>
+              {showStoreForm ? <StoreForm /> : null}
+            </>
+          }
+          ListEmptyComponent={
+            !showStoreForm ? (
+              <View style={styles.center}>
+                <MaterialIcons name="store" size={44} color={colors.textMuted} />
+                <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                  {isAr ? 'لا توجد متاجر بعد' : 'No stores yet'}
+                </Text>
+              </View>
+            ) : null
+          }
+        />
+      ) : null}
+
       {/* Full Edit Modal */}
       <AdEditModal
         ad={editingAd}
@@ -1075,4 +1400,34 @@ const styles = StyleSheet.create({
     paddingVertical: 10, borderRadius: Radius.md, borderWidth: 1.5, alignItems: 'center',
   },
   mediaTypeBtnText: { fontSize: FontSize.sm, fontWeight: '700' },
+});
+
+const storeFormS = StyleSheet.create({
+  logoRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  logoPreview: {
+    width: 72, height: 72, borderRadius: Radius.md,
+  },
+  logoPlaceholder: {
+    width: 72, height: 72, borderRadius: Radius.md,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  logoPickBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: Spacing.md, paddingVertical: 10,
+    borderRadius: Radius.lg, borderWidth: 1.5,
+  },
+  logoPickBtnText: { fontSize: FontSize.sm, fontWeight: '700' },
+  catRow: {
+    flexDirection: 'row', gap: Spacing.sm,
+    paddingBottom: Spacing.sm, marginBottom: Spacing.sm,
+  },
+  catChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: Spacing.md, paddingVertical: 8,
+    borderRadius: Radius.full, borderWidth: 1.5,
+  },
+  catChipText: { fontSize: FontSize.sm },
 });
