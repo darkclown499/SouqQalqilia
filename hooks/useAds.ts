@@ -3,9 +3,9 @@ import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache } from '@/services/a
 
 const PAGE_SIZE = 20;
 
-export function useAds(params?: { categoryId?: string; search?: string; maxPrice?: number; condition?: 'new' | 'used' | null }) {
+export function useAds(params?: { categoryId?: string; search?: string; maxPrice?: number; condition?: 'new' | 'used' | null; location?: string }) {
   // Seed from module-level cache on first mount (no-filter only) for instant display
-  const initialAds = !params?.categoryId && !params?.search && !params?.maxPrice && !params?.condition
+  const initialAds = !params?.categoryId && !params?.search && !params?.maxPrice && !params?.condition && !params?.location
     ? (getAdsCache()?.data ?? [])
     : [];
   const [ads, setAds] = useState<Ad[]>(initialAds);
@@ -19,7 +19,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
   const load = useCallback(async (overrideParams?: typeof params) => {
     setError(null);
     const p = overrideParams ?? params;
-    const isDefault = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.condition;
+    const isDefault = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.condition && !p?.location;
 
     // Show cached data immediately, then refresh in background
     const cached = isDefault ? getAdsCache() : null;
@@ -44,7 +44,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     setHasMore(data.length === PAGE_SIZE);
     setError(error);
     setLoading(false);
-  }, [params?.categoryId, params?.search, params?.maxPrice, params?.condition]);
+  }, [params?.categoryId, params?.search, params?.maxPrice, params?.condition, params?.location]);
 
   const loadMore = useCallback(async (currentParams?: typeof params) => {
     if (loadingMore || !hasMore) return;
@@ -64,7 +64,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     });
     setHasMore(data.length === PAGE_SIZE);
     setLoadingMore(false);
-  }, [loadingMore, hasMore, params?.categoryId, params?.search, params?.maxPrice, params?.condition]);
+  }, [loadingMore, hasMore, params?.categoryId, params?.search, params?.maxPrice, params?.condition, params?.location]);
 
   return { ads, loading, loadingMore, hasMore, error, load, loadMore, setAds };
 }

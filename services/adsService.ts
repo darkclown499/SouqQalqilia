@@ -81,6 +81,7 @@ export async function fetchAds(params?: {
   search?: string;
   maxPrice?: number;
   condition?: 'new' | 'used' | null;
+  location?: string;
   limit?: number;
   offset?: number;
 }): Promise<{ data: Ad[]; error: string | null }> {
@@ -107,6 +108,12 @@ export async function fetchAds(params?: {
   if (params?.search) query = query.ilike('title', `%${params.search}%`);
   if (params?.maxPrice !== undefined) query = query.lte('price', params.maxPrice);
   if (params?.condition) query = query.eq('condition', params.condition);
+  if (params?.location) {
+    // Match the city name at start of location string (e.g. 'عزون' matches 'عزون - شارع ...')
+    // For city 'قلقيلية المدينة' we match stored prefix 'قلقيلية'
+    const prefix = params.location === 'قلقيلية المدينة' ? 'قلقيلية' : params.location;
+    query = query.ilike('location', `${prefix}%`);
+  }
 
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput, Dimensions,
@@ -23,6 +24,35 @@ const HISTORY_KEY = 'search_history_v1';
 const MAX_HISTORY = 6;
 
 type Condition = 'new' | 'used' | null;
+
+// ── Qalqilya locations ────────────────────────────────────────────────────────
+const QALQILYA_LOCATIONS = [
+  'قلقيلية المدينة',
+  'عزون',
+  'كفر قدوم',
+  'جيوس',
+  'حبلة',
+  'كفر ثلث',
+  'عزون عتمة',
+  'إماتين',
+  'كفر لاقف',
+  'النبي إلياس',
+  'جيت',
+  'جينصافوط',
+  'حجة',
+  'باقة الحطب',
+  'الفندق',
+  'راس عطية',
+  'راس الطيرة',
+  'صير',
+  'فلامية',
+  'مغارة الضبعة',
+  'عزبة الطبيب',
+  'عزبة سلمان',
+  'عزبة الأشقر',
+  'واد الرشا',
+  'المدور',
+];
 
 async function loadHistory(): Promise<string[]> {
   try {
@@ -64,9 +94,11 @@ export default function SearchScreen() {
   const [showHistory, setShowHistory] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
+  const [selectedArea, setSelectedArea] = useState<string | null>(null);
+  const [areaPickerVisible, setAreaPickerVisible] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const hasActiveFilters = !!(selectedCategory || maxPrice || condition);
+  const hasActiveFilters = !!(selectedCategory || maxPrice || condition || selectedArea);
 
   useEffect(() => { loadHistory().then(setHistory); }, []);
   useEffect(() => {
@@ -86,8 +118,9 @@ export default function SearchScreen() {
       categoryId: selectedCategory ?? undefined,
       maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
       condition: condition ?? undefined,
+      location: selectedArea ?? undefined,
     });
-  }, [query, selectedCategory, maxPrice, condition, history, load]);
+  }, [query, selectedCategory, maxPrice, condition, selectedArea, history, load]);
 
   const handleQueryChange = useCallback((v: string) => {
     setQuery(v);
@@ -102,10 +135,11 @@ export default function SearchScreen() {
           categoryId: selectedCategory ?? undefined,
           maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
           condition: condition ?? undefined,
+          location: selectedArea ?? undefined,
         });
       }, 300);
     }
-  }, [selectedCategory, maxPrice, condition, load]);
+  }, [selectedCategory, maxPrice, condition, selectedArea, load]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
@@ -114,9 +148,10 @@ export default function SearchScreen() {
         categoryId: selectedCategory ?? undefined,
         maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
         condition: condition ?? undefined,
+        location: selectedArea ?? undefined,
       });
     }
-  }, [loadingMore, hasMore, query, selectedCategory, maxPrice, condition, loadMore]);
+  }, [loadingMore, hasMore, query, selectedCategory, maxPrice, condition, selectedArea, loadMore]);
 
   useEffect(() => { doSearch(); }, []);
 
@@ -235,7 +270,7 @@ export default function SearchScreen() {
               <Text style={[styles.filterSheetTitle, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
                 {isAr ? 'فلترة النتائج' : 'Filter Results'}
               </Text>
-              <Pressable onPress={() => { setSelectedCategory(null); setMaxPrice(''); setCondition(null); }} hitSlop={8}>
+              <Pressable onPress={() => { setSelectedCategory(null); setMaxPrice(''); setCondition(null); setSelectedArea(null); }} hitSlop={8}>
                 <Text style={[styles.filterClearAll, { color: colors.error }]}>{isAr ? 'مسح الكل' : 'Clear all'}</Text>
               </Pressable>
             </View>
@@ -286,6 +321,29 @@ export default function SearchScreen() {
               })}
             </View>
 
+            {/* Area / Location */}
+            <Text style={[styles.filterSectionLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'المنطقة أو القرية' : 'Area / Village'}
+            </Text>
+            <Pressable
+              style={({ pressed }) => [styles.areaSelector, { borderColor: selectedArea ? colors.primary : colors.border, backgroundColor: pressed ? colors.primaryGhost : colors.background, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              onPress={() => setAreaPickerVisible(true)}
+            >
+              <View style={[styles.areaSelectorIcon, { backgroundColor: selectedArea ? colors.primary : colors.surfaceTint }]}>
+                <MaterialIcons name={selectedArea === 'قلقيلية المدينة' ? 'location-city' : 'location-on'} size={14} color={selectedArea ? '#fff' : colors.textMuted} />
+              </View>
+              <Text style={[styles.areaSelectorText, { color: selectedArea ? colors.primary : colors.textMuted, flex: 1, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+                {selectedArea ?? (isAr ? 'جميع المناطق' : 'All areas')}
+              </Text>
+              {selectedArea ? (
+                <Pressable onPress={() => setSelectedArea(null)} hitSlop={6}>
+                  <MaterialIcons name="close" size={16} color={colors.primary} />
+                </Pressable>
+              ) : (
+                <MaterialIcons name="keyboard-arrow-down" size={18} color={colors.textMuted} />
+              )}
+            </Pressable>
+
             {/* Max Price */}
             <Text style={[styles.filterSectionLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>
               {isAr ? 'الحد الأقصى للسعر (₪)' : 'Max Price (₪)'}
@@ -303,6 +361,62 @@ export default function SearchScreen() {
               <MaterialIcons name="search" size={18} color="#fff" />
               <Text style={styles.applyBtnText}>{isAr ? 'تطبيق وبحث' : 'Apply & Search'}</Text>
             </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {/* ── AREA PICKER MODAL ── */}
+      {areaPickerVisible ? (
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+          <Pressable style={styles.filterOverlay} onPress={() => setAreaPickerVisible(false)} />
+          <View style={[styles.areaPickerSheet, { backgroundColor: colors.surface }]}>
+            <View style={[styles.filterHandle, { backgroundColor: colors.border }]} />
+            <View style={[styles.filterTitleRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
+              <MaterialIcons name="location-on" size={20} color={colors.primary} />
+              <Text style={[styles.filterSheetTitle, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
+                {isAr ? 'اختر المنطقة' : 'Select Area'}
+              </Text>
+              <Pressable onPress={() => setAreaPickerVisible(false)} hitSlop={8}>
+                <MaterialIcons name="close" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.areaListContent}>
+              {/* All areas option */}
+              <Pressable
+                style={({ pressed }) => [styles.areaItem, { borderColor: selectedArea === null ? colors.primary : colors.borderLight, backgroundColor: selectedArea === null ? colors.primaryGhost : (pressed ? colors.surfaceTint : colors.background) }]}
+                onPress={() => { setSelectedArea(null); setAreaPickerVisible(false); }}
+              >
+                <View style={[styles.areaItemIcon, { backgroundColor: selectedArea === null ? colors.primary : colors.surfaceTint }]}>
+                  <MaterialIcons name="location-searching" size={16} color={selectedArea === null ? '#fff' : colors.textMuted} />
+                </View>
+                <Text style={[styles.areaItemText, { color: selectedArea === null ? colors.primary : colors.textPrimary, fontWeight: selectedArea === null ? '700' : '500' }]}>
+                  {isAr ? 'جميع المناطق' : 'All Areas'}
+                </Text>
+                {selectedArea === null ? <MaterialIcons name="check-circle" size={18} color={colors.primary} /> : null}
+              </Pressable>
+              {QALQILYA_LOCATIONS.map(loc => {
+                const isSelected = selectedArea === loc;
+                const isMainCity = loc === 'قلقيلية المدينة';
+                return (
+                  <Pressable
+                    key={loc}
+                    style={({ pressed }) => [styles.areaItem, { borderColor: isSelected ? colors.primary : colors.borderLight, backgroundColor: isSelected ? colors.primaryGhost : (pressed ? colors.surfaceTint : colors.background) }]}
+                    onPress={() => { setSelectedArea(loc); setAreaPickerVisible(false); }}
+                  >
+                    <View style={[styles.areaItemIcon, { backgroundColor: isSelected ? colors.primary : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
+                      <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSelected ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
+                    </View>
+                    <Text style={[styles.areaItemText, { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '500', flex: 1 }]}>{loc}</Text>
+                    {isMainCity && !isSelected ? (
+                      <View style={[styles.defaultBadge, { backgroundColor: colors.primaryGhost }]}>
+                        <Text style={[styles.defaultBadgeText, { color: colors.primary }]}>{isAr ? 'مدينة' : 'City'}</Text>
+                      </View>
+                    ) : null}
+                    {isSelected ? <MaterialIcons name="check-circle" size={18} color={colors.primary} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
         </View>
       ) : null}
@@ -348,7 +462,14 @@ export default function SearchScreen() {
               <Text style={[styles.resultsText, { color: colors.textMuted }]}>
                 {loading ? t.searching : `${ads.length} ${ads.length !== 1 ? t.results : t.result}`}
               </Text>
-              {hasActiveFilters ? (
+              {selectedArea ? (
+                <View style={[styles.activeFiltersBadge, { backgroundColor: colors.primaryGhost }]}>
+                  <MaterialIcons name="location-on" size={11} color={colors.primary} />
+                  <Text style={[styles.activeFiltersText, { color: colors.primary }]} numberOfLines={1}>
+                    {selectedArea}
+                  </Text>
+                </View>
+              ) : hasActiveFilters ? (
                 <View style={[styles.activeFiltersBadge, { backgroundColor: colors.primaryGhost }]}>
                   <MaterialIcons name="tune" size={11} color={colors.primary} />
                   <Text style={[styles.activeFiltersText, { color: colors.primary }]}>
@@ -457,7 +578,7 @@ const styles = StyleSheet.create({
   filterHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
   filterTitleRow: { alignItems: 'center', gap: Spacing.sm, paddingBottom: Spacing.md, borderBottomWidth: 1 },
   filterSheetTitle: { fontSize: FontSize.lg, fontWeight: '700' },
-  filterClearAll: { fontSize: FontSize.sm, fontWeight: '700' },
+  filterClearAll: { fontSize: FontSize.xs, fontWeight: '700' }, // Adjusted to match the previous clearText usage
   filterSectionLabel: { fontSize: FontSize.sm, fontWeight: '700', marginBottom: -4 },
   filterChipsRow: { gap: Spacing.sm, paddingBottom: 2 },
   filterChipItem: {
@@ -485,4 +606,24 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
   },
   applyBtnText: { color: '#fff', fontWeight: '700', fontSize: FontSize.md },
+
+  // Area selector
+  areaSelector: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderRadius: Radius.lg, paddingVertical: 11, paddingHorizontal: 12 },
+  areaSelectorIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  areaSelectorText: { fontSize: FontSize.md, fontWeight: '600' },
+
+  // Area picker modal
+  areaPickerSheet: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingTop: 12, paddingBottom: 40, maxHeight: '80%',
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15, shadowRadius: 20, elevation: 24,
+  },
+  areaListContent: { paddingHorizontal: 16, paddingBottom: 16, gap: 8 },
+  areaItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: Radius.lg, borderWidth: 1.5 },
+  areaItemIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  areaItemText: { fontSize: FontSize.md },
+  defaultBadge: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
+  defaultBadgeText: { fontSize: 10, fontWeight: '700' },
 });
