@@ -131,8 +131,8 @@ export default function SearchScreen() {
     setShowHistory(false);
   }, []);
 
-  const renderAd = useCallback(({ item, index }: any) => (
-    <View style={[styles.adWrapper, index % 2 === 0 ? { marginRight: Spacing.sm / 2 } : { marginLeft: Spacing.sm / 2 }]}>
+  const renderAd = useCallback(({ item }: any) => (
+    <View style={styles.adWrapper}>
       <AdCard
         ad={item}
         width={CARD_WIDTH}
@@ -316,18 +316,30 @@ export default function SearchScreen() {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        windowSize={5}
-        maxToRenderPerBatch={10}
-        initialNumToRender={10}
-        removeClippedSubviews={true}
+        columnWrapperStyle={styles.columnWrapper}
+        windowSize={7}
+        maxToRenderPerBatch={8}
+        initialNumToRender={8}
+        updateCellsBatchingPeriod={40}
+        removeClippedSubviews
         onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.4}
+        onEndReachedThreshold={0.5}
         ListFooterComponent={
           loadingMore ? (
             <View style={styles.loadMoreIndicator}>
               <ActivityIndicator color={colors.primary} size="small" />
+              <Text style={[styles.loadingMoreText, { color: colors.textMuted }]}>
+                {isAr ? 'جاري التحميل...' : 'Loading more...'}
+              </Text>
             </View>
-          ) : null
+          ) : hasMore ? null : (ads.length > 0 ? (
+            <View style={styles.endOfList}>
+              <MaterialIcons name="check-circle-outline" size={16} color={colors.textMuted} />
+              <Text style={[styles.endOfListText, { color: colors.textMuted }]}>
+                {isAr ? 'تم عرض جميع النتائج' : 'All results shown'}
+              </Text>
+            </View>
+          ) : null)
         }
         ListHeaderComponent={
           hasSearched ? (
@@ -409,8 +421,16 @@ const styles = StyleSheet.create({
   historyItemText: { flex: 1, fontSize: FontSize.md },
   // Results
   listContent: { padding: Spacing.lg },
-  adWrapper: { flex: 1, marginBottom: Spacing.sm },
-  loadMoreIndicator: { paddingVertical: 20, alignItems: 'center' },
+
+  adWrapper: { flex: 1 },
+  columnWrapper: { gap: Spacing.sm, marginBottom: Spacing.sm },
+  loadMoreIndicator: { paddingVertical: 20, alignItems: 'center', gap: 8 },
+  loadingMoreText: { fontSize: FontSize.xs, fontWeight: '500' },
+  endOfList: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 20,
+  },
+  endOfListText: { fontSize: FontSize.sm, fontWeight: '500' },
   resultsHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginBottom: Spacing.md, flexWrap: 'wrap',
