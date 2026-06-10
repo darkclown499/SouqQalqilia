@@ -392,7 +392,7 @@ export default function SellerProfileScreen() {
         renderItem={renderItem}
         numColumns={2}
         columnWrapperStyle={styles.row}
-        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + Spacing.xl }]}
+        contentContainerStyle={[{ paddingBottom: insets.bottom + Spacing.xl }]}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews
         initialNumToRender={6}
@@ -472,13 +472,12 @@ const styles = StyleSheet.create({
   coverWrap: {
     alignItems: 'center',
     position: 'relative',
-    marginBottom: AVATAR_SIZE / 2 + 8,
+    marginBottom: AVATAR_SIZE / 2 + 16,
   },
   coverGradient: {
     width: '100%',
     height: COVER_H,
     overflow: 'hidden',
-    position: 'relative',
   },
   deco1: {
     position: 'absolute',
@@ -509,12 +508,13 @@ const styles = StyleSheet.create({
   },
   avatarShell: {
     position: 'absolute',
-    bottom: -(AVATAR_SIZE / 2 + 4),
+    bottom: -(AVATAR_SIZE / 2 + 8),
     width: AVATAR_SIZE + 8,
     height: AVATAR_SIZE + 8,
     borderRadius: (AVATAR_SIZE + 8) / 2,
     borderWidth: 4,
     overflow: 'hidden',
+    zIndex: 10,
   },
   avatarImg: {
     width: AVATAR_SIZE,
@@ -531,8 +531,8 @@ const styles = StyleSheet.create({
   },
   verifiedBadge: {
     position: 'absolute',
-    bottom: -(AVATAR_SIZE / 2 - 6),
-    right: SCREEN_W / 2 - (AVATAR_SIZE / 2) - 10,
+    bottom: -(AVATAR_SIZE / 2 - 4),
+    right: SCREEN_W / 2 - AVATAR_SIZE / 2 - 10,
     width: 26,
     height: 26,
     borderRadius: 13,
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2.5,
-    zIndex: 5,
+    zIndex: 15,
   },
 
   // ── Identity block ──
@@ -609,9 +609,10 @@ const styles = StyleSheet.create({
 
   // ── FlatList ──
   listContent: {
-    paddingHorizontal: H_PAD,
+    paddingBottom: 0, // bottom padding added via insets in component
   },
   row: {
+    paddingHorizontal: H_PAD,
     gap: COLUMN_GAP,
     marginBottom: COLUMN_GAP,
   },
@@ -621,7 +622,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Spacing.xxl,
     gap: Spacing.md,
-    paddingHorizontal: H_PAD,
+    paddingHorizontal: H_PAD * 2,
   },
   emptyIcon: {
     width: 84,

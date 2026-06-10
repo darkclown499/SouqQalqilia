@@ -180,9 +180,14 @@ export default function HomeScreen() {
   const appTitle = isAr ? 'سوق قلقيلية' : 'Souq Qalqilya';
 
   const sortedAds = useMemo(() => {
-    return sortAds(ads.filter(ad => !blockedIds.has(ad.user_id)), sortBy);
-  }, [ads, sortBy, blockedIds]);
-  const feedRows = useMemo(() => buildFeedRows(sortedAds), [sortedAds]);
+    return ads.filter(ad => !blockedIds.has(ad.user_id)); // Filter first
+  }, [ads, blockedIds]);
+
+  const sortedAndFilteredAds = useMemo(() => {
+    return sortAds(sortedAds, sortBy); // Then sort
+  }, [sortedAds, sortBy]);
+
+  const feedRows = useMemo(() => buildFeedRows(sortedAndFilteredAds), [sortedAndFilteredAds]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) loadMore({ categoryId: selectedCategory ?? undefined });
@@ -256,6 +261,7 @@ export default function HomeScreen() {
             width={CARD_WIDTH}
             isFavorited={favIds.has(item.left.id)}
             onFavoritePress={user ? toggleFav : undefined}
+            onAdPress={handleAdView} // Pass the handler
           />
         </View>
         {item.right ? (
@@ -265,6 +271,7 @@ export default function HomeScreen() {
               width={CARD_WIDTH}
               isFavorited={favIds.has(item.right.id)}
               onFavoritePress={user ? toggleFav : undefined}
+              onAdPress={handleAdView} // Pass the handler
             />
           </View>
         ) : (
@@ -272,7 +279,7 @@ export default function HomeScreen() {
         )}
       </View>
     );
-  }, [colors, isRTL, isAr, favIds, user, toggleFav, handleWaBoostPress]);
+  }, [colors, isRTL, isAr, favIds, user, toggleFav, handleWaBoostPress, handleAdView]); // Added handleAdView to deps
 
   const currentBanner = banners[featuredIndex] ?? banners[0];
 
@@ -283,7 +290,7 @@ export default function HomeScreen() {
         <Pressable
           style={[styles.bannerWrap, { height: BANNER_H }]}
           onPress={() => router.push('/search')}
-          activeOpacity={0.95}
+          // activeOpacity={0.95} // activeOpacity is not a prop of Pressable in React Native
         >
           <Image
             source={{ uri: currentBanner.image_url }}
@@ -405,7 +412,7 @@ export default function HomeScreen() {
         </View>
         <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>{t.latestListings}</Text>
         <View style={[styles.countPill, { backgroundColor: colors.primaryGhost }]}>
-          <Text style={[styles.countPillText, { color: colors.primary }]}>{sortedAds.length}</Text>
+          <Text style={[styles.countPillText, { color: colors.primary }]}>{sortedAndFilteredAds.length}</Text>
         </View>
         {sortBy !== 'newest' ? (
           <View style={[styles.activeSortPill, { backgroundColor: colors.primary }]}>
@@ -416,7 +423,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, sortedAds.length, recentlyViewed, handleCategoryPress, router, setSortBy]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, sortedAndFilteredAds.length, recentlyViewed, handleCategoryPress, handleRecentAdPress, router, setSortBy]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -656,7 +663,7 @@ const styles = StyleSheet.create({
     height: '65%',
     backgroundColor: 'transparent',
     // Simulated gradient via semi-transparent overlay
-    backgroundImage: undefined,
+    // backgroundImage: undefined, // This is a web property, not valid for React Native
     // Fallback: dark overlay for text legibility
   },
   bannerContent: {
@@ -668,7 +675,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.lg,
     gap: 6,
     backgroundColor: 'transparent',
-    backgroundImage: undefined,
+    // backgroundImage: undefined, // This is a web property, not valid for React Native
   },
   bannerTitle: {
     fontSize: FontSize.xl + 2,
@@ -891,3 +898,4 @@ const styles = StyleSheet.create({
   },
   endOfListText: { fontSize: FontSize.sm, fontWeight: '500' },
 });
+
