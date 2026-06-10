@@ -1,10 +1,10 @@
-
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
-  ActivityIndicator, RefreshControl, Dimensions,
+  RefreshControl, Dimensions, Animated, Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -17,9 +17,139 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const H_PAD = Spacing.md;
-const COLUMN_GAP = Spacing.sm;
+const H_PAD = 14;
+const COLUMN_GAP = 10;
 const CARD_W = (SCREEN_W - H_PAD * 2 - COLUMN_GAP) / 2;
+const COVER_H = 180;
+const AVATAR_SIZE = 88;
+
+// ── Skeleton shimmer box ────────────────────────────────────────────────────
+function SkeletonBox({
+  w = '100%' as number | string,
+  h,
+  br = 8,
+  baseColor,
+  style,
+}: {
+  w?: number | string;
+  h: number;
+  br?: number;
+  baseColor: string;
+  style?: any;
+}) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 850, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration: 850, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+  const opacity = anim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.35] });
+  return (
+    <Animated.View
+      style={[{ width: w as any, height: h, borderRadius: br, backgroundColor: baseColor, opacity }, style]}
+    />
+  );
+}
+
+// ── Skeleton: full seller page ──────────────────────────────────────────────
+function SellerSkeleton({ colors }: { colors: any }) {
+  const base = colors.surfaceTint;
+  const baseDark = colors.border;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* Cover */}
+      <SkeletonBox w={SCREEN_W} h={COVER_H} br={0} baseColor={baseDark} />
+
+      {/* Avatar */}
+      <View style={{ alignItems: 'center', marginTop: -(AVATAR_SIZE / 2) - 4, marginBottom: 20, gap: 10 }}>
+        <SkeletonBox w={AVATAR_SIZE + 8} h={AVATAR_SIZE + 8} br={(AVATAR_SIZE + 8) / 2} baseColor={baseDark} />
+        <SkeletonBox w={140} h={18} br={8} baseColor={base} />
+        <SkeletonBox w={100} h={13} br={6} baseColor={base} />
+      </View>
+
+      {/* Stats row */}
+      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: H_PAD, marginBottom: 24 }}>
+        {[1, 2].map(i => (
+          <SkeletonBox key={i} w={(SCREEN_W - H_PAD * 2 - 10) / 2} h={80} br={16} baseColor={base} />
+        ))}
+      </View>
+
+      {/* Grid */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: H_PAD, gap: COLUMN_GAP }}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <SkeletonBox key={i} w={CARD_W} h={200} br={14} baseColor={base} style={{ marginBottom: COLUMN_GAP }} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// ── Stat card ───────────────────────────────────────────────────────────────
+function StatCard({
+  icon,
+  value,
+  label,
+  iconColor,
+  bgColor,
+  textColor,
+  subColor,
+}: {
+  icon: string;
+  value: string;
+  label: string;
+  iconColor: string;
+  bgColor: string;
+  textColor: string;
+  subColor: string;
+}) {
+  return (
+    <View style={[statStyles.card, { backgroundColor: bgColor, flex: 1 }]}>
+      <View style={[statStyles.iconWrap, { backgroundColor: iconColor + '18' }]}>
+        <MaterialIcons name={icon as any} size={20} color={iconColor} />
+      </View>
+      <Text style={[statStyles.value, { color: textColor }]}>{value}</Text>
+      <Text style={[statStyles.label, { color: subColor }]}>{label}</Text>
+    </View>
+  );
+}
+
+const statStyles = StyleSheet.create({
+  card: {
+    borderRadius: Radius.lg,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    gap: 6,
+    ...Shadow.sm,
+  },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  value: {
+    fontSize: FontSize.lg,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    lineHeight: 22,
+  },
+  label: {
+    fontSize: FontSize.xs,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+});
+
+// ── Main screen ─────────────────────────────────────────────────────────────
 
 interface SellerProfile {
   id: string;
@@ -43,197 +173,223 @@ export default function SellerProfileScreen() {
 
   const [seller, setSeller] = useState<SellerProfile | null>(null);
   const [ads, setAds] = useState<Ad[]>([]);
-  const [loadingProfile, setLoadingProfile] = useState(true);
-  const [loadingAds, setLoadingAds] = useState(true);
+  const [pageLoading, setPageLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadSeller = useCallback(async () => {
+  // Scroll-driven header opacity
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headerOpacity = scrollY.interpolate({ inputRange: [0, COVER_H - 60], outputRange: [0, 1], extrapolate: 'clamp' });
+
+  const load = useCallback(async (quiet = false) => {
     if (!id) return;
-    setLoadingProfile(true);
-    const { data, error } = await getSupabaseClient()
-      .from('user_profiles')
-      .select('id, username, email, phone, avatar_url, is_verified, created_at')
-      .eq('id', id)
-      .single();
-    if (!error && data) setSeller(data as SellerProfile);
-    setLoadingProfile(false);
+    if (!quiet) setPageLoading(true);
+
+    const [profileRes, adsRes] = await Promise.all([
+      getSupabaseClient()
+        .from('user_profiles')
+        .select('id, username, email, phone, avatar_url, is_verified, created_at')
+        .eq('id', id)
+        .single(),
+      fetchAds({ userId: id, limit: 60 }),
+    ]);
+
+    if (!profileRes.error && profileRes.data) setSeller(profileRes.data as SellerProfile);
+    setAds(adsRes.data ?? []);
+    setPageLoading(false);
   }, [id]);
 
-  const loadAds = useCallback(async () => {
-    if (!id) return;
-    setLoadingAds(true);
-    const { data } = await fetchAds({ userId: id, limit: 50 });
-    setAds(data);
-    setLoadingAds(false);
-  }, [id]);
-
-  useEffect(() => {
-    loadSeller();
-    loadAds();
-  }, [loadSeller, loadAds]);
+  useEffect(() => { load(); }, [load]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadSeller(), loadAds()]);
+    await load(true);
     setRefreshing(false);
   };
 
-  // Derived
+  // ── Derived display values ──
   const isPhoneUser = (seller?.email ?? '').includes('@sms.souqqalqilya.local');
   const displayName = seller?.username ||
     (isPhoneUser
       ? (seller?.phone || (seller?.email ?? '').replace(/^phone_(\d+)@sms\.souqqalqilya\.local$/, '+$1'))
       : (seller?.email?.split('@')[0] ?? (isAr ? 'بائع' : 'Seller')));
 
+  const initials = displayName.slice(0, 2).toUpperCase();
+
   const joinDate = seller?.created_at
     ? new Date(seller.created_at).toLocaleDateString(isAr ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'long' })
     : null;
 
-  const avatarLetter = displayName.charAt(0).toUpperCase();
-
   // ── Render ad item ──
   const renderItem = useCallback(({ item }: { item: Ad }) => (
-    <View style={{ flex: 1 }}>
-      <AdCard
-        ad={item}
-        width={CARD_W}
-        isFavorited={favoriteIds.has(item.id)}
-        onFavoritePress={toggleFav}
-      />
-    </View>
+    <AdCard
+      ad={item}
+      width={CARD_W}
+      isFavorited={favoriteIds.has(item.id)}
+      onFavoritePress={toggleFav}
+    />
   ), [favoriteIds, toggleFav]);
 
   const keyExtractor = useCallback((item: Ad) => item.id, []);
 
-  // ── Profile header ──
-  const ListHeader = useCallback(() => (
-    <View style={styles.headerCard}>
-      {/* Cover band */}
-      <View style={[styles.coverBand, { backgroundColor: colors.primary }]}>
-        {/* Decorative circles */}
-        <View style={[styles.coverCircle1, { backgroundColor: 'rgba(255,255,255,0.07)' }]} />
-        <View style={[styles.coverCircle2, { backgroundColor: 'rgba(255,255,255,0.05)' }]} />
-      </View>
+  // ── List Header ──
+  const ListHeader = (
+    <View>
+      {/* ── Cover + Avatar ─────────────────────────────────────────────── */}
+      <View style={styles.coverWrap}>
+        <LinearGradient
+          colors={
+            isDark
+              ? ['#064d40', '#0a7a65', '#0DB896']
+              : ['#054035', '#0A6E5C', '#0eb896']
+          }
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.coverGradient}
+        >
+          {/* Decorative circles */}
+          <View style={styles.deco1} />
+          <View style={styles.deco2} />
+          <View style={styles.deco3} />
+        </LinearGradient>
 
-      {/* Avatar overlapping the cover */}
-      <View style={styles.avatarArea}>
-        {loadingProfile ? (
-          <View style={[styles.avatarRing, { borderColor: colors.background }]}>
-            <View style={[styles.avatarFallback, { backgroundColor: colors.surfaceTint }]}>
-              <ActivityIndicator color={colors.primary} />
-            </View>
-          </View>
-        ) : seller?.avatar_url ? (
-          <View style={[styles.avatarRing, { borderColor: colors.background }]}>
+        {/* Avatar */}
+        <View style={[styles.avatarShell, { borderColor: colors.background, ...Shadow.lg }]}>
+          {seller?.avatar_url ? (
             <Image
               source={{ uri: seller.avatar_url }}
-              style={styles.avatar}
+              style={styles.avatarImg}
               contentFit="cover"
-              transition={200}
+              transition={300}
             />
-          </View>
-        ) : (
-          <View style={[styles.avatarRing, { borderColor: colors.background }]}>
-            <View style={[styles.avatarFallback, { backgroundColor: colors.primary }]}>
-              <Text style={styles.avatarLetter}>{avatarLetter}</Text>
-            </View>
-          </View>
-        )}
+          ) : (
+            <LinearGradient
+              colors={['#0A6E5C', '#0D9176']}
+              style={styles.avatarImg}
+            >
+              <Text style={styles.avatarInitials}>{initials}</Text>
+            </LinearGradient>
+          )}
+        </View>
 
-        {/* Verified badge */}
+        {/* Verified badge on avatar */}
         {seller?.is_verified ? (
           <View style={[styles.verifiedBadge, { borderColor: colors.background }]}>
-            <MaterialIcons name="verified" size={14} color="#fff" />
+            <MaterialIcons name="verified" size={13} color="#fff" />
           </View>
         ) : null}
       </View>
 
-      {/* Name + badges */}
-      <View style={[styles.infoBlock, { backgroundColor: colors.surface }]}>
-        {!loadingProfile && seller ? (
-          <>
-            {/* Name row */}
-            <View style={styles.nameRow}>
-              <Text style={[styles.sellerName, { color: colors.textPrimary }]}>
-                {displayName}
-              </Text>
-              {seller.is_verified ? (
-                <View style={[styles.verifiedPill, { backgroundColor: '#DBEAFE' }]}>
-                  <MaterialIcons name="verified" size={12} color="#2563EB" />
-                  <Text style={[styles.verifiedLabel, { color: '#1D4ED8' }]}>
-                    {isAr ? 'موثّق' : 'Verified'}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            {/* Stats row */}
-            <View style={styles.statsRow}>
-              {/* Listings count */}
-              <View style={[styles.statCard, { backgroundColor: colors.primaryGhost }]}>
-                <MaterialIcons name="storefront" size={18} color={colors.primary} />
-                <Text style={[styles.statValue, { color: colors.primary }]}>{ads.length}</Text>
-                <Text style={[styles.statLabel, { color: colors.primary }]}>
-                  {isAr ? 'إعلان' : ads.length === 1 ? 'listing' : 'listings'}
-                </Text>
-              </View>
-
-              {/* Member since */}
-              {joinDate ? (
-                <View style={[styles.statCard, { backgroundColor: colors.surfaceTint, flex: 2 }]}>
-                  <MaterialIcons name="calendar-today" size={18} color={colors.textSecondary} />
-                  <View>
-                    <Text style={[styles.statValue, { color: colors.textPrimary, fontSize: FontSize.sm }]}>
-                      {joinDate}
-                    </Text>
-                    <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                      {isAr ? 'تاريخ الانضمام' : 'Member since'}
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
-            </View>
-          </>
-        ) : (
-          <ActivityIndicator color={colors.primary} style={{ marginVertical: Spacing.lg }} />
-        )}
+      {/* ── Name + Join Date ────────────────────────────────────────────── */}
+      <View style={[styles.identityBlock, { backgroundColor: colors.background }]}>
+        <Text style={[styles.sellerName, { color: colors.textPrimary }]} numberOfLines={1}>
+          {displayName}
+        </Text>
+        {joinDate ? (
+          <View style={styles.joinRow}>
+            <MaterialIcons name="calendar-today" size={12} color={colors.textMuted} />
+            <Text style={[styles.joinText, { color: colors.textMuted }]}>
+              {isAr ? `عضو منذ ${joinDate}` : `Member since ${joinDate}`}
+            </Text>
+          </View>
+        ) : null}
+        {seller?.is_verified ? (
+          <View style={[styles.verifiedPill, { backgroundColor: '#DBEAFE' }]}>
+            <MaterialIcons name="verified" size={11} color="#2563EB" />
+            <Text style={[styles.verifiedLabel, { color: '#1D4ED8' }]}>
+              {isAr ? 'بائع موثّق' : 'Verified Seller'}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
-      {/* Section title */}
-      {!loadingAds && ads.length > 0 ? (
-        <View style={[styles.sectionTitle, { backgroundColor: colors.surface, borderTopColor: colors.borderLight }]}>
-          <MaterialIcons name="storefront" size={15} color={colors.primary} />
-          <Text style={[styles.sectionTitleText, { color: colors.textPrimary }]}>
-            {isAr ? `إعلانات ${displayName}` : `${displayName}'s Listings`}
-          </Text>
-          <View style={[styles.countBadge, { backgroundColor: colors.primaryGhost }]}>
-            <Text style={[styles.countBadgeText, { color: colors.primary }]}>{ads.length}</Text>
+      {/* ── Stats Dashboard ─────────────────────────────────────────────── */}
+      <View style={[styles.statsRow, { backgroundColor: colors.background }]}>
+        <StatCard
+          icon="storefront"
+          value={String(ads.length)}
+          label={isAr ? 'إعلان نشط' : ads.length === 1 ? 'Active listing' : 'Active listings'}
+          iconColor={colors.primary}
+          bgColor={colors.surface}
+          textColor={colors.textPrimary}
+          subColor={colors.textMuted}
+        />
+        <StatCard
+          icon="star"
+          value="4.8"
+          label={isAr ? 'تقييم البائع' : 'Seller rating'}
+          iconColor="#F59E0B"
+          bgColor={colors.surface}
+          textColor={colors.textPrimary}
+          subColor={colors.textMuted}
+        />
+      </View>
+
+      {/* ── Listings tab bar ─────────────────────────────────────────────── */}
+      {ads.length > 0 ? (
+        <View style={[styles.tabBar, { backgroundColor: colors.background, borderBottomColor: colors.borderLight }]}>
+          <View style={[styles.tabActive, { borderBottomColor: colors.primary }]}>
+            <MaterialIcons name="grid-view" size={15} color={colors.primary} />
+            <Text style={[styles.tabActiveText, { color: colors.primary }]}>
+              {isAr ? `الإعلانات (${ads.length})` : `Listings (${ads.length})`}
+            </Text>
           </View>
         </View>
       ) : null}
+
+      {/* ── Spacer before grid ───────────────────────────────────────────── */}
+      <View style={{ height: Spacing.sm, backgroundColor: colors.background }} />
     </View>
-  ), [seller, loadingProfile, loadingAds, ads.length, displayName, joinDate, colors, isAr, avatarLetter]);
+  );
+
+  // ── Full-page skeleton while loading ──
+  if (pageLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <SellerSkeleton colors={colors} />
+        {/* Back button */}
+        <View style={[styles.backBar, { top: insets.top + 8 }]}>
+          <Pressable
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            hitSlop={8}
+          >
+            <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={20} color="#fff" />
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* ── Fixed back button ── */}
+      {/* ── Animated sticky header (appears on scroll) ── */}
+      <Animated.View
+        style={[
+          styles.stickyHeader,
+          {
+            paddingTop: insets.top,
+            backgroundColor: colors.primary,
+            opacity: headerOpacity,
+          },
+        ]}
+        pointerEvents="none"
+      >
+        <Text style={styles.stickyTitle} numberOfLines={1}>{displayName}</Text>
+      </Animated.View>
+
+      {/* ── Back button (always visible) ── */}
       <View style={[styles.backBar, { top: insets.top + 8 }]}>
         <Pressable
-          style={[styles.backBtn, { backgroundColor: 'rgba(0,0,0,0.35)' }]}
+          style={styles.backBtn}
           onPress={() => router.back()}
           hitSlop={8}
         >
           <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={20} color="#fff" />
         </Pressable>
-        <View style={[styles.backTitleWrap, { backgroundColor: 'rgba(0,0,0,0.28)' }]}>
-          <Text style={styles.backTitle} numberOfLines={1}>
-            {loadingProfile ? (isAr ? 'ملف البائع' : 'Seller Profile') : displayName}
-          </Text>
-        </View>
       </View>
 
-      {/* ── FlatList ── */}
-      <FlatList<Ad>
+      {/* ── Main FlatList ── */}
+      <Animated.FlatList<Ad>
         data={ads}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
@@ -245,6 +401,11 @@ export default function SellerProfileScreen() {
         initialNumToRender={6}
         windowSize={7}
         maxToRenderPerBatch={8}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -253,216 +414,199 @@ export default function SellerProfileScreen() {
             tintColor={colors.primary}
           />
         }
-        ListHeaderComponent={<ListHeader />}
+        ListHeaderComponent={ListHeader}
         ListEmptyComponent={
-          !loadingAds ? (
-            <View style={styles.emptyWrap}>
-              <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceTint }]}>
-                <MaterialIcons name="storefront" size={36} color={colors.textMuted} />
-              </View>
-              <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
-                {isAr ? 'لا توجد إعلانات نشطة' : 'No active listings'}
-              </Text>
-              <Text style={[styles.emptySub, { color: colors.textMuted }]}>
-                {isAr ? 'لم يقم هذا البائع بنشر أي إعلانات بعد' : 'This seller has no listings yet'}
-              </Text>
+          <View style={styles.emptyWrap}>
+            <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceTint }]}>
+              <MaterialIcons name="storefront" size={38} color={colors.textMuted} />
             </View>
-          ) : (
-            <View style={styles.emptyWrap}>
-              <ActivityIndicator color={colors.primary} size="large" />
-            </View>
-          )
+            <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
+              {isAr ? 'لا توجد إعلانات نشطة' : 'No active listings'}
+            </Text>
+            <Text style={[styles.emptySub, { color: colors.textMuted }]}>
+              {isAr ? 'لم يقم هذا البائع بنشر أي إعلانات بعد' : 'This seller has no listings yet'}
+            </Text>
+          </View>
         }
       />
     </View>
   );
 }
 
-const COVER_H = 140;
-const AVATAR_SIZE = 90;
-const AVATAR_OFFSET = AVATAR_SIZE / 2;
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // ── Back bar (overlay) ──
+  // ── Sticky header ──
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    paddingBottom: 14,
+    paddingHorizontal: H_PAD,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  stickyTitle: {
+    color: '#fff',
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    marginLeft: 52, // leave space for back button
+  },
+
+  // ── Back button ──
   backBar: {
     position: 'absolute',
-    left: Spacing.md,
-    right: Spacing.md,
+    left: H_PAD,
     zIndex: 30,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
   },
   backBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.32)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backTitleWrap: {
-    flex: 1,
-    borderRadius: Radius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  backTitle: {
-    color: '#fff',
-    fontSize: FontSize.md,
-    fontWeight: '700',
+    ...Shadow.sm,
   },
 
-  // ── Header card ──
-  headerCard: {
-    marginBottom: Spacing.md,
+  // ── Cover / Avatar ──
+  coverWrap: {
+    alignItems: 'center',
+    position: 'relative',
+    marginBottom: AVATAR_SIZE / 2 + 8,
   },
-
-  // Cover band
-  coverBand: {
+  coverGradient: {
+    width: '100%',
     height: COVER_H,
     overflow: 'hidden',
     position: 'relative',
   },
-  coverCircle1: {
+  deco1: {
     position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    top: -60,
-    right: -40,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    top: -70,
+    right: -50,
   },
-  coverCircle2: {
+  deco2: {
     position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    bottom: -50,
-    left: 20,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    bottom: -60,
+    left: -30,
   },
-
-  // Avatar overlapping cover
-  avatarArea: {
+  deco3: {
     position: 'absolute',
-    top: COVER_H - AVATAR_OFFSET,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    top: 30,
+    left: SCREEN_W * 0.4,
   },
-  avatarRing: {
-    width: AVATAR_SIZE + 6,
-    height: AVATAR_SIZE + 6,
-    borderRadius: (AVATAR_SIZE + 6) / 2,
-    borderWidth: 3,
+  avatarShell: {
+    position: 'absolute',
+    bottom: -(AVATAR_SIZE / 2 + 4),
+    width: AVATAR_SIZE + 8,
+    height: AVATAR_SIZE + 8,
+    borderRadius: (AVATAR_SIZE + 8) / 2,
+    borderWidth: 4,
     overflow: 'hidden',
   },
-  avatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-  },
-  avatarFallback: {
+  avatarImg: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     borderRadius: AVATAR_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarLetter: {
-    fontSize: 34,
+  avatarInitials: {
+    fontSize: 30,
     fontWeight: '800',
     color: '#fff',
+    letterSpacing: 1,
   },
   verifiedBadge: {
     position: 'absolute',
-    bottom: 4,
-    right: SCREEN_W / 2 - AVATAR_OFFSET - 4,
+    bottom: -(AVATAR_SIZE / 2 - 6),
+    right: SCREEN_W / 2 - (AVATAR_SIZE / 2) - 10,
     width: 26,
     height: 26,
     borderRadius: 13,
     backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
+    borderWidth: 2.5,
+    zIndex: 5,
   },
 
-  // Info block
-  infoBlock: {
-    paddingTop: AVATAR_OFFSET + Spacing.sm,
+  // ── Identity block ──
+  identityBlock: {
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 6,
     paddingBottom: Spacing.lg,
     paddingHorizontal: H_PAD,
-    gap: Spacing.md,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
   },
   sellerName: {
     fontSize: FontSize.xl + 2,
     fontWeight: '800',
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
     textAlign: 'center',
+  },
+  joinRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  joinText: {
+    fontSize: FontSize.xs,
+    fontWeight: '500',
   },
   verifiedPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     borderRadius: Radius.full,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 2,
   },
-  verifiedLabel: { fontSize: FontSize.xs, fontWeight: '700' },
+  verifiedLabel: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+  },
 
-  // Stats
+  // ── Stats ──
   statsRow: {
     flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  statCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 12,
-  },
-  statValue: {
-    fontSize: FontSize.md,
-    fontWeight: '800',
-    lineHeight: 20,
-  },
-  statLabel: {
-    fontSize: FontSize.xs,
-    fontWeight: '500',
+    gap: COLUMN_GAP,
+    paddingHorizontal: H_PAD,
+    paddingBottom: Spacing.lg,
   },
 
-  // Section title inside header
-  sectionTitle: {
+  // ── Tab bar ──
+  tabBar: {
+    flexDirection: 'row',
+    paddingHorizontal: H_PAD,
+    borderBottomWidth: 1,
+  },
+  tabActive: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: H_PAD,
-    paddingVertical: Spacing.md,
-    borderTopWidth: 1,
+    gap: 7,
+    paddingVertical: 12,
+    borderBottomWidth: 2.5,
+    paddingHorizontal: 4,
   },
-  sectionTitleText: {
-    fontSize: FontSize.md,
-    fontWeight: '700',
-    flex: 1,
-  },
-  countBadge: {
-    borderRadius: Radius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  countBadgeText: {
-    fontSize: FontSize.xs,
+  tabActiveText: {
+    fontSize: FontSize.sm,
     fontWeight: '700',
   },
 
@@ -483,11 +627,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: H_PAD,
   },
   emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 4,
   },
   emptyTitle: {
     fontSize: FontSize.lg,
@@ -497,6 +642,7 @@ const styles = StyleSheet.create({
   emptySub: {
     fontSize: FontSize.sm,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 21,
+    maxWidth: 260,
   },
 });
