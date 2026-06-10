@@ -110,8 +110,9 @@ export default function AdDetailScreen() {
     Linking.openURL(url).catch(() => showAlert('Error', 'Could not open WhatsApp.'));
   };
 
-  /** Build a deep link to this ad that opens the app directly */
-  const buildDeepLink = (adId: string): string => `souqqalqilya://ad/${adId}`;
+  /** Build a shareable HTTPS link that redirects to the app (recognized by WhatsApp/Telegram as clickable) */
+  const buildDeepLink = (adId: string): string =>
+    `https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/functions/v1/ad-redirect?id=${adId}`;
 
   const handleShare = async () => {
     if (!ad) return;
