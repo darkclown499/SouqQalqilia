@@ -22,6 +22,19 @@ export function ImageZoomGallery({ images, initialIndex = 0, visible, onClose }:
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const flatRef = useRef<FlatList>(null);
 
+  // Sync currentIndex whenever the gallery opens with a different initialIndex
+  React.useEffect(() => {
+    if (visible) {
+      setCurrentIndex(initialIndex);
+      // Scroll to the correct image after the FlatList has rendered
+      setTimeout(() => {
+        if (flatRef.current && initialIndex > 0) {
+          flatRef.current.scrollToIndex({ index: initialIndex, animated: false });
+        }
+      }, 50);
+    }
+  }, [visible, initialIndex]);
+
   const handleMomentumScrollEnd = (e: any) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / width);
     setCurrentIndex(idx);

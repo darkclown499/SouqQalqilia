@@ -469,7 +469,11 @@ function AdDetailScrollContent({
                 setActiveImage(idx);
               }}
               renderItem={({ item, index }) => (
-                <Pressable onPress={() => openGallery(index)} hitSlop={0}>
+                <Pressable
+                  onPress={() => openGallery(index)}
+                  style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
+                  android_ripple={null}
+                >
                   <Image source={{ uri: item.url }} style={[styles.carouselImg, { width }]} contentFit="cover" transition={200} />
                 </Pressable>
               )}
