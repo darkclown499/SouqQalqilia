@@ -593,7 +593,7 @@ function AdDetailScrollContent({
           {/* Seller card */}
           <View style={[styles.sellerCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
             <Text style={[styles.cardLabel, { color: colors.primary }]}>{t.seller}</Text>
-            <View style={styles.sellerRow}>
+            <Pressable style={styles.sellerRow} onPress={() => router.push(`/seller/${ad.user_id}` as any)} hitSlop={4}>
               {seller?.avatar_url ? (
                 <Image source={{ uri: seller.avatar_url }} style={styles.sellerAvatarImg} contentFit="cover" transition={200} />
               ) : (
@@ -603,14 +603,17 @@ function AdDetailScrollContent({
               )}
               <View style={styles.sellerInfo}>
                 <Text style={[styles.sellerName, { color: colors.textPrimary }]}>{sellerName}</Text>
+                <Text style={[styles.sellerViewProfile, { color: colors.primary }]}>
+                  {isAr ? 'عرض الملف الشخصي ←' : 'View profile →'}
+                </Text>
               </View>
-              <View style={[styles.sellerBadge, { backgroundColor: sellerVerified ? '#DBEAFE' : colors.accentLight }]}>
+              <View style={[styles.sellerBadge, { backgroundColor: sellerVerified ? '#DBEAFE' : colors.accentLight }]} pointerEvents="none">
                 <MaterialIcons name={sellerVerified ? 'verified' : 'person'} size={14} color={sellerVerified ? '#2563EB' : colors.accent} />
                 <Text style={[styles.sellerBadgeText, { color: sellerVerified ? '#1D4ED8' : colors.accentDark }]}>
                   {sellerVerified ? (isAr ? 'موثّق' : 'Verified') : 'Member'}
                 </Text>
               </View>
-            </View>
+          </Pressable>
             {hasPhone && user && (
               <View style={[styles.phoneRow, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
                 <MaterialIcons name="phone" size={15} color={colors.primary} />
@@ -837,8 +840,9 @@ const styles = StyleSheet.create({
   sellerAvatar: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
   sellerAvatarImg: { width: 50, height: 50, borderRadius: 25 },
   sellerAvatarText: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff' },
-  sellerInfo: { flex: 1 },
+  sellerInfo: { flex: 1, gap: 2 },
   sellerName: { fontSize: FontSize.md, fontWeight: '700' },
+  sellerViewProfile: { fontSize: FontSize.xs, fontWeight: '600' },
   sellerBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 4 },
   sellerBadgeText: { fontSize: 10, fontWeight: '700' },
   phoneRow: {
