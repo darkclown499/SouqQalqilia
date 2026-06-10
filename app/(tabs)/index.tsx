@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
-  Dimensions, RefreshControl, ActivityIndicator, Linking, Platform,
+  Dimensions, RefreshControl, ActivityIndicator, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
@@ -52,8 +52,6 @@ const CARD_GAP = SCREEN_W < 375 ? 8 : Spacing.sm;
 const CARD_WIDTH = (SCREEN_W - H_PAD * 2 - CARD_GAP) / 2;
 const CONTENT_W = SCREEN_W - H_PAD * 2;
 const BANNER_H = Math.round(CONTENT_W * (720 / 1280));
-const SPONSORED_INTERVAL = 8;
-
 let _interstitialsCache: InterstitialAd[] | null = null;
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'boosted';
@@ -65,23 +63,16 @@ const SORT_OPTIONS: { key: SortOption; label: string; labelAr: string; icon: str
   { key: 'boosted', label: 'Boosted', labelAr: 'معزز', icon: 'bolt' },
 ];
 
-type FeedRow =
-  | { type: 'pair'; left: Ad; right: Ad | null; id: string }
-  | { type: 'sponsored'; id: string };
+type FeedRow = { type: 'pair'; left: Ad; right: Ad | null; id: string };
 
 function buildFeedRows(ads: Ad[]): FeedRow[] {
   const rows: FeedRow[] = [];
   let adIndex = 0;
-  let pairCount = 0;
   while (adIndex < ads.length) {
-    if (pairCount > 0 && pairCount * 2 % SPONSORED_INTERVAL === 0) {
-      rows.push({ type: 'sponsored', id: `sponsored_${pairCount}` });
-    }
     const left = ads[adIndex];
     const right = ads[adIndex + 1] ?? null;
     rows.push({ type: 'pair', left, right, id: left.id });
     adIndex += 2;
-    pairCount++;
   }
   return rows;
 }
@@ -222,48 +213,7 @@ export default function HomeScreen() {
     router.push(`/ad/${ad.id}`);
   }, [handleAdView, router]);
 
-  const handleWaBoostPress = useCallback((waUrl: string) => {
-    Linking.openURL(waUrl).catch(() => {});
-  }, []);
-
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
-    if (item.type === 'sponsored') {
-      const waUrl = 'https://wa.me/972559886886?text=' + encodeURIComponent(isAr ? 'مرحباً، أريد تعزيز إعلاني في سوق قلقيلية 🛍️' : 'Hello, I want to boost my ad on Souq Qalqilya 🛍️');
-      return (
-        <View style={[styles.sponsoredCard, { backgroundColor: colors.surface, borderColor: '#25D366' + '44', ...Shadow.sm }]}>
-          <View style={[styles.sponsoredHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <View style={[styles.sponsoredIconWrap, { backgroundColor: '#25D36618' }]}>
-              <MaterialIcons name="campaign" size={20} color="#25D366" />
-            </View>
-            <View style={styles.sponsoredContent}>
-              <View style={[styles.sponsoredLabelRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <View style={[styles.sponsoredLabel, { backgroundColor: colors.accent }]}>
-                  <Text style={styles.sponsoredLabelText}>{isAr ? 'مميز' : 'BOOST'}</Text>
-                </View>
-                <View style={[styles.sponsoredPriceBadge, { backgroundColor: '#0A6E5C' }]}>
-                  <Text style={styles.sponsoredPriceText}>30 ₪</Text>
-                </View>
-              </View>
-              <Text style={[styles.sponsoredTitle, { color: colors.textPrimary }]}>
-                {isAr ? 'عزّز إعلانك واجعله مميزاً!' : 'Boost Your Ad & Stand Out!'}
-              </Text>
-              <Text style={[styles.sponsoredSub, { color: colors.textMuted }]}>
-                {isAr ? 'يظهر منتجك في أول التطبيق ويصل لأكبر عدد من المشترين' : 'Your product appears at the top and reaches more buyers'}
-              </Text>
-            </View>
-          </View>
-          <Pressable
-            style={({ pressed }) => [styles.sponsoredWaBtn, { opacity: pressed ? 0.85 : 1 }]}
-            onPress={() => handleWaBoostPress(waUrl)}
-          >
-            <MaterialIcons name="whatsapp" size={18} color="#fff" />
-            <Text style={styles.sponsoredWaBtnText}>
-              {isAr ? 'تواصل الآن عبر واتساب' : 'Contact via WhatsApp'}
-            </Text>
-          </Pressable>
-        </View>
-      );
-    }
     return (
       <View style={[styles.pairRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <View style={styles.adWrapper}>
@@ -290,7 +240,7 @@ export default function HomeScreen() {
         )}
       </View>
     );
-  }, [colors, isRTL, isAr, favIds, user, toggleFav, handleWaBoostPress, handleAdView]); // Added handleAdView to deps
+  }, [colors, isRTL, favIds, user, toggleFav, handleAdView]);
 
   const currentBanner = banners[featuredIndex] ?? banners[0];
 
@@ -367,9 +317,6 @@ export default function HomeScreen() {
                     </View>
                   )}
                   <View style={styles.recentInfo}>
-                    <Text style={[styles.recentPrice, { color: colors.primary }]}>
-                      {ad.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${ad.price.toLocaleString()}`}
-                    </Text>
                     <Text style={[styles.recentTitle, { color: colors.textSecondary }]} numberOfLines={2}>{ad.title}</Text>
                   </View>
                 </Pressable>
@@ -759,8 +706,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recentInfo: { padding: 8, gap: 3 },
-  recentPrice: { fontSize: FontSize.xs, fontWeight: '800' },
-  recentTitle: { fontSize: FontSize.xs, fontWeight: '500', lineHeight: 15 },
+  recentTitle: { fontSize: FontSize.xs, fontWeight: '600', lineHeight: 15 },
 
   // ── Section headers ──
   sectionHeaderRow: {
@@ -843,57 +789,6 @@ const styles = StyleSheet.create({
     marginBottom: CARD_GAP,
   },
   adWrapper: { flex: 1 },
-
-  // ── Sponsored card ──
-  sponsoredCard: {
-    borderRadius: Radius.xl,
-    padding: Spacing.md,
-    borderWidth: 1.5,
-    marginBottom: Spacing.md,
-    gap: Spacing.sm,
-  },
-  sponsoredHeader: { alignItems: 'flex-start', gap: Spacing.md },
-  sponsoredIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    marginTop: 2,
-  },
-  sponsoredContent: { flex: 1, gap: 5 },
-  sponsoredLabelRow: { alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  sponsoredLabel: {
-    borderRadius: Radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    alignSelf: 'flex-start',
-  },
-  sponsoredLabelText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
-  sponsoredPriceBadge: {
-    borderRadius: Radius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  sponsoredPriceText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-  sponsoredTitle: { fontSize: FontSize.sm, fontWeight: '700' },
-  sponsoredSub: { fontSize: FontSize.xs, lineHeight: 17 },
-  sponsoredWaBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#25D366',
-    borderRadius: Radius.xl,
-    paddingVertical: 12,
-    shadowColor: '#25D366',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  sponsoredWaBtnText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
 
   // ── Footer ──
   loadMoreIndicator: { paddingVertical: 20, alignItems: 'center' },
