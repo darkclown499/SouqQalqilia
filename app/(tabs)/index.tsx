@@ -220,7 +220,16 @@ export default function HomeScreen() {
   // Track ad views for recently viewed
   const handleAdView = useCallback((ad: Ad) => {
     addToRecentlyViewed(ad);
-    setRecentlyViewed(prev => [ad, ...prev.filter(a => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
+    setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
+  }, []);
+
+  const handleRecentAdPress = useCallback((ad: Ad) => {
+    handleAdView(ad);
+    router.push(`/ad/${ad.id}`);
+  }, [handleAdView, router]);
+
+  const handleWaBoostPress = useCallback((waUrl: string) => {
+    Linking.openURL(waUrl).catch(() => {});
   }, []);
 
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
@@ -253,7 +262,7 @@ export default function HomeScreen() {
           {/* WhatsApp CTA button */}
           <Pressable
             style={({ pressed }) => [styles.sponsoredWaBtn, { opacity: pressed ? 0.85 : 1 }]}
-            onPress={() => Linking.openURL(waUrl).catch(() => {})}
+            onPress={() => handleWaBoostPress(waUrl)}
           >
             <MaterialIcons name="whatsapp" size={18} color="#fff" />
             <Text style={styles.sponsoredWaBtnText}>
@@ -288,7 +297,7 @@ export default function HomeScreen() {
         )}
       </View>
     );
-  }, [colors, t, isRTL, isAr, favIds, user, toggleFav, router, blockedIds]);
+  }, [colors, t, isRTL, isAr, favIds, user, toggleFav, router, blockedIds, handleRecentAdPress, handleWaBoostPress]);
 
   const currentBanner = banners[featuredIndex] ?? banners[0];
 
@@ -304,6 +313,7 @@ export default function HomeScreen() {
             style={StyleSheet.absoluteFill}
             contentFit="cover"
             transition={600}
+            cachePolicy="memory-disk"
           />
           {/* Bottom content — title + subtitle only, no overlays */}
           <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
@@ -344,10 +354,10 @@ export default function HomeScreen() {
                 <Pressable
                   key={ad.id}
                   style={({ pressed }) => [styles.recentCard, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.88 : 1 }]}
-                  onPress={() => router.push(`/ad/${ad.id}`)}
+                  onPress={() => handleRecentAdPress(ad)}
                 >
                   {thumb ? (
-                    <Image source={{ uri: thumb }} style={styles.recentImg} contentFit="cover" transition={200} />
+                    <Image source={{ uri: thumb }} style={styles.recentImg} contentFit="cover" transition={200} cachePolicy="memory-disk" />
                   ) : (
                     <View style={[styles.recentImgPh, { backgroundColor: colors.surfaceTint }]}>
                       <MaterialIcons name="image" size={20} color={colors.textMuted} />
@@ -480,31 +490,20 @@ export default function HomeScreen() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           windowSize={7}
-          maxToRenderPerBatch={6}
+          maxToRenderPerBatch={8}
           initialNumToRender={6}
-          updateCellsBatchingPeriod={60}
-          removeClippedSubviews={Platform.OS === 'android'}
+          updateCellsBatchingPeriod={50}
+          removeClippedSubviews
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
 
           refreshControl={<RefreshControl refreshing={loading} onRefresh={handleRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
           ListHeaderComponent={ListHeader}
           ListFooterComponent={
             hasMore ? (
-              <Pressable
-                style={[styles.loadMoreBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                onPress={handleLoadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore ? (
-                  <ActivityIndicator color={colors.primary} size="small" />
-                ) : (
-                  <>
-                    <MaterialIcons name="expand-more" size={18} color={colors.primary} />
-                    <Text style={[styles.loadMoreText, { color: colors.primary }]}>
-                      {isAr ? 'تحميل المزيد' : 'Load More'}
-                    </Text>
-                  </>
-                )}
-              </Pressable>
+              <View style={styles.loadMoreIndicator}>
+                {loadingMore ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+              </View>
             ) : ads.length > 0 ? (
               <View style={styles.endOfList}>
                 <MaterialIcons name="check-circle-outline" size={16} color={colors.textMuted} />
