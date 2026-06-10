@@ -669,7 +669,7 @@ export default function ProfileScreen() {
                 {/* WhatsApp */}
                 <View style={[styles.waWrap, { borderBottomColor: colors.borderLight }]}>
                   <Pressable style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1 }]} onPress={handleWhatsApp}>
-                    <View style={styles.waIconBadge}><MaterialIcons name="whatsapp" size={26} color="#fff" /></View>
+                    <View style={styles.waIconBadge}><MaterialIcons name="support-agent" size={26} color="#fff" /></View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.waTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t.contactSupport}</Text>
                       <Text style={[styles.waSub, { textAlign: isRTL ? 'right' : 'left' }]}>{t.contactSupportSub}</Text>
