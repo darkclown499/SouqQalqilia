@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, KeyboardAvoidingView,
@@ -22,6 +23,16 @@ interface ImageItem { uri: string; base64: string }
 type Condition = 'new' | 'used';
 const PHONE_PREFIXES = ['+970', '+972'];
 
+// ── Qalqilya locations ────────────────────────────────────────────────────────
+const QALQILYA_CITY = 'قلقيلية المدينة';
+const QALQILYA_LOCATIONS = [
+  'قلقيلية المدينة', 'عزون', 'كفر قدوم', 'جيوس', 'حبلة', 'كفر ثلث',
+  'عزون عتمة', 'إماتين', 'كفر لاقف', 'النبي إلياس', 'جيت', 'جينصافوط',
+  'حجة', 'باقة الحطب', 'الفندق', 'راس عطية', 'راس الطيرة', 'صير',
+  'فلامية', 'مغارة الضبعة', 'عزبة الطبيب', 'عزبة سلمان',
+  'عزبة الأشقر', 'واد الرشا', 'المدور',
+];
+
 export default function EditAdScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -43,6 +54,8 @@ export default function EditAdScreen() {
   const [location, setLocation] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [condition, setCondition] = useState<Condition>('used');
+  const [selectedCity, setSelectedCity] = useState(QALQILYA_CITY);
+  const [cityModalVisible, setCityModalVisible] = useState(false);
   const [phonePrefix, setPhonePrefix] = useState('+970');
   const [phoneLocal, setPhoneLocal] = useState('');
   const [existingImages, setExistingImages] = useState<{ id: string; url: string; position: number }[]>([]);
@@ -61,8 +74,21 @@ export default function EditAdScreen() {
       setTitle(data.title);
       setDescription(data.description);
       setPrice(data.price.toString());
-      // Extract location neighbourhood (remove "قلقيلية - " prefix if present)
-      const loc = data.location.replace(/^قلقيلية\s*-\s*/, '').replace(/^Qalqilya\s*-\s*/, '');
+      // Extract neighbourhood (remove any known city prefix)
+      const knownPrefixes = QALQILYA_LOCATIONS.map(l => l + ' - ').concat(['قلقيلية - ', 'Qalqilya - ']);
+      let rawLoc = data.location;
+      let detectedCity = QALQILYA_CITY;
+      for (const prefix of knownPrefixes) {
+        if (rawLoc.startsWith(prefix)) {
+          const cityPart = prefix.replace(' - ', '');
+          detectedCity = QALQILYA_LOCATIONS.includes(cityPart) ? cityPart : QALQILYA_CITY;
+          rawLoc = rawLoc.slice(prefix.length);
+          break;
+        }
+      }
+      // Fallback strip
+      const loc = rawLoc.replace(/^قلقيلية\s*-\s*/, '').replace(/^Qalqilya\s*-\s*/, '');
+      setSelectedCity(detectedCity);
       setLocation(loc);
       setCategoryId(data.category_id);
       setCondition(data.condition);
@@ -124,7 +150,8 @@ export default function EditAdScreen() {
     try {
       const supabase = getSupabaseClient();
       const fullPhone = phoneLocal.trim() ? `${phonePrefix}${phoneLocal.trim()}` : '';
-      const fullLocation = `${isAr ? 'قلقيلية' : 'Qalqilya'}${location.trim() ? ` - ${location.trim()}` : ''}`;
+      const isCity = selectedCity === QALQILYA_CITY;
+      const fullLocation = `${isCity ? 'قلقيلية' : selectedCity}${location.trim() ? ` - ${location.trim()}` : ''}`;
 
       // Update ad fields via service (also clears cache)
       const { error: updateErr } = await updateAd(id, {
@@ -197,7 +224,40 @@ export default function EditAdScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
 
-        {/* Photo Source Modal */}
+          {/* City Picker Modal */}
+          <Modal visible={cityModalVisible} transparent animationType="slide" onRequestClose={() => setCityModalVisible(false)} statusBarTranslucent>
+            <Pressable style={cityS.overlay} onPress={() => setCityModalVisible(false)}>
+              <View style={[cityS.sheet, { backgroundColor: colors.surface }]}>
+                <View style={[cityS.handle, { backgroundColor: colors.border }]} />
+                <View style={[cityS.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                  <MaterialIcons name="location-on" size={20} color={colors.primary} />
+                  <Text style={[cityS.titleText, { color: colors.textPrimary }]}>{isAr ? 'اختر المنطقة' : 'Select Area'}</Text>
+                </View>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={cityS.listContent}>
+                  {QALQILYA_LOCATIONS.map(loc => {
+                    const isSelected = selectedCity === loc;
+                    const isMainCity = loc === QALQILYA_CITY;
+                    return (
+                      <Pressable
+                        key={loc}
+                        style={({ pressed }) => [cityS.item, { borderColor: isSelected ? colors.primary : colors.borderLight, backgroundColor: isSelected ? colors.primaryGhost : (pressed ? colors.surfaceTint : colors.background) }]}
+                        onPress={() => { setSelectedCity(loc); setCityModalVisible(false); }}
+                      >
+                        <View style={[cityS.itemIcon, { backgroundColor: isSelected ? colors.primary : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
+                          <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSelected ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
+                        </View>
+                        <Text style={[cityS.itemText, { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>{loc}</Text>
+                        {isMainCity && !isSelected ? <View style={[cityS.defaultBadge, { backgroundColor: colors.primaryGhost }]}><Text style={[cityS.defaultText, { color: colors.primary }]}>{isAr ? 'افتراضي' : 'Default'}</Text></View> : null}
+                        {isSelected ? <MaterialIcons name="check-circle" size={18} color={colors.primary} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </Pressable>
+          </Modal>
+
+          {/* Photo Source Modal */}
         <Modal visible={photoModalVisible} transparent animationType="slide" onRequestClose={() => setPhotoModalVisible(false)} statusBarTranslucent>
           <Pressable style={photoS.overlay} onPress={() => setPhotoModalVisible(false)}>
             <View style={[photoS.sheet, { backgroundColor: colors.surface }]}>
@@ -279,7 +339,7 @@ export default function EditAdScreen() {
               <Text style={[styles.cardLabel, { color: colors.textPrimary }]}>{isAr ? 'التفاصيل' : 'Details'}</Text>
             </View>
             <Input label={isAr ? 'العنوان *' : 'Title *'} placeholder={isAr ? 'ماذا تبيع؟' : 'What are you selling?'} value={title} onChangeText={setTitle} maxLength={80} />
-            <Input label={isAr ? 'الوصف *' : 'Description *'} placeholder={isAr ? 'صف منتجك...' : 'Describe your item...'} value={description} onChangeText={setDescription} multiline numberOfLines={4} />
+            <Input label={isAr ? 'الوصف *' : 'Description *'} placeholder={isAr ? 'صف منتجك...' : 'Describe your item.'} value={description} onChangeText={setDescription} multiline numberOfLines={4} />
           </View>
 
           {/* Condition */}
@@ -311,14 +371,25 @@ export default function EditAdScreen() {
               <Text style={[styles.cardLabel, { color: colors.textPrimary }]}>{isAr ? 'السعر والموقع' : 'Price & Location'}</Text>
             </View>
             <Input label={isAr ? 'السعر (₪) *' : 'Price (₪) *'} placeholder={isAr ? 'أدخل السعر' : 'Enter price'} value={price} onChangeText={setPrice} keyboardType="numeric" />
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }, textAlign]}>{isAr ? 'الحي أو المنطقة *' : 'Neighbourhood *'}</Text>
-            <View style={[styles.locationRow, { borderColor: colors.border, backgroundColor: colors.background, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <View style={[styles.cityTag, { backgroundColor: colors.primaryGhost }]}>
-                <MaterialIcons name="location-city" size={13} color={colors.primary} />
-                <Text style={[styles.cityText, { color: colors.primary }]}>{isAr ? 'قلقيلية' : 'Qalqilya'}</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }, textAlign]}>{isAr ? 'الموقع' : 'Location'}</Text>
+            {/* City selector */}
+            <Pressable
+              style={({ pressed }) => [styles.citySelector, { borderColor: colors.primary, backgroundColor: pressed ? colors.primaryGhost : colors.primaryGhost + 'BB', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              onPress={() => setCityModalVisible(true)}
+            >
+              <View style={[styles.citySelectorIcon, { backgroundColor: colors.primary }]}>
+                <MaterialIcons name={selectedCity === QALQILYA_CITY ? 'location-city' : 'location-on'} size={14} color="#fff" />
+              </View>
+              <Text style={[styles.citySelectorText, { color: colors.primary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{selectedCity}</Text>
+              <MaterialIcons name="keyboard-arrow-down" size={18} color={colors.primary} />
+            </Pressable>
+            {/* Optional neighbourhood */}
+            <View style={[styles.locationRow, { borderColor: colors.border, backgroundColor: colors.background, flexDirection: isRTL ? 'row-reverse' : 'row', marginTop: 8 }]}>
+              <View style={[styles.cityTag, { backgroundColor: colors.surfaceTint }]}>
+                <MaterialIcons name="signpost" size={13} color={colors.textMuted} />
               </View>
               <View style={[styles.locationDivider, { backgroundColor: colors.border }]} />
-              <Input placeholder={isAr ? 'الحي أو المنطقة' : 'Neighbourhood / Area'} value={location} onChangeText={setLocation} containerStyle={styles.locationInput} />
+              <Input placeholder={isAr ? 'الحي أو الشارع (اختياري)' : 'Street / Neighbourhood (optional)'} value={location} onChangeText={setLocation} containerStyle={styles.locationInput} />
             </View>
           </View>
 
@@ -435,6 +506,9 @@ const styles = StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: Radius.md, overflow: 'hidden', marginBottom: Spacing.sm },
   cityTag: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 14 },
   cityText: { fontSize: FontSize.sm, fontWeight: '700' },
+  citySelector: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderRadius: Radius.lg, paddingVertical: 11, paddingHorizontal: 12 },
+  citySelectorIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  citySelectorText: { fontSize: FontSize.md, fontWeight: '700' },
   locationDivider: { width: 1, height: 50 },
   locationInput: { flex: 1, marginBottom: 0 },
   phoneRow: { gap: Spacing.sm, alignItems: 'flex-start' },
@@ -454,6 +528,20 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, marginTop: 4, backgroundColor: '#FEE2E2',
   },
   deleteBtnText: { color: '#EF4444', fontSize: FontSize.md, fontWeight: '700' },
+});
+
+const cityS = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 36, paddingTop: 12, maxHeight: '82%' },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, marginBottom: 12 },
+  titleText: { fontSize: FontSize.lg, fontWeight: '800' },
+  listContent: { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: Radius.lg, borderWidth: 1.5 },
+  itemIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  itemText: { fontSize: FontSize.md, flex: 1 },
+  defaultBadge: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
+  defaultText: { fontSize: 10, fontWeight: '700' },
 });
 
 const photoS = StyleSheet.create({
