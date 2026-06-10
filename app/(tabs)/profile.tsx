@@ -406,19 +406,6 @@ export default function ProfileScreen() {
 
           {/* ── HERO ── */}
           <View style={[styles.hero, { backgroundColor: colors.primary }]}>
-            {/* Banner */}
-            <Pressable style={styles.bannerTouchArea} onPress={handlePickBanner} disabled={bannerLoading}>
-              {bannerUrl ? (
-                <Image source={{ uri: bannerUrl }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
-              ) : (
-                <View style={[styles.bannerPlaceholder, { backgroundColor: 'rgba(0,0,0,0.15)' }]} />
-              )}
-              <View style={[styles.bannerEditBadge, { backgroundColor: 'rgba(0,0,0,0.38)' }]}>
-                <MaterialIcons name={bannerLoading ? 'hourglass-empty' : 'add-photo-alternate'} size={13} color="#fff" />
-                <Text style={styles.bannerEditText}>{isRTL ? 'تغيير الغلاف' : 'Edit Cover'}</Text>
-              </View>
-            </Pressable>
-
             {/* Avatar */}
             <Pressable style={styles.avatarWrap} onPress={handlePickAvatar} disabled={avatarLoading}>
               {avatarUrl ? (

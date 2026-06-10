@@ -158,6 +158,7 @@ interface SellerProfile {
   email: string;
   phone: string | null;
   avatar_url: string | null;
+  banner_url: string | null;
   is_verified: boolean;
 }
 
@@ -187,7 +188,7 @@ export default function SellerProfileScreen() {
     const [profileRes, adsRes] = await Promise.all([
       getSupabaseClient()
         .from('user_profiles')
-        .select('id, username, email, phone, avatar_url, is_verified')
+        .select('id, username, email, phone, avatar_url, banner_url, is_verified')
         .eq('id', id)
         .single(),
       fetchAds({ userId: id, limit: 60 }),
@@ -248,6 +249,15 @@ export default function SellerProfileScreen() {
           <View style={styles.deco1} />
           <View style={styles.deco2} />
           <View style={styles.deco3} />
+          {/* Banner image overlay */}
+          {seller?.banner_url ? (
+            <Image
+              source={{ uri: seller.banner_url }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              transition={300}
+            />
+          ) : null}
         </LinearGradient>
 
         {/* Avatar */}
