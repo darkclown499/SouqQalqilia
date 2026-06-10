@@ -192,13 +192,28 @@ export async function saveAdImages(
   return { error: error ? error.message : null };
 }
 
-/** Mark ad as sold or deleted */
+/** Mark ad as sold or deleted — also clears the ads cache so home screen refreshes */
 export async function updateAdStatus(
   adId: string,
   status: 'active' | 'sold' | 'deleted'
 ): Promise<{ error: string | null }> {
   const supabase = getSupabaseClient();
   const { error } = await supabase.from('ads').update({ status }).eq('id', adId);
+  if (!error) clearAdsCache(); // Force home screen to reload fresh data
+  return { error: error ? error.message : null };
+}
+
+/** Update editable fields of an ad (owner only via RLS) */
+export async function updateAd(
+  adId: string,
+  updates: Partial<Pick<Ad, 'title' | 'description' | 'price' | 'location' | 'category_id' | 'condition' | 'phone_number'>>
+): Promise<{ error: string | null }> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('ads')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', adId);
+  if (!error) clearAdsCache();
   return { error: error ? error.message : null };
 }
 

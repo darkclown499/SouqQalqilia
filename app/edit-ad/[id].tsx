@@ -10,7 +10,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { Button, Input } from '@/components';
 import { useCategories } from '@/hooks/useCategories';
-import { fetchAdById, updateAdStatus, saveAdImages, Ad } from '@/services/adsService';
+import { fetchAdById, updateAdStatus, updateAd, Ad } from '@/services/adsService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { getCategoryName } from '@/services/categoriesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -126,8 +126,8 @@ export default function EditAdScreen() {
       const fullPhone = phoneLocal.trim() ? `${phonePrefix}${phoneLocal.trim()}` : '';
       const fullLocation = `${isAr ? 'قلقيلية' : 'Qalqilya'}${location.trim() ? ` - ${location.trim()}` : ''}`;
 
-      // Update ad fields
-      const { error: updateErr } = await supabase.from('ads').update({
+      // Update ad fields via service (also clears cache)
+      const { error: updateErr } = await updateAd(id, {
         title: title.trim(),
         description: description.trim(),
         price: parsedPrice,
@@ -135,10 +135,9 @@ export default function EditAdScreen() {
         category_id: categoryId,
         condition,
         phone_number: fullPhone,
-        updated_at: new Date().toISOString(),
-      }).eq('id', id).eq('user_id', user.id);
+      });
 
-      if (updateErr) throw new Error(updateErr.message);
+      if (updateErr) throw new Error(updateErr);
 
       // Delete removed images
       if (deletedImageIds.length > 0) {
@@ -368,6 +367,33 @@ export default function EditAdScreen() {
           </View>
 
           <Button label={saving ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'حفظ التعديلات' : 'Save Changes')} onPress={handleSave} loading={saving} style={styles.saveBtn} size="lg" />
+
+          {/* ── Delete listing button ── */}
+          <Pressable
+            style={[styles.deleteBtn, { borderColor: '#EF4444' }]}
+            onPress={() =>
+              showAlert(
+                isAr ? 'حذف الإعلان' : 'Delete Listing',
+                isAr ? `هل أنت متأكد من حذف "${ad.title}"؟ لا يمكن التراجع عن هذا.` : `Delete "${ad.title}"? This cannot be undone.`,
+                [
+                  { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+                  {
+                    text: isAr ? 'حذف نهائياً' : 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                      const { error } = await updateAdStatus(id!, 'deleted');
+                      if (error) return showAlert(isAr ? 'خطأ' : 'Error', error);
+                      router.replace('/(tabs)/profile');
+                    },
+                  },
+                ]
+              )
+            }
+          >
+            <MaterialIcons name="delete-forever" size={18} color="#EF4444" />
+            <Text style={styles.deleteBtnText}>{isAr ? 'حذف الإعلان' : 'Delete Listing'}</Text>
+          </Pressable>
+
           <View style={{ height: 24 }} />
         </ScrollView>
       </View>
@@ -422,6 +448,12 @@ const styles = StyleSheet.create({
   catName: { fontSize: FontSize.sm, flex: 1 },
   catCheck: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   saveBtn: { marginTop: 4 },
+  deleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 14, borderRadius: Radius.xl,
+    borderWidth: 1.5, marginTop: 4, backgroundColor: '#FEE2E2',
+  },
+  deleteBtnText: { color: '#EF4444', fontSize: FontSize.md, fontWeight: '700' },
 });
 
 const photoS = StyleSheet.create({
