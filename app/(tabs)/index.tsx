@@ -26,6 +26,7 @@ async function loadRecentlyViewed(): Promise<Ad[]> {
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
+
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { AdCard, EmptyState } from '@/components';
@@ -45,17 +46,13 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth } from '@/template';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-// Responsive padding: small phones get tighter spacing
 const H_PAD = SCREEN_W < 375 ? 12 : Spacing.lg;
 const CARD_GAP = SCREEN_W < 375 ? 8 : Spacing.sm;
 const CARD_WIDTH = (SCREEN_W - H_PAD * 2 - CARD_GAP) / 2;
-// Banner height: exact 720/1280 ratio matching the actual content width (after H_PAD margins)
-// Container and image share the same ratio → cover fills perfectly with zero cropping
 const CONTENT_W = SCREEN_W - H_PAD * 2;
 const BANNER_H = Math.round(CONTENT_W * (720 / 1280));
 const SPONSORED_INTERVAL = 8;
 
-// Module-level interstitials cache (banners cache moved to bannersService)
 let _interstitialsCache: InterstitialAd[] | null = null;
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'boosted';
@@ -67,8 +64,6 @@ const SORT_OPTIONS: { key: SortOption; label: string; labelAr: string; icon: str
   { key: 'boosted', label: 'Boosted', labelAr: 'معزز', icon: 'bolt' },
 ];
 
-
-
 type FeedRow =
   | { type: 'pair'; left: Ad; right: Ad | null; id: string }
   | { type: 'sponsored'; id: string };
@@ -78,7 +73,6 @@ function buildFeedRows(ads: Ad[]): FeedRow[] {
   let adIndex = 0;
   let pairCount = 0;
   while (adIndex < ads.length) {
-    // Inject sponsored row every SPONSORED_INTERVAL ads
     if (pairCount > 0 && pairCount * 2 % SPONSORED_INTERVAL === 0) {
       rows.push({ type: 'sponsored', id: `sponsored_${pairCount}` });
     }
@@ -119,8 +113,6 @@ export default function HomeScreen() {
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [recentlyViewed, setRecentlyViewed] = useState<Ad[]>([]);
-
-  useEffect(() => { loadRecentlyViewed().then(setRecentlyViewed); }, []);
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [banners, setBanners] = useState<Banner[]>(() => getBannersCache() ?? []);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
@@ -132,12 +124,12 @@ export default function HomeScreen() {
   const appStartTime = useRef(Date.now());
   const interstitialShown = useRef(false);
 
-  // Fetch blocked users once on mount
+  useEffect(() => { loadRecentlyViewed().then(setRecentlyViewed); }, []);
+
   useEffect(() => {
     if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
   }, [user?.id]);
 
-  // Re-sync blockedIds whenever block/unblock happens anywhere in the app
   useEffect(() => {
     const unsub = subscribeToBlockChanges(() => {
       if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
@@ -150,24 +142,14 @@ export default function HomeScreen() {
   useEffect(() => { load({ categoryId: selectedCategory ?? undefined }); }, [selectedCategory, load]);
 
   useEffect(() => {
-    // Use cache if available, otherwise fetch independently for speed
-    // Use service cache if available, otherwise fetch
     if (!getBannersCache()) {
       fetchActiveBanners().then(({ data }) => {
-        if (data.length > 0) {
-          setBannersCache(data);
-          setBanners(data);
-        }
+        if (data.length > 0) { setBannersCache(data); setBanners(data); }
       });
-    } else {
-      // Already preloaded — state initialized correctly above, no extra call needed
     }
     if (!_interstitialsCache) {
       fetchActiveInterstitials().then(({ data }) => {
-        if (data.length > 0) {
-          _interstitialsCache = data;
-          setInterstitials(data);
-        }
+        if (data.length > 0) { _interstitialsCache = data; setInterstitials(data); }
       });
     }
   }, []);
@@ -197,16 +179,13 @@ export default function HomeScreen() {
   const displayName = user?.username || user?.email?.split('@')[0] || '';
   const appTitle = isAr ? 'سوق قلقيلية' : 'Souq Qalqilya';
 
-  // Sort ads — completely hide blocked users' ads
   const sortedAds = useMemo(() => {
     return sortAds(ads.filter(ad => !blockedIds.has(ad.user_id)), sortBy);
   }, [ads, sortBy, blockedIds]);
   const feedRows = useMemo(() => buildFeedRows(sortedAds), [sortedAds]);
 
   const handleLoadMore = useCallback(() => {
-    if (!loadingMore && hasMore) {
-      loadMore({ categoryId: selectedCategory ?? undefined });
-    }
+    if (!loadingMore && hasMore) loadMore({ categoryId: selectedCategory ?? undefined });
   }, [loadingMore, hasMore, selectedCategory, loadMore]);
 
   const handleRefresh = useCallback(() => {
@@ -217,7 +196,6 @@ export default function HomeScreen() {
     setSelectedCategory(id);
   }, []);
 
-  // Track ad views for recently viewed
   const handleAdView = useCallback((ad: Ad) => {
     addToRecentlyViewed(ad);
     setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
@@ -236,8 +214,7 @@ export default function HomeScreen() {
     if (item.type === 'sponsored') {
       const waUrl = 'https://wa.me/972559886886?text=' + encodeURIComponent(isAr ? 'مرحباً، أريد تعزيز إعلاني في سوق قلقيلية 🛍️' : 'Hello, I want to boost my ad on Souq Qalqilya 🛍️');
       return (
-        <View style={[styles.sponsoredCard, { backgroundColor: colors.surface, borderColor: '#25D366' + '55', ...Shadow.sm }]}>
-          {/* Header row */}
+        <View style={[styles.sponsoredCard, { backgroundColor: colors.surface, borderColor: '#25D366' + '44', ...Shadow.sm }]}>
           <View style={[styles.sponsoredHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <View style={[styles.sponsoredIconWrap, { backgroundColor: '#25D36618' }]}>
               <MaterialIcons name="campaign" size={20} color="#25D366" />
@@ -259,7 +236,6 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
-          {/* WhatsApp CTA button */}
           <Pressable
             style={({ pressed }) => [styles.sponsoredWaBtn, { opacity: pressed ? 0.85 : 1 }]}
             onPress={() => handleWaBoostPress(waUrl)}
@@ -272,7 +248,6 @@ export default function HomeScreen() {
         </View>
       );
     }
-    // pair row
     return (
       <View style={[styles.pairRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <View style={styles.adWrapper}>
@@ -297,16 +272,18 @@ export default function HomeScreen() {
         )}
       </View>
     );
-  }, [colors, t, isRTL, isAr, favIds, user, toggleFav, router, blockedIds, handleRecentAdPress, handleWaBoostPress]);
+  }, [colors, isRTL, isAr, favIds, user, toggleFav, handleWaBoostPress]);
 
   const currentBanner = banners[featuredIndex] ?? banners[0];
 
   const ListHeader = useMemo(() => (
     <>
+      {/* ── BANNER ── */}
       {currentBanner ? (
         <Pressable
-          style={[styles.bannerWrap, { height: BANNER_H, ...Shadow.md }]}
+          style={[styles.bannerWrap, { height: BANNER_H }]}
           onPress={() => router.push('/search')}
+          activeOpacity={0.95}
         >
           <Image
             source={{ uri: currentBanner.image_url }}
@@ -315,7 +292,8 @@ export default function HomeScreen() {
             transition={600}
             cachePolicy="memory-disk"
           />
-          {/* Bottom content — title + subtitle only, no overlays */}
+          {/* Gradient overlay */}
+          <View style={styles.bannerGradient} />
           <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
             <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
               {currentBanner.title}
@@ -325,9 +303,12 @@ export default function HomeScreen() {
                 {currentBanner.subtitle}
               </Text>
             ) : null}
+            {/* CTA chip */}
+            <View style={styles.bannerCta}>
+              <MaterialIcons name="search" size={12} color="#fff" />
+              <Text style={styles.bannerCtaText}>{isAr ? 'تصفح الإعلانات' : 'Browse Listings'}</Text>
+            </View>
           </View>
-
-          {/* Pagination dots */}
           {banners.length > 1 ? (
             <View style={styles.bannerDots}>
               {banners.map((_, i) => (
@@ -338,12 +319,14 @@ export default function HomeScreen() {
         </Pressable>
       ) : null}
 
-      {/* Recently Viewed Section */}
+      {/* ── RECENTLY VIEWED ── */}
       {recentlyViewed.length > 0 ? (
         <View style={styles.recentSection}>
-          <View style={[styles.recentHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <MaterialIcons name="history" size={16} color={colors.primary} />
-            <Text style={[styles.recentHeaderTitle, { color: colors.textPrimary }]}>
+          <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
+              <MaterialIcons name="history" size={14} color={colors.primary} />
+            </View>
+            <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary }]}>
               {isAr ? 'آخر المشاهدات' : 'Recently Viewed'}
             </Text>
           </View>
@@ -353,21 +336,21 @@ export default function HomeScreen() {
               return (
                 <Pressable
                   key={ad.id}
-                  style={({ pressed }) => [styles.recentCard, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.88 : 1 }]}
+                  style={({ pressed }) => [styles.recentCard, { backgroundColor: colors.surface, borderColor: colors.border, ...Shadow.sm, transform: [{ scale: pressed ? 0.96 : 1 }] }]}
                   onPress={() => handleRecentAdPress(ad)}
                 >
                   {thumb ? (
                     <Image source={{ uri: thumb }} style={styles.recentImg} contentFit="cover" transition={200} cachePolicy="memory-disk" />
                   ) : (
                     <View style={[styles.recentImgPh, { backgroundColor: colors.surfaceTint }]}>
-                      <MaterialIcons name="image" size={20} color={colors.textMuted} />
+                      <MaterialIcons name="image" size={22} color={colors.textMuted} />
                     </View>
                   )}
                   <View style={styles.recentInfo}>
                     <Text style={[styles.recentPrice, { color: colors.primary }]}>
                       {ad.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${ad.price.toLocaleString()}`}
                     </Text>
-                    <Text style={[styles.recentTitle, { color: colors.textPrimary }]} numberOfLines={1}>{ad.title}</Text>
+                    <Text style={[styles.recentTitle, { color: colors.textSecondary }]} numberOfLines={2}>{ad.title}</Text>
                   </View>
                 </Pressable>
               );
@@ -376,9 +359,13 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      <View style={[styles.sectionRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t.categories}</Text>
-        <Pressable style={[styles.seeAllBtn, { flexDirection: isRTL ? 'row-reverse' : 'row' }]} onPress={() => router.push('/(tabs)/categories')}>
+      {/* ── CATEGORIES ── */}
+      <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: H_PAD }]}>
+        <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
+          <MaterialIcons name="grid-view" size={14} color={colors.primary} />
+        </View>
+        <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>{t.categories}</Text>
+        <Pressable style={[styles.seeAllBtn, { flexDirection: isRTL ? 'row-reverse' : 'row' }]} onPress={() => router.push('/(tabs)/categories')} hitSlop={6}>
           <Text style={[styles.seeAllText, { color: colors.primary }]}>{t.seeAll}</Text>
           <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={15} color={colors.primary} />
         </Pressable>
@@ -387,7 +374,9 @@ export default function HomeScreen() {
       <View style={styles.catOuter}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.catContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <Pressable
-            style={[styles.catChip, selectedCategory === null ? { backgroundColor: colors.primary, borderColor: colors.primary } : { backgroundColor: colors.surface, borderColor: colors.border }]}
+            style={[styles.catChip, selectedCategory === null
+              ? { backgroundColor: colors.primary, borderColor: colors.primary }
+              : { backgroundColor: colors.surface, borderColor: colors.border }]}
             onPress={() => handleCategoryPress(null)}
           >
             <MaterialIcons name="apps" size={14} color={selectedCategory === null ? '#fff' : colors.textMuted} />
@@ -398,7 +387,9 @@ export default function HomeScreen() {
             return (
               <Pressable
                 key={cat.id}
-                style={[styles.catChip, isSelected ? { backgroundColor: cat.color, borderColor: cat.color } : { backgroundColor: colors.surface, borderColor: colors.border }]}
+                style={[styles.catChip, isSelected
+                  ? { backgroundColor: cat.color, borderColor: cat.color }
+                  : { backgroundColor: colors.surface, borderColor: colors.border }]}
                 onPress={() => handleCategoryPress(cat.id === selectedCategory ? null : cat.id)}
               >
                 <MaterialIcons name={cat.icon as any} size={14} color={isSelected ? '#fff' : cat.color} />
@@ -411,12 +402,14 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
-      <View style={[styles.sectionRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <View style={[styles.sectionTitleRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t.latestListings}</Text>
-          <View style={[styles.countPill, { backgroundColor: colors.primaryGhost }]}>
-            <Text style={[styles.countPillText, { color: colors.primary }]}>{ads.length}</Text>
-          </View>
+      {/* ── LISTINGS HEADER ── */}
+      <View style={[styles.listingsHeader, { flexDirection: isRTL ? 'row-reverse' : 'row', borderTopColor: colors.borderLight }]}>
+        <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
+          <MaterialIcons name="storefront" size={14} color={colors.primary} />
+        </View>
+        <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>{t.latestListings}</Text>
+        <View style={[styles.countPill, { backgroundColor: colors.primaryGhost }]}>
+          <Text style={[styles.countPillText, { color: colors.primary }]}>{sortedAds.length}</Text>
         </View>
         {sortBy !== 'newest' ? (
           <View style={[styles.activeSortPill, { backgroundColor: colors.primary }]}>
@@ -427,50 +420,86 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, ads.length, recentlyViewed, handleCategoryPress, router, setSortBy]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, sortedAds.length, recentlyViewed, handleCategoryPress, router, setSortBy]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* ── HEADER ── */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View style={[styles.headerTop, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          {/* Greeting + title */}
           <View style={styles.headerLeft}>
-            <Text style={[styles.greeting, { textAlign: isRTL ? 'right' : 'left' }]}>
-              {displayName ? (isAr ? `مرحباً، ${displayName} 👋` : `Hi, ${displayName} 👋`) : (isAr ? 'اكتشف العروض 🛍️' : 'Discover Deals 🛍️')}
-            </Text>
-            <View style={[styles.appNameRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <Text style={[styles.appName, { textAlign: isRTL ? 'right' : 'left' }]}>{appTitle}</Text>
-            </View>
+            {displayName ? (
+              <Text style={[styles.greeting, { textAlign: isRTL ? 'right' : 'left' }]}>
+                {isAr ? `مرحباً بك، ${displayName} 👋` : `Welcome back, ${displayName} 👋`}
+              </Text>
+            ) : (
+              <Text style={[styles.greeting, { textAlign: isRTL ? 'right' : 'left' }]}>
+                {isAr ? 'اكتشف أفضل العروض 🛍️' : 'Discover great deals 🛍️'}
+              </Text>
+            )}
+            <Text style={[styles.appName, { textAlign: isRTL ? 'right' : 'left' }]}>{appTitle}</Text>
           </View>
+
+          {/* Actions */}
           <View style={[styles.headerActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <Pressable style={[styles.headerBtn, showSortBar && { backgroundColor: 'rgba(255,255,255,0.28)' }]} onPress={() => setShowSortBar(v => !v)} hitSlop={6}>
+            <Pressable
+              style={[styles.headerIconBtn, showSortBar && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
+              onPress={() => setShowSortBar(v => !v)}
+              hitSlop={6}
+            >
               <MaterialIcons name="tune" size={20} color="#fff" />
             </Pressable>
-            <Pressable style={styles.headerBtn} onPress={() => router.push('/search')} hitSlop={6}>
+            <Pressable
+              style={styles.headerIconBtn}
+              onPress={() => router.push('/search')}
+              hitSlop={6}
+            >
               <MaterialIcons name="search" size={20} color="#fff" />
             </Pressable>
           </View>
         </View>
 
-        <Pressable style={[styles.searchBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.95)', ...Shadow.sm, flexDirection: isRTL ? 'row-reverse' : 'row' }]} onPress={() => router.push('/search')} activeOpacity={0.85}>
+        {/* Search bar */}
+        <Pressable
+          style={[styles.searchBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.96)', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+          onPress={() => router.push('/search')}
+        >
           <View style={[styles.searchIconWrap, { backgroundColor: colors.primary + '22' }]}>
             <MaterialIcons name="search" size={16} color={isDark ? 'rgba(255,255,255,0.7)' : colors.primary} />
           </View>
-          <Text style={[styles.searchPlaceholder, { color: isDark ? 'rgba(255,255,255,0.5)' : colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>{t.searchPlaceholder}</Text>
-          <View style={[styles.filterChip, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : colors.primaryGhost }]}>
+          <Text style={[styles.searchPlaceholder, { color: isDark ? 'rgba(255,255,255,0.5)' : colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+            {t.searchPlaceholder}
+          </Text>
+          <View style={[styles.filterChipInner, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : colors.primaryGhost }]}>
             <MaterialIcons name="filter-list" size={13} color={isDark ? 'rgba(255,255,255,0.7)' : colors.primary} />
             <Text style={[styles.filterChipText, { color: isDark ? 'rgba(255,255,255,0.7)' : colors.primary }]}>{isAr ? 'فلتر' : 'Filter'}</Text>
           </View>
         </Pressable>
 
+        {/* Sort bar */}
         {showSortBar ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.sortBarContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]} style={styles.sortBar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.sortBarContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+            style={styles.sortBar}
+          >
             {SORT_OPTIONS.map(opt => {
               const isSelected = sortBy === opt.key;
               return (
-                <Pressable key={opt.key} style={[styles.sortChip, { backgroundColor: isSelected ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.1)', borderColor: isSelected ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)' }]} onPress={() => { setSortBy(opt.key); setShowSortBar(false); }}>
+                <Pressable
+                  key={opt.key}
+                  style={[styles.sortChip, {
+                    backgroundColor: isSelected ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.1)',
+                    borderColor: isSelected ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)',
+                  }]}
+                  onPress={() => { setSortBy(opt.key); setShowSortBar(false); }}
+                >
                   <MaterialIcons name={opt.icon as any} size={12} color={isSelected ? '#fff' : 'rgba(255,255,255,0.7)'} />
-                  <Text style={[styles.sortChipText, { color: isSelected ? '#fff' : 'rgba(255,255,255,0.75)', fontWeight: isSelected ? '700' : '500' }]}>{isAr ? opt.labelAr : opt.label}</Text>
+                  <Text style={[styles.sortChipText, { color: isSelected ? '#fff' : 'rgba(255,255,255,0.75)', fontWeight: isSelected ? '700' : '500' }]}>
+                    {isAr ? opt.labelAr : opt.label}
+                  </Text>
                   {isSelected ? <MaterialIcons name="check" size={11} color="#fff" /> : null}
                 </Pressable>
               );
@@ -496,8 +525,14 @@ export default function HomeScreen() {
           removeClippedSubviews
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
-
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={handleRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
           ListHeaderComponent={ListHeader}
           ListFooterComponent={
             hasMore ? (
@@ -526,80 +561,337 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md, paddingTop: Spacing.sm },
-  headerTop: { justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
-  headerLeft: { flex: 1 },
-  greeting: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.65)', marginBottom: 2, fontWeight: '500' },
-  appNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  appName: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.6, lineHeight: 30 },
+
+  // ── Header ──
+  header: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+    paddingTop: Spacing.sm,
+  },
+  headerTop: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  headerLeft: { flex: 1, gap: 2 },
+  greeting: {
+    fontSize: FontSize.xs,
+    color: 'rgba(255,255,255,0.65)',
+    fontWeight: '500',
+  },
+  appName: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.6,
+    lineHeight: 30,
+  },
   headerActions: { gap: 8 },
-  headerBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
-  searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: Radius.xl, height: 48, paddingHorizontal: Spacing.sm, gap: 8 },
-  searchIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  headerIconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Search bar
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: Radius.xl,
+    height: 48,
+    paddingHorizontal: Spacing.sm,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  searchIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   searchPlaceholder: { flex: 1, fontSize: FontSize.sm },
-  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.md },
+  filterChipInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.md,
+  },
   filterChipText: { fontSize: FontSize.xs, fontWeight: '700' },
+
+  // Sort bar
   sortBar: { marginTop: Spacing.sm },
   sortBarContent: { gap: Spacing.sm, paddingBottom: 2, paddingTop: 2 },
-  sortChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1 },
+  sortChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
   sortChipText: { fontSize: FontSize.xs },
+
+  // ── Banner ──
+  bannerWrap: {
+    width: '100%',
+    borderRadius: Radius.xl,
+    overflow: 'hidden',
+    marginBottom: Spacing.lg,
+    position: 'relative',
+    backgroundColor: '#0A6E5C',
+    ...Shadow.md,
+  },
+  bannerGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '65%',
+    backgroundColor: 'transparent',
+    // Simulated gradient via semi-transparent overlay
+    backgroundImage: undefined,
+    // Fallback: dark overlay for text legibility
+  },
+  bannerContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: Spacing.md,
+    paddingBottom: Spacing.lg,
+    gap: 6,
+    backgroundColor: 'transparent',
+    backgroundImage: undefined,
+  },
+  bannerTitle: {
+    fontSize: FontSize.xl + 2,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+    lineHeight: 28,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  bannerSubtitle: {
+    fontSize: FontSize.sm,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '500',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  bannerCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: Radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    marginTop: 2,
+  },
+  bannerCtaText: {
+    color: '#fff',
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+  },
+  bannerDots: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    flexDirection: 'row',
+    gap: 5,
+  },
+  bannerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.38)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  bannerDotActive: { backgroundColor: '#fff', width: 22, borderRadius: 4 },
+
+  // ── Recently Viewed ──
+  recentSection: { marginBottom: Spacing.lg },
+  recentList: {
+    paddingHorizontal: H_PAD,
+    gap: Spacing.sm,
+    alignItems: 'flex-start',
+  },
+  recentCard: {
+    width: 120,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  recentImg: { width: 120, height: 88 },
+  recentImgPh: {
+    width: 120,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recentInfo: { padding: 8, gap: 3 },
+  recentPrice: { fontSize: FontSize.xs, fontWeight: '800' },
+  recentTitle: { fontSize: FontSize.xs, fontWeight: '500', lineHeight: 15 },
+
+  // ── Section headers ──
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
+  sectionIconDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionHeaderTitle: {
+    fontSize: FontSize.md + 1,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  seeAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  seeAllText: { fontSize: FontSize.sm, fontWeight: '600' },
+
+  // ── Categories ──
+  catOuter: {
+    marginBottom: Spacing.lg,
+    marginHorizontal: -H_PAD,
+  },
+  catContent: {
+    paddingHorizontal: H_PAD,
+    gap: Spacing.sm,
+    alignItems: 'center',
+  },
+  catChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+    borderWidth: 1.5,
+  },
+  catChipText: { fontSize: FontSize.xs },
+
+  // ── Listings header ──
+  listingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderTopWidth: 1,
+  },
+  countPill: {
+    borderRadius: Radius.full,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  countPillText: { fontSize: FontSize.xs, fontWeight: '700' },
+  activeSortPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginLeft: 4,
+  },
+  activeSortText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
+
+  // ── Feed ──
   listContent: { padding: H_PAD, paddingBottom: 36 },
-  pairRow: { flexDirection: 'row', gap: CARD_GAP, marginBottom: CARD_GAP },
+  pairRow: {
+    flexDirection: 'row',
+    gap: CARD_GAP,
+    marginBottom: CARD_GAP,
+  },
   adWrapper: { flex: 1 },
-  sponsoredCard: { borderRadius: Radius.xl, padding: Spacing.md, borderWidth: 1.5, marginBottom: Spacing.md, gap: Spacing.sm },
+
+  // ── Sponsored card ──
+  sponsoredCard: {
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
+    borderWidth: 1.5,
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
   sponsoredHeader: { alignItems: 'flex-start', gap: Spacing.md },
-  sponsoredIconWrap: { width: 44, height: 44, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 },
+  sponsoredIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 2,
+  },
   sponsoredContent: { flex: 1, gap: 5 },
   sponsoredLabelRow: { alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  sponsoredLabel: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
+  sponsoredLabel: {
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
   sponsoredLabelText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
-  sponsoredPriceBadge: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3 },
+  sponsoredPriceBadge: {
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
   sponsoredPriceText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   sponsoredTitle: { fontSize: FontSize.sm, fontWeight: '700' },
   sponsoredSub: { fontSize: FontSize.xs, lineHeight: 17 },
-  sponsoredWaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#25D366', borderRadius: Radius.xl, paddingVertical: 12, shadowColor: '#25D366', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-  sponsoredWaBtnText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
-  recentSection: { marginBottom: Spacing.md },
-  recentHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: H_PAD, marginBottom: Spacing.sm },
-  recentHeaderTitle: { fontSize: FontSize.md, fontWeight: '700' },
-  recentList: { paddingHorizontal: H_PAD, gap: Spacing.sm, alignItems: 'flex-start' },
-  recentCard: { width: 110, borderRadius: Radius.lg, borderWidth: 1, overflow: 'hidden' },
-  recentImg: { width: 110, height: 80 },
-  recentImgPh: { width: 110, height: 80, alignItems: 'center', justifyContent: 'center' },
-  recentInfo: { padding: 7, gap: 2 },
-  recentPrice: { fontSize: FontSize.xs, fontWeight: '800' },
-  recentTitle: { fontSize: FontSize.xs, fontWeight: '500', lineHeight: 15 },
-  bannerWrap: { width: '100%', borderRadius: Radius.xl, overflow: 'hidden', marginBottom: Spacing.lg + 4, position: 'relative', backgroundColor: '#0A6E5C' },
-  bannerContent: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.md, paddingBottom: Spacing.lg, gap: 5 },
-  bannerTitle: { fontSize: FontSize.xl + 2, fontWeight: '800', color: '#fff', letterSpacing: -0.5, lineHeight: 28, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
-  bannerSubtitle: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.9)', fontWeight: '500', textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
-  bannerDots: { position: 'absolute', top: 14, right: 14, flexDirection: 'row', gap: 5 },
-  bannerDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.38)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  bannerDotActive: { backgroundColor: '#fff', width: 22, borderRadius: 4 },
-  sectionRow: { justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
-  sectionTitleRow: { alignItems: 'center', gap: 8 },
-  sectionTitle: { fontSize: FontSize.lg, fontWeight: '700', letterSpacing: -0.2 },
-  seeAllBtn: { flexDirection: 'row', alignItems: 'center' },
-  seeAllText: { fontSize: FontSize.sm, fontWeight: '600' },
-  countPill: { borderRadius: Radius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  countPillText: { fontSize: FontSize.xs, fontWeight: '700' },
-  activeSortPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  activeSortText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
-  catOuter: { marginBottom: Spacing.lg, marginHorizontal: -H_PAD },
-  catContent: { paddingHorizontal: H_PAD, gap: Spacing.sm, alignItems: 'center' },
-  catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: Spacing.md, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1.5 },
-  catChipText: { fontSize: FontSize.xs },
-  loadMoreIndicator: { paddingVertical: 20, alignItems: 'center' },
-  loadMoreBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, marginHorizontal: H_PAD, marginBottom: 24, marginTop: 8,
-    paddingVertical: 14, borderRadius: Radius.xl,
-    borderWidth: 1.5,
+  sponsoredWaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#25D366',
+    borderRadius: Radius.xl,
+    paddingVertical: 12,
+    shadowColor: '#25D366',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  loadMoreText: { fontSize: FontSize.md, fontWeight: '700' },
+  sponsoredWaBtnText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
+
+  // ── Footer ──
+  loadMoreIndicator: { paddingVertical: 20, alignItems: 'center' },
   endOfList: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 20,
   },
   endOfListText: { fontSize: FontSize.sm, fontWeight: '500' },
 });
