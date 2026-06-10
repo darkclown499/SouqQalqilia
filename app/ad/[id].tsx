@@ -58,6 +58,7 @@ export default function AdDetailScreen() {
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [relatedAds, setRelatedAds] = useState<Ad[]>([]);
+  const [sellerAds, setSellerAds] = useState<Ad[]>([]);
   const [sellerVerified, setSellerVerified] = useState(false);
   const [isSellerBlocked, setIsSellerBlocked] = useState(false);
 
@@ -73,12 +74,16 @@ export default function AdDetailScreen() {
           .eq('id', data.user_id)
           .single()
           .then(({ data: p }) => setSellerVerified(!!p?.is_verified));
-        // Check if seller is blocked
         isUserBlocked(data.user_id).then(setIsSellerBlocked);
       }
       if (data?.category_id) {
         fetchAds({ categoryId: data.category_id, limit: 7 }).then(({ data: related }) => {
           setRelatedAds((related ?? []).filter(a => a.id !== id).slice(0, 6));
+        });
+      }
+      if (data?.user_id) {
+        fetchAds({ userId: data.user_id, limit: 7 }).then(({ data: sAds }) => {
+          setSellerAds((sAds ?? []).filter(a => a.id !== id).slice(0, 5));
         });
       }
     });
@@ -115,6 +120,18 @@ export default function AdDetailScreen() {
           : `${ad.title}\n₪${ad.price.toLocaleString()}\n\nCheck this listing on Souq Qalqilya`,
       });
     } catch (_) {}
+  };
+
+  /** Share directly to WhatsApp with full listing details */
+  const handleShareWhatsApp = () => {
+    if (!ad) return;
+    const priceText = ad.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${ad.price.toLocaleString()}`;
+    const desc = ad.description ? ad.description.slice(0, 120) + (ad.description.length > 120 ? '...' : '') : '';
+    const msg = isAr
+      ? `🛒 *${ad.title}*\n💰 السعر: ${priceText}\n📍 ${ad.location || 'قلقيلية'}\n\n${desc}\n\n🏪 متوفر على سوق قلقيلية`
+      : `🛒 *${ad.title}*\n💰 Price: ${priceText}\n📍 ${ad.location || 'Qalqilya'}\n\n${desc}\n\n🏪 Available on Souq Qalqilya`;
+    const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    Linking.openURL(url).catch(() => {});
   };
 
   const handleReport = async () => {
@@ -207,6 +224,7 @@ export default function AdDetailScreen() {
             user={user}
             showAlert={showAlert}
             relatedAds={relatedAds}
+            sellerAds={sellerAds}
             favIds={favoriteIds}
             toggleFav={toggleFav}
             sellerVerified={sellerVerified}
@@ -214,14 +232,14 @@ export default function AdDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* Back button — after ScrollView so it renders on top on Android */}
+      {/* Back button */}
       <View style={[styles.backBtnWrap, { top: insets.top + 12, ...(isAr ? { right: Spacing.md, left: undefined } : { left: Spacing.md }) }]}>
         <Pressable style={styles.iconBtn} onPress={() => router.back()} hitSlop={8}>
           <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={20} color="#fff" />
         </Pressable>
       </View>
 
-      {/* Top-right actions — after ScrollView so they render on top on Android */}
+      {/* Top-right actions */}
       <View style={[styles.topRightBtns, { top: insets.top + 12, ...(isAr ? { left: Spacing.md, right: undefined } : { right: Spacing.md }) }]}>
         {user && !isOwner ? (
           <Pressable
@@ -232,8 +250,13 @@ export default function AdDetailScreen() {
             <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={18} color="#fff" />
           </Pressable>
         ) : null}
+        {/* Native share */}
         <Pressable style={styles.iconBtn} onPress={handleShare} hitSlop={8}>
           <MaterialIcons name="share" size={18} color="#fff" />
+        </Pressable>
+        {/* WhatsApp direct share */}
+        <Pressable style={[styles.iconBtn, { backgroundColor: 'rgba(37,211,102,0.82)' }]} onPress={handleShareWhatsApp} hitSlop={8}>
+          <MaterialIcons name="whatsapp" size={18} color="#fff" />
         </Pressable>
         {!isOwner ? (
           <Pressable
@@ -254,14 +277,13 @@ export default function AdDetailScreen() {
                   isAr ? 'ماذا تريد أن تفعل؟' : 'What would you like to do?',
                   [
                     { text: isAr ? 'إبلاغ عن الإعلان' : 'Report Listing', onPress: () => setReportVisible(true) },
-                    { text: isAr ? 'حظر المستخدم' : 'Block User', style: 'destructive', onPress: async () => { const { error } = await blockUser(ad!.user_id); if (!error) { setIsSellerBlocked(true); showAlert(isAr ? 'تم الحظر' : 'Blocked', isAr ? 'تم حظر هذا المستخدم. محتواه مخفي الآن.' : 'User blocked. Their content is now hidden.'); } } },
+                    { text: isAr ? 'حظر المستخدم' : 'Block User', style: 'destructive', onPress: async () => { const { error } = await blockUser(ad!.user_id); if (!error) { setIsSellerBlocked(true); showAlert(isAr ? 'تم الحظر' : 'Blocked', isAr ? 'تم حظر هذا المستخدم.' : 'User blocked.'); } } },
                     { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
                   ]
                 );
               }
             }}
             hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-            accessible={true}
             accessibilityLabel={isSellerBlocked ? 'Unblock user' : 'Report or block'}
             accessibilityRole="button"
           >
@@ -275,26 +297,53 @@ export default function AdDetailScreen() {
         {isOwner ? (
           <View style={styles.ownerRow}>
             <View style={styles.ownerLabel}>
-              <MaterialIcons name="storefront" size={16} color={colors.primary} />
+              <MaterialIcons name="storefront" size={15} color={colors.primary} />
               <Text style={[styles.ownerText, { color: colors.textSecondary }]}>{t.yourListing}</Text>
             </View>
-            {ad.status === 'active' || ad.status === 'featured' ? (
-              <Button
-                label={t.markAsSold}
-                variant="outline"
-                size="sm"
-                onPress={() =>
-                  showAlert(t.markAsSold, t.markAsSoldConfirm, [
-                    { text: t.cancel, style: 'cancel' },
-                    { text: t.confirm, onPress: () => updateAdStatus(ad.id, 'sold').then(() => router.back()) },
-                  ])
-                }
-              />
-            ) : (
-              <View style={[styles.soldChip, { backgroundColor: colors.accentLight }]}>
-                <Text style={[styles.soldChipText, { color: colors.accentDark }]}>✓ {t.sold.toUpperCase()}</Text>
-              </View>
-            )}
+            <View style={styles.ownerBtns}>
+              {/* Edit */}
+              <Pressable
+                style={[styles.adActionBtn, { backgroundColor: colors.primaryGhost, borderColor: colors.primary }]}
+                onPress={() => router.push(`/edit-ad/${ad.id}` as any)}
+              >
+                <MaterialIcons name="edit" size={13} color={colors.primary} />
+                <Text style={[styles.adActionBtnText, { color: colors.primary }]}>{isAr ? 'تعديل' : 'Edit'}</Text>
+              </Pressable>
+              {ad.status === 'active' || ad.status === 'featured' ? (
+                <>
+                  {/* Mark as sold */}
+                  <Pressable
+                    style={[styles.adActionBtn, { backgroundColor: '#DCFCE7', borderColor: '#16A34A' }]}
+                    onPress={() => showAlert(t.markAsSold, t.markAsSoldConfirm, [
+                      { text: t.cancel, style: 'cancel' },
+                      { text: t.confirm, onPress: () => updateAdStatus(ad.id, 'sold').then(() => router.back()) },
+                    ])}
+                  >
+                    <MaterialIcons name="check-circle-outline" size={13} color="#16A34A" />
+                    <Text style={[styles.adActionBtnText, { color: '#16A34A' }]}>{t.markAsSold}</Text>
+                  </Pressable>
+                  {/* Delete */}
+                  <Pressable
+                    style={[styles.adActionBtn, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]}
+                    onPress={() => showAlert(
+                      isAr ? 'حذف الإعلان' : 'Delete Listing',
+                      isAr ? `هل أنت متأكد من حذف "${ad.title}"؟` : `Delete "${ad.title}"?`,
+                      [
+                        { text: t.cancel, style: 'cancel' },
+                        { text: isAr ? 'حذف' : 'Delete', style: 'destructive', onPress: () => updateAdStatus(ad.id, 'deleted').then(() => router.back()) },
+                      ]
+                    )}
+                  >
+                    <MaterialIcons name="delete-outline" size={13} color="#EF4444" />
+                    <Text style={[styles.adActionBtnText, { color: '#EF4444' }]}>{isAr ? 'حذف' : 'Delete'}</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <View style={[styles.soldChip, { backgroundColor: colors.accentLight }]}>
+                  <Text style={[styles.soldChipText, { color: colors.accentDark }]}>✓ {t.sold.toUpperCase()}</Text>
+                </View>
+              )}
+            </View>
           </View>
         ) : (
           <View style={styles.contactSection}>
@@ -349,33 +398,20 @@ export default function AdDetailScreen() {
                   ]}
                   onPress={() => setSelectedReason(r.key)}
                 >
-                  <MaterialIcons
-                    name={r.icon}
-                    size={18}
-                    color={selectedReason === r.key ? colors.error : colors.textMuted}
-                  />
+                  <MaterialIcons name={r.icon} size={18} color={selectedReason === r.key ? colors.error : colors.textMuted} />
                   <Text style={[styles.reasonText, { color: selectedReason === r.key ? colors.error : colors.textSecondary, fontWeight: selectedReason === r.key ? '700' : '500' }]}>
                     {reasonLabels[r.key]}
                   </Text>
-                  {selectedReason === r.key ? (
-                    <MaterialIcons name="check-circle" size={16} color={colors.error} style={{ marginLeft: 'auto' }} />
-                  ) : null}
+                  {selectedReason === r.key ? <MaterialIcons name="check-circle" size={16} color={colors.error} style={{ marginLeft: 'auto' }} /> : null}
                 </Pressable>
               ))}
             </View>
 
             <View style={styles.modalActions}>
-              <Pressable
-                style={[styles.modalCancelBtn, { borderColor: colors.border }]}
-                onPress={() => { setReportVisible(false); setSelectedReason(''); }}
-              >
+              <Pressable style={[styles.modalCancelBtn, { borderColor: colors.border }]} onPress={() => { setReportVisible(false); setSelectedReason(''); }}>
                 <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>{t.cancel}</Text>
               </Pressable>
-              <Pressable
-                style={[styles.modalSubmitBtn, { backgroundColor: colors.error, opacity: reporting ? 0.7 : 1 }]}
-                onPress={handleReport}
-                disabled={reporting}
-              >
+              <Pressable style={[styles.modalSubmitBtn, { backgroundColor: colors.error, opacity: reporting ? 0.7 : 1 }]} onPress={handleReport} disabled={reporting}>
                 <MaterialIcons name="flag" size={16} color="#fff" />
                 <Text style={styles.modalSubmitText}>{reporting ? t.loading : t.report}</Text>
               </Pressable>
@@ -389,76 +425,88 @@ export default function AdDetailScreen() {
 
       {/* ── IMAGE ZOOM GALLERY ── */}
       {images.length > 0 ? (
-        <ImageZoomGallery
-          images={images}
-          initialIndex={galleryIndex}
-          visible={galleryVisible}
-          onClose={() => setGalleryVisible(false)}
-        />
+        <ImageZoomGallery images={images} initialIndex={galleryIndex} visible={galleryVisible} onClose={() => setGalleryVisible(false)} />
       ) : null}
     </View>
   );
 }
 
-// ── Inner scroll content extracted to avoid deeply nested JSX ──
+// ── Inner scroll content ──
 function AdDetailScrollContent({
   ad, images, activeImage, setActiveImage, openGallery,
   isNew, isBoosted, isFree, hasPhone, isOwner,
   sellerName, seller, t, isAr, colors,
   onPromote, onReport, onReportUser, router, user, showAlert,
-  relatedAds, favIds, toggleFav, sellerVerified,
+  relatedAds, sellerAds, favIds, toggleFav, sellerVerified,
 }: any) {
+  const carouselRef = React.useRef<FlatList<AdImage>>(null);
+
   return (
     <View>
-      {/* Image carousel */}
+      {/* ── IMAGE CAROUSEL — FlatList horizontal for native swipe ── */}
       <View style={[styles.carouselWrap, { backgroundColor: colors.surfaceTint }]}>
         {images.length > 0 ? (
           <>
-            <View style={{ flexDirection: 'row' }}>
-              {images.map((img: AdImage, idx: number) => (
-                <Pressable
-                  key={img.id}
-                  onPress={() => openGallery(idx)}
-                  style={[{ display: idx === activeImage ? 'flex' : 'none' }]}
-                >
-                  <Image source={{ uri: img.url }} style={[styles.carouselImg, { width: width }]} contentFit="cover" transition={200} />
+            <FlatList<AdImage>
+              ref={carouselRef}
+              data={images}
+              keyExtractor={(img) => img.id}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              initialScrollIndex={0}
+              getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
+              onMomentumScrollEnd={(e) => {
+                const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+                setActiveImage(idx);
+              }}
+              renderItem={({ item, index }) => (
+                <Pressable onPress={() => openGallery(index)} hitSlop={0}>
+                  <Image source={{ uri: item.url }} style={[styles.carouselImg, { width }]} contentFit="cover" transition={200} />
                 </Pressable>
-              ))}
-            </View>
-            {/* Navigation dots + swipe gesture via scroll */}
-            <View style={styles.carouselScroll}>
-              {images.map((img: AdImage, idx: number) => (
-                <Pressable key={img.id} onPress={() => setActiveImage(idx)} style={styles.dotHitArea}>
-                  <View style={[styles.dot, idx === activeImage && styles.dotActive]} />
-                </Pressable>
-              ))}
-            </View>
-            {/* Swipe handler overlay */}
-            <View
-              style={[styles.carouselOverlay, { width: width }]}
-              onStartShouldSetResponder={() => true}
+              )}
             />
             {/* Tap to zoom hint */}
-            <View style={styles.zoomHint}>
+            <View style={styles.zoomHint} pointerEvents="none">
               <MaterialIcons name="zoom-in" size={14} color="#fff" />
               <Text style={styles.zoomHintText}>{isAr ? 'اضغط للتكبير' : 'Tap to zoom'}</Text>
             </View>
+            {/* Navigation dots */}
+            {images.length > 1 ? (
+              <View style={styles.carouselScroll} pointerEvents="box-none">
+                {(images as AdImage[]).map((_: AdImage, idx: number) => (
+                  <Pressable key={idx} onPress={() => {
+                    setActiveImage(idx);
+                    carouselRef.current?.scrollToIndex({ index: idx, animated: true });
+                  }} style={styles.dotHitArea}>
+                    <View style={[styles.dot, idx === activeImage && styles.dotActive]} />
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
             {/* Nav arrows */}
             {images.length > 1 ? (
               <>
                 {activeImage > 0 ? (
-                  <Pressable style={[styles.carouselArrow, styles.arrowLeft]} onPress={() => setActiveImage((i: number) => i - 1)}>
+                  <Pressable style={[styles.carouselArrow, styles.arrowLeft]} onPress={() => {
+                    const next = activeImage - 1;
+                    setActiveImage(next);
+                    carouselRef.current?.scrollToIndex({ index: next, animated: true });
+                  }}>
                     <MaterialIcons name="chevron-left" size={28} color="#fff" />
                   </Pressable>
                 ) : null}
                 {activeImage < images.length - 1 ? (
-                  <Pressable style={[styles.carouselArrow, styles.arrowRight]} onPress={() => setActiveImage((i: number) => i + 1)}>
+                  <Pressable style={[styles.carouselArrow, styles.arrowRight]} onPress={() => {
+                    const next = activeImage + 1;
+                    setActiveImage(next);
+                    carouselRef.current?.scrollToIndex({ index: next, animated: true });
+                  }}>
                     <MaterialIcons name="chevron-right" size={28} color="#fff" />
                   </Pressable>
                 ) : null}
               </>
             ) : null}
-
           </>
         ) : (
           <Pressable style={styles.noImage} onPress={() => openGallery(0)}>
@@ -486,11 +534,7 @@ function AdDetailScrollContent({
                 backgroundColor: isNew ? colors.primaryGhost : colors.surfaceTint,
                 borderColor: isNew ? colors.primary : colors.border,
               }]}>
-                <MaterialIcons
-                  name={isNew ? 'fiber-new' : 'recycling'}
-                  size={14}
-                  color={isNew ? colors.primary : colors.textMuted}
-                />
+                <MaterialIcons name={isNew ? 'fiber-new' : 'recycling'} size={14} color={isNew ? colors.primary : colors.textMuted} />
                 <Text style={[styles.conditionText, { color: isNew ? colors.primary : colors.textSecondary }]}>
                   {isNew ? t.conditionNew : t.conditionUsed}
                 </Text>
@@ -512,7 +556,6 @@ function AdDetailScrollContent({
 
           <Text style={[styles.title, { color: colors.textPrimary }]}>{ad.title}</Text>
 
-          {/* Serial number reference chip */}
           <View style={[styles.serialRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
             <View style={[styles.serialChip, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
               <MaterialIcons name="tag" size={13} color={colors.textMuted} />
@@ -600,6 +643,48 @@ function AdDetailScrollContent({
             </Pressable>
           ) : null}
 
+          {/* ── SELLER'S OTHER ADS ── */}
+          {sellerAds && sellerAds.length > 0 ? (
+            <View style={styles.relatedSection}>
+              <View style={[styles.relatedHeader, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+                <MaterialIcons name="storefront" size={16} color={colors.primary} />
+                <Text style={[styles.relatedTitle, { color: colors.textPrimary }]}>
+                  {isAr ? `إعلانات أخرى لـ ${sellerName}` : `More from ${sellerName}`}
+                </Text>
+                <View style={[styles.relatedCount, { backgroundColor: colors.primaryGhost }]}>
+                  <Text style={[styles.relatedCountText, { color: colors.primary }]}>{sellerAds.length}</Text>
+                </View>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.relatedScroll, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+                {sellerAds.map((rel: Ad) => {
+                  const relImages = (rel.ad_images ?? []).sort((a: any, b: any) => a.position - b.position);
+                  const relThumb = relImages[0]?.url;
+                  return (
+                    <Pressable
+                      key={rel.id}
+                      style={[styles.relatedCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                      onPress={() => router.replace(`/ad/${rel.id}`)}
+                    >
+                      {relThumb ? (
+                        <Image source={{ uri: relThumb }} style={styles.relatedImg} contentFit="cover" transition={200} />
+                      ) : (
+                        <View style={[styles.relatedImgPlaceholder, { backgroundColor: colors.surfaceTint }]}>
+                          <MaterialIcons name="image" size={28} color={colors.textMuted} />
+                        </View>
+                      )}
+                      <View style={styles.relatedInfo}>
+                        <Text style={[styles.relatedPrice, { color: colors.primary }]}>
+                          {rel.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${rel.price.toLocaleString()}`}
+                        </Text>
+                        <Text style={[styles.relatedName, { color: colors.textPrimary }]} numberOfLines={2}>{rel.title}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          ) : null}
+
           {/* ── RELATED ADS ── */}
           {relatedAds && relatedAds.length > 0 ? (
             <View style={styles.relatedSection}>
@@ -612,11 +697,7 @@ function AdDetailScrollContent({
                   <Text style={[styles.relatedCountText, { color: colors.primary }]}>{relatedAds.length}</Text>
                 </View>
               </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={[styles.relatedScroll, { flexDirection: isAr ? 'row-reverse' : 'row' }]}
-              >
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.relatedScroll, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
                 {relatedAds.map((rel: Ad) => {
                   const relImages = (rel.ad_images ?? []).sort((a: any, b: any) => a.position - b.position);
                   const relThumb = relImages[0]?.url;
@@ -647,9 +728,7 @@ function AdDetailScrollContent({
                         <Text style={[styles.relatedPrice, { color: colors.primary }]}>
                           {rel.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${rel.price.toLocaleString()}`}
                         </Text>
-                        <Text style={[styles.relatedName, { color: colors.textPrimary }]} numberOfLines={2}>
-                          {rel.title}
-                        </Text>
+                        <Text style={[styles.relatedName, { color: colors.textPrimary }]} numberOfLines={2}>{rel.title}</Text>
                         {rel.location ? (
                           <View style={[styles.relatedLoc, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
                             <MaterialIcons name="location-on" size={11} color={colors.textMuted} />
@@ -688,7 +767,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', gap: 5, zIndex: 5,
   },
   dotHitArea: { padding: 4 },
-  carouselOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, opacity: 0 },
   carouselArrow: {
     position: 'absolute', top: '40%', zIndex: 8,
     width: 40, height: 40, borderRadius: 20,
@@ -754,7 +832,6 @@ const styles = StyleSheet.create({
   sellerAvatarText: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff' },
   sellerInfo: { flex: 1 },
   sellerName: { fontSize: FontSize.md, fontWeight: '700' },
-
   sellerBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 4 },
   sellerBadgeText: { fontSize: 10, fontWeight: '700' },
   phoneRow: {
@@ -778,9 +855,12 @@ const styles = StyleSheet.create({
   },
   reportUserBtnText: { fontSize: FontSize.sm, fontWeight: '600' },
   bottomBar: { padding: Spacing.md, paddingHorizontal: Spacing.lg, borderTopWidth: 1 },
-  ownerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  ownerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   ownerLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   ownerText: { fontSize: FontSize.sm, fontWeight: '500' },
+  ownerBtns: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' },
+  adActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1.5 },
+  adActionBtnText: { fontSize: FontSize.xs, fontWeight: '700' },
   soldChip: { borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 8 },
   soldChipText: { fontSize: FontSize.sm, fontWeight: '700' },
   contactSection: { gap: Spacing.sm },
@@ -825,8 +905,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
   },
   modalSubmitText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
-
-  // Related ads
   relatedSection: { gap: Spacing.sm },
   relatedHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   relatedTitle: { fontSize: FontSize.md, fontWeight: '700' },
@@ -849,8 +927,6 @@ const styles = StyleSheet.create({
   relatedName: { fontSize: FontSize.sm, fontWeight: '600', lineHeight: 18 },
   relatedLoc: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   relatedLocText: { fontSize: 10 },
-
-  // Serial number
   serialRow: { marginTop: -4 },
   serialChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,

@@ -77,6 +77,7 @@ export interface CreateAdInput {
  */
 export async function fetchAds(params?: {
   categoryId?: string;
+  userId?: string;
   search?: string;
   maxPrice?: number;
   condition?: 'new' | 'used' | null;
@@ -102,6 +103,7 @@ export async function fetchAds(params?: {
     .range(offset, offset + limit - 1);
 
   if (params?.categoryId) query = query.eq('category_id', params.categoryId);
+  if (params?.userId) query = query.eq('user_id', params.userId);
   if (params?.search) query = query.ilike('title', `%${params.search}%`);
   if (params?.maxPrice !== undefined) query = query.lte('price', params.maxPrice);
   if (params?.condition) query = query.eq('condition', params.condition);
