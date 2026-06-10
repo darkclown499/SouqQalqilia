@@ -36,7 +36,7 @@ const OPTIONS: PromotionOption[] = [
     descEn: 'Push your listing to the top of search results and home feed.',
     descAr: 'اجعل إعلانك في أعلى نتائج البحث والصفحة الرئيسية.',
     packages: [
-      { labelEn: '7 Days Boost', labelAr: 'تعزيز 7 أيام', price: '30 ₪' },
+      { labelEn: '3 Days Boost', labelAr: 'تعزيز 3 أيام', price: '' },
     ],
     gradient: ['#0A6E5C', '#0D9176'],
     accentColor: '#0A6E5C',
@@ -49,8 +49,8 @@ const OPTIONS: PromotionOption[] = [
     descEn: 'Display your banner prominently on the home screen carousel.',
     descAr: 'اعرض بانرك بشكل بارز في شريط الصفحة الرئيسية.',
     packages: [
-      { labelEn: '7 Days Banner', labelAr: 'بانر 7 أيام', price: '300 ₪' },
-      { labelEn: '14 Days Banner', labelAr: 'بانر 14 يوم', price: '500 ₪', popular: true },
+      { labelEn: '7 Days Banner', labelAr: 'بانر 7 أيام', price: '' },
+      { labelEn: '14 Days Banner', labelAr: 'بانر 14 يوم', price: '', popular: true },
     ],
     gradient: ['#D97706', '#F59E0B'],
     accentColor: '#D97706',
@@ -81,8 +81,8 @@ export function PromotionModal({ visible, onClose }: Props) {
     const title = isAr ? selectedOption.titleAr : selectedOption.titleEn;
     const pkgLabel = isAr ? pkg.labelAr : pkg.labelEn;
     return isAr
-      ? `مرحباً، أريد الاشتراك في خدمة "${title}" - ${pkgLabel} بسعر ${pkg.price} في سوق قلقيلية.`
-      : `Hello, I want to subscribe to "${title}" - ${pkgLabel} at ${pkg.price} in Souq Qalqilya.`;
+      ? `مرحباً، أريد الاشتراك في خدمة "${title}" - ${pkgLabel} في سوق قلقيلية.`
+      : `Hello, I want to subscribe to "${title}" - ${pkgLabel} in Souq Qalqilya.`;
   };
 
   const handleWhatsApp = () => {
@@ -205,9 +205,6 @@ export function PromotionModal({ visible, onClose }: Props) {
                           ) : null}
                           <Text style={[styles.pkgLabel, { color: isPkgSelected ? '#fff' : colors.textSecondary }]}>
                             {isAr ? pkg.labelAr : pkg.labelEn}
-                          </Text>
-                          <Text style={[styles.pkgPrice, { color: isPkgSelected ? '#fff' : option.accentColor }]}>
-                            {pkg.price}
                           </Text>
                         </Pressable>
                       );
