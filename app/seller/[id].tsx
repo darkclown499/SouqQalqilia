@@ -334,7 +334,7 @@ export default function SellerProfileScreen() {
       ) : null}
 
       {/* ── Spacer before grid ───────────────────────────────────────────── */}
-      <View style={{ height: Spacing.sm, backgroundColor: colors.background }} />
+      <View style={{ height: Spacing.sm }} />
     </View>
   );
 
@@ -392,7 +392,7 @@ export default function SellerProfileScreen() {
         renderItem={renderItem}
         numColumns={2}
         columnWrapperStyle={styles.row}
-        contentContainerStyle={[{ paddingBottom: insets.bottom + Spacing.xl }]}
+        contentContainerStyle={[{ paddingBottom: insets.bottom + Spacing.xl, paddingHorizontal: H_PAD }]}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews
         initialNumToRender={6}
@@ -586,6 +586,7 @@ const styles = StyleSheet.create({
     gap: COLUMN_GAP,
     paddingHorizontal: H_PAD,
     paddingBottom: Spacing.lg,
+    paddingTop: 4,
   },
 
   // ── Tab bar ──
@@ -612,7 +613,6 @@ const styles = StyleSheet.create({
     paddingBottom: 0, // bottom padding added via insets in component
   },
   row: {
-    paddingHorizontal: H_PAD,
     gap: COLUMN_GAP,
     marginBottom: COLUMN_GAP,
   },

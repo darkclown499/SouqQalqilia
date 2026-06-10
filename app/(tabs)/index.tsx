@@ -4,6 +4,7 @@ import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
   Dimensions, RefreshControl, ActivityIndicator, Linking, Platform,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -300,7 +301,13 @@ export default function HomeScreen() {
             cachePolicy="memory-disk"
           />
           {/* Gradient overlay */}
-          <View style={styles.bannerGradient} />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.72)']}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            pointerEvents="none"
+          />
           <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
             <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
               {currentBanner.title}
@@ -656,15 +663,8 @@ const styles = StyleSheet.create({
     ...Shadow.md,
   },
   bannerGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '65%',
-    backgroundColor: 'transparent',
-    // Simulated gradient via semi-transparent overlay
-    // backgroundImage: undefined, // This is a web property, not valid for React Native
-    // Fallback: dark overlay for text legibility
+    // replaced by LinearGradient component above
+    display: 'none',
   },
   bannerContent: {
     position: 'absolute',
@@ -674,8 +674,6 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     paddingBottom: Spacing.lg,
     gap: 6,
-    backgroundColor: 'transparent',
-    // backgroundImage: undefined, // This is a web property, not valid for React Native
   },
   bannerTitle: {
     fontSize: FontSize.xl + 2,

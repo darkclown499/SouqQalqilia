@@ -68,7 +68,7 @@ export default function CategoriesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl,
+    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl, paddingTop: Spacing.sm,
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
   },
   headerSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)', fontWeight: '500', marginBottom: 2 },
