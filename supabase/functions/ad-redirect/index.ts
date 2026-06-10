@@ -7,6 +7,38 @@ const ANDROID_PLAY_STORE = 'https://play.google.com/store/apps/details?id=app.pl
 const DEFAULT_OG_IMAGE = 'https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/storage/v1/object/public/ad-images/og-default.jpg';
 const SITE_NAME = 'سوق قلقيلية';
 
+/**
+ * Converts a Supabase Storage public URL to an Image Transform URL
+ * cropped/resized to 1200×630 (1.91:1) for perfect OG previews.
+ *
+ * Input:  https://<host>/storage/v1/object/public/<bucket>/<path>
+ * Output: https://<host>/storage/v1/render/image/public/<bucket>/<path>?width=1200&height=630&resize=cover&quality=80
+ *
+ * Non-Supabase URLs are returned unchanged.
+ */
+function toOgImageUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const OBJECT_PREFIX = '/storage/v1/object/public/';
+    const RENDER_PREFIX = '/storage/v1/render/image/public/';
+
+    if (!u.pathname.startsWith(OBJECT_PREFIX)) return url; // not a Supabase storage URL
+
+    // Swap path prefix
+    u.pathname = RENDER_PREFIX + u.pathname.slice(OBJECT_PREFIX.length);
+
+    // Set OG dimensions — cover crop keeps the subject centred
+    u.searchParams.set('width', '1200');
+    u.searchParams.set('height', '630');
+    u.searchParams.set('resize', 'cover');
+    u.searchParams.set('quality', '80');
+
+    return u.toString();
+  } catch {
+    return url; // malformed URL — fall back to original
+  }
+}
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -67,10 +99,10 @@ Deno.serve(async (req: Request) => {
         : '';
       ogDescription = `${priceStr}${locationStr}${descSnippet ? ' — ' + descSnippet : ''}`;
 
-      // First image sorted by position
+      // First image sorted by position → transform to OG-optimised 1200×630
       if (ad.ad_images && ad.ad_images.length > 0) {
         const sorted = [...ad.ad_images].sort((a: any, b: any) => a.position - b.position);
-        if (sorted[0]?.url) ogImage = sorted[0].url;
+        if (sorted[0]?.url) ogImage = toOgImageUrl(sorted[0].url);
       }
     }
   } catch (_) {
