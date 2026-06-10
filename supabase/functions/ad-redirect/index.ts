@@ -1,8 +1,20 @@
 import { corsHeaders } from '../_shared/cors.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const APP_SCHEME = 'souqqalqilya';
-const IOS_APP_STORE = 'https://apps.apple.com/app/id6742678345'; // replace with real App Store ID
+const IOS_APP_STORE = 'https://apps.apple.com/app/id6742678345';
 const ANDROID_PLAY_STORE = 'https://play.google.com/store/apps/details?id=app.plankton.souq_qalqilya';
+const DEFAULT_OG_IMAGE = 'https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/storage/v1/object/public/ad-images/og-default.jpg';
+const SITE_NAME = 'سوق قلقيلية';
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -22,12 +34,77 @@ Deno.serve(async (req: Request) => {
   const isAndroid = /Android/i.test(ua);
   const storeLink = isIOS ? IOS_APP_STORE : isAndroid ? ANDROID_PLAY_STORE : IOS_APP_STORE;
 
+  // ── Fetch ad data for OG tags ──────────────────────────────────────────────
+  let ogTitle = SITE_NAME;
+  let ogDescription = 'اكتشف آلاف الإعلانات في سوق قلقيلية';
+  let ogImage = DEFAULT_OG_IMAGE;
+  let ogPrice = '';
+
+  try {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const { data: ad } = await supabase
+      .from('ads')
+      .select(`
+        title, description, price, location,
+        ad_images(url, position)
+      `)
+      .eq('id', adId)
+      .single();
+
+    if (ad) {
+      ogTitle = ad.title ?? SITE_NAME;
+
+      // Build description: price + location + truncated text
+      const priceStr = ad.price === 0 ? 'مجاني' : `₪${Number(ad.price).toLocaleString('ar-SA')}`;
+      ogPrice = priceStr;
+      const locationStr = ad.location ? ` · ${ad.location}` : '';
+      const descSnippet = ad.description
+        ? ad.description.slice(0, 120) + (ad.description.length > 120 ? '...' : '')
+        : '';
+      ogDescription = `${priceStr}${locationStr}${descSnippet ? ' — ' + descSnippet : ''}`;
+
+      // First image sorted by position
+      if (ad.ad_images && ad.ad_images.length > 0) {
+        const sorted = [...ad.ad_images].sort((a: any, b: any) => a.position - b.position);
+        if (sorted[0]?.url) ogImage = sorted[0].url;
+      }
+    }
+  } catch (_) {
+    // Fail silently — still render the page with defaults
+  }
+
+  const safeTitle = escapeHtml(ogTitle);
+  const safeDesc = escapeHtml(ogDescription);
+  const safeImage = escapeHtml(ogImage);
+  const pageUrl = escapeHtml(`https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/functions/v1/ad-redirect?id=${adId}`);
+
   const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>سوق قلقيلية</title>
+  <title>${safeTitle} — سوق قلقيلية</title>
+
+  <!-- Open Graph / WhatsApp / Telegram -->
+  <meta property="og:type" content="product"/>
+  <meta property="og:site_name" content="سوق قلقيلية"/>
+  <meta property="og:url" content="${pageUrl}"/>
+  <meta property="og:title" content="${safeTitle}"/>
+  <meta property="og:description" content="${safeDesc}"/>
+  <meta property="og:image" content="${safeImage}"/>
+  <meta property="og:image:width" content="1200"/>
+  <meta property="og:image:height" content="630"/>
+  <meta property="og:locale" content="ar_SA"/>
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="${safeTitle}"/>
+  <meta name="twitter:description" content="${safeDesc}"/>
+  <meta name="twitter:image" content="${safeImage}"/>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -79,8 +156,8 @@ Deno.serve(async (req: Request) => {
 <body>
   <div class="card">
     <div class="logo">🏪</div>
-    <h1>سوق قلقيلية</h1>
-    <p>جاري فتح التطبيق لعرض الإعلان...</p>
+    <h1>${safeTitle}</h1>
+    <p>${ogPrice ? `<strong style="color:#0A6E5C">${escapeHtml(ogPrice)}</strong> — ` : ''}جاري فتح التطبيق لعرض الإعلان...</p>
     <div class="spinner" id="spinner"></div>
     <a href="${deepLink}" class="btn" id="openBtn">فتح في التطبيق</a>
     <a href="${storeLink}" class="btn btn-outline" id="storeBtn" style="display:none;">
