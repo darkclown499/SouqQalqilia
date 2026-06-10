@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
   RefreshControl, Dimensions, Animated, Platform,
@@ -47,7 +48,7 @@ function SkeletonBox({
     );
     loop.start();
     return () => loop.stop();
-  }, []);
+  }, [anim]); // Added anim to dependency array
   const opacity = anim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.35] });
   return (
     <Animated.View
@@ -229,7 +230,7 @@ export default function SellerProfileScreen() {
   const keyExtractor = useCallback((item: Ad) => item.id, []);
 
   // ── List Header ──
-  const ListHeader = (
+  const ListHeader = useMemo(() => (
     <View>
       {/* ── Cover + Avatar ─────────────────────────────────────────────── */}
       <View style={styles.coverWrap}>
@@ -336,7 +337,9 @@ export default function SellerProfileScreen() {
       {/* ── Spacer before grid ───────────────────────────────────────────── */}
       <View style={{ height: Spacing.sm }} />
     </View>
-  );
+  ), [ads.length, colors, displayName, initials, isAr, isDark, seller?.avatar_url, seller?.is_verified]);
+  // The original comment "// eslint-disable-next-line react-hooks/exhaustive-deps" was removed,
+  // and the dependency array was properly filled based on variables used inside useMemo.
 
   // ── Full-page skeleton while loading ──
   if (pageLoading) {

@@ -21,6 +21,7 @@ interface AdCardProps {
   sponsored?: boolean;
   isFavorited?: boolean;
   onFavoritePress?: (adId: string) => void;
+  onAdPress?: (ad: Ad) => void;
   isBlocked?: boolean;
 }
 
@@ -29,7 +30,7 @@ function formatPrice(price: number, isAr: boolean) {
   return `₪${price.toLocaleString()}`;
 }
 
-export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited = false, onFavoritePress, isBlocked = false }: AdCardProps) {
+export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited = false, onFavoritePress, onAdPress, isBlocked = false }: AdCardProps) {
   const router = useRouter();
   const { colors } = useTheme();
   const { t, language, isRTL } = useLanguage();
@@ -65,7 +66,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
         isBoosted ? { borderWidth: 2, borderColor: colors.accent } : { borderWidth: 1, borderColor: colors.border },
         sponsored ? { borderColor: colors.primary + '66' } : null,
       ]}
-      onPress={() => router.push(`/ad/${ad.id}`)}
+      onPress={() => { onAdPress?.(ad); router.push(`/ad/${ad.id}`); }}
     >
       {/* ── IMAGE ── */}
       <View style={styles.imageWrap}>
@@ -74,8 +75,9 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
             source={{ uri: firstImage.url }}
             style={styles.image}
             contentFit="cover"
-            transition={200}
+            transition={150}
             cachePolicy="memory-disk"
+            priority="high"
           />
         ) : (
           <View style={[styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>

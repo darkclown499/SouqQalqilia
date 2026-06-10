@@ -474,7 +474,7 @@ function AdDetailScrollContent({
                   style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
                   android_ripple={null}
                 >
-                  <Image source={{ uri: item.url }} style={[styles.carouselImg, { width }]} contentFit="cover" transition={200} />
+                  <Image source={{ uri: item.url }} style={[styles.carouselImg, { width }]} contentFit="cover" transition={150} cachePolicy="memory-disk" priority="high" />
                 </Pressable>
               )}
             />
@@ -685,7 +685,7 @@ function AdDetailScrollContent({
                   {isAr ? 'روّج إعلانك' : 'Promote this listing'}
                 </Text>
                 <Text style={[styles.promoteBtnSub, { color: '#B45309' }]}>
-                  {isAr ? 'ابدأ من 30 ₪ فقط' : 'Starting from 30 ₪ only'}
+                  {isAr ? 'تعزيز ظهور إعلانك' : 'Boost your listing visibility'}
                 </Text>
               </View>
               <MaterialIcons name="chevron-right" size={20} color="#D97706" />

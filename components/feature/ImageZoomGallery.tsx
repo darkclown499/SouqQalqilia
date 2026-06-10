@@ -77,7 +77,9 @@ export function ImageZoomGallery({ images, initialIndex = 0, visible, onClose }:
                 source={{ uri: item.url }}
                 style={styles.fullImage}
                 contentFit="contain"
-                transition={200}
+                transition={150}
+                cachePolicy="memory-disk"
+                priority="high"
               />
             </View>
           )}
@@ -102,6 +104,7 @@ export function ImageZoomGallery({ images, initialIndex = 0, visible, onClose }:
                   source={{ uri: img.url }}
                   style={styles.thumbImg}
                   contentFit="cover"
+                  cachePolicy="memory-disk"
                 />
               </Pressable>
             ))}

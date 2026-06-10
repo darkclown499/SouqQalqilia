@@ -251,14 +251,14 @@ export default function HomeScreen() {
         <Pressable
           style={[styles.bannerWrap, { height: BANNER_H }]}
           onPress={() => router.push('/search')}
-          // activeOpacity={0.95} // activeOpacity is not a prop of Pressable in React Native
         >
           <Image
             source={{ uri: currentBanner.image_url }}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
-            transition={600}
+            transition={300}
             cachePolicy="memory-disk"
+            priority="high"
           />
           {/* Gradient overlay */}
           <LinearGradient
@@ -387,7 +387,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, sortedAndFilteredAds.length, recentlyViewed, handleCategoryPress, handleRecentAdPress, router, setSortBy]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, sortedAndFilteredAds.length, recentlyViewed, handleCategoryPress, handleRecentAdPress, router, setSortBy]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
