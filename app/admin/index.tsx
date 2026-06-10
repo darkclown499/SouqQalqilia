@@ -781,76 +781,117 @@ export default function AdminScreen() {
   // ── Render items ──
   const renderAdItem = ({ item }: { item: Ad }) => {
     const isFeatured = item.status === 'featured';
-    const isBoosted = item.boosted_until && new Date(item.boosted_until).getTime() > Date.now();
+    const isBoosted = !!(item.boosted_until && new Date(item.boosted_until).getTime() > Date.now());
     const ownerName = (item as any).user_profiles?.username || (item as any).user_profiles?.email?.split('@')[0] || '?';
-    const serialLabel = item.serial_number ? `#SQ-${1000 + Number(item.serial_number)}` : '';
+    const serialLabel = item.serial_number ? `SQ-${1000 + Number(item.serial_number)}` : null;
+    const statusColor = item.status === 'active' ? colors.success
+      : item.status === 'featured' ? colors.accentDark : colors.textMuted;
+    const condLabel = item.condition === 'new' ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used');
 
     return (
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: isBoosted ? colors.accent : colors.border, ...Shadow.xs }]}>
-        {serialLabel ? (
-          <View style={[styles.serialPill, { backgroundColor: colors.primaryGhost }]}>
-            <MaterialIcons name="tag" size={10} color={colors.primary} />
-            <Text style={[styles.serialText, { color: colors.primary }]}>{serialLabel}</Text>
-          </View>
-        ) : null}
-        <View style={styles.cardTop}>
-          <View style={styles.cardInfo}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={2}>{item.title}</Text>
-            {item.description ? (
-              <Text style={[styles.cardDesc, { color: colors.textMuted }]} numberOfLines={2}>{item.description}</Text>
-            ) : null}
-            <View style={styles.metaRow}>
-              <View style={[styles.metaChip, { backgroundColor: colors.primaryGhost }]}>
-                <MaterialIcons name="person" size={11} color={colors.primary} />
-                <Text style={[styles.metaText, { color: colors.primary }]}>{ownerName}</Text>
-              </View>
-              <View style={[styles.metaChip, {
-                backgroundColor: item.status === 'active' ? colors.successLight :
-                  item.status === 'featured' ? colors.accentLight : colors.borderLight,
-              }]}>
-                <Text style={[styles.metaText, {
-                  color: item.status === 'active' ? colors.success :
-                    item.status === 'featured' ? colors.accentDark : colors.textMuted,
-                  fontWeight: '700',
-                }]}>{item.status}</Text>
-              </View>
-              {isBoosted ? (
-                <View style={[styles.metaChip, { backgroundColor: colors.accentLight }]}>
-                  <MaterialIcons name="bolt" size={11} color={colors.accentDark} />
-                  <Text style={[styles.metaText, { color: colors.accentDark, fontWeight: '700' }]}>{t.boosted}</Text>
-                </View>
-              ) : null}
-              <Text style={[styles.priceTag, { color: colors.textMuted }]}>₪{item.price}</Text>
-              <View style={[styles.metaChip, { backgroundColor: colors.borderLight }]}>
-                <Text style={[styles.metaText, { color: colors.textMuted }]}>
-                  {item.condition === 'new' ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used')}
-                </Text>
-              </View>
-              {item.location ? (
-                <View style={[styles.metaChip, { backgroundColor: colors.borderLight }]}>
-                  <MaterialIcons name="location-on" size={10} color={colors.textMuted} />
-                  <Text style={[styles.metaText, { color: colors.textMuted }]}>{item.location}</Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
+      <View style={[styles.card, {
+        backgroundColor: colors.surface,
+        borderColor: isBoosted ? colors.accent : colors.border,
+        borderLeftWidth: isBoosted ? 3 : 1,
+        borderLeftColor: isBoosted ? colors.accent : colors.border,
+        ...Shadow.xs,
+      }]}>
+        {/* ── Card Header: title left, ID right ── */}
+        <View style={styles.cardHeaderRow}>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
+            {item.title}
+          </Text>
+          {serialLabel ? (
+            <Text style={[styles.serialInline, { color: colors.textMuted }]}>#{serialLabel}</Text>
+          ) : null}
         </View>
-        <View style={[styles.cardActions, { borderTopColor: colors.borderLight }]}>
-          <Pressable style={[styles.actionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => openEditAd(item)}>
-            <MaterialIcons name="edit" size={14} color={colors.primary} />
-            <Text style={[styles.actionBtnText, { color: colors.primary }]}>{t.edit}</Text>
+
+        {/* ── Description ── */}
+        {item.description ? (
+          <Text style={[styles.cardDesc, { color: colors.textMuted }]} numberOfLines={2}>
+            {item.description}
+          </Text>
+        ) : null}
+
+        {/* ── Row 1: Price · Condition · Boost badge ── */}
+        <View style={styles.cardInfoRow}>
+          <Text style={[styles.cardPrice, { color: colors.primary }]}>₪{item.price.toLocaleString()}</Text>
+          <View style={styles.infoDot} />
+          <MaterialIcons
+            name={item.condition === 'new' ? 'fiber-new' : 'recycling'}
+            size={13}
+            color={colors.textMuted}
+          />
+          <Text style={[styles.cardInfoText, { color: colors.textSecondary }]}>{condLabel}</Text>
+          {isBoosted ? (
+            <>
+              <View style={styles.infoDot} />
+              <MaterialIcons name="bolt" size={13} color={colors.accentDark} />
+              <Text style={[styles.cardInfoText, { color: colors.accentDark, fontWeight: '700' }]}>
+                {isAr ? 'معزّز' : 'Boosted'}
+              </Text>
+            </>
+          ) : null}
+          {isFeatured ? (
+            <>
+              <View style={styles.infoDot} />
+              <MaterialIcons name="star" size={13} color="#D97706" />
+              <Text style={[styles.cardInfoText, { color: '#D97706', fontWeight: '700' }]}>
+                {isAr ? 'مميّز' : 'Featured'}
+              </Text>
+            </>
+          ) : null}
+        </View>
+
+        {/* ── Row 2: Owner · Status dot · Location ── */}
+        <View style={styles.cardInfoRow}>
+          <MaterialIcons name="person-outline" size={13} color={colors.textMuted} />
+          <Text style={[styles.cardInfoText, { color: colors.textSecondary }]} numberOfLines={1}>{ownerName}</Text>
+          <View style={styles.infoDot} />
+          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+          <Text style={[styles.cardInfoText, { color: statusColor, fontWeight: '600' }]}>{item.status}</Text>
+          {item.location ? (
+            <>
+              <View style={styles.infoDot} />
+              <MaterialIcons name="location-on" size={12} color={colors.textMuted} />
+              <Text style={[styles.cardInfoText, { color: colors.textMuted }]} numberOfLines={1}>
+                {item.location}
+              </Text>
+            </>
+          ) : null}
+        </View>
+
+        {/* ── Action icon strip ── */}
+        <View style={[styles.iconStrip, { borderTopColor: colors.borderLight }]}>
+          {/* Edit */}
+          <Pressable style={[styles.iconStripBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => openEditAd(item)} hitSlop={4}>
+            <MaterialIcons name="edit" size={16} color={colors.primary} />
           </Pressable>
-          <Pressable style={[styles.actionBtn, { backgroundColor: isFeatured ? colors.accentLight : colors.accentGhost }]} onPress={() => handleToggleFeatured(item)}>
-            <MaterialIcons name={isFeatured ? 'star' : 'star-border'} size={14} color={colors.accentDark} />
-            <Text style={[styles.actionBtnText, { color: colors.accentDark }]}>{isFeatured ? t.removeFeatured : t.setFeatured}</Text>
+          {/* Feature toggle */}
+          <Pressable
+            style={[styles.iconStripBtn, { backgroundColor: isFeatured ? '#FEF9C3' : colors.borderLight }]}
+            onPress={() => handleToggleFeatured(item)}
+            hitSlop={4}
+          >
+            <MaterialIcons name={isFeatured ? 'star' : 'star-border'} size={16} color={isFeatured ? '#D97706' : colors.textMuted} />
           </Pressable>
-          <Pressable style={[styles.actionBtn, { backgroundColor: isBoosted ? colors.accentLight : colors.primaryGhost }]} onPress={() => handleToggleBoost(item)}>
-            <MaterialIcons name="bolt" size={14} color={isBoosted ? colors.accentDark : colors.primary} />
-            <Text style={[styles.actionBtnText, { color: isBoosted ? colors.accentDark : colors.primary }]}>{isBoosted ? t.removeboost : t.boost}</Text>
+          {/* Boost toggle */}
+          <Pressable
+            style={[styles.iconStripBtn, { backgroundColor: isBoosted ? colors.accentLight : colors.borderLight }]}
+            onPress={() => handleToggleBoost(item)}
+            hitSlop={4}
+          >
+            <MaterialIcons name="bolt" size={16} color={isBoosted ? colors.accentDark : colors.textMuted} />
           </Pressable>
-          <Pressable style={[styles.actionBtn, { backgroundColor: colors.errorLight }]} onPress={() => handleDeleteAd(item.id, item.title)}>
-            <MaterialIcons name="delete-outline" size={14} color={colors.error} />
-            <Text style={[styles.actionBtnText, { color: colors.error }]}>{t.delete}</Text>
+          {/* Spacer */}
+          <View style={{ flex: 1 }} />
+          {/* Delete — right-aligned, red */}
+          <Pressable
+            style={[styles.iconStripBtn, { backgroundColor: colors.errorLight }]}
+            onPress={() => handleDeleteAd(item.id, item.title)}
+            hitSlop={4}
+          >
+            <MaterialIcons name="delete-outline" size={16} color={colors.error} />
           </Pressable>
         </View>
       </View>
@@ -1281,23 +1322,45 @@ export default function AdminScreen() {
         </Pressable>
       </View>
 
-      {/* Tabs */}
-      <View style={[styles.tabBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        {TABS.map(tabItem => (
-          <Pressable
-            key={tabItem.key}
-            style={[styles.tabItem, tab === tabItem.key && [styles.tabItemActive, { borderBottomColor: colors.primary }]]}
-            onPress={() => setTab(tabItem.key)}
-          >
-            <MaterialIcons name={tabItem.icon as any} size={14} color={tab === tabItem.key ? colors.primary : colors.textMuted} />
-            <Text style={[styles.tabText, { color: tab === tabItem.key ? colors.primary : colors.textMuted }, tab === tabItem.key && { fontWeight: '700' }]}>
-              {tabItem.label}
-            </Text>
-            <View style={[styles.tabBadge, { backgroundColor: tab === tabItem.key ? colors.primary : colors.border }]}>
-              <Text style={[styles.tabBadgeText, { color: tab === tabItem.key ? '#fff' : colors.textMuted }]}>{tabItem.count}</Text>
-            </View>
-          </Pressable>
-        ))}
+      {/* ── Tabs: horizontal scrollable pill bar ── */}
+      <View style={[styles.tabBarWrap, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabBarContent}
+        >
+          {TABS.map(tabItem => {
+            const isActive = tab === tabItem.key;
+            return (
+              <Pressable
+                key={tabItem.key}
+                style={[
+                  styles.tabPill,
+                  isActive
+                    ? { backgroundColor: colors.primary }
+                    : { backgroundColor: colors.surfaceTint },
+                ]}
+                onPress={() => setTab(tabItem.key)}
+              >
+                <MaterialIcons
+                  name={tabItem.icon as any}
+                  size={14}
+                  color={isActive ? '#fff' : colors.textMuted}
+                />
+                <Text style={[styles.tabPillText, { color: isActive ? '#fff' : colors.textSecondary, fontWeight: isActive ? '700' : '500' }]}>
+                  {tabItem.label}
+                </Text>
+                {tabItem.count > 0 ? (
+                  <View style={[styles.tabPillBadge, { backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.border }]}>
+                    <Text style={[styles.tabPillBadgeText, { color: isActive ? '#fff' : colors.textMuted }]}>
+                      {tabItem.count}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {loading ? (
@@ -1526,16 +1589,16 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   headerSub: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
   broadcastBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 4 },
-  tabItem: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 3, paddingVertical: Spacing.sm, borderBottomWidth: 2.5,
-    borderBottomColor: 'transparent',
+  // ── Tab bar ──
+  tabBarWrap: { borderBottomWidth: 1 },
+  tabBarContent: { flexDirection: 'row', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm },
+  tabPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, height: 34, borderRadius: 17,
   },
-  tabItemActive: {},
-  tabText: { fontSize: 10, fontWeight: '500' },
-  tabBadge: { borderRadius: Radius.full, paddingHorizontal: 5, paddingVertical: 1, minWidth: 18, alignItems: 'center' },
-  tabBadgeText: { fontSize: 9, fontWeight: '700' },
+  tabPillText: { fontSize: FontSize.xs },
+  tabPillBadge: { borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  tabPillBadgeText: { fontSize: 9, fontWeight: '700' },
   listContent: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: 32 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, padding: Spacing.xl },
   emptyText: { fontSize: FontSize.md, fontWeight: '500' },
@@ -1545,19 +1608,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md, height: 48, marginBottom: Spacing.md,
   },
   searchInput: { flex: 1, fontSize: FontSize.md },
-  card: { borderRadius: Radius.lg, borderWidth: 1, overflow: 'hidden' },
-  serialPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    paddingHorizontal: 8, paddingVertical: 4,
-    alignSelf: 'flex-start',
-    marginHorizontal: Spacing.md, marginTop: Spacing.sm, marginBottom: -4,
-    borderRadius: Radius.full,
+  // ── Ad card ──
+  card: { borderRadius: Radius.lg, borderWidth: 1, overflow: 'hidden', padding: Spacing.md, gap: 6 },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cardTitle: { fontSize: FontSize.md, fontWeight: '700', lineHeight: 20 },
+  serialInline: { fontSize: 10, fontWeight: '600', letterSpacing: 0.2 },
+  cardDesc: { fontSize: FontSize.xs, lineHeight: 16, color: '#888' },
+  cardInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
+  cardPrice: { fontSize: FontSize.sm, fontWeight: '800' },
+  cardInfoText: { fontSize: FontSize.xs, fontWeight: '500' },
+  infoDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#CBD5E1' },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  // ── Icon action strip ──
+  iconStrip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderTopWidth: 1, paddingTop: Spacing.sm, marginTop: 4,
   },
-  serialText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
-  cardTop: { padding: Spacing.md },
-  cardInfo: { gap: 5 },
-  cardTitle: { fontSize: FontSize.md, fontWeight: '600', lineHeight: 20 },
-  cardDesc: { fontSize: FontSize.xs, lineHeight: 16 },
+  iconStripBtn: {
+    width: 34, height: 34, borderRadius: Radius.md,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // ── Legacy meta chips (used in banner/interstitial cards) ──
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
   metaChip: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
