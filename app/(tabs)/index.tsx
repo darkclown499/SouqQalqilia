@@ -44,7 +44,7 @@ import { Ad } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useAuth } from '@/template';
+import { useAuth, getSupabaseClient } from '@/template';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const H_PAD = SCREEN_W < 375 ? 12 : Spacing.lg;
@@ -122,10 +122,20 @@ export default function HomeScreen() {
   const [activeInterstitial, setActiveInterstitial] = useState<InterstitialAd | null>(null);
   const [interstitialVisible, setInterstitialVisible] = useState(false);
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
+  const [totalAdsCount, setTotalAdsCount] = useState(0);
   const appStartTime = useRef(Date.now());
   const interstitialShown = useRef(false);
 
   useEffect(() => { loadRecentlyViewed().then(setRecentlyViewed); }, []);
+
+  useEffect(() => {
+    getSupabaseClient()
+      .from('ads')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active')
+      .then(({ count }) => { if (count !== null) setTotalAdsCount(count); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
@@ -417,9 +427,9 @@ export default function HomeScreen() {
         <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
           <MaterialIcons name="storefront" size={14} color={colors.primary} />
         </View>
-        <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>{t.latestListings}</Text>
+        <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>{isAr ? 'جميع الإعلانات' : 'All Listings'}</Text>
         <View style={[styles.countPill, { backgroundColor: colors.primaryGhost }]}>
-          <Text style={[styles.countPillText, { color: colors.primary }]}>{sortedAndFilteredAds.length}</Text>
+          <Text style={[styles.countPillText, { color: colors.primary }]}>{totalAdsCount > 0 ? totalAdsCount : sortedAndFilteredAds.length}</Text>
         </View>
         {sortBy !== 'newest' ? (
           <View style={[styles.activeSortPill, { backgroundColor: colors.primary }]}>
