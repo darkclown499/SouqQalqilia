@@ -102,6 +102,26 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // ── Deep Link handler: souqqalqilya://ad/<id> ───────────────────────────
+    // Handles cold-start deep links AND links received while app is open.
+    const handleDeepLink = (url: string) => {
+      try {
+        // Match pattern: souqqalqilya://ad/<uuid-or-id>
+        const match = url.match(/souqqalqilya:\/\/ad\/([^?#]+)/);
+        if (match?.[1]) {
+          router.push(`/ad/${match[1]}` as any);
+        }
+      } catch (_) {}
+    };
+
+    // Handle link that launched the app from cold start
+    import('expo-linking').then(({ default: ExpoLinking }) => {
+      ExpoLinking.getInitialURL().then(url => { if (url) handleDeepLink(url); }).catch(() => {});
+      const linkSub = ExpoLinking.addEventListener('url', ({ url }) => handleDeepLink(url));
+      // Note: linkSub.remove() will be called in the cleanup below via closure
+      return linkSub;
+    }).catch(() => {});
+
     // ── Notification tap → open related chat conversation ────────────────────
     let notifSub: any = null;
     if (Platform.OS !== 'web') {

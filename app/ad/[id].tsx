@@ -110,26 +110,33 @@ export default function AdDetailScreen() {
     Linking.openURL(url).catch(() => showAlert('Error', 'Could not open WhatsApp.'));
   };
 
+  /** Build a deep link to this ad that opens the app directly */
+  const buildDeepLink = (adId: string): string => `souqqalqilya://ad/${adId}`;
+
   const handleShare = async () => {
     if (!ad) return;
+    const deepLink = buildDeepLink(ad.id);
+    const priceText = ad.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${ad.price.toLocaleString()}`;
     try {
       await Share.share({
         title: ad.title,
         message: isAr
-          ? `${ad.title}\n₪${ad.price.toLocaleString()}\n\nشاهد هذا الإعلان على سوق قلقيلية`
-          : `${ad.title}\n₪${ad.price.toLocaleString()}\n\nCheck this listing on Souq Qalqilya`,
+          ? `🛒 ${ad.title}\n💰 السعر: ${priceText}\n📍 ${ad.location || 'قلقيلية'}\n\nشاهد الإعلان على سوق قلقيلية:\n${deepLink}`
+          : `🛒 ${ad.title}\n💰 Price: ${priceText}\n📍 ${ad.location || 'Qalqilya'}\n\nView on Souq Qalqilya:\n${deepLink}`,
+        url: deepLink,   // iOS shows this as a tappable link in the share sheet
       });
     } catch (_) {}
   };
 
-  /** Share directly to WhatsApp with full listing details */
+  /** Share directly to WhatsApp with full listing details + deep link */
   const handleShareWhatsApp = () => {
     if (!ad) return;
+    const deepLink = buildDeepLink(ad.id);
     const priceText = ad.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${ad.price.toLocaleString()}`;
-    const desc = ad.description ? ad.description.slice(0, 120) + (ad.description.length > 120 ? '...' : '') : '';
+    const desc = ad.description ? ad.description.slice(0, 100) + (ad.description.length > 100 ? '...' : '') : '';
     const msg = isAr
-      ? `🛒 *${ad.title}*\n💰 السعر: ${priceText}\n📍 ${ad.location || 'قلقيلية'}\n\n${desc}\n\n🏪 متوفر على سوق قلقيلية`
-      : `🛒 *${ad.title}*\n💰 Price: ${priceText}\n📍 ${ad.location || 'Qalqilya'}\n\n${desc}\n\n🏪 Available on Souq Qalqilya`;
+      ? `🛒 *${ad.title}*\n💰 السعر: ${priceText}\n📍 ${ad.location || 'قلقيلية'}\n\n${desc}\n\n🏪 افتح على سوق قلقيلية:\n${deepLink}`
+      : `🛒 *${ad.title}*\n💰 Price: ${priceText}\n📍 ${ad.location || 'Qalqilya'}\n\n${desc}\n\n🏪 Open on Souq Qalqilya:\n${deepLink}`;
     const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
     Linking.openURL(url).catch(() => {});
   };
