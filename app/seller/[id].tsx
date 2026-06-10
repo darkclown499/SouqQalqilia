@@ -2,18 +2,16 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
   RefreshControl, Dimensions, Animated, Platform,
-  TextInput, ActivityIndicator, KeyboardAvoidingView, ScrollView,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import { getSupabaseClient, useAuth, useAlert } from '@/template';
+import { getSupabaseClient } from '@/template';
 import { fetchAds, Ad } from '@/services/adsService';
 import { AdCard } from '@/components/feature/AdCard';
 import { useFavoriteIds } from '@/hooks/useFavorites';
-import { pickImage, uploadImage } from '@/services/imageService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
@@ -169,8 +167,6 @@ export default function SellerProfileScreen() {
   const { colors, isDark } = useTheme();
   const { language } = useLanguage();
   const isAr = language === 'ar';
-  const { user } = useAuth();
-  const { showAlert } = useAlert();
 
   const { ids: favoriteIds, toggle: toggleFav } = useFavoriteIds();
 
@@ -178,14 +174,6 @@ export default function SellerProfileScreen() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  // ── Edit mode state ──
-  const isOwner = user?.id === id;
-  const [editMode, setEditMode] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [avatarLoading, setAvatarLoading] = useState(false);
 
   // Scroll-driven header opacity
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -204,11 +192,7 @@ export default function SellerProfileScreen() {
       fetchAds({ userId: id, limit: 60 }),
     ]);
 
-    if (!profileRes.error && profileRes.data) {
-      setSeller(profileRes.data as SellerProfile);
-      setEditName((profileRes.data as SellerProfile).username ?? '');
-      setEditPhone((profileRes.data as SellerProfile).phone ?? '');
-    }
+    if (!profileRes.error && profileRes.data) setSeller(profileRes.data as SellerProfile);
     setAds(adsRes.data ?? []);
     setPageLoading(false);
   }, [id]);
@@ -219,47 +203,6 @@ export default function SellerProfileScreen() {
     setRefreshing(true);
     await load(true);
     setRefreshing(false);
-  };
-
-  // ── Edit handlers ──
-  const handlePickAvatar = async () => {
-    if (!user) return;
-    setAvatarLoading(true);
-    try {
-      const img = await pickImage();
-      if (!img) return;
-      const { url, error } = await uploadImage(img.base64, user.id, 'avatar');
-      if (error || !url) throw new Error(error ?? 'Upload failed');
-      await getSupabaseClient().from('user_profiles').update({ avatar_url: url }).eq('id', user.id);
-      setSeller(prev => prev ? { ...prev, avatar_url: url } : prev);
-    } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e.message ?? 'Failed to update photo.');
-    } finally {
-      setAvatarLoading(false);
-    }
-  };
-
-  const handleSaveProfile = async () => {
-    if (!user) return;
-    const trimmedName = editName.trim();
-    if (!trimmedName) {
-      return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال الاسم' : 'Please enter a display name.');
-    }
-    setSaving(true);
-    try {
-      const { error } = await getSupabaseClient()
-        .from('user_profiles')
-        .update({ username: trimmedName, phone: editPhone.trim() || null })
-        .eq('id', user.id);
-      if (error) throw error;
-      setSeller(prev => prev ? { ...prev, username: trimmedName, phone: editPhone.trim() || null } : prev);
-      setEditMode(false);
-      showAlert(isAr ? 'تم الحفظ' : 'Saved', isAr ? 'تم تحديث ملفك الشخصي بنجاح' : 'Profile updated successfully.');
-    } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e.message ?? 'Failed to save.');
-    } finally {
-      setSaving(false);
-    }
   };
 
   // ── Derived display values ──
@@ -333,22 +276,6 @@ export default function SellerProfileScreen() {
         ) : null}
       </View>
 
-      {/* ── Edit avatar overlay (owner only) ── */}
-      {isOwner ? (
-        <Pressable
-          style={[styles.editAvatarOverlay, { bottom: -(AVATAR_SIZE / 2 + 4) }]}
-          onPress={handlePickAvatar}
-          disabled={avatarLoading}
-          hitSlop={4}
-        >
-          <View style={[styles.editAvatarBtn, { backgroundColor: colors.primary }]}>
-            {avatarLoading
-              ? <ActivityIndicator size={12} color="#fff" />
-              : <MaterialIcons name="camera-alt" size={13} color="#fff" />}
-          </View>
-        </Pressable>
-      ) : null}
-
       {/* ── Name + Join Date ────────────────────────────────────────────── */}
       <View style={[styles.identityBlock, { backgroundColor: colors.background }]}>
         <Text style={[styles.sellerName, { color: colors.textPrimary }]} numberOfLines={1}>
@@ -370,102 +297,7 @@ export default function SellerProfileScreen() {
             </Text>
           </View>
         ) : null}
-
-        {/* ── Edit profile button (owner only) ── */}
-        {isOwner ? (
-          <Pressable
-            style={[styles.editProfileBtn, { backgroundColor: editMode ? colors.border : colors.primaryGhost, borderColor: editMode ? colors.border : colors.primary }]}
-            onPress={() => setEditMode(v => !v)}
-          >
-            <MaterialIcons name={editMode ? 'close' : 'edit'} size={14} color={editMode ? colors.textMuted : colors.primary} />
-            <Text style={[styles.editProfileBtnText, { color: editMode ? colors.textMuted : colors.primary }]}>
-              {editMode ? (isAr ? 'إلغاء' : 'Cancel') : (isAr ? 'تعديل الملف الشخصي' : 'Edit Profile')}
-            </Text>
-          </Pressable>
-        ) : null}
       </View>
-
-      {/* ── Inline edit form (owner only) ── */}
-      {isOwner && editMode ? (
-        <View style={[styles.editCard, { backgroundColor: colors.surface, borderColor: colors.border, marginHorizontal: H_PAD }]}>
-          <Text style={[styles.editCardTitle, { color: colors.textPrimary }]}>
-            {isAr ? 'تعديل الملف الشخصي' : 'Edit Profile'}
-          </Text>
-
-          {/* Avatar row */}
-          <Pressable
-            style={[styles.avatarEditRow, { backgroundColor: colors.background, borderColor: colors.border, flexDirection: isAr ? 'row-reverse' : 'row' }]}
-            onPress={handlePickAvatar}
-            disabled={avatarLoading}
-          >
-            {seller?.avatar_url ? (
-              <Image source={{ uri: seller.avatar_url }} style={styles.avatarSmall} contentFit="cover" transition={200} />
-            ) : (
-              <View style={[styles.avatarSmallPh, { backgroundColor: colors.primary }]}>
-                <Text style={styles.avatarSmallPhText}>{displayName.charAt(0).toUpperCase()}</Text>
-              </View>
-            )}
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.fieldLabel, { color: colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]}>
-                {isAr ? 'الصورة الشخصية' : 'Profile Photo'}
-              </Text>
-              <Text style={[styles.fieldSub, { color: colors.textMuted, textAlign: isAr ? 'right' : 'left' }]}>
-                {avatarLoading ? (isAr ? 'جارٍ الرفع...' : 'Uploading...') : (isAr ? 'اضغط لتغيير صورتك' : 'Tap to change photo')}
-              </Text>
-            </View>
-            <MaterialIcons name={isAr ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
-          </Pressable>
-
-          {/* Name field */}
-          <View style={{ gap: 6 }}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary, textAlign: isAr ? 'right' : 'left' }]}>
-              {isAr ? 'الاسم' : 'Display Name'}
-            </Text>
-            <TextInput
-              style={[styles.textInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]}
-              placeholder={isAr ? 'أدخل اسمك' : 'Enter your name'}
-              placeholderTextColor={colors.textMuted}
-              value={editName}
-              onChangeText={setEditName}
-            />
-          </View>
-
-          {/* Phone field */}
-          <View style={{ gap: 6 }}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary, textAlign: isAr ? 'right' : 'left' }]}>
-              {isAr ? 'رقم الهاتف' : 'Phone Number'}
-            </Text>
-            <TextInput
-              style={[styles.textInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]}
-              placeholder={isAr ? '+970...' : '+970...'}
-              placeholderTextColor={colors.textMuted}
-              value={editPhone}
-              onChangeText={setEditPhone}
-              keyboardType="phone-pad"
-            />
-          </View>
-
-          {/* Action buttons */}
-          <View style={[styles.editBtns, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
-            <Pressable
-              style={[styles.cancelBtn, { borderColor: colors.border }]}
-              onPress={() => setEditMode(false)}
-            >
-              <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>{isAr ? 'إلغاء' : 'Cancel'}</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]}
-              onPress={handleSaveProfile}
-              disabled={saving}
-            >
-              {saving
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <MaterialIcons name="check" size={15} color="#fff" />}
-              <Text style={styles.saveBtnText}>{saving ? (isAr ? 'جارٍ الحفظ...' : 'Saving...') : (isAr ? 'حفظ التغييرات' : 'Save Changes')}</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
 
       {/* ── Stats Dashboard ─────────────────────────────────────────────── */}
       <View style={[styles.statsRow, { backgroundColor: colors.background }]}>
@@ -506,10 +338,6 @@ export default function SellerProfileScreen() {
     </View>
   );
 
-  // ── Wrap in KeyboardAvoidingView when edit is open ──
-  const Wrapper = editMode ? KeyboardAvoidingView : View;
-  const wrapperProps = editMode ? { behavior: Platform.OS === 'ios' ? 'padding' as const : undefined, style: { flex: 1 } } : { style: { flex: 1 } };
-
   // ── Full-page skeleton while loading ──
   if (pageLoading) {
     return (
@@ -530,7 +358,6 @@ export default function SellerProfileScreen() {
   }
 
   return (
-    <Wrapper {...wrapperProps}>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* ── Animated sticky header (appears on scroll) ── */}
       <Animated.View
@@ -600,7 +427,6 @@ export default function SellerProfileScreen() {
         }
       />
     </View>
-    </Wrapper>
   );
 }
 
@@ -788,126 +614,6 @@ const styles = StyleSheet.create({
   row: {
     gap: COLUMN_GAP,
     marginBottom: COLUMN_GAP,
-  },
-
-  // ── Edit avatar overlay ──
-  editAvatarOverlay: {
-    position: 'absolute',
-    right: SCREEN_W / 2 - (AVATAR_SIZE / 2) - 6,
-    zIndex: 6,
-  },
-  editAvatarBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-    ...Shadow.sm,
-  },
-
-  // ── Edit profile button ──
-  editProfileBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: Radius.full,
-    borderWidth: 1.5,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginTop: 6,
-  },
-  editProfileBtnText: {
-    fontSize: FontSize.sm,
-    fontWeight: '700',
-  },
-
-  // ── Inline edit form ──
-  editCard: {
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    padding: Spacing.md,
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-    ...Shadow.sm,
-  },
-  editCardTitle: {
-    fontSize: FontSize.md,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  avatarEditRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-  },
-  avatarSmall: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-  },
-  avatarSmallPh: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarSmallPhText: {
-    color: '#fff',
-    fontSize: FontSize.lg,
-    fontWeight: '800',
-  },
-  fieldLabel: {
-    fontSize: FontSize.sm,
-    fontWeight: '600',
-  },
-  fieldSub: {
-    fontSize: FontSize.xs,
-    marginTop: 2,
-  },
-  textInput: {
-    height: 48,
-    borderWidth: 1.5,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md,
-    fontSize: FontSize.md,
-  },
-  editBtns: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: 4,
-  },
-  cancelBtn: {
-    flex: 1,
-    height: 46,
-    borderRadius: Radius.lg,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelBtnText: {
-    fontSize: FontSize.md,
-    fontWeight: '600',
-  },
-  saveBtn: {
-    flex: 2,
-    height: 46,
-    borderRadius: Radius.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    ...Shadow.colored,
-  },
-  saveBtnText: {
-    color: '#fff',
-    fontSize: FontSize.md,
-    fontWeight: '700',
   },
 
   // ── Empty ──

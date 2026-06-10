@@ -444,7 +444,8 @@ export default function ProfileScreen() {
           {/* ── QUICK ACTIONS ── */}
           <View style={[styles.actionsRow, { backgroundColor: colors.surface }]}>
             {[
-              { icon: 'manage-accounts', label: isRTL ? 'ملفي الشخصي' : 'My Profile', color: '#7C3AED', bg: '#EDE9FE', onPress: () => user && router.push(`/seller/${user.id}` as any) },
+              { icon: 'edit', label: isRTL ? 'تعديل الملف' : 'Edit Profile', color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
+              { icon: 'person', label: isRTL ? 'ملفي العام' : 'My Page', color: '#7C3AED', bg: '#EDE9FE', onPress: () => user && router.push(`/seller/${user.id}` as any) },
               { icon: 'add-circle-outline', label: isRTL ? 'نشر إعلان' : 'Post Ad', color: colors.primary, bg: colors.primaryGhost, onPress: () => router.push('/(tabs)/post') },
               { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
               ...(isAdmin ? [{ icon: 'admin-panel-settings', label: isRTL ? 'الإدارة' : 'Admin', color: '#D97706', bg: '#FEF3C7', onPress: () => router.push('/admin') }] : []),
