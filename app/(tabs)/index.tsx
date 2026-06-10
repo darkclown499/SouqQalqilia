@@ -303,11 +303,7 @@ export default function HomeScreen() {
                 {currentBanner.subtitle}
               </Text>
             ) : null}
-            {/* CTA chip */}
-            <View style={styles.bannerCta}>
-              <MaterialIcons name="search" size={12} color="#fff" />
-              <Text style={styles.bannerCtaText}>{isAr ? 'تصفح الإعلانات' : 'Browse Listings'}</Text>
-            </View>
+
           </View>
           {banners.length > 1 ? (
             <View style={styles.bannerDots}>
