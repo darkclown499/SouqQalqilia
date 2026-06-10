@@ -45,8 +45,23 @@ function BroadcastModal({ visible, onClose, isAr, colors }: BroadcastModalProps)
   const [bMessage, setBMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sent: number; failed: number; total: number } | null>(null);
+  const [tokenCount, setTokenCount] = useState<number | null>(null);
 
   const reset = () => { setBTitle(''); setBMessage(''); setResult(null); };
+
+  // Load token count when modal opens
+  React.useEffect(() => {
+    if (!visible) return;
+    const { getSupabaseClient } = require('@/template');
+    const supabase = getSupabaseClient();
+    supabase
+      .from('user_profiles')
+      .select('push_token', { count: 'exact', head: false })
+      .not('push_token', 'is', null)
+      .like('push_token', 'ExponentPushToken%')
+      .then(({ count }: { count: number | null }) => setTokenCount(count ?? 0))
+      .catch(() => {});
+  }, [visible]);
 
   const handleSend = async () => {
     if (!bTitle.trim() || !bMessage.trim()) {
@@ -112,9 +127,16 @@ function BroadcastModal({ visible, onClose, isAr, colors }: BroadcastModalProps)
               <Text style={[bcastS.headerTitle, { color: colors.textPrimary }]}>
                 {isAr ? 'إشعار جماعي' : 'Broadcast Notification'}
               </Text>
-              <Text style={[bcastS.headerSub, { color: colors.textMuted }]}>
-                {isAr ? 'إرسال لجميع المستخدمين الذين لديهم الإشعارات مفعّلة' : 'Send to all users with push notifications enabled'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                <View style={[bcastS.devicePill, { backgroundColor: colors.primaryGhost }]}>
+                  <MaterialIcons name="phone-android" size={11} color={colors.primary} />
+                  <Text style={[bcastS.devicePillText, { color: colors.primary }]}>
+                    {tokenCount !== null
+                      ? (isAr ? `${tokenCount} جهاز متاح` : `${tokenCount} devices ready`)
+                      : (isAr ? 'جاري التحميل...' : 'Loading...')}
+                  </Text>
+                </View>
+              </View>
             </View>
             <Pressable onPress={() => { reset(); onClose(); }} hitSlop={8}>
               <MaterialIcons name="close" size={20} color={colors.textMuted} />
@@ -222,7 +244,11 @@ const bcastS = StyleSheet.create({
   },
   headerIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 16, fontWeight: '700' },
-  headerSub: { fontSize: 12, marginTop: 2 },
+  devicePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
+  },
+  devicePillText: { fontSize: 11, fontWeight: '700' },
   body: { padding: 20, gap: 16 },
   field: { gap: 6 },
   fieldLabel: { fontSize: 13, fontWeight: '700' },
@@ -470,9 +496,6 @@ export default function AdminScreen() {
     } else if (tab === 'users') {
       const { data } = await adminFetchAllUsers();
       setUsers(data);
-    } else if (tab === 'banners') {
-      const { data } = await fetchAllBanners();
-      setBanners(data);
     } else if (tab === 'banners') {
       const { data } = await fetchAllBanners();
       setBanners(data);
