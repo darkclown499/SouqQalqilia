@@ -47,6 +47,22 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
   const catName = ad.categories ? getCategoryName(ad.categories as any, language) : null;
   const catColor = ad.categories?.color ?? colors.primary;
 
+  // ── Location display helpers ──────────────────────────────────────────────
+  // Extract the city/village prefix before any ' - ' separator
+  const MAIN_CITY = 'قلقيلية';
+  const QALQILYA_LOCATIONS = ['عزون','كفر قدوم','جيوس','حبلة','كفر ثلث','عزون عتمة','إماتين','كفر لاقف','النبي إلياس','جيت','جينصافوط','حجة','باقة الحطب','الفندق','راس عطية','راس الطيرة','صير','فلامية','مغارة الضبعة','عزبة الطبيب','عزبة سلمان','عزبة الأشقر','واد الرشا','المدور'];
+  const rawLocation = ad.location ?? '';
+  // Split on ' - ' to get city part vs neighbourhood part
+  const dashIdx = rawLocation.indexOf(' - ');
+  const cityPart = dashIdx > -1 ? rawLocation.slice(0, dashIdx).trim() : rawLocation.trim();
+  const isMainCity = cityPart === MAIN_CITY || cityPart === 'قلقيلية المدينة';
+  const isVillage = QALQILYA_LOCATIONS.includes(cityPart) && !isMainCity;
+  // Display label: prefer 'قلقيلية' → 'قلقيلية المدينة' for clarity
+  const locationLabel = isMainCity ? 'قلقيلية المدينة' : (cityPart || rawLocation);
+  // Icon colour: primary (green) for the main city, a warm amber for villages
+  const locationIconColor = isMainCity ? colors.primary : (isVillage ? '#D97706' : colors.textMuted);
+  const locationIconName: 'location-city' | 'location-on' = isMainCity ? 'location-city' : 'location-on';
+
   const handleFavorite = useCallback((e: any) => {
     e.stopPropagation?.();
     onFavoritePress?.(ad.id);
@@ -205,11 +221,13 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
         </Text>
 
         {/* Location */}
-        {ad.location ? (
+        {rawLocation ? (
           <View style={[styles.locationRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <MaterialIcons name="location-on" size={11} color={colors.textMuted} />
-            <Text style={[styles.locationText, { color: colors.textMuted }]} numberOfLines={1}>
-              {ad.location}
+            <View style={[styles.locationIconWrap, { backgroundColor: locationIconColor + '18' }]}>
+              <MaterialIcons name={locationIconName} size={10} color={locationIconColor} />
+            </View>
+            <Text style={[styles.locationText, { color: colors.textSecondary, fontWeight: '600' }]} numberOfLines={1}>
+              {locationLabel}
             </Text>
           </View>
         ) : null}
@@ -324,7 +342,8 @@ const styles = StyleSheet.create({
   // Info
   info: { padding: SCREEN_W < 375 ? 8 : 10, gap: 4 },
   title: { fontSize: SCREEN_W < 375 ? FontSize.xs + 1 : FontSize.sm, fontWeight: '700', lineHeight: 19 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  locationIconWrap: { width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   locationText: { fontSize: 10, flex: 1 },
   footer: {
     flexDirection: 'row', alignItems: 'center',
