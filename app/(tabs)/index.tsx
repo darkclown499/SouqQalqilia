@@ -20,6 +20,15 @@ async function addToRecentlyViewed(ad: Ad): Promise<void> {
   } catch { /* ignore */ }
 }
 
+async function removeFromRecentlyViewed(adId: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
+    const existing: Ad[] = raw ? JSON.parse(raw) : [];
+    const updated = existing.filter(a => a.id !== adId);
+    await AsyncStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
+  } catch { /* ignore */ }
+}
+
 async function loadRecentlyViewed(): Promise<Ad[]> {
   try {
     const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
@@ -257,6 +266,11 @@ export default function HomeScreen() {
     router.push(`/ad/${ad.id}`);
   }, [handleAdView, router]);
 
+  const handleRemoveRecent = useCallback((adId: string) => {
+    removeFromRecentlyViewed(adId);
+    setRecentlyViewed(prev => prev.filter(a => a.id !== adId));
+  }, []);
+
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
     return (
       <View style={[styles.pairRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -346,22 +360,31 @@ export default function HomeScreen() {
             {recentlyViewed.map(ad => {
               const thumb = (ad.ad_images ?? []).sort((a: any, b: any) => a.position - b.position)[0]?.url;
               return (
-                <Pressable
-                  key={ad.id}
-                  style={({ pressed }) => [styles.recentCard, { backgroundColor: colors.surface, borderColor: colors.border, ...Shadow.sm, transform: [{ scale: pressed ? 0.96 : 1 }] }]}
-                  onPress={() => handleRecentAdPress(ad)}
-                >
-                  {thumb ? (
-                    <Image source={{ uri: thumb }} style={styles.recentImg} contentFit="cover" transition={200} cachePolicy="memory-disk" />
-                  ) : (
-                    <View style={[styles.recentImgPh, { backgroundColor: colors.surfaceTint }]}>
-                      <MaterialIcons name="image" size={22} color={colors.textMuted} />
+                <View key={ad.id} style={styles.recentCardWrap}>
+                  <Pressable
+                    style={({ pressed }) => [styles.recentCard, { backgroundColor: colors.surface, borderColor: colors.border, ...Shadow.sm, transform: [{ scale: pressed ? 0.96 : 1 }] }]}
+                    onPress={() => handleRecentAdPress(ad)}
+                  >
+                    {thumb ? (
+                      <Image source={{ uri: thumb }} style={styles.recentImg} contentFit="cover" transition={200} cachePolicy="memory-disk" />
+                    ) : (
+                      <View style={[styles.recentImgPh, { backgroundColor: colors.surfaceTint }]}>
+                        <MaterialIcons name="image" size={22} color={colors.textMuted} />
+                      </View>
+                    )}
+                    <View style={styles.recentInfo}>
+                      <Text style={[styles.recentTitle, { color: colors.textSecondary }]} numberOfLines={2}>{ad.title}</Text>
                     </View>
-                  )}
-                  <View style={styles.recentInfo}>
-                    <Text style={[styles.recentTitle, { color: colors.textSecondary }]} numberOfLines={2}>{ad.title}</Text>
-                  </View>
-                </Pressable>
+                  </Pressable>
+                  {/* Remove button */}
+                  <Pressable
+                    style={[styles.recentRemoveBtn, { backgroundColor: colors.error }]}
+                    onPress={() => handleRemoveRecent(ad.id)}
+                    hitSlop={4}
+                  >
+                    <MaterialIcons name="close" size={10} color="#fff" />
+                  </Pressable>
+                </View>
               );
             })}
           </ScrollView>
@@ -443,7 +466,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, filteredAds.length, recentlyViewed, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleOpenFilter, handleClearFilters, router, setSortBy]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, filteredAds.length, recentlyViewed, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleOpenFilter, handleClearFilters, router, setSortBy]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -870,11 +893,28 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     alignItems: 'flex-start',
   },
+  recentCardWrap: {
+    position: 'relative',
+    width: 120,
+  },
   recentCard: {
     width: 120,
     borderRadius: Radius.lg,
     borderWidth: 1,
     overflow: 'hidden',
+  },
+  recentRemoveBtn: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
   recentImg: { width: 120, height: 88 },
   recentImgPh: {
