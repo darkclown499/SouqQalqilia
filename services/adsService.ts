@@ -103,7 +103,21 @@ export async function fetchAds(params?: {
     `)
     .in('status', ['active', 'featured']);
 
-  // Apply server-side sorting
+  // ── Apply all filters BEFORE pagination ──────────────────────────────────
+  if (params?.categoryId) query = query.eq('category_id', params.categoryId);
+  if (params?.userId) query = query.eq('user_id', params.userId);
+  if (params?.search) query = query.ilike('title', `%${params.search}%`);
+  if (params?.maxPrice !== undefined && params.maxPrice >= 0) query = query.lte('price', params.maxPrice);
+  if (params?.minPrice !== undefined && params.minPrice > 0) query = query.gte('price', params.minPrice);
+  if (params?.condition) query = query.eq('condition', params.condition);
+  if (params?.location) {
+    // Match the city name at start of location string (e.g. 'عزون' matches 'عزون - شارع ...')
+    // For city 'قلقيلية المدينة' we match stored prefix 'قلقيلية'
+    const prefix = params.location === 'قلقيلية المدينة' ? 'قلقيلية' : params.location;
+    query = query.ilike('location', `${prefix}%`);
+  }
+
+  // ── Apply server-side sorting ──────────────────────────────────────────────
   if (sortBy === 'price_asc') {
     query = query
       .order('boosted_until', { ascending: false, nullsFirst: false })
@@ -123,20 +137,8 @@ export async function fetchAds(params?: {
       .order('created_at', { ascending: false });
   }
 
+  // ── Pagination LAST (after filters + sort) ────────────────────────────────
   query = query.range(offset, offset + limit - 1);
-
-  if (params?.categoryId) query = query.eq('category_id', params.categoryId);
-  if (params?.userId) query = query.eq('user_id', params.userId);
-  if (params?.search) query = query.ilike('title', `%${params.search}%`);
-  if (params?.maxPrice !== undefined && params.maxPrice >= 0) query = query.lte('price', params.maxPrice);
-  if (params?.minPrice !== undefined && params.minPrice > 0) query = query.gte('price', params.minPrice);
-  if (params?.condition) query = query.eq('condition', params.condition);
-  if (params?.location) {
-    // Match the city name at start of location string (e.g. 'عزون' matches 'عزون - شارع ...')
-    // For city 'قلقيلية المدينة' we match stored prefix 'قلقيلية'
-    const prefix = params.location === 'قلقيلية المدينة' ? 'قلقيلية' : params.location;
-    query = query.ilike('location', `${prefix}%`);
-  }
 
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
