@@ -32,6 +32,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     }
 
     loadedCountRef.current = 0;
+    setHasMore(true);
     const { data, error } = await fetchAds({
       ...p,
       condition: p?.condition ?? undefined,

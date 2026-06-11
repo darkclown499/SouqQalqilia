@@ -766,6 +766,10 @@ export default function AdminScreen() {
     } else if (tab === 'banners') {
       const { data } = await fetchAllBanners();
       setBanners(data);
+    } else if (tab === 'analytics') {
+      // analytics tab handles its own loading
+      setLoading(false);
+      return;
     } else {
       const { data } = await fetchAllInterstitials();
       setInterstitials(data);
@@ -1768,7 +1772,7 @@ export default function AdminScreen() {
         />
       )}
 
-      {tab === 'stores' ? (
+      {tab === 'stores' && (
         <FlatList
           data={stores}
           keyExtractor={item => item.id}
@@ -1851,7 +1855,7 @@ export default function AdminScreen() {
             ) : null
           }
         />
-      ) : null}
+      )}
 
       {/* Full Edit Modal */}
       <AdEditModal
