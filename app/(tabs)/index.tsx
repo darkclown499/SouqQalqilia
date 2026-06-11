@@ -224,7 +224,6 @@ export default function HomeScreen() {
   }, []);
 
   const handleOpenFilter = useCallback(() => {
-    // Sync draft with current applied values
     setDraftArea(appliedArea);
     setDraftMaxPrice(appliedMaxPrice !== undefined ? String(appliedMaxPrice) : '');
     setDraftCondition(appliedCondition);
@@ -465,7 +464,6 @@ export default function HomeScreen() {
           </View>
 
           <View style={[styles.headerActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            {/* Filter button */}
             <Pressable
               style={[styles.headerIconBtn, activeFilterCount > 0 && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
               onPress={handleOpenFilter}
@@ -478,7 +476,6 @@ export default function HomeScreen() {
                 </View>
               ) : null}
             </Pressable>
-            {/* Sort button */}
             <Pressable
               style={[styles.headerIconBtn, showSortBar && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
               onPress={() => setShowSortBar(v => !v)}
@@ -544,9 +541,57 @@ export default function HomeScreen() {
         ) : null}
       </View>
 
-      {/* ── FILTER BOTTOM SHEET ── */}
+      {/* ── CONTENT ── */}
+      {loading && ads.length === 0 ? (
+        <SkeletonHomeFeed />
+      ) : (
+        <FlatList
+          data={feedRows}
+          keyExtractor={item => item.id}
+          renderItem={renderRow}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          windowSize={7}
+          maxToRenderPerBatch={8}
+          initialNumToRender={6}
+          updateCellsBatchingPeriod={50}
+          removeClippedSubviews
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
+          ListHeaderComponent={ListHeader}
+          ListFooterComponent={
+            hasMore ? (
+              <View style={styles.loadMoreIndicator}>
+                {loadingMore ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+              </View>
+            ) : ads.length > 0 ? (
+              <View style={styles.endOfList}>
+                <MaterialIcons name="check-circle-outline" size={16} color={colors.textMuted} />
+                <Text style={[styles.endOfListText, { color: colors.textMuted }]}>
+                  {isAr ? 'تم عرض جميع الإعلانات' : 'All listings shown'}
+                </Text>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            !loading ? <EmptyState icon="storefront" title={t.noListings} subtitle={t.noListingsSub} /> : null
+          }
+        />
+      )}
+
+      <InterstitialAdOverlay ad={activeInterstitial} visible={interstitialVisible} onClose={() => setInterstitialVisible(false)} />
+
+      {/* ── FILTER BOTTOM SHEET — rendered after FlatList to appear on top ── */}
       {filterVisible ? (
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+        <View style={[StyleSheet.absoluteFillObject, { zIndex: 100 }]} pointerEvents="box-none">
           <Pressable style={fStyles.overlay} onPress={() => setFilterVisible(false)} />
           <View style={[fStyles.sheet, { backgroundColor: colors.surface }]}>
             <View style={[fStyles.handle, { backgroundColor: colors.border }]} />
@@ -626,9 +671,9 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* ── AREA PICKER MODAL ── */}
+      {/* ── AREA PICKER MODAL — rendered last so it sits above filter sheet ── */}
       {areaPickerVisible ? (
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+        <View style={[StyleSheet.absoluteFillObject, { zIndex: 200 }]} pointerEvents="box-none">
           <Pressable style={fStyles.overlay} onPress={() => setAreaPickerVisible(false)} />
           <View style={[fStyles.areaSheet, { backgroundColor: colors.surface }]}>
             <View style={[fStyles.handle, { backgroundColor: colors.border }]} />
@@ -680,54 +725,6 @@ export default function HomeScreen() {
           </View>
         </View>
       ) : null}
-
-      {/* ── CONTENT ── */}
-      {loading && ads.length === 0 ? (
-        <SkeletonHomeFeed />
-      ) : (
-        <FlatList
-          data={feedRows}
-          keyExtractor={item => item.id}
-          renderItem={renderRow}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          windowSize={7}
-          maxToRenderPerBatch={8}
-          initialNumToRender={6}
-          updateCellsBatchingPeriod={50}
-          removeClippedSubviews
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-          refreshControl={
-            <RefreshControl
-              refreshing={loading}
-              onRefresh={handleRefresh}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
-            />
-          }
-          ListHeaderComponent={ListHeader}
-          ListFooterComponent={
-            hasMore ? (
-              <View style={styles.loadMoreIndicator}>
-                {loadingMore ? <ActivityIndicator color={colors.primary} size="small" /> : null}
-              </View>
-            ) : ads.length > 0 ? (
-              <View style={styles.endOfList}>
-                <MaterialIcons name="check-circle-outline" size={16} color={colors.textMuted} />
-                <Text style={[styles.endOfListText, { color: colors.textMuted }]}>
-                  {isAr ? 'تم عرض جميع الإعلانات' : 'All listings shown'}
-                </Text>
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            !loading ? <EmptyState icon="storefront" title={t.noListings} subtitle={t.noListingsSub} /> : null
-          }
-        />
-      )}
-
-      <InterstitialAdOverlay ad={activeInterstitial} visible={interstitialVisible} onClose={() => setInterstitialVisible(false)} />
     </View>
   );
 }
