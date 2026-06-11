@@ -80,14 +80,17 @@ export async function fetchAds(params?: {
   userId?: string;
   search?: string;
   maxPrice?: number;
+  minPrice?: number;
   condition?: 'new' | 'used' | null;
   location?: string;
+  sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'boosted';
   limit?: number;
   offset?: number;
 }): Promise<{ data: Ad[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const limit = params?.limit ?? 20;
   const offset = params?.offset ?? 0;
+  const sortBy = params?.sortBy ?? 'newest';
 
   // Select only the columns needed for the card view — no user_profiles join on list
   let query = supabase
@@ -98,15 +101,35 @@ export async function fetchAds(params?: {
       categories(id, name, name_ar, icon, color),
       ad_images(id, url, position)
     `)
-    .in('status', ['active', 'featured'])
-    .order('boosted_until', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
+    .in('status', ['active', 'featured']);
+
+  // Apply server-side sorting
+  if (sortBy === 'price_asc') {
+    query = query
+      .order('boosted_until', { ascending: false, nullsFirst: false })
+      .order('price', { ascending: true });
+  } else if (sortBy === 'price_desc') {
+    query = query
+      .order('boosted_until', { ascending: false, nullsFirst: false })
+      .order('price', { ascending: false });
+  } else if (sortBy === 'boosted') {
+    query = query
+      .order('boosted_until', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false });
+  } else {
+    // newest (default)
+    query = query
+      .order('boosted_until', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false });
+  }
+
+  query = query.range(offset, offset + limit - 1);
 
   if (params?.categoryId) query = query.eq('category_id', params.categoryId);
   if (params?.userId) query = query.eq('user_id', params.userId);
   if (params?.search) query = query.ilike('title', `%${params.search}%`);
-  if (params?.maxPrice !== undefined) query = query.lte('price', params.maxPrice);
+  if (params?.maxPrice !== undefined && params.maxPrice >= 0) query = query.lte('price', params.maxPrice);
+  if (params?.minPrice !== undefined && params.minPrice > 0) query = query.gte('price', params.minPrice);
   if (params?.condition) query = query.eq('condition', params.condition);
   if (params?.location) {
     // Match the city name at start of location string (e.g. 'عزون' matches 'عزون - شارع ...')

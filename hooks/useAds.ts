@@ -3,9 +3,9 @@ import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache } from '@/services/a
 
 const PAGE_SIZE = 20;
 
-export function useAds(params?: { categoryId?: string; search?: string; maxPrice?: number; condition?: 'new' | 'used' | null; location?: string }) {
+export function useAds(params?: { categoryId?: string; search?: string; maxPrice?: number; minPrice?: number; condition?: 'new' | 'used' | null; location?: string; sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'boosted' }) {
   // Seed from module-level cache on first mount (no-filter only) for instant display
-  const initialAds = !params?.categoryId && !params?.search && !params?.maxPrice && !params?.condition && !params?.location
+  const initialAds = !params?.categoryId && !params?.search && !params?.maxPrice && !params?.minPrice && !params?.condition && !params?.location && !params?.sortBy
     ? (getAdsCache()?.data ?? [])
     : [];
   const [ads, setAds] = useState<Ad[]>(initialAds);
@@ -19,7 +19,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
   const load = useCallback(async (overrideParams?: typeof params) => {
     setError(null);
     const p = overrideParams ?? params;
-    const isDefault = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.condition && !p?.location;
+    const isDefault = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
 
     // Show cached data immediately, then refresh in background
     const cached = isDefault ? getAdsCache() : null;
@@ -35,6 +35,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     const { data, error } = await fetchAds({
       ...p,
       condition: p?.condition ?? undefined,
+      sortBy: p?.sortBy ?? 'newest',
       limit: PAGE_SIZE,
       offset: 0,
     });
@@ -44,7 +45,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     setHasMore(data.length === PAGE_SIZE);
     setError(error);
     setLoading(false);
-  }, [params?.categoryId, params?.search, params?.maxPrice, params?.condition, params?.location]);
+  }, [params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);
 
   const loadMore = useCallback(async (currentParams?: typeof params) => {
     if (loadingMore || !hasMore) return;
@@ -53,6 +54,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     const { data } = await fetchAds({
       ...p,
       condition: p?.condition ?? undefined,
+      sortBy: p?.sortBy ?? 'newest',
       limit: PAGE_SIZE,
       offset: loadedCountRef.current,
     });
@@ -64,7 +66,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     });
     setHasMore(data.length === PAGE_SIZE);
     setLoadingMore(false);
-  }, [loadingMore, hasMore, params?.categoryId, params?.search, params?.maxPrice, params?.condition, params?.location]);
+  }, [loadingMore, hasMore, params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);
 
   return { ads, loading, loadingMore, hasMore, error, load, loadMore, setAds };
 }

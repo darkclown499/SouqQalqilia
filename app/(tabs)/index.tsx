@@ -1,8 +1,7 @@
-
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
-  Dimensions, RefreshControl, ActivityIndicator, Platform,
+  Dimensions, RefreshControl, ActivityIndicator, Platform, TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
@@ -55,12 +54,21 @@ const BANNER_H = Math.round(CONTENT_W * (720 / 1280));
 let _interstitialsCache: InterstitialAd[] | null = null;
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'boosted';
+type Condition = 'new' | 'used' | null;
 
 const SORT_OPTIONS: { key: SortOption; label: string; labelAr: string; icon: string }[] = [
   { key: 'newest', label: 'Newest', labelAr: 'الأحدث', icon: 'schedule' },
   { key: 'price_asc', label: 'Price ↑', labelAr: 'سعر ↑', icon: 'trending-up' },
   { key: 'price_desc', label: 'Price ↓', labelAr: 'سعر ↓', icon: 'trending-down' },
   { key: 'boosted', label: 'Boosted', labelAr: 'معزز', icon: 'bolt' },
+];
+
+const QALQILYA_LOCATIONS = [
+  'قلقيلية المدينة', 'عزون', 'كفر قدوم', 'جيوس', 'حبلة', 'كفر ثلث',
+  'عزون عتمة', 'إماتين', 'كفر لاقف', 'النبي إلياس', 'جيت', 'جينصافوط',
+  'حجة', 'باقة الحطب', 'الفندق', 'راس عطية', 'راس الطيرة', 'صير',
+  'فلامية', 'مغارة الضبعة', 'عزبة الطبيب', 'عزبة سلمان',
+  'عزبة الأشقر', 'واد الرشا', 'المدور',
 ];
 
 type FeedRow = { type: 'pair'; left: Ad; right: Ad | null; id: string };
@@ -75,22 +83,6 @@ function buildFeedRows(ads: Ad[]): FeedRow[] {
     adIndex += 2;
   }
   return rows;
-}
-
-function sortAds(ads: Ad[], sortBy: SortOption): Ad[] {
-  const now = Date.now();
-  const copy = [...ads];
-  const boostedScore = (ad: Ad) => (ad.boosted_until && new Date(ad.boosted_until).getTime() > now ? 1 : 0);
-  switch (sortBy) {
-    case 'price_asc':
-      return copy.sort((a, b) => { const bd = boostedScore(b) - boostedScore(a); return bd !== 0 ? bd : a.price - b.price; });
-    case 'price_desc':
-      return copy.sort((a, b) => { const bd = boostedScore(b) - boostedScore(a); return bd !== 0 ? bd : b.price - a.price; });
-    case 'boosted':
-      return copy.sort((a, b) => boostedScore(b) - boostedScore(a));
-    default:
-      return copy.sort((a, b) => { const bd = boostedScore(b) - boostedScore(a); return bd !== 0 ? bd : new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); });
-  }
 }
 
 export default function HomeScreen() {
@@ -109,6 +101,18 @@ export default function HomeScreen() {
   const [banners, setBanners] = useState<Banner[]>(() => getBannersCache() ?? []);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [showSortBar, setShowSortBar] = useState(false);
+
+  // ── Filter state (draft – not applied until user presses apply) ────────────
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [areaPickerVisible, setAreaPickerVisible] = useState(false);
+  const [draftArea, setDraftArea] = useState<string | null>(null);
+  const [draftMaxPrice, setDraftMaxPrice] = useState('');
+  const [draftCondition, setDraftCondition] = useState<Condition>(null);
+  // Applied filters (sent to DB)
+  const [appliedArea, setAppliedArea] = useState<string | null>(null);
+  const [appliedMaxPrice, setAppliedMaxPrice] = useState<number | undefined>(undefined);
+  const [appliedCondition, setAppliedCondition] = useState<Condition>(null);
+
   const [interstitials, setInterstitials] = useState<InterstitialAd[]>(_interstitialsCache ?? []);
   const [activeInterstitial, setActiveInterstitial] = useState<InterstitialAd | null>(null);
   const [interstitialVisible, setInterstitialVisible] = useState(false);
@@ -116,6 +120,9 @@ export default function HomeScreen() {
   const [totalAdsCount, setTotalAdsCount] = useState(0);
   const appStartTime = useRef(Date.now());
   const interstitialShown = useRef(false);
+
+  const activeFilterCount = [appliedArea, appliedMaxPrice !== undefined ? '1' : null, appliedCondition].filter(Boolean).length;
+  const isAr = language === 'ar';
 
   useEffect(() => { loadRecentlyViewed().then(setRecentlyViewed); }, []);
 
@@ -139,9 +146,16 @@ export default function HomeScreen() {
     return unsub;
   }, [user?.id]);
 
-  const isAr = language === 'ar';
-
-  useEffect(() => { load({ categoryId: selectedCategory ?? undefined }); }, [selectedCategory, load]);
+  // ── Load ads from DB with all active filters + sort ────────────────────────
+  useEffect(() => {
+    load({
+      categoryId: selectedCategory ?? undefined,
+      location: appliedArea ?? undefined,
+      maxPrice: appliedMaxPrice,
+      condition: appliedCondition ?? undefined,
+      sortBy,
+    });
+  }, [selectedCategory, sortBy, appliedArea, appliedMaxPrice, appliedCondition]);
 
   useEffect(() => {
     if (!getBannersCache()) {
@@ -181,26 +195,57 @@ export default function HomeScreen() {
   const displayName = user?.username || user?.email?.split('@')[0] || '';
   const appTitle = isAr ? 'سوق قلقيلية' : 'Souq Qalqilya';
 
-  const sortedAds = useMemo(() => {
-    return ads.filter(ad => !blockedIds.has(ad.user_id)); // Filter first
-  }, [ads, blockedIds]);
-
-  const sortedAndFilteredAds = useMemo(() => {
-    return sortAds(sortedAds, sortBy); // Then sort
-  }, [sortedAds, sortBy]);
-
-  const feedRows = useMemo(() => buildFeedRows(sortedAndFilteredAds), [sortedAndFilteredAds]);
+  // Server handles sorting & filtering; client only removes blocked users
+  const filteredAds = useMemo(() => ads.filter(ad => !blockedIds.has(ad.user_id)), [ads, blockedIds]);
+  const feedRows = useMemo(() => buildFeedRows(filteredAds), [filteredAds]);
 
   const handleLoadMore = useCallback(() => {
-    if (!loadingMore && hasMore) loadMore({ categoryId: selectedCategory ?? undefined });
-  }, [loadingMore, hasMore, selectedCategory, loadMore]);
+    if (!loadingMore && hasMore) loadMore({
+      categoryId: selectedCategory ?? undefined,
+      location: appliedArea ?? undefined,
+      maxPrice: appliedMaxPrice,
+      condition: appliedCondition ?? undefined,
+      sortBy,
+    });
+  }, [loadingMore, hasMore, selectedCategory, appliedArea, appliedMaxPrice, appliedCondition, sortBy, loadMore]);
 
   const handleRefresh = useCallback(() => {
-    load({ categoryId: selectedCategory ?? undefined });
-  }, [load, selectedCategory]);
+    load({
+      categoryId: selectedCategory ?? undefined,
+      location: appliedArea ?? undefined,
+      maxPrice: appliedMaxPrice,
+      condition: appliedCondition ?? undefined,
+      sortBy,
+    });
+  }, [load, selectedCategory, appliedArea, appliedMaxPrice, appliedCondition, sortBy]);
 
   const handleCategoryPress = useCallback((id: string | null) => {
     setSelectedCategory(id);
+  }, []);
+
+  const handleOpenFilter = useCallback(() => {
+    // Sync draft with current applied values
+    setDraftArea(appliedArea);
+    setDraftMaxPrice(appliedMaxPrice !== undefined ? String(appliedMaxPrice) : '');
+    setDraftCondition(appliedCondition);
+    setFilterVisible(true);
+  }, [appliedArea, appliedMaxPrice, appliedCondition]);
+
+  const handleApplyFilters = useCallback(() => {
+    const parsedMax = draftMaxPrice.trim() ? parseFloat(draftMaxPrice) : undefined;
+    setAppliedArea(draftArea);
+    setAppliedMaxPrice(isNaN(parsedMax as number) ? undefined : parsedMax);
+    setAppliedCondition(draftCondition);
+    setFilterVisible(false);
+  }, [draftMaxPrice, draftArea, draftCondition]);
+
+  const handleClearFilters = useCallback(() => {
+    setDraftArea(null);
+    setDraftMaxPrice('');
+    setDraftCondition(null);
+    setAppliedArea(null);
+    setAppliedMaxPrice(undefined);
+    setAppliedCondition(null);
   }, []);
 
   const handleAdView = useCallback((ad: Ad) => {
@@ -222,7 +267,7 @@ export default function HomeScreen() {
             width={CARD_WIDTH}
             isFavorited={favIds.has(item.left.id)}
             onFavoritePress={user ? toggleFav : undefined}
-            onAdPress={handleAdView} // Pass the handler
+            onAdPress={handleAdView}
           />
         </View>
         {item.right ? (
@@ -232,7 +277,7 @@ export default function HomeScreen() {
               width={CARD_WIDTH}
               isFavorited={favIds.has(item.right.id)}
               onFavoritePress={user ? toggleFav : undefined}
-              onAdPress={handleAdView} // Pass the handler
+              onAdPress={handleAdView}
             />
           </View>
         ) : (
@@ -240,7 +285,7 @@ export default function HomeScreen() {
         )}
       </View>
     );
-  }, [colors, isRTL, favIds, user, toggleFav, handleAdView]);
+  }, [isRTL, favIds, user, toggleFav, handleAdView]);
 
   const currentBanner = banners[featuredIndex] ?? banners[0];
 
@@ -260,7 +305,6 @@ export default function HomeScreen() {
             cachePolicy="memory-disk"
             priority="high"
           />
-          {/* Gradient overlay */}
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.72)']}
             style={StyleSheet.absoluteFill}
@@ -277,7 +321,6 @@ export default function HomeScreen() {
                 {currentBanner.subtitle}
               </Text>
             ) : null}
-
           </View>
           {banners.length > 1 ? (
             <View style={styles.bannerDots}>
@@ -376,25 +419,38 @@ export default function HomeScreen() {
         </View>
         <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>{isAr ? 'جميع الإعلانات' : 'All Listings'}</Text>
         <View style={[styles.countPill, { backgroundColor: colors.primaryGhost }]}>
-          <Text style={[styles.countPillText, { color: colors.primary }]}>{totalAdsCount > 0 ? totalAdsCount : sortedAndFilteredAds.length}</Text>
+          <Text style={[styles.countPillText, { color: colors.primary }]}>
+            {activeFilterCount > 0 ? filteredAds.length : (totalAdsCount > 0 ? totalAdsCount : filteredAds.length)}
+          </Text>
         </View>
         {sortBy !== 'newest' ? (
-          <View style={[styles.activeSortPill, { backgroundColor: colors.primary }]}>
+          <View style={[styles.activeSortPill, { backgroundColor: colors.primary, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <MaterialIcons name="sort" size={11} color="#fff" />
             <Text style={styles.activeSortText}>{isAr ? SORT_OPTIONS.find(s => s.key === sortBy)?.labelAr : SORT_OPTIONS.find(s => s.key === sortBy)?.label}</Text>
             <Pressable onPress={() => setSortBy('newest')} hitSlop={6}><MaterialIcons name="close" size={11} color="#fff" /></Pressable>
           </View>
         ) : null}
+        {activeFilterCount > 0 ? (
+          <Pressable
+            style={[styles.activeSortPill, { backgroundColor: colors.accent, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+            onPress={handleOpenFilter}
+          >
+            <MaterialIcons name="filter-list" size={11} color="#fff" />
+            <Text style={styles.activeSortText}>
+              {activeFilterCount} {isAr ? 'فلتر' : activeFilterCount === 1 ? 'filter' : 'filters'}
+            </Text>
+            <Pressable onPress={handleClearFilters} hitSlop={6}><MaterialIcons name="close" size={11} color="#fff" /></Pressable>
+          </Pressable>
+        ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, sortedAndFilteredAds.length, recentlyViewed, handleCategoryPress, handleRecentAdPress, router, setSortBy]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, filteredAds.length, recentlyViewed, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleOpenFilter, handleClearFilters, router, setSortBy]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* ── HEADER ── */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View style={[styles.headerTop, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          {/* Greeting + title */}
           <View style={styles.headerLeft}>
             {displayName ? (
               <Text style={[styles.greeting, { textAlign: isRTL ? 'right' : 'left' }]}>
@@ -408,14 +464,27 @@ export default function HomeScreen() {
             <Text style={[styles.appName, { textAlign: isRTL ? 'right' : 'left' }]}>{appTitle}</Text>
           </View>
 
-          {/* Actions */}
           <View style={[styles.headerActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            {/* Filter button */}
+            <Pressable
+              style={[styles.headerIconBtn, activeFilterCount > 0 && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
+              onPress={handleOpenFilter}
+              hitSlop={6}
+            >
+              <MaterialIcons name="tune" size={20} color="#fff" />
+              {activeFilterCount > 0 ? (
+                <View style={styles.filterDot}>
+                  <Text style={styles.filterDotText}>{activeFilterCount}</Text>
+                </View>
+              ) : null}
+            </Pressable>
+            {/* Sort button */}
             <Pressable
               style={[styles.headerIconBtn, showSortBar && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
               onPress={() => setShowSortBar(v => !v)}
               hitSlop={6}
             >
-              <MaterialIcons name="tune" size={20} color="#fff" />
+              <MaterialIcons name="sort" size={20} color="#fff" />
             </Pressable>
             <Pressable
               style={styles.headerIconBtn}
@@ -475,6 +544,143 @@ export default function HomeScreen() {
         ) : null}
       </View>
 
+      {/* ── FILTER BOTTOM SHEET ── */}
+      {filterVisible ? (
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+          <Pressable style={fStyles.overlay} onPress={() => setFilterVisible(false)} />
+          <View style={[fStyles.sheet, { backgroundColor: colors.surface }]}>
+            <View style={[fStyles.handle, { backgroundColor: colors.border }]} />
+
+            <View style={[fStyles.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
+              <MaterialIcons name="tune" size={20} color={colors.primary} />
+              <Text style={[fStyles.sheetTitle, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
+                {isAr ? 'فلترة الإعلانات' : 'Filter Listings'}
+              </Text>
+              <Pressable onPress={handleClearFilters} hitSlop={8}>
+                <Text style={[fStyles.clearAll, { color: colors.error }]}>{isAr ? 'مسح الكل' : 'Clear all'}</Text>
+              </Pressable>
+            </View>
+
+            {/* Location / Area */}
+            <Text style={[fStyles.sectionLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'المنطقة أو القرية' : 'Area / Village'}
+            </Text>
+            <Pressable
+              style={({ pressed }) => [fStyles.areaSelector, { borderColor: draftArea ? colors.primary : colors.border, backgroundColor: pressed ? colors.primaryGhost : colors.background, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              onPress={() => setAreaPickerVisible(true)}
+            >
+              <View style={[fStyles.areaSelectorIcon, { backgroundColor: draftArea ? colors.primary : colors.surfaceTint }]}>
+                <MaterialIcons name={draftArea === 'قلقيلية المدينة' ? 'location-city' : 'location-on'} size={14} color={draftArea ? '#fff' : colors.textMuted} />
+              </View>
+              <Text style={[fStyles.areaSelectorText, { color: draftArea ? colors.primary : colors.textMuted, flex: 1, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+                {draftArea ?? (isAr ? 'جميع المناطق' : 'All areas')}
+              </Text>
+              {draftArea ? (
+                <Pressable onPress={() => setDraftArea(null)} hitSlop={6}>
+                  <MaterialIcons name="close" size={16} color={colors.primary} />
+                </Pressable>
+              ) : (
+                <MaterialIcons name="keyboard-arrow-down" size={18} color={colors.textMuted} />
+              )}
+            </Pressable>
+
+            {/* Condition */}
+            <Text style={[fStyles.sectionLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'الحالة' : 'Condition'}
+            </Text>
+            <View style={[fStyles.condRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              {([null, 'new', 'used'] as Condition[]).map(c => {
+                const isSelected = draftCondition === c;
+                const label = c === null ? (isAr ? 'الكل' : 'All') : c === 'new' ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used');
+                return (
+                  <Pressable
+                    key={c ?? 'all'}
+                    style={[fStyles.condChip, { flex: 1, backgroundColor: isSelected ? colors.primary : colors.background, borderColor: isSelected ? colors.primary : colors.border }]}
+                    onPress={() => setDraftCondition(c)}
+                  >
+                    {c !== null ? <MaterialIcons name={c === 'new' ? 'fiber-new' : 'recycling'} size={14} color={isSelected ? '#fff' : colors.textMuted} /> : null}
+                    <Text style={[fStyles.condText, { color: isSelected ? '#fff' : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Max Price */}
+            <Text style={[fStyles.sectionLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'الحد الأقصى للسعر (₪)' : 'Max Price (₪)'}
+            </Text>
+            <TextInput
+              style={[fStyles.priceInput, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.background, textAlign: isRTL ? 'right' : 'left' }]}
+              placeholder={isAr ? 'أي سعر' : 'Any price'}
+              placeholderTextColor={colors.textMuted}
+              value={draftMaxPrice}
+              onChangeText={setDraftMaxPrice}
+              keyboardType="numeric"
+            />
+
+            <Pressable style={[fStyles.applyBtn, { backgroundColor: colors.primary }]} onPress={handleApplyFilters}>
+              <MaterialIcons name="check" size={18} color="#fff" />
+              <Text style={fStyles.applyBtnText}>{isAr ? 'تطبيق الفلاتر' : 'Apply Filters'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {/* ── AREA PICKER MODAL ── */}
+      {areaPickerVisible ? (
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+          <Pressable style={fStyles.overlay} onPress={() => setAreaPickerVisible(false)} />
+          <View style={[fStyles.areaSheet, { backgroundColor: colors.surface }]}>
+            <View style={[fStyles.handle, { backgroundColor: colors.border }]} />
+            <View style={[fStyles.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
+              <MaterialIcons name="location-on" size={20} color={colors.primary} />
+              <Text style={[fStyles.sheetTitle, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
+                {isAr ? 'اختر المنطقة' : 'Select Area'}
+              </Text>
+              <Pressable onPress={() => setAreaPickerVisible(false)} hitSlop={8}>
+                <MaterialIcons name="close" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={fStyles.areaList}>
+              <Pressable
+                style={({ pressed }) => [fStyles.areaItem, { borderColor: draftArea === null ? colors.primary : colors.borderLight, backgroundColor: draftArea === null ? colors.primaryGhost : (pressed ? colors.surfaceTint : colors.background) }]}
+                onPress={() => { setDraftArea(null); setAreaPickerVisible(false); }}
+              >
+                <View style={[fStyles.areaIcon, { backgroundColor: draftArea === null ? colors.primary : colors.surfaceTint }]}>
+                  <MaterialIcons name="location-searching" size={16} color={draftArea === null ? '#fff' : colors.textMuted} />
+                </View>
+                <Text style={[fStyles.areaText, { color: draftArea === null ? colors.primary : colors.textPrimary, fontWeight: draftArea === null ? '700' : '500' }]}>
+                  {isAr ? 'جميع المناطق' : 'All Areas'}
+                </Text>
+                {draftArea === null ? <MaterialIcons name="check-circle" size={18} color={colors.primary} /> : null}
+              </Pressable>
+              {QALQILYA_LOCATIONS.map(loc => {
+                const isSel = draftArea === loc;
+                const isMainCity = loc === 'قلقيلية المدينة';
+                return (
+                  <Pressable
+                    key={loc}
+                    style={({ pressed }) => [fStyles.areaItem, { borderColor: isSel ? colors.primary : colors.borderLight, backgroundColor: isSel ? colors.primaryGhost : (pressed ? colors.surfaceTint : colors.background) }]}
+                    onPress={() => { setDraftArea(loc); setAreaPickerVisible(false); }}
+                  >
+                    <View style={[fStyles.areaIcon, { backgroundColor: isSel ? colors.primary : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
+                      <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSel ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
+                    </View>
+                    <Text style={[fStyles.areaText, { color: isSel ? colors.primary : colors.textPrimary, fontWeight: isSel ? '700' : '500', flex: 1 }]}>{loc}</Text>
+                    {isMainCity && !isSel ? (
+                      <View style={[fStyles.cityBadge, { backgroundColor: colors.primaryGhost }]}>
+                        <Text style={[fStyles.cityBadgeText, { color: colors.primary }]}>{isAr ? 'مدينة' : 'City'}</Text>
+                      </View>
+                    ) : null}
+                    {isSel ? <MaterialIcons name="check-circle" size={18} color={colors.primary} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      ) : null}
+
       {/* ── CONTENT ── */}
       {loading && ads.length === 0 ? (
         <SkeletonHomeFeed />
@@ -529,7 +735,15 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // ── Header ──
+  filterDot: {
+    position: 'absolute', top: 6, right: 6,
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: '#F59E0B',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)',
+  },
+  filterDotText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+
   header: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.md,
@@ -563,7 +777,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Search bar
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -595,7 +808,6 @@ const styles = StyleSheet.create({
   },
   filterChipText: { fontSize: FontSize.xs, fontWeight: '700' },
 
-  // Sort bar
   sortBar: { marginTop: Spacing.sm },
   sortBarContent: { gap: Spacing.sm, paddingBottom: 2, paddingTop: 2 },
   sortChip: {
@@ -609,7 +821,6 @@ const styles = StyleSheet.create({
   },
   sortChipText: { fontSize: FontSize.xs },
 
-  // ── Banner ──
   bannerWrap: {
     width: '100%',
     borderRadius: Radius.xl,
@@ -618,10 +829,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: '#0A6E5C',
     ...Shadow.md,
-  },
-  bannerGradient: {
-    // replaced by LinearGradient component above
-    display: 'none',
   },
   bannerContent: {
     position: 'absolute',
@@ -650,24 +857,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  bannerCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: Radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    marginTop: 2,
-  },
-  bannerCtaText: {
-    color: '#fff',
-    fontSize: FontSize.xs,
-    fontWeight: '700',
-  },
   bannerDots: {
     position: 'absolute',
     top: 14,
@@ -685,7 +874,6 @@ const styles = StyleSheet.create({
   },
   bannerDotActive: { backgroundColor: '#fff', width: 22, borderRadius: 4 },
 
-  // ── Recently Viewed ──
   recentSection: { marginBottom: Spacing.lg },
   recentList: {
     paddingHorizontal: H_PAD,
@@ -708,7 +896,6 @@ const styles = StyleSheet.create({
   recentInfo: { padding: 8, gap: 3 },
   recentTitle: { fontSize: FontSize.xs, fontWeight: '600', lineHeight: 15 },
 
-  // ── Section headers ──
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -734,7 +921,6 @@ const styles = StyleSheet.create({
   },
   seeAllText: { fontSize: FontSize.sm, fontWeight: '600' },
 
-  // ── Categories ──
   catOuter: {
     marginBottom: Spacing.lg,
     marginHorizontal: -H_PAD,
@@ -755,7 +941,6 @@ const styles = StyleSheet.create({
   },
   catChipText: { fontSize: FontSize.xs },
 
-  // ── Listings header ──
   listingsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -781,7 +966,6 @@ const styles = StyleSheet.create({
   },
   activeSortText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
 
-  // ── Feed ──
   listContent: { padding: H_PAD, paddingBottom: 36 },
   pairRow: {
     flexDirection: 'row',
@@ -790,7 +974,6 @@ const styles = StyleSheet.create({
   },
   adWrapper: { flex: 1 },
 
-  // ── Footer ──
   loadMoreIndicator: { paddingVertical: 20, alignItems: 'center' },
   endOfList: {
     flexDirection: 'row',
@@ -802,3 +985,54 @@ const styles = StyleSheet.create({
   endOfListText: { fontSize: FontSize.sm, fontWeight: '500' },
 });
 
+// ── Filter Sheet Styles ────────────────────────────────────────────────────────
+const fStyles = StyleSheet.create({
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.52)' },
+  sheet: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: Spacing.lg, paddingBottom: 40, paddingTop: 12,
+    gap: Spacing.md,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15, shadowRadius: 20, elevation: 24,
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
+  titleRow: { alignItems: 'center', gap: Spacing.sm, paddingBottom: Spacing.md, borderBottomWidth: 1 },
+  sheetTitle: { fontSize: FontSize.lg, fontWeight: '700' },
+  clearAll: { fontSize: FontSize.xs, fontWeight: '700' },
+  sectionLabel: { fontSize: FontSize.sm, fontWeight: '700', marginBottom: -4 },
+  areaSelector: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderRadius: Radius.lg, paddingVertical: 11, paddingHorizontal: 12 },
+  areaSelectorIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  areaSelectorText: { fontSize: FontSize.md, fontWeight: '600' },
+  condRow: { flexDirection: 'row', gap: Spacing.sm },
+  condChip: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, paddingVertical: 11, borderRadius: Radius.md, borderWidth: 1.5,
+  },
+  condText: { fontSize: FontSize.sm },
+  priceInput: {
+    height: 48, borderWidth: 1.5, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md, fontSize: FontSize.md,
+  },
+  applyBtn: {
+    height: 50, borderRadius: Radius.xl,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, marginTop: 4,
+    shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
+  },
+  applyBtnText: { color: '#fff', fontWeight: '700', fontSize: FontSize.md },
+  areaSheet: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingTop: 12, paddingBottom: 40, maxHeight: '80%',
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15, shadowRadius: 20, elevation: 24,
+  },
+  areaList: { paddingHorizontal: 16, paddingBottom: 16, gap: 8 },
+  areaItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: Radius.lg, borderWidth: 1.5 },
+  areaIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  areaText: { fontSize: FontSize.md },
+  cityBadge: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
+  cityBadgeText: { fontSize: 10, fontWeight: '700' },
+});
