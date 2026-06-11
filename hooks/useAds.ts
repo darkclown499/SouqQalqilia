@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache } from '@/services/adsService';
 
 const PAGE_SIZE = 20;
@@ -21,18 +21,21 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     const p = overrideParams ?? params;
     const isDefault = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
 
-    // Show cached data immediately, then refresh in background
+    // Reset pagination state immediately before fetch
+    loadedCountRef.current = 0;
+    setHasMore(true);
+
+    // Show cached data immediately for default view
     const cached = isDefault ? getAdsCache() : null;
     if (cached) {
       setAds(cached.data);
       setHasMore(cached.data.length === PAGE_SIZE);
       setLoading(false);
     } else {
+      setAds([]);
       setLoading(true);
     }
 
-    loadedCountRef.current = 0;
-    setHasMore(true);
     const { data, error } = await fetchAds({
       ...p,
       condition: p?.condition ?? undefined,
@@ -51,20 +54,24 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
   const loadMore = useCallback(async (currentParams?: typeof params) => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
+    const currentOffset = loadedCountRef.current;
     const p = currentParams ?? params;
     const { data } = await fetchAds({
       ...p,
       condition: p?.condition ?? undefined,
       sortBy: p?.sortBy ?? 'newest',
       limit: PAGE_SIZE,
-      offset: loadedCountRef.current,
+      offset: currentOffset,
     });
-    setAds(prev => {
-      const existingIds = new Set(prev.map(a => a.id));
-      const newItems = data.filter(a => !existingIds.has(a.id));
-      loadedCountRef.current += newItems.length;
-      return [...prev, ...newItems];
-    });
+    if (data.length > 0) {
+      setAds(prev => {
+        // Use offset-based dedup: only add if id not already present
+        const existingIds = new Set(prev.map(a => a.id));
+        const newItems = data.filter(a => !existingIds.has(a.id));
+        loadedCountRef.current = currentOffset + newItems.length;
+        return newItems.length > 0 ? [...prev, ...newItems] : prev;
+      });
+    }
     setHasMore(data.length === PAGE_SIZE);
     setLoadingMore(false);
   }, [loadingMore, hasMore, params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);

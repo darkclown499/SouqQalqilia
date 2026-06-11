@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '@/template';
+import { Image } from 'expo-image';
 
 // ── Module-level banners cache ────────────────────────────────────────────────
 let _bannersCache: Banner[] | null = null;
@@ -23,7 +24,15 @@ export function setBannersCache(data: Banner[]): void {
 export async function preloadBanners(): Promise<void> {
   if (getBannersCache()) return;
   const { data } = await fetchActiveBanners();
-  if (data.length > 0) setBannersCache(data);
+  if (data.length > 0) {
+    setBannersCache(data);
+    // Prefetch banner images into expo-image disk cache for instant display
+    data.forEach(b => {
+      if (b.image_url) {
+        Image.prefetch(b.image_url, { cachePolicy: 'disk' }).catch(() => {});
+      }
+    });
+  }
 }
 
 export interface Banner {

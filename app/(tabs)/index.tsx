@@ -472,7 +472,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, filteredAds.length, recentlyViewed, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleOpenFilter, handleClearFilters, router, setSortBy]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleOpenFilter, handleClearFilters, router, setSortBy]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -573,11 +573,11 @@ export default function HomeScreen() {
           renderItem={renderRow}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          windowSize={7}
-          maxToRenderPerBatch={8}
-          initialNumToRender={6}
-          updateCellsBatchingPeriod={50}
-          removeClippedSubviews
+          windowSize={5}
+          maxToRenderPerBatch={6}
+          initialNumToRender={4}
+          updateCellsBatchingPeriod={80}
+          removeClippedSubviews={Platform.OS !== 'web'}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           refreshControl={

@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '@/template';
+import { Image } from 'expo-image';
 
 // ── Module-level ads cache ────────────────────────────────────────────────────
 // Populated by preloadAds() called from _layout.tsx right after auth.
@@ -27,11 +28,26 @@ export function clearAdsCache(): void {
   _adsCache = null;
 }
 
+/** Prefetch first-image URLs into expo-image disk cache */
+function prefetchAdImages(ads: Ad[]): void {
+  // Fire-and-forget: prefetch up to 20 first images in background
+  const urls = ads
+    .slice(0, 20)
+    .map(a => a.ad_images?.[0]?.url)
+    .filter(Boolean) as string[];
+  urls.forEach(url => {
+    Image.prefetch(url, { cachePolicy: 'disk' }).catch(() => {});
+  });
+}
+
 /** Preload first page of ads into cache — call right after auth resolves */
 export async function preloadAds(): Promise<void> {
   if (getAdsCache()) return; // Already fresh
   const { data } = await fetchAds({ limit: 20, offset: 0 });
-  if (data.length > 0) setAdsCache(data);
+  if (data.length > 0) {
+    setAdsCache(data);
+    prefetchAdImages(data);
+  }
 }
 
 export interface AdImage {

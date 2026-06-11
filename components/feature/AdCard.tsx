@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -36,32 +36,47 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
   const { t, language, isRTL } = useLanguage();
   const isAr = language === 'ar';
 
-  const sortedImages = ad.ad_images?.sort((a, b) => a.position - b.position) ?? [];
+  // ── All derived values memoized to prevent recalculation on every render ─
+  const sortedImages = useMemo(
+    () => (ad.ad_images ? [...ad.ad_images].sort((a, b) => a.position - b.position) : []),
+    [ad.ad_images]
+  );
   const firstImage = sortedImages[0];
   const isFree = ad.price === 0;
-  const isBoosted = ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now();
+  const isBoosted = useMemo(
+    () => !!(ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now()),
+    [ad.boosted_until]
+  );
   const isFeatured = ad.status === 'featured';
   const isSold = ad.status === 'sold';
   const isNew = ad.condition === 'new';
 
-  const catName = ad.categories ? getCategoryName(ad.categories as any, language) : null;
+  const catName = useMemo(
+    () => (ad.categories ? getCategoryName(ad.categories as any, language) : null),
+    [ad.categories, language]
+  );
   const catColor = ad.categories?.color ?? colors.primary;
 
-  // ── Location display helpers ──────────────────────────────────────────────
-  // Extract the city/village prefix before any ' - ' separator
+  // ── Location display helpers memoized ────────────────────────────────────
   const MAIN_CITY = 'قلقيلية';
-  const QALQILYA_LOCATIONS = ['عزون','كفر قدوم','جيوس','حبلة','كفر ثلث','عزون عتمة','إماتين','كفر لاقف','النبي إلياس','جيت','جينصافوط','حجة','باقة الحطب','الفندق','راس عطية','راس الطيرة','صير','فلامية','مغارة الضبعة','عزبة الطبيب','عزبة سلمان','عزبة الأشقر','واد الرشا','المدور'];
+  const QALQILYA_LOCATIONS_SET = useMemo(() => new Set(['عزون','كفر قدوم','جيوس','حبلة','كفر ثلث','عزون عتمة','إماتين','كفر لاقف','النبي إلياس','جيت','جينصافوط','حجة','باقة الحطب','الفندق','راس عطية','راس الطيرة','صير','فلامية','مغارة الضبعة','عزبة الطبيب','عزبة سلمان','عزبة الأشقر','واد الرشا','المدور']), []);
   const rawLocation = ad.location ?? '';
-  // Split on ' - ' to get city part vs neighbourhood part
-  const dashIdx = rawLocation.indexOf(' - ');
-  const cityPart = dashIdx > -1 ? rawLocation.slice(0, dashIdx).trim() : rawLocation.trim();
-  const isMainCity = cityPart === MAIN_CITY || cityPart === 'قلقيلية المدينة';
-  const isVillage = QALQILYA_LOCATIONS.includes(cityPart) && !isMainCity;
-  // Display label: prefer 'قلقيلية' → 'قلقيلية المدينة' for clarity
-  const locationLabel = isMainCity ? 'قلقيلية المدينة' : (cityPart || rawLocation);
-  // Icon colour: primary (green) for the main city, a warm amber for villages
-  const locationIconColor = isMainCity ? colors.primary : (isVillage ? '#D97706' : colors.textMuted);
-  const locationIconName: 'location-city' | 'location-on' = isMainCity ? 'location-city' : 'location-on';
+  const locationDerived = useMemo(() => {
+    const dashIdx = rawLocation.indexOf(' - ');
+    const cityPart = dashIdx > -1 ? rawLocation.slice(0, dashIdx).trim() : rawLocation.trim();
+    const isMainCity = cityPart === MAIN_CITY || cityPart === 'قلقيلية المدينة';
+    const isVillage = QALQILYA_LOCATIONS_SET.has(cityPart) && !isMainCity;
+    const locationLabel = isMainCity ? 'قلقيلية المدينة' : (cityPart || rawLocation);
+    const locationIconColor = isMainCity ? colors.primary : (isVillage ? '#D97706' : colors.textMuted);
+    const locationIconName: 'location-city' | 'location-on' = isMainCity ? 'location-city' : 'location-on';
+    return { locationLabel, locationIconColor, locationIconName };
+  }, [rawLocation, colors.primary, QALQILYA_LOCATIONS_SET]);
+  const { locationLabel, locationIconColor, locationIconName } = locationDerived;
+
+  const handlePress = useCallback(() => {
+    onAdPress?.(ad);
+    router.push(`/ad/${ad.id}`);
+  }, [ad, onAdPress, router]);
 
   const handleFavorite = useCallback((e: any) => {
     e.stopPropagation?.();
@@ -82,7 +97,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
         isBoosted ? { borderWidth: 2, borderColor: colors.accent } : { borderWidth: 1, borderColor: colors.border },
         sponsored ? { borderColor: colors.primary + '66' } : null,
       ]}
-      onPress={() => { onAdPress?.(ad); router.push(`/ad/${ad.id}`); }}
+      onPress={handlePress}
     >
       {/* ── IMAGE ── */}
       <View style={styles.imageWrap}>
