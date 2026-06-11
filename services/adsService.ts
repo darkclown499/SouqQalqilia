@@ -119,22 +119,17 @@ export async function fetchAds(params?: {
 
   // ── Apply server-side sorting ──────────────────────────────────────────────
   if (sortBy === 'price_asc') {
-    query = query
-      .order('boosted_until', { ascending: false, nullsFirst: false })
-      .order('price', { ascending: true });
+    query = query.order('price', { ascending: true });
   } else if (sortBy === 'price_desc') {
-    query = query
-      .order('boosted_until', { ascending: false, nullsFirst: false })
-      .order('price', { ascending: false });
+    query = query.order('price', { ascending: false });
   } else if (sortBy === 'boosted') {
+    // Active boosts first (future expiry), then newest
     query = query
       .order('boosted_until', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
   } else {
-    // newest (default)
-    query = query
-      .order('boosted_until', { ascending: false, nullsFirst: false })
-      .order('created_at', { ascending: false });
+    // newest (default) — pure chronological, newest on top
+    query = query.order('created_at', { ascending: false });
   }
 
   // ── Pagination LAST (after filters + sort) ────────────────────────────────
