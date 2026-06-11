@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
   ActivityIndicator, Modal, ScrollView,
@@ -29,8 +29,275 @@ import { Image } from 'expo-image';
 import { useCategories } from '@/hooks/useCategories';
 import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
+import { getSupabaseClient } from '@/template';
 
-type Tab = 'ads' | 'users' | 'banners' | 'interstitials' | 'stores';
+// ── Analytics Stats Component ──────────────────────────────────────────────
+interface AnalyticsStats {
+  dau: number;
+  wau: number;
+  mau: number;
+  trend: { date: string; count: number }[];
+}
+
+function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
+  const [stats, setStats] = useState<AnalyticsStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const supabase = getSupabaseClient();
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      // DAU — unique devices today
+      const [dauRes, wauRes, mauRes] = await Promise.all([
+        supabase.from('app_visits').select('device_id').gte('visited_at', todayStart),
+        supabase.from('app_visits').select('device_id').gte('visited_at', weekAgo),
+        supabase.from('app_visits').select('device_id').gte('visited_at', monthAgo),
+      ]);
+
+      const uniqueSet = (rows: any[]) => new Set(rows.map((r: any) => r.device_id)).size;
+      const dau = uniqueSet(dauRes.data ?? []);
+      const wau = uniqueSet(wauRes.data ?? []);
+      const mau = uniqueSet(mauRes.data ?? []);
+
+      // Trend: last 7 days daily unique devices
+      const trendMap: Record<string, Set<string>> = {};
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        const key = d.toISOString().slice(0, 10);
+        trendMap[key] = new Set();
+      }
+      (wauRes.data ?? []).forEach((row: any) => {
+        const day = row.visited_at ? String(row.visited_at).slice(0, 10) : null;
+        if (day && trendMap[day]) trendMap[day].add(row.device_id);
+      });
+      const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
+
+      setStats({ dau, wau, mau, trend });
+      setLastUpdated(new Date());
+    } catch { /* silent */ } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+    // Poll every 30 seconds for real-time feel
+    const interval = setInterval(fetchStats, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchStats]);
+
+  const maxTrend = Math.max(...(stats?.trend.map(t => t.count) ?? [1]), 1);
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    return isAr
+      ? `${d.getDate()}/${d.getMonth() + 1}`
+      : `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+
+  const isToday = (dateStr: string) => {
+    const today = new Date().toISOString().slice(0, 10);
+    return dateStr === today;
+  };
+
+  if (loading) {
+    return (
+      <View style={anS.center}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[anS.loadingText, { color: colors.textMuted }]}>
+          {isAr ? 'جاري تحميل الإحصائيات...' : 'Loading analytics...'}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={anS.container} showsVerticalScrollIndicator={false}>
+      {/* Live indicator */}
+      <View style={[anS.liveRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={anS.liveDot} />
+        <Text style={[anS.liveText, { color: colors.textSecondary }]}>
+          {isAr ? 'يتحدث كل 30 ثانية' : 'Updates every 30 seconds'}
+        </Text>
+        {lastUpdated ? (
+          <Text style={[anS.liveTime, { color: colors.textMuted }]}>
+            {isAr ? 'آخر تحديث: ' : 'Updated: '}
+            {lastUpdated.toLocaleTimeString(isAr ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        ) : null}
+        <Pressable
+          style={[anS.refreshBtn, { backgroundColor: colors.primaryGhost }]}
+          onPress={() => { setLoading(true); fetchStats(); }}
+          hitSlop={8}
+        >
+          <MaterialIcons name="refresh" size={16} color={colors.primary} />
+        </Pressable>
+      </View>
+
+      {/* Stats cards row */}
+      <View style={anS.statsRow}>
+        {/* DAU */}
+        <View style={[anS.statCard, { backgroundColor: colors.surface, borderColor: colors.primary + '30' }]}>
+          <View style={[anS.statIconWrap, { backgroundColor: colors.primaryGhost }]}>
+            <MaterialIcons name="today" size={20} color={colors.primary} />
+          </View>
+          <Text style={[anS.statValue, { color: colors.textPrimary }]}>{stats?.dau ?? 0}</Text>
+          <Text style={[anS.statLabel, { color: colors.textSecondary }]}>
+            {isAr ? 'مستخدمو اليوم' : 'Daily Active Users'}
+          </Text>
+          <Text style={[anS.statPeriod, { color: colors.textMuted }]}>
+            {isAr ? 'اليوم' : 'Today'}
+          </Text>
+        </View>
+
+        {/* WAU */}
+        <View style={[anS.statCard, { backgroundColor: colors.surface, borderColor: colors.accent + '40' }]}>
+          <View style={[anS.statIconWrap, { backgroundColor: colors.accent + '18' }]}>
+            <MaterialIcons name="date-range" size={20} color={colors.accent} />
+          </View>
+          <Text style={[anS.statValue, { color: colors.textPrimary }]}>{stats?.wau ?? 0}</Text>
+          <Text style={[anS.statLabel, { color: colors.textSecondary }]}>
+            {isAr ? 'مستخدمو الأسبوع' : 'Weekly Active Users'}
+          </Text>
+          <Text style={[anS.statPeriod, { color: colors.textMuted }]}>
+            {isAr ? 'آخر 7 أيام' : 'Last 7 days'}
+          </Text>
+        </View>
+
+        {/* MAU */}
+        <View style={[anS.statCard, { backgroundColor: colors.surface, borderColor: '#8B5CF6' + '40' }]}>
+          <View style={[anS.statIconWrap, { backgroundColor: '#8B5CF618' }]}>
+            <MaterialIcons name="calendar-month" size={20} color="#8B5CF6" />
+          </View>
+          <Text style={[anS.statValue, { color: colors.textPrimary }]}>{stats?.mau ?? 0}</Text>
+          <Text style={[anS.statLabel, { color: colors.textSecondary }]}>
+            {isAr ? 'مستخدمو الشهر' : 'Monthly Active Users'}
+          </Text>
+          <Text style={[anS.statPeriod, { color: colors.textMuted }]}>
+            {isAr ? 'آخر 30 يوم' : 'Last 30 days'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Trend Chart */}
+      <View style={[anS.chartCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[anS.chartHeader, { borderBottomColor: colors.borderLight }]}>
+          <View style={[anS.chartIconWrap, { backgroundColor: colors.primaryGhost }]}>
+            <MaterialIcons name="trending-up" size={18} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[anS.chartTitle, { color: colors.textPrimary }]}>
+              {isAr ? 'تحليل الاتجاه' : 'Trend Analysis'}
+            </Text>
+            <Text style={[anS.chartSub, { color: colors.textMuted }]}>
+              {isAr ? 'آخر 7 أيام — المستخدمون اليوميون الفريدون' : 'Last 7 days — Daily Unique Users'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Bar chart */}
+        <View style={anS.bars}>
+          {(stats?.trend ?? []).map((item, i) => {
+            const heightPct = maxTrend > 0 ? (item.count / maxTrend) : 0;
+            const barH = Math.max(heightPct * 100, item.count > 0 ? 6 : 2);
+            const todayBar = isToday(item.date);
+            return (
+              <View key={item.date} style={anS.barCol}>
+                <Text style={[anS.barValue, { color: todayBar ? colors.primary : colors.textMuted }]}>
+                  {item.count > 0 ? item.count : ''}
+                </Text>
+                <View style={[anS.barTrack, { backgroundColor: colors.borderLight }]}>
+                  <View
+                    style={[
+                      anS.barFill,
+                      {
+                        height: `${barH}%`,
+                        backgroundColor: todayBar ? colors.primary : colors.primary + '60',
+                      }
+                    ]}
+                  />
+                </View>
+                <Text style={[anS.barDate, { color: todayBar ? colors.primary : colors.textMuted, fontWeight: todayBar ? '700' : '400' }]}>
+                  {formatDate(item.date)}
+                </Text>
+                {todayBar ? (
+                  <View style={[anS.todayDot, { backgroundColor: colors.primary }]} />
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Info note */}
+      <View style={[anS.noteRow, { backgroundColor: colors.primaryGhost, borderColor: colors.primary + '30' }]}>
+        <MaterialIcons name="info-outline" size={14} color={colors.primary} />
+        <Text style={[anS.noteText, { color: colors.primary }]}>
+          {isAr
+            ? 'يُحسب المستخدمون الفريدون بناءً على معرّف الجهاز (بدون تسجيل دخول أو معه).'
+            : 'Unique users counted by device ID — works for both guests and logged-in users.'}
+        </Text>
+      </View>
+    </ScrollView>
+  );
+}
+
+const anS = StyleSheet.create({
+  container: { padding: Spacing.md, gap: Spacing.md, paddingBottom: 40 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, padding: 40 },
+  loadingText: { fontSize: FontSize.sm, fontWeight: '500' },
+  liveRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: Radius.lg, borderWidth: 1,
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' },
+  liveText: { fontSize: FontSize.xs, fontWeight: '600', flex: 1 },
+  liveTime: { fontSize: FontSize.xs },
+  refreshBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  statsRow: { flexDirection: 'row', gap: Spacing.sm },
+  statCard: {
+    flex: 1, borderRadius: Radius.xl, borderWidth: 1.5,
+    padding: Spacing.md, alignItems: 'center', gap: 6,
+  },
+  statIconWrap: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  statValue: { fontSize: 28, fontWeight: '800', letterSpacing: -1 },
+  statLabel: { fontSize: 10, fontWeight: '700', textAlign: 'center', lineHeight: 14 },
+  statPeriod: { fontSize: 9, fontWeight: '500', textAlign: 'center' },
+  chartCard: {
+    borderRadius: Radius.xl, borderWidth: 1,
+    overflow: 'hidden',
+  },
+  chartHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1,
+  },
+  chartIconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  chartTitle: { fontSize: FontSize.md, fontWeight: '700' },
+  chartSub: { fontSize: FontSize.xs, marginTop: 1 },
+  bars: {
+    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around',
+    paddingHorizontal: 16, paddingVertical: 20, height: 180,
+  },
+  barCol: { flex: 1, alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' },
+  barValue: { fontSize: 9, fontWeight: '700', marginBottom: 2 },
+  barTrack: { width: '65%', height: 100, borderRadius: 6, overflow: 'hidden', justifyContent: 'flex-end' },
+  barFill: { width: '100%', borderRadius: 6 },
+  barDate: { fontSize: 9 },
+  todayDot: { width: 5, height: 5, borderRadius: 2.5, marginTop: 1 },
+  noteRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    borderRadius: Radius.lg, borderWidth: 1, padding: 12,
+  },
+  noteText: { flex: 1, fontSize: FontSize.xs, lineHeight: 18 },
+});
+
+type Tab = 'analytics' | 'ads' | 'users' | 'banners' | 'interstitials' | 'stores';
 
 // ── Broadcast Notification Modal ──
 interface BroadcastModalProps {
@@ -438,7 +705,7 @@ export default function AdminScreen() {
   const isAr = language === 'ar';
 
   const { categories } = useCategories();
-  const [tab, setTab] = useState<Tab>('ads');
+  const [tab, setTab] = useState<Tab>('analytics');
   const [ads, setAds] = useState<Ad[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -1084,6 +1351,7 @@ export default function AdminScreen() {
   );
 
   const TABS: { key: Tab; icon: string; label: string; count: number }[] = [
+    { key: 'analytics', icon: 'insights', label: isAr ? 'الإحصائيات' : 'Analytics', count: 0 },
     { key: 'ads', icon: 'storefront', label: t.allAds, count: ads.length },
     { key: 'users', icon: 'people', label: t.allUsers, count: users.length },
     { key: 'banners', icon: 'view-carousel', label: t.manageBanners, count: banners.length },
@@ -1386,7 +1654,9 @@ export default function AdminScreen() {
         </ScrollView>
       </View>
 
-      {loading ? (
+      {tab === 'analytics' ? (
+        <AnalyticsTab isAr={isAr} colors={colors} />
+      ) : loading ? (
         <View style={styles.center}><ActivityIndicator color={colors.primary} size="large" /></View>
       ) : tab === 'ads' ? (
         <FlatList

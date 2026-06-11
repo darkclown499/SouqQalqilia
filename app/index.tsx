@@ -4,6 +4,25 @@ import { preloadBanners } from '@/services/bannersService';
 preloadAds().catch(() => {});
 preloadBanners().catch(() => {});
 
+// ── Track app visit (DAU/WAU/MAU) ────────────────────────────────────────────
+import AsyncStorage from '@react-native-async-storage/async-storage';
+const DEVICE_ID_KEY = 'app_device_id_v1';
+async function trackVisit() {
+  try {
+    let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    if (!deviceId) {
+      deviceId = 'dev_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+    }
+    const { getSupabaseClient } = require('@/template');
+    const supabase = getSupabaseClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id ?? null;
+    await supabase.from('app_visits').insert({ device_id: deviceId, user_id: userId });
+  } catch { /* silent */ }
+}
+trackVisit();
+
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
