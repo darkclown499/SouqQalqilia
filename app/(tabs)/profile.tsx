@@ -169,9 +169,9 @@ export default function ProfileScreen() {
   useEffect(() => {
     const unsub = subscribeToBlockChanges(() => loadBlockedUsers());
     return unsub;
-  }, []);
+  }, [loadBlockedUsers]);
 
-  const loadBlockedUsers = async () => {
+  const loadBlockedUsers = useCallback(async () => {
     const ids = await fetchBlockedIds();
     if (ids.length === 0) { setBlockedUsers([]); return; }
     const { data } = await getSupabaseClient()
@@ -179,7 +179,7 @@ export default function ProfileScreen() {
       .select('id, username, email, avatar_url')
       .in('id', ids);
     setBlockedUsers((data ?? []) as any);
-  };
+  }, []);
 
   const handleUnblock = (userId: string, name: string) => {
     showAlert(

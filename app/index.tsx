@@ -21,7 +21,6 @@ async function trackVisit() {
     await supabase.from('app_visits').insert({ device_id: deviceId, user_id: userId });
   } catch { /* silent */ }
 }
-trackVisit();
 
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -186,6 +185,11 @@ function LoadingDots() {
 // ─── Root ────────────────────────────────────────────────────────────────────
 export default function RootScreen() {
   const [phase, setPhase] = useState<'launch' | 'loading' | 'done'>('launch');
+
+  // Track visit once after splash — safe inside useEffect (AsyncStorage ready)
+  useEffect(() => {
+    if (phase === 'done') trackVisit();
+  }, [phase]);
 
   if (phase === 'launch') return <LaunchPhase onDone={() => setPhase('loading')} />;
   if (phase === 'loading') return <LoadingPhase onDone={() => setPhase('done')} />;
