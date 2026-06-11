@@ -477,13 +477,6 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
             <Pressable
-              style={[styles.headerIconBtn, showSortBar && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
-              onPress={() => setShowSortBar(v => !v)}
-              hitSlop={6}
-            >
-              <MaterialIcons name="sort" size={20} color="#fff" />
-            </Pressable>
-            <Pressable
               style={styles.headerIconBtn}
               onPress={() => router.push('/search')}
               hitSlop={6}
