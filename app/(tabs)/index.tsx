@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
-  Dimensions, RefreshControl, ActivityIndicator, Platform, TextInput,
+  Dimensions, RefreshControl, ActivityIndicator, Platform, TextInput, Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
@@ -308,7 +308,13 @@ export default function HomeScreen() {
       {currentBanner ? (
         <Pressable
           style={[styles.bannerWrap, { height: BANNER_H }]}
-          onPress={() => router.push('/search')}
+          onPress={() => {
+            if (currentBanner.link_url?.trim()) {
+              Linking.openURL(currentBanner.link_url.trim()).catch(() => {});
+            } else {
+              router.push('/search');
+            }
+          }}
         >
           <Image
             source={{ uri: currentBanner.image_url }}
@@ -319,7 +325,7 @@ export default function HomeScreen() {
             priority="high"
           />
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.72)']}
+            colors={['transparent', 'transparent', 'rgba(0,0,0,0.38)']}
             style={StyleSheet.absoluteFill}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
