@@ -1,13 +1,14 @@
 import * as SplashScreen from 'expo-splash-screen';
-import { AlertProvider, AuthProvider, getSupabaseClient } from '@/template';
+import { AlertProvider, AuthProvider, getSupabaseClient, useAuth } from '@/template';
 import { preloadAds } from '@/services/adsService';
 import { preloadBanners } from '@/services/bannersService';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Stack, router } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
-import { useEffect, useState, useCallback } from 'react';
-import { Platform, InteractionManager } from 'react-native';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { Platform, InteractionManager, Animated, Pressable, View, Text, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
 import { APP_VERSION } from '@/constants/config';
 
@@ -75,6 +76,194 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
     } catch (_) {}
   });
 }
+
+// ── In-App Chat Banner ───────────────────────────────────────────────────────
+interface BannerPayload {
+  conversationId: string;
+  senderName: string;
+  messagePreview: string;
+  avatarUrl?: string | null;
+}
+
+function InAppChatBanner() {
+  const { user } = useAuth();
+  const segments = useSegments();
+  const [banner, setBanner] = useState<BannerPayload | null>(null);
+  const slideY = useRef(new Animated.Value(-120)).current;
+  const lastMsgIdRef = useRef<string | null>(null);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const showBanner = useCallback((payload: BannerPayload) => {
+    setBanner(payload);
+    // Slide down
+    Animated.spring(slideY, {
+      toValue: 0,
+      damping: 18,
+      stiffness: 280,
+      useNativeDriver: true,
+    }).start();
+    // Auto-dismiss after 4.5 s
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = setTimeout(() => dismissBanner(), 4500);
+  }, [slideY]);
+
+  const dismissBanner = useCallback(() => {
+    Animated.timing(slideY, {
+      toValue: -120,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(() => setBanner(null));
+    if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
+  }, [slideY]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const poll = async () => {
+      // Determine if user is currently inside a specific chat screen
+      // segments example: ['chat', '[id]'] or ['(tabs)', 'messages']
+      const activeChatId: string | null = (() => {
+        const seg = segments as string[];
+        const chatIdx = seg.indexOf('chat');
+        if (chatIdx !== -1 && seg[chatIdx + 1]) return seg[chatIdx + 1];
+        return null;
+      })();
+
+      try {
+        const supabase = getSupabaseClient();
+        // Fetch the single most recent message sent to this user that is unread
+        const { data } = await supabase
+          .from('messages')
+          .select(`
+            id, content, message_type, conversation_id, sender_id, created_at, read_at,
+            conversations!inner(buyer_id, seller_id, ad_id),
+            user_profiles!messages_sender_id_fkey(username, email, avatar_url)
+          `)
+          .neq('sender_id', user.id)
+          .is('read_at', null)
+          .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`, { referencedTable: 'conversations' })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!data) return;
+        // Skip if same message already shown, or user is inside that specific chat
+        if (data.id === lastMsgIdRef.current) return;
+        if (activeChatId && activeChatId === data.conversation_id) return;
+
+        lastMsgIdRef.current = data.id;
+        const senderProfile = (data as any).user_profiles;
+        const senderName: string = senderProfile?.username
+          || senderProfile?.email?.split('@')[0]
+          || 'مستخدم';
+        const preview: string = data.message_type === 'image'
+          ? '📷 صورة'
+          : (data.content?.slice(0, 60) ?? '');
+
+        showBanner({
+          conversationId: data.conversation_id,
+          senderName,
+          messagePreview: preview,
+          avatarUrl: senderProfile?.avatar_url ?? null,
+        });
+      } catch { /* silent */ }
+    };
+
+    intervalRef.current = setInterval(poll, 4000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
+  }, [user?.id, segments, showBanner]);
+
+  if (!banner) return null;
+
+  return (
+    <Animated.View
+      style={[
+        bannerStyles.container,
+        { transform: [{ translateY: slideY }] },
+      ]}
+      pointerEvents="box-none"
+    >
+      <Pressable
+        style={bannerStyles.card}
+        onPress={() => {
+          dismissBanner();
+          router.push(`/chat/${banner.conversationId}` as any);
+        }}
+      >
+        {/* Avatar */}
+        {banner.avatarUrl ? (
+          <Image source={{ uri: banner.avatarUrl }} style={bannerStyles.avatar} contentFit="cover" transition={200} />
+        ) : (
+          <View style={bannerStyles.avatarPlaceholder}>
+            <Text style={bannerStyles.avatarInitial}>{banner.senderName.charAt(0).toUpperCase()}</Text>
+          </View>
+        )}
+        {/* Content */}
+        <View style={bannerStyles.textWrap}>
+          <View style={bannerStyles.topRow}>
+            <Text style={bannerStyles.appLabel}>سوق قلقيلية</Text>
+            <Text style={bannerStyles.nowLabel}>now</Text>
+          </View>
+          <Text style={bannerStyles.senderName} numberOfLines={1}>{banner.senderName}</Text>
+          <Text style={bannerStyles.preview} numberOfLines={1}>{banner.messagePreview}</Text>
+        </View>
+        {/* Dismiss */}
+        <Pressable onPress={dismissBanner} hitSlop={10} style={bannerStyles.closeBtn}>
+          <Text style={bannerStyles.closeX}>×</Text>
+        </Pressable>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 9999,
+    paddingHorizontal: 14,
+    paddingTop: Platform.OS === 'android' ? 36 : 54,
+    pointerEvents: 'box-none',
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15,25,35,0.95)',
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    elevation: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  avatar: { width: 42, height: 42, borderRadius: 21, flexShrink: 0 },
+  avatarPlaceholder: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: '#0A6E5C',
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  avatarInitial: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  textWrap: { flex: 1, gap: 1 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  appLabel: { fontSize: 11, fontWeight: '700', color: '#0eb896' },
+  nowLabel: { fontSize: 10, color: 'rgba(255,255,255,0.4)' },
+  senderName: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  preview: { fontSize: 13, color: 'rgba(255,255,255,0.62)', lineHeight: 18 },
+  closeBtn: { paddingHorizontal: 6, paddingVertical: 4 },
+  closeX: { color: 'rgba(255,255,255,0.45)', fontSize: 20, fontWeight: '300', lineHeight: 20 },
+});
 
 // ── Semver comparison: returns true if `current` < `minimum` ────────────────
 function isVersionOutdated(current: string, minimum: string): boolean {
@@ -290,6 +479,7 @@ export default function RootLayout() {
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
+              <InAppChatBanner />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 <Stack.Screen name="login" options={{ headerShown: false }} />

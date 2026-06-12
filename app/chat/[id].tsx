@@ -737,7 +737,9 @@ export default function ChatScreen() {
                 {clampedMatchIdx + 1}/{totalMatches}
               </Text>
             ) : searchQuery.trim() ? (
-              <Text style={[styles.searchCounter, { color: colors.textMuted }]}>0</Text>
+              <Text style={[styles.searchNoResults, { color: colors.textMuted }]} numberOfLines={1}>
+                {isAr ? `لا يوجد نتائج لـ "${searchQuery}"` : `No results for "${searchQuery}"`}
+              </Text>
             ) : null}
             <Pressable onPress={handleSearchPrev} disabled={totalMatches === 0} hitSlop={6} style={styles.searchNavBtn}>
               <MaterialIcons name={isAr ? 'expand-less' : 'expand-less'} size={22} color={totalMatches > 0 ? colors.primary : colors.border} />
@@ -1131,6 +1133,9 @@ const styles = StyleSheet.create({
   },
   searchCounter: {
     fontSize: FontSize.xs, fontWeight: '600', minWidth: 38, textAlign: 'center',
+  },
+  searchNoResults: {
+    fontSize: FontSize.xs, fontWeight: '500', maxWidth: 180, flexShrink: 1,
   },
   searchNavBtn: {
     width: 32, height: 32, alignItems: 'center', justifyContent: 'center',

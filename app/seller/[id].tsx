@@ -205,6 +205,18 @@ export default function SellerProfileScreen() {
       setHasRated(true);
       setRatingModalVisible(false);
       setDraftComment('');
+
+      // Fire-and-forget: notify rated seller of new/updated rating
+      try {
+        const senderName = user.user_metadata?.username ?? user.email?.split('@')[0] ?? 'مستخدم';
+        supabase.functions.invoke('push-notify', {
+          body: {
+            recipient_id: id,
+            sender_name: senderName,
+            message_preview: `⭐ ${isAr ? `منحك ${draftStars} نجوم` : `gave you ${draftStars} star${draftStars !== 1 ? 's' : ''}`}`,
+          },
+        }).catch(() => {});
+      } catch { /* non-critical */ }
     } catch (e: any) {
       showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Could not save rating');
     } finally {

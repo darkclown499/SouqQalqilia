@@ -9,6 +9,7 @@ import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withSpring,
 } from 'react-native-reanimated';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+import { APP_VERSION } from '@/constants/config';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 
@@ -200,6 +201,17 @@ export default function FaqScreen() {
           <FaqAccordion key={i} item={item} isRTL={isRTL} colors={colors} />
         ))}
 
+        {/* ── VERSION FOOTER ── */}
+        <View style={faqStyles.versionFooter}>
+          <View style={[faqStyles.versionDot, { backgroundColor: colors.border }]} />
+          <View style={faqStyles.versionRow}>
+            <MaterialIcons name="info-outline" size={12} color={colors.textMuted} />
+            <Text style={[faqStyles.versionText, { color: colors.textMuted }]}>
+              {isRTL ? `سوق قلقيلية · الإصدار ${APP_VERSION}` : `Souq Qalqilya · v${APP_VERSION}`}
+            </Text>
+          </View>
+        </View>
+
         <View style={[faqStyles.footer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <MaterialIcons name="support-agent" size={24} color={colors.primary} />
           <Text style={[faqStyles.footerText, { color: colors.textPrimary }]}>
@@ -283,4 +295,8 @@ const faqStyles = StyleSheet.create({
   },
   footerText: { fontSize: FontSize.md, fontWeight: '700' },
   footerSub: { fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20 },
+  versionFooter: { alignItems: 'center', paddingVertical: Spacing.lg, gap: 7 },
+  versionDot: { width: 36, height: 1.5, borderRadius: 99 },
+  versionRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  versionText: { fontSize: FontSize.xs, fontWeight: '500' },
 });
