@@ -3,6 +3,42 @@ import { STORAGE_BUCKET } from '@/constants/config';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
+/**
+ * Pick up to `limit` images from the gallery in a single system-picker session.
+ * Returns an array of { uri, base64 } objects (up to `limit` items).
+ * On Android/iOS the native picker enforces `selectionLimit` natively.
+ */
+export async function pickMultipleImages(limit = 3): Promise<{ uri: string; base64: string }[]> {
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== 'granted') return [];
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    quality: 1,
+    base64: false,
+    allowsMultipleSelection: true,
+    selectionLimit: limit,
+  });
+
+  if (result.canceled || !result.assets?.length) return [];
+
+  // Process all selected assets — compress each one sequentially
+  const processed: { uri: string; base64: string }[] = [];
+  for (const asset of result.assets.slice(0, limit)) {
+    try {
+      const manipulated = await manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 1080 } }],
+        { compress: 0.75, format: SaveFormat.JPEG, base64: true }
+      );
+      processed.push({ uri: manipulated.uri, base64: manipulated.base64 ?? '' });
+    } catch {
+      if (asset.uri) processed.push({ uri: asset.uri, base64: '' });
+    }
+  }
+  return processed;
+}
+
 export async function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promise<{ uri: string; base64: string } | null> {
   if (source === 'camera') {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();

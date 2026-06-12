@@ -12,7 +12,7 @@ import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { Button, Input } from '@/components';
 import { useCategories } from '@/hooks/useCategories';
 import { fetchAdById, updateAdStatus, updateAd, Ad } from '@/services/adsService';
-import { pickImage, uploadImage } from '@/services/imageService';
+import { pickImage, pickMultipleImages, uploadImage } from '@/services/imageService';
 import { getCategoryName } from '@/services/categoriesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
@@ -121,8 +121,13 @@ export default function EditAdScreen() {
   const handlePickGallery = async () => {
     setPhotoModalVisible(false);
     setTimeout(async () => {
-      const result = await pickImage('gallery');
-      if (result) setNewImages(prev => [...prev, result]);
+      // Batch-select up to 3 images — capped by remaining slots
+      const remaining = MAX_AD_IMAGES - totalImages;
+      if (remaining <= 0) return;
+      const results = await pickMultipleImages(Math.min(3, remaining));
+      if (results.length > 0) {
+        setNewImages(prev => [...prev, ...results].slice(0, MAX_AD_IMAGES));
+      }
     }, 300);
   };
 
@@ -142,14 +147,26 @@ export default function EditAdScreen() {
     if (!location.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال الموقع' : 'Please enter location.');
     const parsedPrice = parseFloat(price);
     if (!price.trim() || isNaN(parsedPrice) || parsedPrice < 0) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال سعر صحيح' : 'Please enter a valid price.');
-    if (phoneLocal.trim() && phoneLocal.trim().length !== 9) {
-      return showAlert(isAr ? 'رقم غير صحيح' : 'Invalid Phone', isAr ? 'رقم الهاتف يجب أن يكون 9 أرقام' : 'Phone must be 9 digits.');
+    // Accept 9-digit (e.g. 599123456) OR 10-digit with leading zero (e.g. 0599123456)
+    const rawPhone = phoneLocal.trim();
+    if (rawPhone) {
+      const digits = rawPhone.replace(/\D/g, '');
+      if (digits.length !== 9 && digits.length !== 10) {
+        return showAlert(
+          isAr ? 'رقم غير صحيح' : 'Invalid Phone',
+          isAr
+            ? 'أدخل 9 أرقام (مثال: 599123456) أو 10 مع الصفر (مثال: 0599123456)'
+            : 'Enter 9 digits (e.g. 599123456) or 10 with leading zero (e.g. 0599123456).'
+        );
+      }
     }
 
     setSaving(true);
     try {
       const supabase = getSupabaseClient();
-      const fullPhone = phoneLocal.trim() ? `${phonePrefix}${phoneLocal.trim()}` : '';
+      // Strip leading zero before prepending country prefix
+      const rawPhoneLocal = phoneLocal.trim().replace(/^0/, '');
+      const fullPhone = rawPhoneLocal ? `${phonePrefix}${rawPhoneLocal}` : '';
       const isCity = selectedCity === QALQILYA_CITY;
       const fullLocation = `${isCity ? 'قلقيلية' : selectedCity}${location.trim() ? ` - ${location.trim()}` : ''}`;
 
@@ -408,7 +425,7 @@ export default function EditAdScreen() {
                 ))}
               </View>
               <View style={{ flex: 1 }}>
-                <Input placeholder="XX-XXX-XXXX" value={phoneLocal} onChangeText={val => setPhoneLocal(val.replace(/[^0-9]/g, '').slice(0, 9))} keyboardType="number-pad" containerStyle={styles.phoneInput} maxLength={9} />
+                <Input placeholder="0XX-XXX-XXXX" value={phoneLocal} onChangeText={val => setPhoneLocal(val.replace(/[^0-9]/g, '').slice(0, 10))} keyboardType="number-pad" containerStyle={styles.phoneInput} maxLength={10} />
               </View>
             </View>
           </View>

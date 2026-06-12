@@ -13,7 +13,7 @@ import { useCategories } from '@/hooks/useCategories';
 import { createAd, saveAdImages } from '@/services/adsService';
 import { getSupabaseClient } from '@/template';
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { pickImage, uploadImage } from '@/services/imageService';
+import { pickImage, pickMultipleImages, uploadImage } from '@/services/imageService';
 import { getCategoryName } from '@/services/categoriesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
@@ -154,8 +154,13 @@ export default function PostAdScreen() {
   const handlePickGallery = async () => {
     setPhotoModalVisible(false);
     setTimeout(async () => {
-      const result = await pickImage('gallery');
-      if (result) setImages(prev => [...prev, result]);
+      // Batch-select up to 3 images in a single gallery session
+      const remaining = MAX_AD_IMAGES - images.length;
+      if (remaining <= 0) return;
+      const results = await pickMultipleImages(Math.min(3, remaining));
+      if (results.length > 0) {
+        setImages(prev => [...prev, ...results].slice(0, MAX_AD_IMAGES));
+      }
     }, 300);
   };
 
@@ -219,17 +224,25 @@ export default function PostAdScreen() {
     // neighbourhood is optional — no validation needed
     const parsedPrice = parseFloat(price);
     if (!price.trim() || isNaN(parsedPrice) || parsedPrice <= 0) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال سعر صحيح (أكبر من 0)' : 'Please enter a valid price (greater than 0).');
-    // phone is optional — validate length only if provided
-    if (phoneLocal.trim() && phoneLocal.trim().length !== 9) {
-      return showAlert(
-        language === 'ar' ? 'رقم هاتف غير صحيح' : 'Invalid Phone',
-        language === 'ar' ? 'رقم الهاتف يجب أن يكون 9 أرقام بالضبط' : 'Phone number must be exactly 9 digits.'
-      );
+    // phone is optional — accept 9-digit (e.g. 599123456) OR 10-digit with leading zero (e.g. 0599123456)
+    const rawPhone = phoneLocal.trim();
+    if (rawPhone) {
+      const digits = rawPhone.replace(/\D/g, '');
+      if (digits.length !== 9 && digits.length !== 10) {
+        return showAlert(
+          language === 'ar' ? 'رقم هاتف غير صحيح' : 'Invalid Phone',
+          language === 'ar'
+            ? 'أدخل 9 أرقام (مثال: 599123456) أو 10 مع الصفر (مثال: 0599123456)'
+            : 'Enter 9 digits (e.g. 599123456) or 10 with leading zero (e.g. 0599123456).'
+        );
+      }
     }
 
     setLoading(true);
     try {
-      const fullPhone = phoneLocal.trim() ? `${phonePrefix}${phoneLocal.trim()}` : '';
+      // Strip leading zero before prepending country prefix
+      const rawPhoneLocal = phoneLocal.trim().replace(/^0/, '');
+      const fullPhone = rawPhoneLocal ? `${phonePrefix}${rawPhoneLocal}` : '';
       const isCity = selectedCity === QALQILYA_CITY;
       const locationStr = `${isCity ? 'قلقيلية' : selectedCity}${location.trim() ? ` - ${location.trim()}` : ''}`;
       const { data: ad, error: adError } = await createAd({
@@ -578,16 +591,16 @@ export default function PostAdScreen() {
               </View>
               <View style={styles.phoneInputWrap}>
                 <Input
-                  placeholder={language === 'ar' ? 'XX-XXX-XXXX' : 'XX-XXX-XXXX'}
+                  placeholder={language === 'ar' ? '0XX-XXX-XXXX' : '0XX-XXX-XXXX'}
                   value={phoneLocal}
                   onChangeText={(val) => {
-                    // Numbers only, max 9 digits
-                    const digits = val.replace(/[^0-9]/g, '').slice(0, 9);
+                    // Numbers only, max 10 digits (allows leading 0)
+                    const digits = val.replace(/[^0-9]/g, '').slice(0, 10);
                     setPhoneLocal(digits);
                   }}
                   keyboardType="number-pad"
                   containerStyle={styles.phoneInputContainer}
-                  maxLength={9}
+                  maxLength={10}
                 />
               </View>
             </View>
@@ -596,8 +609,8 @@ export default function PostAdScreen() {
               <MaterialIcons name="info-outline" size={14} color={colors.primary} />
               <Text style={[styles.phoneHintText, { color: colors.textSecondary }]}>
                 {language === 'ar'
-                  ? 'أدخل 9 أرقام فقط — ابدأ من الرقم الذي بعد الصفر (مثال: 599123456)'
-                  : 'Enter 9 digits only — skip the leading zero (e.g. 599123456)'}
+                  ? 'أدخل الرقم مع أو بدون الصفر في البداية (مثال: 599123456 أو 0599123456)'
+                  : 'Enter with or without leading zero (e.g. 599123456 or 0599123456)'}
               </Text>
             </View>
             <Text style={[styles.phoneHint, { color: colors.textMuted }, textAlign]}>

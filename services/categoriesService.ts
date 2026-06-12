@@ -27,12 +27,13 @@ export function getCategoryName(category: Category, language: string): string {
 
 /** Static fallback name map for known slugs */
 export const CATEGORY_NAMES: Record<string, { en: string; ar: string }> = {
-  'cars-vehicles':  { en: 'Cars & Vehicles',  ar: 'سيارات ومركبات' },
-  'electronics':    { en: 'Electronics',       ar: 'إلكترونيات' },
-  'fashion':        { en: 'Fashion',            ar: 'موضة' },
-  'furniture':      { en: 'Furniture',          ar: 'أثاث' },
-  'jobs':           { en: 'Jobs',               ar: 'وظائف' },
-  'real-estate':    { en: 'Real Estate',        ar: 'عقارات' },
-  'sports':         { en: 'Sports',             ar: 'رياضة' },
-  'others':         { en: 'Others',             ar: 'أخرى' },
+  'cars-vehicles':       { en: 'Cars & Vehicles',       ar: 'سيارات ومركبات' },
+  'electronics':         { en: 'Electronics',           ar: 'إلكترونيات' },
+  'fashion':             { en: 'Fashion',               ar: 'موضة' },
+  'furniture':           { en: 'Furniture',             ar: 'أثاث' },
+  'jobs':                { en: 'Jobs',                  ar: 'وظائف' },
+  'real-estate':         { en: 'Real Estate',           ar: 'عقارات' },
+  'sports':              { en: 'Sports',                ar: 'رياضة' },
+  'games-entertainment': { en: 'Games & Entertainment', ar: 'ألعاب وترفيه' },
+  'others':              { en: 'Others',                ar: 'أخرى' },
 };
