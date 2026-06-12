@@ -318,10 +318,13 @@ export async function saveAdImages(
 /** Mark ad as sold or deleted — also clears the ads cache so home screen refreshes */
 export async function updateAdStatus(
   adId: string,
-  status: 'active' | 'sold' | 'deleted'
+  status: 'active' | 'sold' | 'deleted' | 'featured',
+  boostedUntil?: string,
 ): Promise<{ error: string | null }> {
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from('ads').update({ status }).eq('id', adId);
+  const updates: any = { status };
+  if (boostedUntil !== undefined) updates.boosted_until = boostedUntil;
+  const { error } = await supabase.from('ads').update(updates).eq('id', adId);
   if (!error) clearAdsCache(); // Force home screen to reload fresh data
   return { error: error ? error.message : null };
 }

@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import { getSupabaseClient, useAuth } from '@/template';
+import { getSupabaseClient, useAuth, useAlert } from '@/template';
 import { fetchAds, Ad } from '@/services/adsService';
 import { AdCard, ShimmerBlock } from '@/components/feature/AdCard';
 import { useFavoriteIds } from '@/hooks/useFavorites';
@@ -91,6 +91,7 @@ export default function SellerProfileScreen() {
   const { colors, isDark } = useTheme();
   const { language } = useLanguage();
   const { user } = useAuth();
+  const { showAlert } = useAlert();
   const isAr = language === 'ar';
 
   const { ids: favoriteIds, toggle: toggleFav } = useFavoriteIds();
@@ -158,28 +159,58 @@ export default function SellerProfileScreen() {
   const activeAds = ads.filter(a => a.status === 'active' || a.status === 'featured');
 
   // ── Submit rating ─────────────────────────────────────────────────────────
+  // Track whether current user has already rated this seller
+  const [hasRated, setHasRated] = useState(false);
+
   const handleSubmitRating = useCallback(async () => {
-    if (!user || !id) return;
+    if (!user || !id || submittingRating) return;
     setSubmittingRating(true);
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from('seller_ratings')
-      .upsert(
-        { reviewer_id: user.id, seller_id: id, rating: draftStars, comment: draftComment.trim() },
-        { onConflict: 'reviewer_id,seller_id' }
-      );
-    setSubmittingRating(false);
-    if (!error) {
+    try {
+      const supabase = getSupabaseClient();
+      // Check if current user already has a rating for this seller
+      const { data: existing } = await supabase
+        .from('seller_ratings')
+        .select('id, rating')
+        .eq('reviewer_id', user.id)
+        .eq('seller_id', id)
+        .maybeSingle();
+
+      const { error } = await supabase
+        .from('seller_ratings')
+        .upsert(
+          { reviewer_id: user.id, seller_id: id, rating: draftStars, comment: draftComment.trim() },
+          { onConflict: 'reviewer_id,seller_id' }
+        );
+
+      if (error) {
+        showAlert(isAr ? 'خطأ في التقييم' : 'Rating Error', error.message);
+        return;
+      }
+
+      const isUpdate = !!existing;
+      // Optimistic recalculation
       setAvgRating(prev => {
-        const base = prev !== null ? prev * ratingCount : 0;
-        const newCount = ratingCount + 1;
-        return Math.round(((base + draftStars) / newCount) * 10) / 10;
+        if (isUpdate) {
+          // Replace existing rating in the average
+          const oldRating = existing!.rating as number;
+          const total = (prev ?? oldRating) * ratingCount - oldRating + draftStars;
+          return Math.round((total / ratingCount) * 10) / 10;
+        } else {
+          // New rating
+          const total = (prev ?? 0) * ratingCount + draftStars;
+          return Math.round((total / (ratingCount + 1)) * 10) / 10;
+        }
       });
-      setRatingCount(prev => prev + 1);
+      if (!isUpdate) setRatingCount(prev => prev + 1);
+      setHasRated(true);
+      setRatingModalVisible(false);
+      setDraftComment('');
+    } catch (e: any) {
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Could not save rating');
+    } finally {
+      setSubmittingRating(false);
     }
-    setRatingModalVisible(false);
-    setDraftComment('');
-  }, [user, id, draftStars, draftComment, ratingCount]);
+  }, [user, id, draftStars, draftComment, ratingCount, submittingRating, isAr]);
 
   const isOwnProfile = user?.id === id;
 

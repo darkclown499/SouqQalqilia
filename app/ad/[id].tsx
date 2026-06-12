@@ -9,12 +9,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert } from '@/template';
 import { Button, Badge } from '@/components';
-import { fetchAdById, fetchAds, Ad, AdImage, updateAdStatus, reportAd } from '@/services/adsService';
+import { fetchAdById, fetchAds, clearAdsCache, Ad, AdImage, updateAdStatus, reportAd } from '@/services/adsService';
 import { blockUser, isUserBlocked, unblockUser } from '@/services/blockService';
 import { fetchOrCreateConversation } from '@/services/chatService';
 import { getSupabaseClient } from '@/template';
 import { PromotionModal } from '@/components/feature/PromotionModal';
-import { Modal as RNModal } from 'react-native';
 import { ImageZoomGallery } from '@/components/feature/ImageZoomGallery';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -95,31 +94,37 @@ export default function AdDetailScreen() {
   }, [id]);
 
   const handleBoostAd = async () => {
-    if (!ad || !user) return;
+    if (!ad || !user || boosting) return;
     setBoosting(true);
-    const boostedUntil = new Date(Date.now() + boostDays * 24 * 60 * 60 * 1000).toISOString();
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from('ads')
-      .update({ status: 'featured', boosted_until: boostedUntil })
-      .eq('id', ad.id);
-    setBoosting(false);
-    if (error) {
-      showAlert(isAr ? 'خطأ' : 'Error', error.message);
-      return;
+    try {
+      const boostedUntil = new Date(Date.now() + boostDays * 24 * 60 * 60 * 1000).toISOString();
+      const supabase = getSupabaseClient();
+      const { error } = await supabase
+        .from('ads')
+        .update({ status: 'featured', boosted_until: boostedUntil })
+        .eq('id', ad.id);
+      if (error) {
+        showAlert(isAr ? 'خطأ في التمييز' : 'Boost Error', error.message);
+        return;
+      }
+      // Update local state immediately
+      setAd(prev => prev ? { ...prev, status: 'featured', boosted_until: boostedUntil } : prev);
+      // Clear ads cache so feed refetches and boosted ad floats to top
+      clearAdsCache();
+      // Fire-and-forget: no need to block UX on this notification
+      // (owner boosting their own ad — no recipient to notify externally)
+      setBoostModalVisible(false);
+      showAlert(
+        isAr ? 'تم التفعيل! ⚡' : 'Boosted! ⚡',
+        isAr
+          ? `إعلانك مميز الآن لمدة ${boostDays} ${boostDays === 1 ? 'يوم' : 'أيام'}. سيظهر في أعلى قائمة الإعلانات.`
+          : `Your ad is now boosted for ${boostDays} ${boostDays === 1 ? 'day' : 'days'}. It will appear at the top of listings.`
+      );
+    } catch (e: any) {
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Boost failed');
+    } finally {
+      setBoosting(false);
     }
-    // Update local state immediately
-    setAd(prev => prev ? { ...prev, status: 'featured', boosted_until: boostedUntil } : prev);
-    // Clear ads cache so feed refetches and boosted ad floats to top
-    const { clearAdsCache } = await import('@/services/adsService');
-    clearAdsCache();
-    setBoostModalVisible(false);
-    showAlert(
-      isAr ? 'تم التفعيل! ⚡' : 'Boosted! ⚡',
-      isAr
-        ? `إعلانك مميز الآن لمدة ${boostDays} ${boostDays === 1 ? 'يوم' : 'أيام'}. سيظهر في أعلى قائمة الإعلانات.`
-        : `Your ad is now boosted for ${boostDays} ${boostDays === 1 ? 'day' : 'days'}. It will appear at the top of listings.`
-    );
   };
 
   const handleChat = async () => {
@@ -178,18 +183,23 @@ export default function AdDetailScreen() {
   const handleReport = async () => {
     if (!user) return router.push('/login');
     if (!selectedReason) return showAlert(t.reportSelectReason, t.reportSelectReasonMsg);
-    if (!ad) return;
+    if (!ad || reporting) return;
     setReporting(true);
-    const { error } = await reportAd(ad.id, selectedReason);
-    setReporting(false);
-    setReportVisible(false);
-    setSelectedReason('');
-    if (error && error.includes('unique')) {
-      showAlert(t.reportAlready, t.reportAlreadyMsg);
-    } else if (error) {
-      showAlert('Error', error);
-    } else {
-      showAlert(t.reportSubmitted, t.reportSubmittedMsg);
+    try {
+      const { error } = await reportAd(ad.id, selectedReason);
+      if (error && error.includes('unique')) {
+        showAlert(t.reportAlready, t.reportAlreadyMsg);
+      } else if (error) {
+        showAlert(isAr ? 'خطأ في الإبلاغ' : 'Report Error', error);
+      } else {
+        setReportVisible(false);
+        setSelectedReason('');
+        showAlert(t.reportSubmitted, t.reportSubmittedMsg);
+      }
+    } catch (e: any) {
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Report failed');
+    } finally {
+      setReporting(false);
     }
   };
 
@@ -503,14 +513,14 @@ export default function AdDetailScreen() {
       <PromotionModal visible={promoteVisible} onClose={() => setPromoteVisible(false)} />
 
       {/* ── BOOST DURATION PICKER MODAL ── */}
-      <RNModal
+      <Modal
         visible={boostModalVisible}
         transparent
         animationType="slide"
         onRequestClose={() => setBoostModalVisible(false)}
         statusBarTranslucent
       >
-        <Pressable style={boostS.overlay} onPress={() => setBoostModalVisible(false)}>
+        <Pressable style={boostS.overlay} onPress={() => !boosting && setBoostModalVisible(false)}>
           <Pressable style={[boostS.sheet, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
             <View style={[boostS.handle, { backgroundColor: colors.border }]} />
             <View style={boostS.headerRow}>
@@ -566,12 +576,12 @@ export default function AdDetailScreen() {
               </Text>
             </Pressable>
 
-            <Pressable style={[boostS.cancelBtn, { backgroundColor: colors.background }]} onPress={() => setBoostModalVisible(false)}>
+            <Pressable style={[boostS.cancelBtn, { backgroundColor: colors.background, opacity: boosting ? 0.4 : 1 }]} onPress={() => !boosting && setBoostModalVisible(false)} disabled={boosting}>
               <Text style={[boostS.cancelText, { color: colors.textPrimary }]}>{isAr ? 'إلغاء' : 'Cancel'}</Text>
             </Pressable>
           </Pressable>
         </Pressable>
-      </RNModal>
+      </Modal>
 
       {/* ── IMAGE ZOOM GALLERY ── */}
       {images.length > 0 ? (
@@ -1208,4 +1218,41 @@ const styles = StyleSheet.create({
     borderWidth: 1, alignSelf: 'flex-start',
   },
   serialText: { fontSize: FontSize.xs, fontWeight: '500', letterSpacing: 0.2 },
+});
+
+// ── Boost Modal StyleSheet ──────────────────────────────────────────────────
+const boostS = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'flex-end' },
+  sheet: {
+    borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    paddingHorizontal: Spacing.lg, paddingBottom: 36, paddingTop: 12,
+    gap: Spacing.md,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.14, shadowRadius: 18, elevation: 22,
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  headerIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: FontSize.lg, fontWeight: '800', letterSpacing: -0.3 },
+  sub: { fontSize: FontSize.sm, marginTop: 2 },
+  option: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    borderRadius: Radius.lg, borderWidth: 1.5,
+    paddingHorizontal: Spacing.md, paddingVertical: 14,
+  },
+  optIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  optEmoji: { fontSize: 22 },
+  optLabel: { fontSize: FontSize.md, fontWeight: '700' },
+  optSub: { fontSize: FontSize.xs, marginTop: 2 },
+  optRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5 },
+  confirmBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, height: 54, borderRadius: Radius.xl,
+    shadowColor: '#D97706', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
+    marginTop: 4,
+  },
+  confirmText: { color: '#fff', fontSize: FontSize.lg, fontWeight: '800' },
+  cancelBtn: { height: 46, borderRadius: Radius.xl, alignItems: 'center', justifyContent: 'center' },
+  cancelText: { fontSize: FontSize.md, fontWeight: '700' },
 });

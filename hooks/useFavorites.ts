@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   fetchMyFavoriteIds,
   fetchMyFavoriteAds,
@@ -10,6 +10,8 @@ import { Ad } from '@/services/adsService';
 export function useFavoriteIds() {
   const [ids, setIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  // Guard against double-tap during async toggle
+  const togglingRef = React.useRef(new Set<string>());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -21,6 +23,9 @@ export function useFavoriteIds() {
   useEffect(() => { load(); }, []);
 
   const toggle = useCallback(async (adId: string) => {
+    // Prevent concurrent double-tap on the same ad
+    if (togglingRef.current.has(adId)) return;
+    togglingRef.current.add(adId);
     const wasFav = ids.has(adId);
     // Optimistic update
     setIds(prev => {
@@ -30,6 +35,7 @@ export function useFavoriteIds() {
       return next;
     });
     const { error } = await toggleFavorite(adId, wasFav);
+    togglingRef.current.delete(adId);
     if (error) {
       // Revert on failure
       setIds(prev => {

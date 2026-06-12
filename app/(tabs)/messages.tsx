@@ -42,10 +42,10 @@ export default function MessagesScreen() {
   const isAr = language === 'ar';
 
   const handleConvPress = useCallback((id: string) => {
-    // Optimistically clear the unread badge for this conversation immediately
-    // so the tab bar badge doesn't linger while the user is already reading.
-    refreshUnread().catch(() => {});
+    // Navigate immediately — don't block on the async refresh
     router.push(`/chat/${id}`);
+    // Optimistically clear badge then re-query DB in background
+    refreshUnread().catch(() => {});
   }, [router, refreshUnread]);
 
   const renderConversation = useCallback(({ item }: any) => {

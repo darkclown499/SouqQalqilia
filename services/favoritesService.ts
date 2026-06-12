@@ -49,6 +49,30 @@ export async function addFavorite(adId: string): Promise<{ error: string | null 
   const { error } = await supabase
     .from('favorites')
     .insert({ user_id: user.id, ad_id: adId });
+
+  if (!error) {
+    // Fire-and-forget: notify ad owner that their listing was liked
+    try {
+      const { data: adRow } = await supabase
+        .from('ads')
+        .select('user_id, title')
+        .eq('id', adId)
+        .single();
+      const ownerId: string | undefined = adRow?.user_id;
+      const adTitle: string = adRow?.title ?? '';
+      if (ownerId && ownerId !== user.id) {
+        const senderName = user.user_metadata?.username ?? user.email?.split('@')[0] ?? 'مستخدم';
+        supabase.functions.invoke('push-notify', {
+          body: {
+            recipient_id: ownerId,
+            sender_name: senderName,
+            message_preview: `❤️ "أعجبه " ${adTitle}`,
+          },
+        }).catch(() => {});
+      }
+    } catch { /* non-critical, never block */ }
+  }
+
   return { error: error ? error.message : null };
 }
 
