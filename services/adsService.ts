@@ -46,7 +46,10 @@ async function prefetchAdImages(ads: Ad[]): Promise<void> {
   // expo-image Image.prefetch supports an array — single call, native batch.
   // We await so splash stays visible until images hit disk.
   try {
-    await Image.prefetch(urls, { cachePolicy: 'disk' });
+    // expo-image prefetch: second arg is a string ('disk' | 'memory-disk'), NOT an object.
+    // 'memory-disk' keeps images in both memory + disk so AdCard renders
+    // instantly during fast scrolling without re-decoding from disk each time.
+    await Image.prefetch(urls, 'memory-disk');
   } catch {
     // Partial failure is acceptable — images will stream lazily on first view
   }

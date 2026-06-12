@@ -111,7 +111,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
             style={styles.image}
             contentFit="cover"
             transition={150}
-            cachePolicy="disk"
+            cachePolicy="memory-disk"
             recyclingKey={firstImage.url}
             priority={isFeatured || isBoosted ? 'high' : 'normal'}
             placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
