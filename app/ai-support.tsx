@@ -25,28 +25,32 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-// Quick-start prompts displayed on empty state
+// Quick-start prompts
 const QUICK_PROMPTS_AR = [
-  'كيف أنشر إعلاناً؟',
-  'كيف أعدّل إعلاني؟',
-  'كيف أتواصل مع البائع؟',
-  'كيف أحذف إعلاني؟',
-  'كيف أعزّز إعلاني؟',
-  'ما المناطق المتاحة؟',
+  { icon: 'add-circle-outline' as const,  text: 'كيف أنشر إعلاناً؟' },
+  { icon: 'edit' as const,                text: 'كيف أعدّل إعلاني؟' },
+  { icon: 'chat-bubble-outline' as const, text: 'كيف أتواصل مع البائع؟' },
+  { icon: 'delete-outline' as const,      text: 'كيف أحذف إعلاني؟' },
+  { icon: 'bolt' as const,                text: 'كيف أعزّز إعلاني؟' },
+  { icon: 'location-on' as const,         text: 'ما المناطق المتاحة؟' },
 ];
 
 const QUICK_PROMPTS_EN = [
-  'How do I post an ad?',
-  'How do I edit my listing?',
-  'How do I contact a seller?',
-  'How do I delete my ad?',
-  'How do I boost my listing?',
-  'What areas are available?',
+  { icon: 'add-circle-outline' as const,  text: 'How do I post an ad?' },
+  { icon: 'edit' as const,                text: 'How do I edit my listing?' },
+  { icon: 'chat-bubble-outline' as const, text: 'How do I contact a seller?' },
+  { icon: 'delete-outline' as const,      text: 'How do I delete my ad?' },
+  { icon: 'bolt' as const,                text: 'How do I boost my listing?' },
+  { icon: 'location-on' as const,         text: 'What areas are available?' },
 ];
 
 // ── Animated typing dots ──────────────────────────────────────────────────────
 function TypingIndicator({ color }: { color: string }) {
-  const dots = [useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current];
+  const dots = [
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+  ];
   useEffect(() => {
     const anims = dots.map((dot, i) =>
       Animated.loop(Animated.sequence([
@@ -60,9 +64,15 @@ function TypingIndicator({ color }: { color: string }) {
     return () => anims.forEach(a => a.stop());
   }, []);
   return (
-    <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center', padding: 4 }}>
+    <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center', padding: 6 }}>
       {dots.map((dot, i) => (
-        <Animated.View key={i} style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }, { transform: [{ translateY: dot }] }]} />
+        <Animated.View
+          key={i}
+          style={[
+            { width: 8, height: 8, borderRadius: 4, backgroundColor: color },
+            { transform: [{ translateY: dot }] },
+          ]}
+        />
       ))}
     </View>
   );
@@ -71,15 +81,19 @@ function TypingIndicator({ color }: { color: string }) {
 // ── Human Support Card ────────────────────────────────────────────────────────
 function HumanSupportCard({ isAr, colors }: { isAr: boolean; colors: any }) {
   const openWhatsApp = () => {
-    const msg = encodeURIComponent(isAr ? 'مرحباً، أحتاج للمساعدة في سوق قلقيلية' : 'Hello, I need help with Souq Qalqilya');
-    const waUrl = `whatsapp://send?phone=${SUPPORT_WHATSAPP}&text=${msg}`;
-    const waFallback = `https://wa.me/${SUPPORT_WHATSAPP}?text=${msg}`;
-    Linking.openURL(waUrl).catch(() => Linking.openURL(waFallback).catch(() => {}));
+    const msg = encodeURIComponent(
+      isAr ? 'مرحباً، أحتاج للمساعدة في سوق قلقيلية' : 'Hello, I need help with Souq Qalqilya'
+    );
+    Linking.openURL(`whatsapp://send?phone=${SUPPORT_WHATSAPP}&text=${msg}`)
+      .catch(() => Linking.openURL(`https://wa.me/${SUPPORT_WHATSAPP}?text=${msg}`).catch(() => {}));
   };
   const openEmail = () => {
-    const subject = encodeURIComponent(isAr ? 'طلب دعم — سوق قلقيلية' : 'Support Request — Souq Qalqilya');
+    const subject = encodeURIComponent(
+      isAr ? 'طلب دعم — سوق قلقيلية' : 'Support Request — Souq Qalqilya'
+    );
     Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}`).catch(() => {});
   };
+
   return (
     <View style={[hsStyles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={[hsStyles.header, { backgroundColor: colors.primaryGhost }]}>
@@ -96,7 +110,6 @@ function HumanSupportCard({ isAr, colors }: { isAr: boolean; colors: any }) {
         </View>
       </View>
 
-      {/* WhatsApp */}
       <Pressable
         style={({ pressed }) => [hsStyles.btn, { backgroundColor: pressed ? '#20BA58' : '#25D366' }]}
         onPress={openWhatsApp}
@@ -111,7 +124,6 @@ function HumanSupportCard({ isAr, colors }: { isAr: boolean; colors: any }) {
         <MaterialIcons name={isAr ? 'chevron-left' : 'chevron-right'} size={18} color="rgba(255,255,255,0.7)" />
       </Pressable>
 
-      {/* Email */}
       <Pressable
         style={({ pressed }) => [hsStyles.btn, { backgroundColor: pressed ? '#3b71ca' : '#4285F4' }]}
         onPress={openEmail}
@@ -171,21 +183,18 @@ const hsStyles = StyleSheet.create({
 export default function AiSupportScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { language } = useLanguage();
   const isAr = language === 'ar';
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showHandoff, setShowHandoff] = useState(false);
-  // Track conversation turns for auto-handoff after 4 unresolved turns
   const turnCountRef = useRef(0);
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
   const quickPrompts = isAr ? QUICK_PROMPTS_AR : QUICK_PROMPTS_EN;
 
-  /** Scroll to the bottom of the message list */
   const scrollToBottom = useCallback(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
   }, []);
@@ -194,7 +203,6 @@ export default function AiSupportScreen() {
     if (messages.length > 0) scrollToBottom();
   }, [messages.length]);
 
-  /** Send a message to the AI support edge function */
   const sendMessage = useCallback(async (userText: string) => {
     const trimmed = userText.trim();
     if (!trimmed || loading) return;
@@ -211,7 +219,6 @@ export default function AiSupportScreen() {
     setLoading(true);
     turnCountRef.current += 1;
 
-    // Build history for the edge function (exclude handoff cards)
     const history = [...messages, userMsg]
       .filter(m => m.role === 'user' || m.role === 'assistant')
       .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
@@ -225,10 +232,7 @@ export default function AiSupportScreen() {
       if (error) {
         let errMsg = error.message;
         if (error instanceof FunctionsHttpError) {
-          try {
-            const txt = await error.context?.text();
-            errMsg = txt || errMsg;
-          } catch {}
+          try { errMsg = await error.context?.text() || errMsg; } catch {}
         }
         throw new Error(errMsg);
       }
@@ -244,8 +248,6 @@ export default function AiSupportScreen() {
       setMessages(prev => [...prev, assistantMsg]);
 
       if (shouldHandoff) {
-        setShowHandoff(true);
-        // Add a handoff system message so the card appears inline in the list
         setMessages(prev => [...prev, {
           id: `h_${Date.now()}`,
           role: 'handoff',
@@ -253,16 +255,15 @@ export default function AiSupportScreen() {
           timestamp: new Date(),
         }]);
       }
-    } catch (e: any) {
-      const errMsg: ChatMessage = {
+    } catch {
+      setMessages(prev => [...prev, {
         id: `e_${Date.now()}`,
         role: 'assistant',
         content: isAr
           ? 'عذراً، حدث خطأ. يرجى المحاولة مرة أخرى أو التواصل مع الدعم البشري.'
           : 'Sorry, an error occurred. Please try again or contact human support.',
         timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errMsg]);
+      }]);
     } finally {
       setLoading(false);
     }
@@ -270,8 +271,6 @@ export default function AiSupportScreen() {
 
   const handleSend = useCallback(() => sendMessage(input), [sendMessage, input]);
   const handleQuickPrompt = useCallback((p: string) => sendMessage(p), [sendMessage]);
-
-  // Trigger human handoff manually
   const handleRequestHuman = useCallback(() => {
     sendMessage(isAr ? 'أريد التواصل مع دعم بشري' : 'I want to speak with human support');
   }, [sendMessage, isAr]);
@@ -301,16 +300,34 @@ export default function AiSupportScreen() {
         <View style={[
           styles.bubble,
           isUser
-            ? { backgroundColor: colors.primary, borderBottomRightRadius: isAr ? Radius.lg : 4, borderBottomLeftRadius: isAr ? 4 : Radius.lg }
-            : { backgroundColor: colors.surface, borderBottomLeftRadius: isAr ? Radius.lg : 4, borderBottomRightRadius: isAr ? 4 : Radius.lg, ...Shadow.xs },
+            ? {
+                backgroundColor: colors.primary,
+                borderBottomRightRadius: isAr ? Radius.lg : 4,
+                borderBottomLeftRadius: isAr ? 4 : Radius.lg,
+              }
+            : {
+                backgroundColor: colors.surface,
+                borderBottomLeftRadius: isAr ? Radius.lg : 4,
+                borderBottomRightRadius: isAr ? 4 : Radius.lg,
+                ...Shadow.xs,
+              },
         ]}>
           <Text style={[
             styles.bubbleText,
-            { color: isUser ? '#fff' : colors.textPrimary, textAlign: isAr ? 'right' : 'left' },
+            {
+              color: isUser ? '#fff' : colors.textPrimary,
+              textAlign: isAr ? 'right' : 'left',
+            },
           ]}>
             {item.content}
           </Text>
-          <Text style={[styles.timeText, { color: isUser ? 'rgba(255,255,255,0.65)' : colors.textMuted, textAlign: isAr ? 'left' : 'right' }]}>
+          <Text style={[
+            styles.timeText,
+            {
+              color: isUser ? 'rgba(255,255,255,0.65)' : colors.textMuted,
+              textAlign: isAr ? 'left' : 'right',
+            },
+          ]}>
             {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </View>
@@ -323,18 +340,22 @@ export default function AiSupportScreen() {
     );
   }, [isAr, colors]);
 
+  const canSend = input.trim().length > 0 && !loading;
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
 
         {/* ── HEADER ── */}
         <View style={[styles.header, { backgroundColor: colors.primary }]}>
-          <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
+          <Pressable style={styles.headerIconBtn} onPress={() => router.back()} hitSlop={8}>
             <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={22} color="#fff" />
           </Pressable>
+
           <View style={[styles.headerAvatarWrap, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
             <MaterialIcons name="smart-toy" size={22} color="#fff" />
           </View>
+
           <View style={{ flex: 1 }}>
             <Text style={[styles.headerTitle, { textAlign: isAr ? 'right' : 'left' }]}>
               {isAr ? 'سوق قلقيلية للدعم الفني' : 'Souq Qalqilya Support'}
@@ -344,46 +365,73 @@ export default function AiSupportScreen() {
               <Text style={styles.onlineTxt}>{isAr ? 'متاح الآن' : 'Available now'}</Text>
             </View>
           </View>
-          {/* Human support trigger */}
-          <Pressable style={styles.humanBtn} onPress={handleRequestHuman} hitSlop={8}>
-            <MaterialIcons name="support-agent" size={20} color="#fff" />
+
+          <Pressable style={styles.headerIconBtn} onPress={handleRequestHuman} hitSlop={8}>
+            <MaterialIcons name="support-agent" size={22} color="#fff" />
           </Pressable>
         </View>
 
-        {/* ── MESSAGES ── */}
+        {/* ── MESSAGES / EMPTY STATE ── */}
         {messages.length === 0 ? (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.emptyScroll} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={[styles.emptyScroll, { paddingBottom: insets.bottom + 16 }]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Welcome card */}
-            <View style={[styles.welcomeCard, { backgroundColor: colors.surface, ...Shadow.sm }]}>
+            <View style={[
+              styles.welcomeCard,
+              { backgroundColor: isDark ? colors.surface : colors.surfaceTint, borderColor: colors.border },
+            ]}>
               <View style={[styles.welcomeIconWrap, { backgroundColor: colors.primary }]}>
-                <MaterialIcons name="smart-toy" size={36} color="#fff" />
+                <MaterialIcons name="smart-toy" size={40} color="#fff" />
               </View>
               <Text style={[styles.welcomeTitle, { color: colors.textPrimary }]}>
                 {isAr ? 'أهلاً بك في مساعد سوق قلقيلية' : 'Welcome to Souq Qalqilya Assistant'}
               </Text>
-              <Text style={[styles.welcomeSub, { color: colors.textMuted }]}>
+              <Text style={[styles.welcomeSub, { color: colors.textSecondary }]}>
                 {isAr
                   ? 'اسألني أي شيء عن التطبيق — نشر إعلانات، التواصل مع البائعين، التعديل، والمزيد.'
                   : 'Ask me anything about the app — posting ads, contacting sellers, editing listings, and more.'}
               </Text>
             </View>
 
-            {/* Quick prompts grid */}
-            <Text style={[styles.quickLabel, { color: colors.textSecondary }]}>
-              {isAr ? 'أسئلة شائعة:' : 'Common questions:'}
-            </Text>
-            <View style={styles.quickGrid}>
+            {/* Quick prompts */}
+            <View style={styles.quickSection}>
+              <View style={[styles.quickLabelRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+                <MaterialIcons name="auto-awesome" size={15} color={colors.primary} />
+                <Text style={[styles.quickLabel, { color: colors.textSecondary }]}>
+                  {isAr ? 'أسئلة شائعة' : 'Common questions'}
+                </Text>
+              </View>
+
               {quickPrompts.map((p, i) => (
                 <Pressable
                   key={i}
                   style={({ pressed }) => [
-                    styles.quickChip,
-                    { backgroundColor: pressed ? colors.primary : colors.surface, borderColor: colors.border, ...Shadow.xs },
+                    styles.quickRow,
+                    {
+                      backgroundColor: pressed
+                        ? colors.primaryGhost
+                        : (isDark ? colors.surface : colors.cardSurface ?? colors.surface),
+                      borderColor: pressed ? colors.primary : colors.border,
+                      flexDirection: isAr ? 'row-reverse' : 'row',
+                    },
                   ]}
-                  onPress={() => handleQuickPrompt(p)}
+                  onPress={() => handleQuickPrompt(p.text)}
                 >
-                  <Text style={[styles.quickChipText, { color: colors.textPrimary }]} numberOfLines={2}>{p}</Text>
-                  <MaterialIcons name="send" size={12} color={colors.textMuted} />
+                  <View style={[styles.quickRowIcon, { backgroundColor: colors.primaryGhost }]}>
+                    <MaterialIcons name={p.icon} size={18} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.quickRowText, { color: colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]}>
+                    {p.text}
+                  </Text>
+                  <MaterialIcons
+                    name={isAr ? 'chevron-left' : 'chevron-right'}
+                    size={18}
+                    color={colors.textMuted}
+                  />
                 </Pressable>
               ))}
             </View>
@@ -397,14 +445,18 @@ export default function AiSupportScreen() {
             contentContainerStyle={styles.msgList}
             showsVerticalScrollIndicator={false}
             onContentSizeChange={scrollToBottom}
+            keyboardShouldPersistTaps="handled"
             ListFooterComponent={
               loading ? (
-                <View style={[styles.msgRow, isAr ? styles.msgRowUser : styles.msgRowOther]}>
+                <View style={[
+                  styles.msgRow,
+                  isAr ? styles.msgRowUser : styles.msgRowOther,
+                ]}>
                   <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
                     <MaterialIcons name="smart-toy" size={16} color="#fff" />
                   </View>
                   <View style={[styles.bubble, { backgroundColor: colors.surface, ...Shadow.xs }]}>
-                    <TypingIndicator color={colors.textMuted} />
+                    <TypingIndicator color={colors.primary} />
                   </View>
                 </View>
               ) : null
@@ -418,7 +470,7 @@ export default function AiSupportScreen() {
           {
             backgroundColor: colors.surface,
             borderTopColor: colors.border,
-            paddingBottom: insets.bottom + Spacing.sm,
+            paddingBottom: insets.bottom > 0 ? insets.bottom : Spacing.sm,
             flexDirection: isAr ? 'row-reverse' : 'row',
           },
         ]}>
@@ -439,16 +491,31 @@ export default function AiSupportScreen() {
             returnKeyType="send"
           />
           <Pressable
-            style={[styles.sendBtn, { backgroundColor: input.trim() && !loading ? colors.primary : colors.border }]}
+            style={({ pressed }) => [
+              styles.sendBtn,
+              {
+                backgroundColor: canSend
+                  ? (pressed ? colors.primaryDark : colors.primary)
+                  : colors.border,
+              },
+            ]}
             onPress={handleSend}
-            disabled={!input.trim() || loading}
+            disabled={!canSend}
           >
             {loading
               ? <ActivityIndicator color="#fff" size="small" />
-              : <MaterialIcons name="send" size={20} color={input.trim() ? '#fff' : colors.textMuted} style={isAr ? { transform: [{ scaleX: -1 }] } : undefined} />
+              : (
+                <MaterialIcons
+                  name="send"
+                  size={20}
+                  color={canSend ? '#fff' : colors.textMuted}
+                  style={isAr ? { transform: [{ scaleX: -1 }] } : undefined}
+                />
+              )
             }
           </Pressable>
         </View>
+
       </View>
     </KeyboardAvoidingView>
   );
@@ -463,15 +530,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    paddingBottom: Spacing.lg,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.md,
   },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  humanBtn: {
+  headerIconBtn: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center', justifyContent: 'center',
@@ -486,40 +548,77 @@ const styles = StyleSheet.create({
     color: '#fff',
     letterSpacing: -0.2,
   },
-  onlineRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  onlineRow: { alignItems: 'center', gap: 5, marginTop: 2 },
   onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ADE80' },
   onlineTxt: { color: 'rgba(255,255,255,0.75)', fontSize: FontSize.xs },
 
-  // Empty state
-  emptyScroll: { padding: Spacing.lg, gap: Spacing.lg, flexGrow: 1 },
+  // ── Empty / Welcome ──────────────────────────────────────────────────────
+  emptyScroll: {
+    padding: Spacing.md,
+    gap: Spacing.lg,
+    flexGrow: 1,
+  },
   welcomeCard: {
     borderRadius: Radius.xxl,
+    borderWidth: 1,
     padding: Spacing.xl,
     alignItems: 'center',
     gap: Spacing.md,
+    ...Shadow.sm,
   },
   welcomeIconWrap: {
-    width: 72, height: 72, borderRadius: 36,
+    width: 80, height: 80, borderRadius: 40,
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 4,
+    ...Shadow.colored,
   },
-  welcomeTitle: { fontSize: FontSize.lg, fontWeight: '800', textAlign: 'center', letterSpacing: -0.3 },
-  welcomeSub: { fontSize: FontSize.sm, textAlign: 'center', lineHeight: 22 },
-  quickLabel: { fontSize: FontSize.sm, fontWeight: '700', textAlign: 'center' },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, justifyContent: 'center' },
-  quickChip: {
-    flexDirection: 'row',
+  welcomeTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  welcomeSub: {
+    fontSize: FontSize.sm,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+
+  // ── Quick prompts (list style) ───────────────────────────────────────────
+  quickSection: { gap: Spacing.sm },
+  quickLabelRow: {
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    maxWidth: '48%',
+    marginBottom: 2,
+    paddingHorizontal: 4,
   },
-  quickChipText: { fontSize: FontSize.sm, fontWeight: '600', flex: 1 },
+  quickLabel: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  quickRow: {
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 14,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    ...Shadow.xs,
+  },
+  quickRowIcon: {
+    width: 36, height: 36, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  quickRowText: {
+    flex: 1,
+    fontSize: FontSize.md,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
 
-  // Messages
+  // ── Messages ─────────────────────────────────────────────────────────────
   msgList: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.md, flexGrow: 1 },
   msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm },
   msgRowUser: { justifyContent: 'flex-end' },
@@ -540,7 +639,7 @@ const styles = StyleSheet.create({
   timeText: { fontSize: 10, fontWeight: '500' },
   handoffCard: { marginVertical: Spacing.sm, paddingHorizontal: 2 },
 
-  // Input
+  // ── Input bar ─────────────────────────────────────────────────────────────
   inputBar: {
     alignItems: 'flex-end',
     gap: Spacing.sm,
