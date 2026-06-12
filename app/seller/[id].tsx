@@ -3,7 +3,6 @@ import {
   View, Text, StyleSheet, FlatList, Pressable, Modal,
   RefreshControl, Dimensions, Animated, Platform, Linking, TextInput,
   KeyboardAvoidingView, ActivityIndicator,
-  KeyboardAvoidingView, ScrollView as RNScrollView, ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -31,38 +30,20 @@ function SellerSkeleton({ colors, isDark }: { colors: any; isDark: boolean }) {
   const dark = colors.border;
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Cover photo skeleton */}
-      <ShimmerBlock
-        style={{ width: SCREEN_W, height: COVER_H, borderRadius: 0, backgroundColor: dark }}
-        isDark={isDark}
-      />
-      {/* Avatar + name area */}
+      <ShimmerBlock style={{ width: SCREEN_W, height: COVER_H, borderRadius: 0, backgroundColor: dark }} isDark={isDark} />
       <View style={{ alignItems: 'center', marginTop: -(AVATAR_SIZE / 2) - 4, marginBottom: 20, gap: 12 }}>
-        <ShimmerBlock
-          style={{ width: AVATAR_SIZE + 8, height: AVATAR_SIZE + 8, borderRadius: (AVATAR_SIZE + 8) / 2, backgroundColor: dark }}
-          isDark={isDark}
-        />
+        <ShimmerBlock style={{ width: AVATAR_SIZE + 8, height: AVATAR_SIZE + 8, borderRadius: (AVATAR_SIZE + 8) / 2, backgroundColor: dark }} isDark={isDark} />
         <ShimmerBlock style={{ width: 160, height: 20, borderRadius: 10, backgroundColor: base }} isDark={isDark} />
         <ShimmerBlock style={{ width: 110, height: 14, borderRadius: 6, backgroundColor: base }} isDark={isDark} />
       </View>
-      {/* Stats row */}
       <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: H_PAD, marginBottom: 20 }}>
         {[1, 2, 3].map(i => (
-          <ShimmerBlock
-            key={i}
-            style={{ flex: 1, height: 88, borderRadius: 18, backgroundColor: base }}
-            isDark={isDark}
-          />
+          <ShimmerBlock key={i} style={{ flex: 1, height: 88, borderRadius: 18, backgroundColor: base }} isDark={isDark} />
         ))}
       </View>
-      {/* Ad card grid skeletons */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: H_PAD, gap: COLUMN_GAP }}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <ShimmerBlock
-            key={i}
-            style={{ width: CARD_W, height: 200, borderRadius: 14, backgroundColor: base, marginBottom: COLUMN_GAP }}
-            isDark={isDark}
-          />
+          <ShimmerBlock key={i} style={{ width: CARD_W, height: 200, borderRadius: 14, backgroundColor: base, marginBottom: COLUMN_GAP }} isDark={isDark} />
         ))}
       </View>
     </View>
@@ -85,34 +66,10 @@ function StatChip({ icon, value, label, color, bg, textColor, subColor }: {
   );
 }
 const chipS = StyleSheet.create({
-  wrap: {
-    flex: 1, borderRadius: Radius.xl,
-    paddingVertical: 14, paddingHorizontal: 10,
-    alignItems: 'center', gap: 5,
-    ...Shadow.sm,
-  },
+  wrap: { flex: 1, borderRadius: Radius.xl, paddingVertical: 14, paddingHorizontal: 10, alignItems: 'center', gap: 5, ...Shadow.sm },
   iconRing: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   value: { fontSize: FontSize.lg, fontWeight: '800', letterSpacing: -0.4 },
   label: { fontSize: 10, fontWeight: '600', textAlign: 'center', lineHeight: 13 },
-});
-
-// ── Info row item ─────────────────────────────────────────────────────────────
-function InfoRow({ icon, value, color, bg }: {
-  icon: string; value: string; color: string; bg: string;
-}) {
-  return (
-    <View style={infoS.row}>
-      <View style={[infoS.icon, { backgroundColor: bg }]}>
-        <MaterialIcons name={icon as any} size={15} color={color} />
-      </View>
-      <Text style={[infoS.text, { color }]} numberOfLines={1}>{value}</Text>
-    </View>
-  );
-}
-const infoS = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  icon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  text: { fontSize: FontSize.sm, fontWeight: '600', flex: 1 },
 });
 
 // ── Seller profile interface ──────────────────────────────────────────────────
@@ -142,7 +99,8 @@ export default function SellerProfileScreen() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  // ── Rating state ────────────────────────────────────────────────────────────────────────
+
+  // ── Rating state ──────────────────────────────────────────────────────────
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState(0);
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
@@ -171,7 +129,6 @@ export default function SellerProfileScreen() {
     ]);
     if (!profileRes.error && profileRes.data) setSeller(profileRes.data as SellerProfile);
     setAds(adsRes.data ?? []);
-    // Compute average rating
     const ratings = ratingsRes.data ?? [];
     setRatingCount(ratings.length);
     if (ratings.length > 0) {
@@ -191,7 +148,6 @@ export default function SellerProfileScreen() {
     setRefreshing(false);
   };
 
-  // Derived display values
   const isPhoneUser = (seller?.email ?? '').includes('@sms.souqqalqilya.local');
   const displayName = seller?.username ||
     (isPhoneUser
@@ -200,36 +156,8 @@ export default function SellerProfileScreen() {
   const initials = displayName.slice(0, 2).toUpperCase();
 
   const activeAds = ads.filter(a => a.status === 'active' || a.status === 'featured');
-  // ── Submit rating ────────────────────────────────────────────────────────────────────────
-  const handleSubmitRating = useCallback(async () => {
-    if (!user || !id) return;
-    setSubmittingRating(true);
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from('seller_ratings')
-      .upsert(
-        { reviewer_id: user.id, seller_id: id, rating: draftStars, comment: draftComment.trim() },
-        { onConflict: 'reviewer_id,seller_id' }
-      );
-    setSubmittingRating(false);
-    if (error) {
-      // If table doesn't exist yet, still show success (graceful degradation)
-      if (!error.message.includes('does not exist')) {
-        setRatingModalVisible(false);
-        return;
-      }
-    }
-    // Optimistic update
-    setAvgRating(prev => {
-      const newCount = ratingCount + (prev === null ? 1 : 0);
-      const base = prev !== null ? prev * ratingCount : 0;
-      return Math.round(((base + draftStars) / (ratingCount + 1)) * 10) / 10;
-    });
-    setRatingCount(prev => prev + 1);
-    setRatingModalVisible(false);
-    setDraftComment('');
-  }, [user, id, draftStars, draftComment, ratingCount]);
 
+  // ── Submit rating ─────────────────────────────────────────────────────────
   const handleSubmitRating = useCallback(async () => {
     if (!user || !id) return;
     setSubmittingRating(true);
@@ -241,16 +169,14 @@ export default function SellerProfileScreen() {
         { onConflict: 'reviewer_id,seller_id' }
       );
     setSubmittingRating(false);
-    if (error) {
-      setRatingModalVisible(false);
-      return;
+    if (!error) {
+      setAvgRating(prev => {
+        const base = prev !== null ? prev * ratingCount : 0;
+        const newCount = ratingCount + 1;
+        return Math.round(((base + draftStars) / newCount) * 10) / 10;
+      });
+      setRatingCount(prev => prev + 1);
     }
-    setAvgRating(prev => {
-      const base = prev !== null ? prev * ratingCount : 0;
-      const newCount = ratingCount + 1;
-      return Math.round(((base + draftStars) / newCount) * 10) / 10;
-    });
-    setRatingCount(prev => prev + 1);
     setRatingModalVisible(false);
     setDraftComment('');
   }, [user, id, draftStars, draftComment, ratingCount]);
@@ -281,26 +207,18 @@ export default function SellerProfileScreen() {
       <View style={styles.coverContainer}>
         <Animated.View style={[styles.coverInner, { transform: [{ scale: coverScale }] }]}>
           {seller?.banner_url ? (
-            <Image
-              source={{ uri: seller.banner_url }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              transition={400}
-            />
+            <Image source={{ uri: seller.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={400} />
           ) : null}
           <LinearGradient
             colors={
               seller?.banner_url
                 ? ['transparent', 'transparent', 'rgba(0,0,0,0.55)']
-                : (isDark
-                    ? ['#064d40', '#0a7a65', '#0DB896']
-                    : ['#054035', '#0A6E5C', '#15a88a'])
+                : (isDark ? ['#064d40', '#0a7a65', '#0DB896'] : ['#054035', '#0A6E5C', '#15a88a'])
             }
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          {/* Decorative circles on gradient-only cover */}
           {!seller?.banner_url ? (
             <>
               <View style={styles.deco1} />
@@ -313,25 +231,14 @@ export default function SellerProfileScreen() {
         {/* Avatar ring */}
         <View style={[styles.avatarOuter, { borderColor: colors.background, ...Shadow.lg }]}>
           {seller?.avatar_url ? (
-            <Image
-              source={{ uri: seller.avatar_url }}
-              style={styles.avatarImg}
-              contentFit="cover"
-              transition={300}
-            />
+            <Image source={{ uri: seller.avatar_url }} style={styles.avatarImg} contentFit="cover" transition={300} />
           ) : (
-            <LinearGradient
-              colors={['#0A6E5C', '#0eb896']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatarImg}
-            >
+            <LinearGradient colors={['#0A6E5C', '#0eb896']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarImg}>
               <Text style={styles.avatarInitials}>{initials}</Text>
             </LinearGradient>
           )}
         </View>
 
-        {/* Verified checkmark on avatar */}
         {seller?.is_verified ? (
           <View style={[styles.verifiedDot, { borderColor: colors.background }]}>
             <MaterialIcons name="verified" size={12} color="#fff" />
@@ -341,17 +248,11 @@ export default function SellerProfileScreen() {
 
       {/* ── IDENTITY ── */}
       <View style={[styles.identityBlock, { backgroundColor: colors.background }]}>
-        {/* Name row */}
         <View style={styles.nameRow}>
-          <Text style={[styles.sellerName, { color: colors.textPrimary }]} numberOfLines={1}>
-            {displayName}
-          </Text>
-          {seller?.is_verified ? (
-            <MaterialIcons name="verified" size={20} color="#2563EB" />
-          ) : null}
+          <Text style={[styles.sellerName, { color: colors.textPrimary }]} numberOfLines={1}>{displayName}</Text>
+          {seller?.is_verified ? <MaterialIcons name="verified" size={20} color="#2563EB" /> : null}
         </View>
 
-        {/* Verified label */}
         {seller?.is_verified ? (
           <View style={[styles.verifiedPill, { backgroundColor: '#DBEAFE' }]}>
             <MaterialIcons name="shield" size={11} color="#2563EB" />
@@ -368,23 +269,16 @@ export default function SellerProfileScreen() {
           </View>
         )}
 
-        {/* Action buttons */}
         {!isOwnProfile && seller?.phone ? (
-          <Pressable
-            style={({ pressed }) => [styles.waButton, { opacity: pressed ? 0.85 : 1 }]}
-            onPress={handleWhatsApp}
-          >
+          <Pressable style={({ pressed }) => [styles.waButton, { opacity: pressed ? 0.85 : 1 }]} onPress={handleWhatsApp}>
             <View style={styles.waIconBadge}>
               <MaterialIcons name="whatsapp" size={18} color="#fff" />
             </View>
-            <Text style={styles.waButtonText}>
-              {isAr ? 'تواصل عبر واتساب' : 'Contact via WhatsApp'}
-            </Text>
+            <Text style={styles.waButtonText}>{isAr ? 'تواصل عبر واتساب' : 'Contact via WhatsApp'}</Text>
             <MaterialIcons name={isAr ? 'chevron-left' : 'chevron-right'} size={18} color="rgba(255,255,255,0.8)" />
           </Pressable>
         ) : null}
 
-        {/* Edit own profile shortcut */}
         {isOwnProfile ? (
           <Pressable
             style={({ pressed }) => [styles.editProfileBtn, { backgroundColor: colors.primaryGhost, opacity: pressed ? 0.8 : 1 }]}
@@ -441,7 +335,6 @@ export default function SellerProfileScreen() {
         </View>
       </View>
 
-      {/* ── LISTINGS HEADER ── */}
       {ads.length > 0 ? (
         <View style={[styles.sectionHeader, { backgroundColor: colors.background, borderBottomColor: colors.borderLight }]}>
           <View style={[styles.sectionIconWrap, { backgroundColor: colors.primaryGhost }]}>
@@ -462,6 +355,7 @@ export default function SellerProfileScreen() {
     ads.length, activeAds.length, colors, displayName, initials, isAr, isDark,
     seller?.avatar_url, seller?.banner_url, seller?.is_verified, seller?.phone,
     isOwnProfile, handleWhatsApp, coverScale, router,
+    avgRating, ratingCount,
   ]);
 
   if (pageLoading) {
@@ -488,14 +382,12 @@ export default function SellerProfileScreen() {
           {seller?.avatar_url ? (
             <Image source={{ uri: seller.avatar_url }} style={styles.stickyAvatar} contentFit="cover" />
           ) : (
-            <View style={[styles.stickyAvatarPh, { backgroundColor: colors.primaryDark }]}>
+            <View style={[styles.stickyAvatarPh, { backgroundColor: (colors as any).primaryDark ?? colors.primary }]}>
               <Text style={styles.stickyAvatarText}>{initials.charAt(0)}</Text>
             </View>
           )}
           <Text style={styles.stickyTitle} numberOfLines={1}>{displayName}</Text>
-          {seller?.is_verified ? (
-            <MaterialIcons name="verified" size={14} color="rgba(255,255,255,0.85)" />
-          ) : null}
+          {seller?.is_verified ? <MaterialIcons name="verified" size={14} color="rgba(255,255,255,0.85)" /> : null}
         </View>
       </Animated.View>
 
@@ -524,12 +416,14 @@ export default function SellerProfileScreen() {
               <Text style={[rS.sub, { color: colors.textMuted }]}>
                 {isAr ? 'اختر تقييمك لهذا البائع' : 'Share your experience with this seller'}
               </Text>
-              {/* Star picker */}
               <View style={rS.starsRow}>
                 {[1, 2, 3, 4, 5].map(star => (
                   <Pressable
                     key={star}
-                    style={({ pressed }) => [rS.star, { backgroundColor: star <= draftStars ? '#FEF3C7' : colors.surfaceTint, transform: [{ scale: pressed ? 0.88 : 1 }] }]}
+                    style={({ pressed }) => [rS.star, {
+                      backgroundColor: star <= draftStars ? '#FEF3C7' : colors.surfaceTint,
+                      transform: [{ scale: pressed ? 0.88 : 1 }],
+                    }]}
                     onPress={() => setDraftStars(star)}
                   >
                     <MaterialIcons
@@ -540,9 +434,13 @@ export default function SellerProfileScreen() {
                   </Pressable>
                 ))}
               </View>
-              {/* Comment input */}
               <TextInput
-                style={[rS.commentInput, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.background, textAlign: isAr ? 'right' : 'left' }]}
+                style={[rS.commentInput, {
+                  borderColor: colors.border,
+                  color: colors.textPrimary,
+                  backgroundColor: colors.background,
+                  textAlign: isAr ? 'right' : 'left',
+                }]}
                 placeholder={isAr ? 'اكتب تعليقاً (اختياري)...' : 'Add a comment (optional)...'}
                 placeholderTextColor={colors.textMuted}
                 value={draftComment}
@@ -599,19 +497,14 @@ export default function SellerProfileScreen() {
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
-            <LinearGradient
-              colors={[colors.primaryGhost, colors.surfaceTint]}
-              style={styles.emptyIconWrap}
-            >
+            <LinearGradient colors={[colors.primaryGhost, colors.surfaceTint]} style={styles.emptyIconWrap}>
               <MaterialIcons name="storefront" size={42} color={colors.primary} />
             </LinearGradient>
             <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
               {isAr ? 'لا توجد إعلانات نشطة' : 'No Active Listings'}
             </Text>
             <Text style={[styles.emptySub, { color: colors.textMuted }]}>
-              {isAr
-                ? 'لم يقم هذا البائع بنشر أي إعلانات بعد'
-                : 'This seller has no active listings yet'}
+              {isAr ? 'لم يقم هذا البائع بنشر أي إعلانات بعد' : 'This seller has no active listings yet'}
             </Text>
           </View>
         }
@@ -622,213 +515,59 @@ export default function SellerProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-
-  // ── Sticky header ──
-  stickyHeader: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-    paddingBottom: 14, paddingHorizontal: H_PAD,
-  },
-  stickyContent: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    marginLeft: 52, // space for back button
-  },
+  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, paddingBottom: 14, paddingHorizontal: H_PAD },
+  stickyContent: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 52 },
   stickyAvatar: { width: 28, height: 28, borderRadius: 14 },
   stickyAvatarPh: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   stickyAvatarText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   stickyTitle: { color: '#fff', fontSize: FontSize.md, fontWeight: '700', flex: 1 },
-
-  // ── Back button ──
   backBar: { position: 'absolute', left: H_PAD, zIndex: 30 },
-  backBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center', justifyContent: 'center',
-    ...Shadow.sm,
-  },
-
-  // ── Cover ──
-  coverContainer: {
-    height: COVER_H,
-    alignItems: 'center',
-    marginBottom: AVATAR_SIZE / 2 + 16,
-    overflow: 'visible',
-  },
-  coverInner: {
-    width: '100%',
-    height: COVER_H,
-    overflow: 'hidden',
-  },
-  deco1: {
-    position: 'absolute', width: 260, height: 260, borderRadius: 130,
-    backgroundColor: 'rgba(255,255,255,0.07)', top: -90, right: -60,
-  },
-  deco2: {
-    position: 'absolute', width: 180, height: 180, borderRadius: 90,
-    backgroundColor: 'rgba(255,255,255,0.05)', bottom: -70, left: -40,
-  },
-  deco3: {
-    position: 'absolute', width: 100, height: 100, borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.06)', top: 40, left: SCREEN_W * 0.38,
-  },
-
-  // Avatar
-  avatarOuter: {
-    position: 'absolute',
-    bottom: -(AVATAR_SIZE / 2 + 10),
-    width: AVATAR_SIZE + 8,
-    height: AVATAR_SIZE + 8,
-    borderRadius: (AVATAR_SIZE + 8) / 2,
-    borderWidth: 4,
-    overflow: 'hidden',
-    zIndex: 10,
-  },
-  avatarImg: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  backBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', ...Shadow.sm },
+  coverContainer: { height: COVER_H, alignItems: 'center', marginBottom: AVATAR_SIZE / 2 + 16, overflow: 'visible' },
+  coverInner: { width: '100%', height: COVER_H, overflow: 'hidden' },
+  deco1: { position: 'absolute', width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(255,255,255,0.07)', top: -90, right: -60 },
+  deco2: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.05)', bottom: -70, left: -40 },
+  deco3: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.06)', top: 40, left: SCREEN_W * 0.38 },
+  avatarOuter: { position: 'absolute', bottom: -(AVATAR_SIZE / 2 + 10), width: AVATAR_SIZE + 8, height: AVATAR_SIZE + 8, borderRadius: (AVATAR_SIZE + 8) / 2, borderWidth: 4, overflow: 'hidden', zIndex: 10 },
+  avatarImg: { width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2, alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { fontSize: 32, fontWeight: '800', color: '#fff' },
-  verifiedDot: {
-    position: 'absolute',
-    bottom: -(AVATAR_SIZE / 2 - 4),
-    right: SCREEN_W / 2 - AVATAR_SIZE / 2 - 12,
-    width: 26, height: 26, borderRadius: 13,
-    backgroundColor: '#2563EB',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2.5, zIndex: 15,
-  },
-
-  // ── Identity ──
-  identityBlock: {
-    alignItems: 'center',
-    gap: 10,
-    paddingTop: 8,
-    paddingBottom: Spacing.lg,
-    paddingHorizontal: H_PAD,
-  },
-  nameRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    justifyContent: 'center',
-  },
-  sellerName: {
-    fontSize: FontSize.xl + 3,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    textAlign: 'center',
-  },
-  verifiedPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 5,
-  },
-  memberPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 5,
-  },
+  verifiedDot: { position: 'absolute', bottom: -(AVATAR_SIZE / 2 - 4), right: SCREEN_W / 2 - AVATAR_SIZE / 2 - 12, width: 26, height: 26, borderRadius: 13, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, zIndex: 15 },
+  identityBlock: { alignItems: 'center', gap: 10, paddingTop: 8, paddingBottom: Spacing.lg, paddingHorizontal: H_PAD },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center' },
+  sellerName: { fontSize: FontSize.xl + 3, fontWeight: '800', letterSpacing: -0.5, textAlign: 'center' },
+  verifiedPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 5 },
+  memberPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 5 },
   verifiedLabel: { fontSize: FontSize.xs, fontWeight: '700' },
-
-  // WA button
-  waButton: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#25D366',
-    borderRadius: Radius.xl,
-    paddingHorizontal: 18, paddingVertical: 13,
-    gap: 10, marginTop: 4,
-    width: '90%',
-    shadowColor: '#25D366',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  waIconBadge: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)',
-  },
+  waButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#25D366', borderRadius: Radius.xl, paddingHorizontal: 18, paddingVertical: 13, gap: 10, marginTop: 4, width: '90%', shadowColor: '#25D366', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 6 },
+  waIconBadge: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)' },
   waButtonText: { flex: 1, color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
-
-  // Edit profile button
-  editProfileBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
-    borderRadius: Radius.lg, paddingHorizontal: 18, paddingVertical: 12,
-    marginTop: 4, width: '90%', justifyContent: 'center',
-  },
+  editProfileBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: Radius.lg, paddingHorizontal: 18, paddingVertical: 12, marginTop: 4, width: '90%', justifyContent: 'center' },
   editProfileBtnText: { fontSize: FontSize.sm, fontWeight: '700' },
-
-  // ── Stats ──
-  statsSection: {
-    paddingHorizontal: H_PAD,
-    paddingBottom: Spacing.lg,
-    paddingTop: 4,
-  },
+  statsSection: { paddingHorizontal: H_PAD, paddingBottom: Spacing.lg, paddingTop: 4 },
   statsRow: { flexDirection: 'row', gap: 10 },
-
-  // ── Section header ──
-  sectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: H_PAD, paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  sectionIconWrap: {
-    width: 28, height: 28, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: H_PAD, paddingVertical: 12, borderBottomWidth: 1 },
+  sectionIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { fontSize: FontSize.md, fontWeight: '700', flex: 1 },
-  countPill: {
-    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3,
-  },
+  countPill: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3 },
   countPillText: { fontSize: FontSize.xs, fontWeight: '800' },
-
-  // ── FlatList row ──
   row: { gap: COLUMN_GAP, marginBottom: COLUMN_GAP },
-
-  // ── Empty ──
-  emptyWrap: {
-    alignItems: 'center', paddingVertical: 60,
-    gap: Spacing.md, paddingHorizontal: H_PAD * 2,
-  },
-  emptyIconWrap: {
-    width: 90, height: 90, borderRadius: 45,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
-  },
-  emptyTitle: {
-    fontSize: FontSize.lg, fontWeight: '700', textAlign: 'center',
-  },
-  emptySub: {
-    fontSize: FontSize.sm, textAlign: 'center', lineHeight: 21, maxWidth: 260,
-  },
+  emptyWrap: { alignItems: 'center', paddingVertical: 60, gap: Spacing.md, paddingHorizontal: H_PAD * 2 },
+  emptyIconWrap: { width: 90, height: 90, borderRadius: 45, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  emptyTitle: { fontSize: FontSize.lg, fontWeight: '700', textAlign: 'center' },
+  emptySub: { fontSize: FontSize.sm, textAlign: 'center', lineHeight: 21, maxWidth: 260 },
 });
 
-// ── Rating Modal Styles ──────────────────────────────────────────────────────────────────────────────
+// ── Rating Modal Styles ──────────────────────────────────────────────────────
 const rS = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'flex-end' },
-  sheet: {
-    borderTopLeftRadius: 26, borderTopRightRadius: 26,
-    paddingHorizontal: Spacing.lg, paddingBottom: 36, paddingTop: 12,
-    gap: Spacing.md,
-    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.14, shadowRadius: 18, elevation: 22,
-  },
+  sheet: { borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingHorizontal: Spacing.lg, paddingBottom: 36, paddingTop: 12, gap: Spacing.md, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.14, shadowRadius: 18, elevation: 22 },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
   title: { fontSize: FontSize.lg, fontWeight: '800', textAlign: 'center', letterSpacing: -0.3 },
   sub: { fontSize: FontSize.sm, textAlign: 'center', marginTop: -4 },
   starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 10 },
   star: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  commentInput: {
-    borderWidth: 1.5, borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.md, paddingVertical: 11,
-    fontSize: FontSize.md, minHeight: 88,
-    textAlignVertical: 'top',
-  },
-  submitBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, height: 54, borderRadius: Radius.xl,
-    shadowColor: '#D97706', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
-  },
+  commentInput: { borderWidth: 1.5, borderRadius: Radius.lg, paddingHorizontal: Spacing.md, paddingVertical: 11, fontSize: FontSize.md, minHeight: 88, textAlignVertical: 'top' },
+  submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 54, borderRadius: Radius.xl, shadowColor: '#D97706', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
   submitText: { color: '#fff', fontSize: FontSize.lg, fontWeight: '800' },
   cancelBtn: { height: 46, borderRadius: Radius.xl, alignItems: 'center', justifyContent: 'center' },
   cancelText: { fontSize: FontSize.md, fontWeight: '700' },
