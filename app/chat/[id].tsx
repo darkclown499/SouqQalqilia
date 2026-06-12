@@ -32,12 +32,16 @@ function HighlightedText({
 }: { text: string; query: string; baseStyle: any; highlightColor: string }) {
   if (!query.trim()) return <Text style={baseStyle}>{text}</Text>;
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(${escaped})`, 'gi');
-  const parts = text.split(regex);
+  // NOTE: Do NOT use the 'g' flag on a regex stored in a variable and then call
+  // .test() on it in a map — the stateful lastIndex causes alternating match/miss.
+  // Instead, split with the capturing group and check each part with a fresh test.
+  const splitRegex = new RegExp(`(${escaped})`, 'gi');
+  const matchRegex = new RegExp(`^${escaped}$`, 'i');
+  const parts = text.split(splitRegex);
   return (
     <Text style={baseStyle}>
       {parts.map((part, i) =>
-        regex.test(part) ? (
+        matchRegex.test(part) ? (
           <Text key={i} style={{ backgroundColor: highlightColor, color: '#1a1a1a', borderRadius: 3 }}>
             {part}
           </Text>
@@ -220,12 +224,27 @@ export default function ChatScreen() {
   const scrollToMatch = useCallback((idx: number) => {
     const msgId = searchMatchIds[idx];
     if (!msgId || !listRef.current) return;
-    // Find index in withDates array — will be computed later but we can use messages index
-    const flatIdx = messages.findIndex(m => m.id === msgId);
-    if (flatIdx < 0) return;
-    try {
-      listRef.current.scrollToIndex({ index: flatIdx, animated: true, viewPosition: 0.5 });
-    } catch { /* ignore out-of-range */ }
+    // Must search in withDates (which includes date separator rows), NOT in messages.
+    // withDates is built in render scope so we rebuild a minimal index map here.
+    // We search for the message id among the flat rendered list.
+    // Since withDates changes on each render, we use a small helper that re-walks it.
+    // We post the scroll to avoid calling scrollToIndex before the list settles.
+    requestAnimationFrame(() => {
+      if (!listRef.current) return;
+      // Rebuild withDates index map (mirrors the render loop below)
+      let flatIdx = -1;
+      let dateCount = 0;
+      let lastDate = '';
+      for (let i = 0; i < messages.length; i++) {
+        const d = new Date(messages[i].created_at).toDateString();
+        if (d !== lastDate) { dateCount++; lastDate = d; }
+        if (messages[i].id === msgId) { flatIdx = i + dateCount; break; }
+      }
+      if (flatIdx < 0) return;
+      try {
+        listRef.current.scrollToIndex({ index: flatIdx, animated: true, viewPosition: 0.5 });
+      } catch { /* ignore out-of-range */ }
+    });
   }, [searchMatchIds, messages]);
 
   const handleSearchNext = useCallback(() => {
@@ -283,8 +302,10 @@ export default function ChatScreen() {
   }, [id, user?.id]);
 
   // ── Flush offline queue when connection is restored ────────────────────────
+  // Guard: only flush once we know isBuyer (conversation loaded) to avoid
+  // sending before the conversation context is established.
   useEffect(() => {
-    if (!isOnline || !id || !user) return;
+    if (!isOnline || !id || !user || isBuyer === null) return;
     (async () => {
       const queue = await getOfflineQueue();
       const forThisConv = queue.filter(q => q.conversationId === id);
@@ -297,7 +318,7 @@ export default function ChatScreen() {
         }
       }
     })();
-  }, [isOnline, id, user?.id]);
+  }, [isOnline, id, user?.id, isBuyer]);
 
   const QUICK_REPLIES_AR = [
     'هل السعر قابل للتفاوض؟',
@@ -352,7 +373,7 @@ export default function ChatScreen() {
     }
     const hasUnread = messages.some(m => m.sender_id !== user?.id && !m.read_at);
     if (hasUnread) doMark();
-  }, [messages, user?.id, doMark]);
+  }, [messages.length, user?.id, doMark]);
 
   useEffect(() => {
     if (messages.length > 0 && !isSearchActive) {
@@ -406,11 +427,16 @@ export default function ChatScreen() {
     if (!content || !id || sending) return;
     setSending(true);
     setText('');
-    await handleSendMessage(content);
-    setSending(false);
-    if (isBuyer !== null) {
-      updateTypingIndicator(id!, isBuyer, false).catch(() => {});
-      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    try {
+      await handleSendMessage(content);
+    } catch (e: any) {
+      showAlert(isAr ? 'خطأ في الإرسال' : 'Send Error', e?.message ?? 'Could not send message');
+    } finally {
+      setSending(false);
+      if (isBuyer !== null) {
+        updateTypingIndicator(id!, isBuyer, false).catch(() => {});
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      }
     }
   };
 

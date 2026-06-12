@@ -21,7 +21,7 @@ export default function MessagesScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const { t, isRTL, language } = useLanguage();
-  const { conversations, loading, reload, unreadCount } = useConversations();
+  const { conversations, loading, reload, unreadCount, refreshUnread } = useConversations();
   const [blockedIds, setBlockedIds] = React.useState<Set<string>>(new Set());
 
   React.useEffect(() => {
@@ -42,8 +42,11 @@ export default function MessagesScreen() {
   const isAr = language === 'ar';
 
   const handleConvPress = useCallback((id: string) => {
+    // Optimistically clear the unread badge for this conversation immediately
+    // so the tab bar badge doesn't linger while the user is already reading.
+    refreshUnread().catch(() => {});
     router.push(`/chat/${id}`);
-  }, [router]);
+  }, [router, refreshUnread]);
 
   const renderConversation = useCallback(({ item }: any) => {
     const otherId = item.buyer_id === user!.id ? item.seller_id : item.buyer_id;
