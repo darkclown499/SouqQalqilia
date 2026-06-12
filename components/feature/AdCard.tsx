@@ -1,6 +1,7 @@
-import React, { memo, useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
+import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, Dimensions, Animated } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Ad } from '@/services/adsService';
@@ -30,8 +31,68 @@ function formatPrice(price: number, isAr: boolean) {
   return `₪${price.toLocaleString()}`;
 }
 
-// Neutral grey blurhash placeholder — renders instantly while image loads
-const PLACEHOLDER_BLURHASH = 'L5H2EC=PM+yV0g-mq.wG9c010J}I';
+// ── Shimmer skeleton component ───────────────────────────────────────────────
+// Renders an animated shine-sweep over a rounded rectangle.
+// `width` must be a concrete pixel value (not '100%') for the gradient to sweep.
+function ShimmerBlock({ style }: { style: object }) {
+  const shimmer = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.delay(200),
+        Animated.timing(shimmer, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [shimmer]);
+
+  return (
+    <View style={[shimStyles.base, style]}>
+      <Animated.View
+        style={[
+          shimStyles.sweep,
+          {
+            transform: [{
+              translateX: shimmer.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-SCREEN_W, SCREEN_W],
+              }),
+            }],
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={['transparent', 'rgba(255,255,255,0.42)', 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={shimStyles.gradient}
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+const shimStyles = StyleSheet.create({
+  base: {
+    overflow: 'hidden',
+    backgroundColor: '#E2E8F0',
+  },
+  sweep: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  gradient: {
+    flex: 1,
+    width: SCREEN_W,
+  },
+});
+
+// While the shimmer is showing, the <Image> is kept in the tree (so expo-image
+// can silently decode in the background) but made visually invisible via opacity=0.
+// Once onLoad fires, imgLoaded=true and the shimmer unmounts, revealing the image.
+const shimmerOverrideStyle = { opacity: 0, position: 'absolute' as const, zIndex: -1 };
 
 export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited = false, onFavoritePress, onAdPress, isBlocked = false }: AdCardProps) {
   const router = useRouter();
@@ -39,6 +100,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
   const { t, language, isRTL } = useLanguage();
   const isAr = language === 'ar';
   const [imgError, setImgError] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   // ── All derived values memoized to prevent recalculation on every render ─
   const sortedImages = useMemo(
@@ -105,28 +167,41 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
     >
       {/* ── IMAGE ── */}
       <View style={styles.imageWrap}>
+        {/* Shimmer skeleton — visible until the image fires onLoad or an error occurs */}
+        {!imgLoaded && !imgError ? (
+          <ShimmerBlock
+            style={[
+              styles.image,
+              styles.shimmerImage,
+              { backgroundColor: colors.surfaceTint },
+            ]}
+          />
+        ) : null}
+
         {firstImage && !imgError ? (
           <Image
             source={{ uri: firstImage.url }}
-            style={styles.image}
+            style={[styles.image, !imgLoaded && shimmerOverrideStyle]}
             contentFit="cover"
-            transition={150}
+            transition={200}
             cachePolicy="memory-disk"
             recyclingKey={firstImage.url}
             priority={isFeatured || isBoosted ? 'high' : 'normal'}
-            placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
-            placeholderContentFit="cover"
             responsivePolicy="live"
-            onError={() => setImgError(true)}
+            onLoad={() => setImgLoaded(true)}
+            onError={() => { setImgError(true); setImgLoaded(true); }}
           />
-        ) : (
+        ) : imgError ? (
           <View style={[styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
-            <MaterialIcons name={imgError ? 'broken-image' : 'camera-alt'} size={26} color={colors.border} />
-            {imgError ? (
-              <Text style={[styles.imgErrorText, { color: colors.textMuted }]}>
-                {isAr ? 'تعذّر التحميل' : 'Failed to load'}
-              </Text>
-            ) : null}
+            <MaterialIcons name="broken-image" size={26} color={colors.border} />
+            <Text style={[styles.imgErrorText, { color: colors.textMuted }]}>
+              {isAr ? 'تعذّر التحميل' : 'Failed to load'}
+            </Text>
+          </View>
+        ) : (
+          /* No image attached — show static placeholder */
+          <View style={[styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
+            <MaterialIcons name="camera-alt" size={26} color={colors.border} />
           </View>
         )}
 
@@ -226,16 +301,29 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
 
       {/* ── INFO ── */}
       <View style={styles.info}>
-        {/* Title */}
-        <Text
-          style={[styles.title, { color: colors.textPrimary }]}
-          numberOfLines={2}
-        >
-          {ad.title}
-        </Text>
+        {/* Title — shimmer while image hasn't loaded yet (card is still painting) */}
+        {!imgLoaded && !imgError ? (
+          <ShimmerBlock
+            style={[styles.shimmerTitle, { backgroundColor: colors.surfaceTint }]}
+          />
+        ) : (
+          <Text
+            style={[styles.title, { color: colors.textPrimary }]}
+            numberOfLines={2}
+          >
+            {ad.title}
+          </Text>
+        )}
+
+        {/* Location + price shimmer row */}
+        {!imgLoaded && !imgError ? (
+          <ShimmerBlock
+            style={[styles.shimmerSubline, { backgroundColor: colors.surfaceTint }]}
+          />
+        ) : null}
 
         {/* Location */}
-        {rawLocation ? (
+        {imgLoaded && rawLocation ? (
           <View style={[styles.locationRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <View style={[styles.locationIconWrap, { backgroundColor: locationIconColor + '18' }]}>
               <MaterialIcons name={locationIconName} size={10} color={locationIconColor} />
@@ -247,7 +335,8 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
         ) : null}
 
         {/* Footer: category + time */}
-        <View style={[styles.footer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <View style={[styles.footer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              pointerEvents={imgLoaded ? 'auto' : 'none'}>
           {catName ? (
             <View style={[styles.catPill, { backgroundColor: catColor + '18' }]}>
               <MaterialIcons name={(ad.categories as any)?.icon ?? 'category'} size={9} color={catColor} />
@@ -275,9 +364,25 @@ const styles = StyleSheet.create({
   // Pressable wrapper so it can reference the `isFeatured` runtime value.
   imageWrap: { position: 'relative', zIndex: 0 },
   image: { width: '100%', height: CLAMP_IMG_H },
+  // While image is loading, keep it in the layout but invisible so the
+  // shimmer block behind it is what the user sees.
   imagePlaceholder: {
     width: '100%', height: CLAMP_IMG_H,
     alignItems: 'center', justifyContent: 'center',
+  },
+  // Shimmer block that fills the image slot
+  shimmerImage: {
+    borderRadius: 0, // card border-radius clips it
+  },
+  // Skeleton lines inside the info section
+  shimmerTitle: {
+    height: 14, borderRadius: 7,
+    width: '80%', alignSelf: 'flex-start',
+    marginBottom: 4,
+  },
+  shimmerSubline: {
+    height: 10, borderRadius: 5,
+    width: '55%', alignSelf: 'flex-start',
   },
 
   // Badges — all use zIndex so they always sit above image content

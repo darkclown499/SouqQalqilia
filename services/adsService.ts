@@ -1,5 +1,8 @@
 import { getSupabaseClient } from '@/template';
 import { Image } from 'expo-image';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
 
 // ── Module-level ads cache ────────────────────────────────────────────────────
 // Populated by preloadAds() called from _layout.tsx right after auth.
@@ -29,44 +32,81 @@ export function clearAdsCache(): void {
 }
 
 /**
- * Prefetch ALL product image URLs into expo-image disk cache.
- * Called during startup pipeline BEFORE splash screen hides — this forces
- * the native OS to pull every image to local disk so AdCard renders
- * instantly from cache with zero network latency.
+ * Extract all image URLs from an ad array (up to `maxAds` ads × all images).
+ * Returns a flat array of non-empty URL strings.
  */
-async function prefetchAdImages(ads: Ad[]): Promise<void> {
-  // Collect all image URLs across all ads (up to 30 ads × 3 images = 90 max)
+function extractImageUrls(ads: Ad[], maxAds = 50): string[] {
   const urls: string[] = [];
-  ads.slice(0, 30).forEach(ad => {
+  ads.slice(0, maxAds).forEach(ad => {
     const sorted = (ad.ad_images ?? []).sort((a, b) => a.position - b.position);
     sorted.forEach(img => { if (img.url) urls.push(img.url); });
   });
-  if (urls.length === 0) return;
+  return urls;
+}
 
-  // expo-image Image.prefetch supports an array — single call, native batch.
-  // We await so splash stays visible until images hit disk.
+/**
+ * Load recently-viewed ads from AsyncStorage and extract their image URLs.
+ * Silently returns [] on any error so it never blocks the startup pipeline.
+ */
+async function loadRecentlyViewedUrls(): Promise<string[]> {
   try {
-    // expo-image prefetch: second arg is a string ('disk' | 'memory-disk'), NOT an object.
-    // 'memory-disk' keeps images in both memory + disk so AdCard renders
-    // instantly during fast scrolling without re-decoding from disk each time.
-    await Image.prefetch(urls, 'memory-disk');
+    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
+    if (!raw) return [];
+    const recentAds: Ad[] = JSON.parse(raw);
+    return extractImageUrls(recentAds, recentAds.length); // prefetch all recently-viewed
   } catch {
-    // Partial failure is acceptable — images will stream lazily on first view
+    return [];
+  }
+}
+
+/**
+ * Prefetch ALL product image URLs into expo-image memory+disk cache.
+ *
+ * Combines:
+ *   • Up to 50 main-feed ad images (boosted/featured first)
+ *   • Recently-viewed ad images from AsyncStorage (so the 'Last Viewed'
+ *     horizontal strip also renders instantly without grey placeholders)
+ *
+ * Deduplicates the combined set before issuing a single native batch call.
+ * Awaited by the splash pipeline so the screen hides AFTER assets are cached.
+ */
+async function prefetchAdImages(feedAds: Ad[], recentUrls: string[]): Promise<void> {
+  const feedUrls = extractImageUrls(feedAds, 50); // expanded to 50
+
+  // Merge + deduplicate: Set preserves insertion order, feed URLs first
+  const combined = Array.from(new Set([...feedUrls, ...recentUrls]));
+  if (combined.length === 0) return;
+
+  try {
+    // 'memory-disk': cache to both layers so AdCard renders from RAM during
+    // fast scrolling without re-decoding from disk each time.
+    await Image.prefetch(combined, 'memory-disk');
+  } catch {
+    // Partial failure is acceptable — images stream lazily on first view
   }
 }
 
 /** Preload first page of ads into cache — awaited during startup pipeline.
- *  Waits for image prefetch to complete so AdCard shows cached assets
- *  instantly on first render with no flicker.
+ *
+ * Fetches up to 50 ads (boosted/featured first) and combines their image
+ * URLs with recently-viewed ad images from AsyncStorage before issuing a
+ * single, deduplicated Image.prefetch() call. The splash screen stays
+ * visible until every asset hits the memory+disk cache.
  */
 export async function preloadAds(): Promise<void> {
-  if (getAdsCache()) return; // Already fresh — skip redundant fetch
-  const { data } = await fetchAds({ limit: 24, offset: 0, sortBy: 'newest' });
+  // Kick off recently-viewed hydration in parallel with the API fetch
+  // so neither waits for the other unnecessarily.
+  const [{ data }, recentUrls] = await Promise.all([
+    fetchAds({ limit: 50, offset: 0, sortBy: 'newest' }),
+    loadRecentlyViewedUrls(),
+  ]);
+
   if (data.length > 0) {
     setAdsCache(data);
-    // Await prefetch so caller (splash pipeline) holds until images are on disk
-    await prefetchAdImages(data);
   }
+
+  // Always prefetch even if cache was already warm (recently-viewed may differ)
+  await prefetchAdImages(data, recentUrls);
 }
 
 export interface AdImage {
