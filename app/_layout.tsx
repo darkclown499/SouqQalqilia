@@ -8,7 +8,7 @@ import { Stack, router, useSegments } from 'expo-router';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Platform, InteractionManager, Animated, Pressable, View, Text, StyleSheet } from 'react-native';
+import { AppState, Platform, InteractionManager, Animated, Pressable, View, Text, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
 import { APP_VERSION } from '@/constants/config';
@@ -389,6 +389,9 @@ export default function RootLayout() {
         preloadAds().catch(() => {});
         preloadBanners().catch(() => {});
 
+        // Always re-register push token on sign-in / token refresh.
+        // This is the PRIMARY registration path — catches users who were
+        // already logged in when they installed an update.
         if (Platform.OS !== 'web') {
           import('@/hooks/useChat').then(({ registerPushToken }) => {
             registerPushToken().catch(() => {});
@@ -416,16 +419,51 @@ export default function RootLayout() {
       };
     }
 
+    // Permission + initial token registration (runs after first render)
     const task = InteractionManager.runAfterInteractions(() => {
-      import('@/hooks/useChat').then(({ requestNotificationPermissions }) => {
-        requestNotificationPermissions();
-      });
+      if (Platform.OS !== 'web') {
+        import('@/hooks/useChat').then(({ requestNotificationPermissions }) => {
+          requestNotificationPermissions();
+        }).catch(() => {});
+      }
     });
+
+    // ── Foreground notification listener ──────────────────────────────────
+    // Fires when a push arrives while the app is OPEN (foreground).
+    // Without this the OS drops the notification silently on some Android versions.
+    let foregroundSub: any = null;
+    if (Platform.OS !== 'web') {
+      try {
+        const Notifications = require('expo-notifications');
+        foregroundSub = Notifications.addNotificationReceivedListener((notification: any) => {
+          const title = notification?.request?.content?.title ?? '';
+          const body  = notification?.request?.content?.body  ?? '';
+          const data  = notification?.request?.content?.data  ?? {};
+          console.log('[Notification] ✅ Foreground received:', { title, body, data });
+        });
+      } catch (_) {}
+    }
+
+    // ── App-foreground token refresh ──────────────────────────────────────
+    // Re-registers the push token every time the app comes back from background.
+    // Ensures stale/rotated tokens are always up to date in the DB.
+    let appStateSub: any = null;
+    if (Platform.OS !== 'web') {
+      appStateSub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') {
+          import('@/hooks/useChat').then(({ registerPushToken }) => {
+            registerPushToken().catch(() => {});
+          }).catch(() => {});
+        }
+      });
+    }
 
     return () => {
       task.cancel();
       subscription.unsubscribe();
       if (notifSub) { try { notifSub.remove(); } catch (_) {} }
+      if (foregroundSub) { try { foregroundSub.remove(); } catch (_) {} }
+      if (appStateSub) { try { appStateSub.remove(); } catch (_) {} }
     };
   }, []);
 

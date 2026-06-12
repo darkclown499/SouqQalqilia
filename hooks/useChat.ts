@@ -23,33 +23,84 @@ try {
 // EAS project ID from app.json extra.eas.projectId
 const EAS_PROJECT_ID = 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1';
 
-/** Request push notification permissions and register/save device push token */
+// AsyncStorage key for caching the last registered token (avoids redundant DB writes)
+const PUSH_TOKEN_CACHE_KEY = 'push_token_registered_v1';
+
+/**
+ * Request push notification permissions and register the device push token.
+ *
+ * CHANGES vs. previous version:
+ * - Logs every step so silent failures are visible in Metro/Flipper
+ * - Compares new token against cached token → only writes DB when token changes
+ * - Safe to call on every app foreground/login event (idempotent)
+ */
 export async function requestNotificationPermissions(): Promise<void> {
   if (!Notifications || Platform.OS === 'web') return;
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    console.log('[PushToken] Current permission status:', existingStatus);
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
+      console.log('[PushToken] After requesting permission:', finalStatus);
     }
-    if (finalStatus !== 'granted') return;
+    if (finalStatus !== 'granted') {
+      console.warn('[PushToken] Permission denied — notifications will not work.');
+      return;
+    }
     await registerPushToken();
-  } catch (_) {}
+  } catch (e: any) {
+    console.error('[PushToken] requestNotificationPermissions error:', e?.message ?? e);
+  }
 }
 
-/** Get and save Expo push token — safe to call multiple times (idempotent) */
+/**
+ * Get and save Expo push token.
+ * - Compares against AsyncStorage cache to avoid redundant DB writes on every launch
+ * - Logs the token so you can test it with the health-check cURL command
+ * - Safe to call on every SIGNED_IN and app-foreground event
+ */
 export async function registerPushToken(): Promise<void> {
   if (!Notifications || Platform.OS === 'web') return;
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync({
       projectId: EAS_PROJECT_ID,
     });
-    if (tokenData?.data) {
-      await savePushToken(tokenData.data);
+    const newToken: string | undefined = tokenData?.data;
+    if (!newToken) {
+      console.warn('[PushToken] getExpoPushTokenAsync returned empty token. '
+        + 'On Android this means google-services.json is missing or FCM is not configured. '
+        + 'On iOS this means APNs credentials are not set up in EAS.');
+      return;
     }
-  } catch (_) {
-    // Token registration can fail in simulators/emulators — not critical
+    console.log('[PushToken] ✅ Expo Push Token:', newToken);
+
+    // Only write to DB if the token has changed (avoids N writes per session)
+    let cached: string | null = null;
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      cached = await AsyncStorage.getItem(PUSH_TOKEN_CACHE_KEY);
+    } catch { /* AsyncStorage optional cache */ }
+
+    if (cached === newToken) {
+      console.log('[PushToken] Token unchanged — skipping DB write.');
+      return;
+    }
+
+    await savePushToken(newToken);
+    console.log('[PushToken] ✅ Token saved to database.');
+
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.setItem(PUSH_TOKEN_CACHE_KEY, newToken);
+    } catch { /* cache write failure is non-critical */ }
+  } catch (e: any) {
+    // Common causes:
+    // Android: google-services.json missing → "FirebaseApp is not initialized"
+    // iOS:     APNs not configured → "Could not find APNs credentials"
+    // Simulator: always fails — use a real device for push notification testing
+    console.error('[PushToken] registerPushToken error:', e?.message ?? e);
   }
 }
 

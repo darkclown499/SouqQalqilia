@@ -24,6 +24,7 @@
       }
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "package": "app.plankton.souq_qalqilya",
       "versionCode": 10,
       "adaptiveIcon": {
