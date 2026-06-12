@@ -1,5 +1,6 @@
 import * as SplashScreen from 'expo-splash-screen';
 import { AlertProvider, AuthProvider, getSupabaseClient, useAuth } from '@/template';
+import { useTheme } from '@/hooks/useTheme';
 import { preloadAds } from '@/services/adsService';
 import { preloadBanners } from '@/services/bannersService';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -13,12 +14,9 @@ import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
 import { APP_VERSION } from '@/constants/config';
 
 // ── Lock the splash screen immediately at module evaluation time ──────────────
-// Must be called before any component renders; calling it here guarantees it
-// runs synchronously as the JS bundle is parsed — before React mounts.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // ── Configure notification handler SYNCHRONOUSLY at module level ─────────────
-// Must run before any notification arrives (foreground + background display)
 if (Platform.OS !== 'web') {
   try {
     const Notifications = require('expo-notifications');
@@ -29,8 +27,6 @@ if (Platform.OS !== 'web') {
         shouldSetBadge: true,
       }),
     });
-    // Create Android notification channel (required for Android 8+ / API 26+)
-    // Must be set before any notification arrives
     if (Platform.OS === 'android') {
       Notifications.setNotificationChannelAsync('messages', {
         name: 'الرسائل',
@@ -44,10 +40,7 @@ if (Platform.OS !== 'web') {
   } catch (_) {}
 }
 
-// ─── Web: defer stale-token cleanup until after JS bundle is parsed ───────────
-// Running localStorage scan synchronously at module level blocks the JS thread
-// before React even mounts — move it behind a microtask so the first frame is
-// not blocked.
+// ─── Web: defer stale-token cleanup ───────────────────────────────────────────
 if (Platform.OS === 'web' && typeof window !== 'undefined') {
   Promise.resolve().then(() => {
     try {
@@ -87,6 +80,8 @@ interface BannerPayload {
 
 function InAppChatBanner() {
   const { user } = useAuth();
+  // useTheme is safe here — InAppChatBanner renders inside ThemeProvider
+  const { colors, isDark } = useTheme();
   const segments = useSegments();
   const [banner, setBanner] = useState<BannerPayload | null>(null);
   const slideY = useRef(new Animated.Value(-120)).current;
@@ -96,14 +91,12 @@ function InAppChatBanner() {
 
   const showBanner = useCallback((payload: BannerPayload) => {
     setBanner(payload);
-    // Slide down
     Animated.spring(slideY, {
       toValue: 0,
       damping: 18,
       stiffness: 280,
       useNativeDriver: true,
     }).start();
-    // Auto-dismiss after 4.5 s
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     dismissTimerRef.current = setTimeout(() => dismissBanner(), 4500);
   }, [slideY]);
@@ -114,15 +107,16 @@ function InAppChatBanner() {
       duration: 260,
       useNativeDriver: true,
     }).start(() => setBanner(null));
-    if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
+    if (dismissTimerRef.current) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
   }, [slideY]);
 
   useEffect(() => {
     if (!user) return;
 
     const poll = async () => {
-      // Determine if user is currently inside a specific chat screen
-      // segments example: ['chat', '[id]'] or ['(tabs)', 'messages']
       const activeChatId: string | null = (() => {
         const seg = segments as string[];
         const chatIdx = seg.indexOf('chat');
@@ -132,7 +126,6 @@ function InAppChatBanner() {
 
       try {
         const supabase = getSupabaseClient();
-        // Fetch the single most recent message sent to this user that is unread
         const { data } = await supabase
           .from('messages')
           .select(`
@@ -148,18 +141,15 @@ function InAppChatBanner() {
           .single();
 
         if (!data) return;
-        // Skip if same message already shown, or user is inside that specific chat
         if (data.id === lastMsgIdRef.current) return;
         if (activeChatId && activeChatId === data.conversation_id) return;
 
         lastMsgIdRef.current = data.id;
         const senderProfile = (data as any).user_profiles;
-        const senderName: string = senderProfile?.username
-          || senderProfile?.email?.split('@')[0]
-          || 'مستخدم';
-        const preview: string = data.message_type === 'image'
-          ? '📷 صورة'
-          : (data.content?.slice(0, 60) ?? '');
+        const senderName: string =
+          senderProfile?.username || senderProfile?.email?.split('@')[0] || 'مستخدم';
+        const preview: string =
+          data.message_type === 'image' ? '📷 صورة' : (data.content?.slice(0, 60) ?? '');
 
         showBanner({
           conversationId: data.conversation_id,
@@ -179,6 +169,16 @@ function InAppChatBanner() {
 
   if (!banner) return null;
 
+  // ── Theme-aware card colors ────────────────────────────────────────────────
+  // Dark mode  → rich near-black with subtle border
+  // Light mode → clean white surface with elevation shadow
+  const cardBg = isDark ? 'rgba(15,25,35,0.96)' : colors.surface;
+  const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : colors.border;
+  const nameColor = isDark ? '#fff' : colors.textPrimary;
+  const previewColor = isDark ? 'rgba(255,255,255,0.62)' : colors.textSecondary;
+  const nowColor = isDark ? 'rgba(255,255,255,0.4)' : colors.textMuted;
+  const closeColor = isDark ? 'rgba(255,255,255,0.45)' : colors.textMuted;
+
   return (
     <Animated.View
       style={[
@@ -188,32 +188,53 @@ function InAppChatBanner() {
       pointerEvents="box-none"
     >
       <Pressable
-        style={bannerStyles.card}
-        onPress={() => {
+        style={[bannerStyles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}
+        onPress={async () => {
+          const convId = banner.conversationId;
           dismissBanner();
-          router.push(`/chat/${banner.conversationId}` as any);
+          // TASK 3: Mark messages as read immediately so tab badge clears at once
+          try {
+            if (user?.id) {
+              const { markMessagesRead } = await import('@/services/chatService');
+              await markMessagesRead(convId, user.id);
+            }
+          } catch { /* non-critical — navigation proceeds regardless */ }
+          router.push(`/chat/${convId}` as any);
         }}
       >
         {/* Avatar */}
         {banner.avatarUrl ? (
-          <Image source={{ uri: banner.avatarUrl }} style={bannerStyles.avatar} contentFit="cover" transition={200} />
+          <Image
+            source={{ uri: banner.avatarUrl }}
+            style={bannerStyles.avatar}
+            contentFit="cover"
+            transition={200}
+          />
         ) : (
           <View style={bannerStyles.avatarPlaceholder}>
-            <Text style={bannerStyles.avatarInitial}>{banner.senderName.charAt(0).toUpperCase()}</Text>
+            <Text style={bannerStyles.avatarInitial}>
+              {banner.senderName.charAt(0).toUpperCase()}
+            </Text>
           </View>
         )}
+
         {/* Content */}
         <View style={bannerStyles.textWrap}>
           <View style={bannerStyles.topRow}>
-            <Text style={bannerStyles.appLabel}>سوق قلقيلية</Text>
-            <Text style={bannerStyles.nowLabel}>now</Text>
+            <Text style={[bannerStyles.appLabel, { color: colors.primary }]}>سوق قلقيلية</Text>
+            <Text style={[bannerStyles.nowLabel, { color: nowColor }]}>now</Text>
           </View>
-          <Text style={bannerStyles.senderName} numberOfLines={1}>{banner.senderName}</Text>
-          <Text style={bannerStyles.preview} numberOfLines={1}>{banner.messagePreview}</Text>
+          <Text style={[bannerStyles.senderName, { color: nameColor }]} numberOfLines={1}>
+            {banner.senderName}
+          </Text>
+          <Text style={[bannerStyles.preview, { color: previewColor }]} numberOfLines={1}>
+            {banner.messagePreview}
+          </Text>
         </View>
+
         {/* Dismiss */}
         <Pressable onPress={dismissBanner} hitSlop={10} style={bannerStyles.closeBtn}>
-          <Text style={bannerStyles.closeX}>×</Text>
+          <Text style={[bannerStyles.closeX, { color: closeColor }]}>×</Text>
         </Pressable>
       </Pressable>
     </Animated.View>
@@ -234,18 +255,16 @@ const bannerStyles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(15,25,35,0.95)',
     borderRadius: 18,
     paddingVertical: 12,
     paddingHorizontal: 14,
     gap: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.28,
+    shadowOpacity: 0.22,
     shadowRadius: 16,
     elevation: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
   avatar: { width: 42, height: 42, borderRadius: 21, flexShrink: 0 },
   avatarPlaceholder: {
@@ -257,12 +276,12 @@ const bannerStyles = StyleSheet.create({
   avatarInitial: { color: '#fff', fontSize: 17, fontWeight: '800' },
   textWrap: { flex: 1, gap: 1 },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  appLabel: { fontSize: 11, fontWeight: '700', color: '#0eb896' },
-  nowLabel: { fontSize: 10, color: 'rgba(255,255,255,0.4)' },
-  senderName: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  preview: { fontSize: 13, color: 'rgba(255,255,255,0.62)', lineHeight: 18 },
+  appLabel: { fontSize: 11, fontWeight: '700' },
+  nowLabel: { fontSize: 10 },
+  senderName: { fontSize: 14, fontWeight: '700' },
+  preview: { fontSize: 13, lineHeight: 18 },
   closeBtn: { paddingHorizontal: 6, paddingVertical: 4 },
-  closeX: { color: 'rgba(255,255,255,0.45)', fontSize: 20, fontWeight: '300', lineHeight: 20 },
+  closeX: { fontSize: 20, fontWeight: '300', lineHeight: 20 },
 });
 
 // ── Semver comparison: returns true if `current` < `minimum` ────────────────
@@ -279,54 +298,31 @@ export default function RootLayout() {
   const [forceUpdate, setForceUpdate] = useState<{ required: boolean; minVersion: string } | null>(null);
   const [appIsReady, setAppIsReady] = useState(false);
 
-  // ── Initialization pipeline: parallel splash-locked startup sequence ─────
-  // Runs once: fetches critical data + prefetches images, then hides splash.
-  // A 3.5 s safety timeout ensures the user is never frozen on a slow network.
   useEffect(() => {
     let cancelled = false;
-
-    const MAX_INIT_MS = 3_500; // 3.5 second safety guardrail
+    const MAX_INIT_MS = 3_500;
 
     async function prepare() {
       const deadline = new Promise<void>(resolve => setTimeout(resolve, MAX_INIT_MS));
-
       const work = (async () => {
         try {
-          // Run all heavy startup tasks in parallel:
-          //  1. Preload first page of ads (fetches data + prefetches images)
-          //  2. Preload banners
-          // Both functions already handle their own error catching internally.
-          await Promise.all([
-            preloadAds(),
-            preloadBanners(),
-          ]);
-        } catch {
-          // Never block the user — swallow any unexpected error
-        }
+          await Promise.all([preloadAds(), preloadBanners()]);
+        } catch { /* never block the user */ }
       })();
-
-      // Race the work against the deadline — whichever finishes first wins.
       await Promise.race([work, deadline]);
-
-      if (!cancelled) {
-        setAppIsReady(true);
-      }
+      if (!cancelled) setAppIsReady(true);
     }
 
     prepare();
     return () => { cancelled = true; };
   }, []);
 
-  // ── Hide splash screen once app is ready ─────────────────────────────────
   const onLayoutRootView = useCallback(async () => {
-    if (appIsReady) {
-      await SplashScreen.hideAsync().catch(() => {});
-    }
+    if (appIsReady) await SplashScreen.hideAsync().catch(() => {});
   }, [appIsReady]);
 
-  // ── Check minimum required version on mount ────────────────────────────────
   useEffect(() => {
-    if (Platform.OS === 'web') return; // skip for web
+    if (Platform.OS === 'web') return;
     const key = Platform.OS === 'ios' ? 'min_ios_version' : 'min_android_version';
     getSupabaseClient()
       .from('app_config')
@@ -339,61 +335,46 @@ export default function RootLayout() {
           setForceUpdate({ required: true, minVersion });
         }
       })
-      .catch(() => {}); // fail silently — never block app on network error
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
-    // ── Deep Link handler: souqqalqilya://ad/<id> ───────────────────────────
-    // Handles cold-start deep links AND links received while app is open.
     const handleDeepLink = (url: string) => {
       try {
-        // Match pattern: souqqalqilya://ad/<uuid-or-id>
         const match = url.match(/souqqalqilya:\/\/ad\/([^?#]+)/);
-        if (match?.[1]) {
-          router.push(`/ad/${match[1]}` as any);
-        }
+        if (match?.[1]) router.push(`/ad/${match[1]}` as any);
       } catch (_) {}
     };
 
-    // Handle link that launched the app from cold start
     import('expo-linking').then(({ default: ExpoLinking }) => {
       ExpoLinking.getInitialURL().then(url => { if (url) handleDeepLink(url); }).catch(() => {});
-      const linkSub = ExpoLinking.addEventListener('url', ({ url }) => handleDeepLink(url));
-      // Note: linkSub.remove() will be called in the cleanup below via closure
-      return linkSub;
+      ExpoLinking.addEventListener('url', ({ url }) => handleDeepLink(url));
     }).catch(() => {});
 
-    // ── Notification tap → open related chat conversation ────────────────────
     let notifSub: any = null;
     if (Platform.OS !== 'web') {
       try {
         const Notifications = require('expo-notifications');
-        notifSub = Notifications.addNotificationResponseReceivedListener(
-          (response: any) => {
-            const data = response?.notification?.request?.content?.data ?? {};
-            const conversationId: string | undefined = data?.conversation_id;
-            if (conversationId) {
-              import('expo-router').then(({ router }) => {
-                router.push(`/chat/${conversationId}` as any);
-              });
-            }
+        notifSub = Notifications.addNotificationResponseReceivedListener((response: any) => {
+          const data = response?.notification?.request?.content?.data ?? {};
+          const conversationId: string | undefined = data?.conversation_id;
+          if (conversationId) {
+            import('expo-router').then(({ router: r }) => {
+              r.push(`/chat/${conversationId}` as any);
+            });
           }
-        );
+        });
       } catch (_) {}
     }
 
-    // ── CRITICAL: Register auth state listener immediately ──────────────────
-    // Use static-imported getSupabaseClient — no dynamic import delay.
     const supabase = getSupabaseClient();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
         router.replace('/login');
       }
 
-      // ── Ensure user_profiles exists on every sign-in ─────────────────────
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         const u = session.user;
-        // Fire-and-forget profile upsert — non-blocking
         supabase.from('user_profiles').upsert({
           id: u.id,
           email: u.email ?? '',
@@ -405,12 +386,9 @@ export default function RootLayout() {
             '',
         }, { onConflict: 'id', ignoreDuplicates: true }).then(() => {}).catch(() => {});
 
-        // ── Preload ads cache right after sign-in ───────────────────────
-        // This ensures home screen renders instantly with data already in cache
         preloadAds().catch(() => {});
         preloadBanners().catch(() => {});
 
-        // ── Register push token right after sign-in ──────────────────────
         if (Platform.OS !== 'web') {
           import('@/hooks/useChat').then(({ registerPushToken }) => {
             registerPushToken().catch(() => {});
@@ -419,7 +397,6 @@ export default function RootLayout() {
       }
     });
 
-    // Web console interceptor for stale token errors (immediate)
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const originalConsoleError = console.error.bind(console);
       console.error = (...args: any[]) => {
@@ -439,9 +416,7 @@ export default function RootLayout() {
       };
     }
 
-    // ── Defer only heavy non-critical tasks ─────────────────────────────────
     const task = InteractionManager.runAfterInteractions(() => {
-      // Register push token — safe to defer (handler already set above)
       import('@/hooks/useChat').then(({ requestNotificationPermissions }) => {
         requestNotificationPermissions();
       });
@@ -450,21 +425,12 @@ export default function RootLayout() {
     return () => {
       task.cancel();
       subscription.unsubscribe();
-      if (notifSub) {
-        try { notifSub.remove(); } catch (_) {}
-      }
+      if (notifSub) { try { notifSub.remove(); } catch (_) {} }
     };
   }, []);
 
-  // ── Block render until initialization pipeline completes ─────────────────
-  // This holds the splash screen visible until data + images are preloaded.
-  // The onLayoutRootView callback fires when the root <View> mounts, triggering
-  // SplashScreen.hideAsync() precisely when the layout is ready to paint.
-  if (!appIsReady) {
-    return null; // Splash screen remains visible while appIsReady=false
-  }
+  if (!appIsReady) return null;
 
-  // ── Force update wall — rendered outside all providers intentionally ────────
   if (forceUpdate?.required) {
     return (
       <SafeAreaProvider>
@@ -498,7 +464,6 @@ export default function RootLayout() {
                 <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
                 <Stack.Screen name="seller/[id]" options={{ headerShown: false }} />
                 <Stack.Screen name="ai-support" options={{ headerShown: false }} />
-
               </Stack>
             </AuthProvider>
           </LanguageProvider>

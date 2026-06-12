@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable,
+  View, Text, StyleSheet, ScrollView, Pressable, TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import Animated, {
-  useSharedValue, useAnimatedStyle, withTiming, withSpring,
+  useSharedValue, useAnimatedStyle, withTiming, withSpring, interpolate,
 } from 'react-native-reanimated';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { APP_VERSION } from '@/constants/config';
@@ -94,7 +94,39 @@ const FAQ_ITEMS: FaqItem[] = [
   },
 ];
 
-function FaqAccordion({ item, isRTL, colors }: { item: FaqItem; isRTL: boolean; colors: any }) {
+// ── Animated FAQ item wrapper ──────────────────────────────────────────────────
+// Each item smoothly fades + collapses when it doesn't match the search query.
+function AnimatedFaqWrapper({
+  visible, children,
+}: { visible: boolean; children: React.ReactNode }) {
+  const anim = useSharedValue(visible ? 1 : 0);
+
+  // Update animation when visibility changes
+  React.useEffect(() => {
+    anim.value = withTiming(visible ? 1 : 0, { duration: 220 });
+  }, [visible]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: anim.value,
+    // Animate max-height via interpolation for smooth collapse/expand
+    maxHeight: interpolate(anim.value, [0, 1], [0, 800]),
+    overflow: 'hidden',
+    // Collapse margin so items stack cleanly when hidden
+    marginBottom: interpolate(anim.value, [0, 1], [0, 6]),
+  }));
+
+  // Pointer-events: prevent tapping invisible items
+  return (
+    <Animated.View style={style} pointerEvents={visible ? 'auto' : 'none'}>
+      {children}
+    </Animated.View>
+  );
+}
+
+// ── Accordion item ─────────────────────────────────────────────────────────────
+function FaqAccordion({
+  item, isRTL, colors, searchQuery,
+}: { item: FaqItem; isRTL: boolean; colors: any; searchQuery: string }) {
   const [open, setOpen] = useState(false);
   const rotation = useSharedValue(0);
 
@@ -114,6 +146,9 @@ function FaqAccordion({ item, isRTL, colors }: { item: FaqItem; isRTL: boolean; 
     rotation.value = withSpring(next ? 180 : 0, { damping: 14, stiffness: 120 });
   };
 
+  // Highlight matched query text in question label
+  const questionText = isRTL ? item.qAr : item.q;
+
   return (
     <View style={[faqStyles.item, { borderColor: colors.border, backgroundColor: colors.surface }]}>
       <Pressable
@@ -127,7 +162,7 @@ function FaqAccordion({ item, isRTL, colors }: { item: FaqItem; isRTL: boolean; 
           style={[faqStyles.qText, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}
           numberOfLines={2}
         >
-          {isRTL ? item.qAr : item.q}
+          {questionText}
         </Text>
         <Animated.View style={arrowStyle}>
           <MaterialIcons name="keyboard-arrow-down" size={20} color={colors.primary} />
@@ -151,6 +186,22 @@ export default function FaqScreen() {
   const { colors } = useTheme();
   const { language } = useLanguage();
   const isRTL = language === 'ar';
+
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Determine which items match the current search query (case-insensitive, bilingual)
+  const isVisible = useCallback((item: FaqItem): boolean => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      item.q.toLowerCase().includes(q) ||
+      item.qAr.toLowerCase().includes(q) ||
+      item.a.toLowerCase().includes(q) ||
+      item.aAr.toLowerCase().includes(q)
+    );
+  }, [searchQuery]);
+
+  const visibleCount = FAQ_ITEMS.filter(isVisible).length;
 
   return (
     <View style={[faqStyles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -177,29 +228,86 @@ export default function FaqScreen() {
         </View>
       </View>
 
+      {/* ── STICKY SEARCH BAR ── */}
+      <View style={[faqStyles.searchWrap, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <View style={[faqStyles.searchBar, {
+          backgroundColor: colors.background,
+          borderColor: searchQuery ? colors.primary : colors.border,
+          flexDirection: isRTL ? 'row-reverse' : 'row',
+        }]}>
+          <MaterialIcons name="search" size={18} color={searchQuery ? colors.primary : colors.textMuted} />
+          <TextInput
+            style={[faqStyles.searchInput, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
+            placeholder={isRTL ? 'ابحث في الأسئلة...' : 'Search questions...'}
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 ? (
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+              <MaterialIcons name="close" size={16} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
+        {searchQuery.trim() ? (
+          <Text style={[faqStyles.searchResultCount, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+            {isRTL ? `${visibleCount} نتيجة` : `${visibleCount} result${visibleCount !== 1 ? 's' : ''}`}
+          </Text>
+        ) : null}
+      </View>
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={faqStyles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Banner */}
-        <View style={[faqStyles.banner, { backgroundColor: colors.primaryGhost, borderColor: colors.primary + '30' }]}>
-          <View style={[faqStyles.bannerIcon, { backgroundColor: colors.primary }]}>
-            <MaterialIcons name="help-outline" size={26} color="#fff" />
+        {/* Banner — hide when searching */}
+        {!searchQuery.trim() ? (
+          <View style={[faqStyles.banner, { backgroundColor: colors.primaryGhost, borderColor: colors.primary + '30' }]}>
+            <View style={[faqStyles.bannerIcon, { backgroundColor: colors.primary }]}>
+              <MaterialIcons name="help-outline" size={26} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[faqStyles.bannerTitle, { color: colors.primary, textAlign: isRTL ? 'right' : 'left' }]}>
+                {isRTL ? 'هل لديك سؤال؟' : 'Have a question?'}
+              </Text>
+              <Text style={[faqStyles.bannerSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+                {isRTL ? 'اضغط على أي سؤال لرؤية الإجابة' : 'Tap any question to reveal the answer'}
+              </Text>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[faqStyles.bannerTitle, { color: colors.primary, textAlign: isRTL ? 'right' : 'left' }]}>
-              {isRTL ? 'هل لديك سؤال؟' : 'Have a question?'}
-            </Text>
-            <Text style={[faqStyles.bannerSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
-              {isRTL ? 'اضغط على أي سؤال لرؤية الإجابة' : 'Tap any question to reveal the answer'}
-            </Text>
-          </View>
-        </View>
+        ) : null}
 
+        {/* FAQ items — each animated independently */}
         {FAQ_ITEMS.map((item, i) => (
-          <FaqAccordion key={i} item={item} isRTL={isRTL} colors={colors} />
+          <AnimatedFaqWrapper key={i} visible={isVisible(item)}>
+            <FaqAccordion
+              item={item}
+              isRTL={isRTL}
+              colors={colors}
+              searchQuery={searchQuery}
+            />
+          </AnimatedFaqWrapper>
         ))}
+
+        {/* No results state */}
+        {searchQuery.trim() && visibleCount === 0 ? (
+          <View style={faqStyles.noResults}>
+            <MaterialIcons name="search-off" size={44} color={colors.textMuted} />
+            <Text style={[faqStyles.noResultsTitle, { color: colors.textPrimary }]}>
+              {isRTL ? 'لا توجد نتائج' : 'No results found'}
+            </Text>
+            <Text style={[faqStyles.noResultsSub, { color: colors.textMuted }]}>
+              {isRTL
+                ? `لم يتم العثور على نتائج لـ "${searchQuery}"`
+                : `No FAQ matches "${searchQuery}"`}
+            </Text>
+          </View>
+        ) : null}
 
         {/* ── VERSION FOOTER ── */}
         <View style={faqStyles.versionFooter}>
@@ -212,15 +320,19 @@ export default function FaqScreen() {
           </View>
         </View>
 
-        <View style={[faqStyles.footer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <MaterialIcons name="support-agent" size={24} color={colors.primary} />
-          <Text style={[faqStyles.footerText, { color: colors.textPrimary }]}>
-            {isRTL ? 'لم تجد إجابتك؟' : "Didn't find your answer?"}
-          </Text>
-          <Text style={[faqStyles.footerSub, { color: colors.textMuted }]}>
-            {isRTL ? 'تواصل مع فريق الدعم عبر مركز المساعدة في الإعدادات' : 'Contact our support team via Help Center in Settings'}
-          </Text>
-        </View>
+        {!searchQuery.trim() ? (
+          <View style={[faqStyles.footer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <MaterialIcons name="support-agent" size={24} color={colors.primary} />
+            <Text style={[faqStyles.footerText, { color: colors.textPrimary }]}>
+              {isRTL ? 'لم تجد إجابتك؟' : "Didn't find your answer?"}
+            </Text>
+            <Text style={[faqStyles.footerSub, { color: colors.textMuted }]}>
+              {isRTL
+                ? 'تواصل مع فريق الدعم عبر مركز المساعدة في الإعدادات'
+                : 'Contact our support team via Help Center in Settings'}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={{ height: insets.bottom + 24 }} />
       </ScrollView>
@@ -245,6 +357,34 @@ const faqStyles = StyleSheet.create({
   },
   headerTitle: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   headerSub: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
+
+  // ── Search bar ──
+  searchWrap: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    gap: 4,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderRadius: Radius.xl,
+    paddingHorizontal: Spacing.md,
+    height: 46,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FontSize.md,
+    height: 46,
+  },
+  searchResultCount: {
+    fontSize: FontSize.xs,
+    fontWeight: '600',
+    paddingHorizontal: 4,
+  },
+
   content: { padding: Spacing.lg, gap: Spacing.sm },
   banner: {
     flexDirection: 'row',
@@ -285,6 +425,16 @@ const faqStyles = StyleSheet.create({
     borderTopWidth: 1,
   },
   aText: { fontSize: FontSize.sm, lineHeight: 22 },
+
+  // ── No results ──
+  noResults: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    gap: Spacing.md,
+  },
+  noResultsTitle: { fontSize: FontSize.lg, fontWeight: '700' },
+  noResultsSub: { fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20, paddingHorizontal: 24 },
+
   footer: {
     borderRadius: Radius.xl,
     borderWidth: 1,
@@ -295,6 +445,8 @@ const faqStyles = StyleSheet.create({
   },
   footerText: { fontSize: FontSize.md, fontWeight: '700' },
   footerSub: { fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20 },
+
+  // ── Version footer ──
   versionFooter: { alignItems: 'center', paddingVertical: Spacing.lg, gap: 7 },
   versionDot: { width: 36, height: 1.5, borderRadius: 99 },
   versionRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },

@@ -829,8 +829,23 @@ export default function AdminScreen() {
           text: isBoosted ? t.removeboost : t.boost,
           onPress: async () => {
             const { error } = await adminBoostAd(ad.id, !isBoosted);
-            if (error) showAlert('Error', error);
-            else loadData();
+            if (error) { showAlert('Error', error); return; }
+            loadData();
+            // Fire-and-forget push notification to ad owner when boosting (not un-boosting)
+            if (!isBoosted) {
+              try {
+                const supabase = getSupabaseClient();
+                supabase.functions.invoke('push-notify', {
+                  body: {
+                    recipient_id: ad.user_id,
+                    sender_name: isAr ? 'سوق قلقيلية' : 'Souq Qalqilya',
+                    message_preview: isAr
+                      ? 'إعلانك تم تمييزه الآن ⚡ — سيظهر في أعلى قائمة الإعلانات'
+                      : 'Your ad has been boosted ⚡ — it now appears at the top of listings',
+                  },
+                }).catch(() => {});
+              } catch { /* non-critical */ }
+            }
           },
         },
       ]
