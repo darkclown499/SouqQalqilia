@@ -35,5 +35,6 @@ export const CATEGORY_NAMES: Record<string, { en: string; ar: string }> = {
   'real-estate':         { en: 'Real Estate',           ar: 'عقارات' },
   'sports':              { en: 'Sports',                ar: 'رياضة' },
   'games-entertainment': { en: 'Games & Entertainment', ar: 'ألعاب وترفيه' },
+  'decorations-gifts':   { en: 'Decorations & Gifts',   ar: 'زينة وهدايا' },
   'others':              { en: 'Others',                ar: 'أخرى' },
 };
