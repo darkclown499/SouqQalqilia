@@ -1,4 +1,41 @@
 import { getSupabaseClient } from '@/template';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// ── Offline message queue ─────────────────────────────────────────────────────
+const OFFLINE_QUEUE_KEY = 'chat_offline_queue_v1';
+
+export interface QueuedMessage {
+  tempId: string;
+  conversationId: string;
+  content: string;
+  image_url?: string;
+  message_type: 'text' | 'image';
+  created_at: string;
+}
+
+export async function getOfflineQueue(): Promise<QueuedMessage[]> {
+  try {
+    const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+export async function saveOfflineQueue(queue: QueuedMessage[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+  } catch {}
+}
+
+export async function addToOfflineQueue(msg: QueuedMessage): Promise<void> {
+  const q = await getOfflineQueue();
+  q.push(msg);
+  await saveOfflineQueue(q);
+}
+
+export async function removeFromOfflineQueue(tempId: string): Promise<void> {
+  const q = await getOfflineQueue();
+  await saveOfflineQueue(q.filter(m => m.tempId !== tempId));
+}
 
 export interface Conversation {
   id: string;
@@ -18,8 +55,13 @@ export interface Message {
   conversation_id: string;
   sender_id: string;
   content: string;
+  image_url?: string | null;
+  message_type?: 'text' | 'image';
   read_at?: string | null;
   created_at: string;
+  // Local-only status flags (not persisted to DB)
+  _pending?: boolean;   // Optimistic: not yet confirmed by DB
+  _failed?: boolean;    // Send failed, sitting in offline queue
 }
 
 export async function fetchMyConversations(): Promise<{ data: Conversation[]; error: string | null }> {
@@ -108,15 +150,19 @@ export async function fetchConversationById(id: string): Promise<{ data: Convers
 
 /** Full message fetch — used for initial load and pull-to-refresh */
 export async function fetchMessages(conversationId: string): Promise<{ data: Message[]; error: string | null }> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true });
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true });
 
-  if (error) return { data: [], error: error.message };
-  return { data: data as Message[], error: null };
+    if (error) return { data: [], error: error.message };
+    return { data: data as Message[], error: null };
+  } catch (e: any) {
+    return { data: [], error: e?.message ?? 'Network error' };
+  }
 }
 
 /**
@@ -133,6 +179,7 @@ export async function fetchMessagesSince(
   since: string,
   isBuyer: boolean | null,
 ): Promise<{ data: Message[]; typing: string | null; error: string | null }> {
+  try {
   const supabase = getSupabaseClient();
 
   // Run both queries in parallel: new messages + typing status
@@ -164,6 +211,9 @@ export async function fetchMessagesSince(
   }
 
   return { data: msgsResult.data as Message[], typing, error: null };
+  } catch (e: any) {
+    return { data: [], typing: null, error: e?.message ?? 'Network error' };
+  }
 }
 
 /**
@@ -184,18 +234,73 @@ export async function updateLastPolled(
     .eq('id', conversationId);
 }
 
+/**
+ * Upload a chat image to OnSpace Cloud Storage and return the public URL.
+ * Handles base64 (mobile) and blob (web) formats.
+ */
+export async function uploadChatImage(
+  fileUri: string,
+  fileName: string,
+): Promise<{ url: string | null; error: string | null }> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { url: null, error: 'Not authenticated' };
+
+    const ext = fileName.split('.').pop()?.toLowerCase() ?? 'jpg';
+    const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
+    const path = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+    // Mobile: read file as base64 via expo-file-system
+    let uploadData: ArrayBuffer;
+    if (fileUri.startsWith('file://') || fileUri.startsWith('content://')) {
+      const { readAsStringAsync, EncodingType } = await import('expo-file-system') as any;
+      const base64 = await readAsStringAsync(fileUri, { encoding: EncodingType.Base64 });
+      const binaryStr = atob(base64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+      uploadData = bytes.buffer;
+    } else {
+      // Web: fetch blob
+      const response = await fetch(fileUri);
+      uploadData = await response.arrayBuffer();
+    }
+
+    const { error: uploadError } = await supabase.storage
+      .from('chat-images')
+      .upload(path, uploadData, { contentType: mimeType, upsert: false });
+
+    if (uploadError) return { url: null, error: uploadError.message };
+
+    const { data: urlData } = supabase.storage.from('chat-images').getPublicUrl(path);
+    return { url: urlData.publicUrl, error: null };
+  } catch (e: any) {
+    return { url: null, error: e?.message ?? 'Upload failed' };
+  }
+}
+
 export async function sendMessage(
   conversationId: string,
-  content: string
+  content: string,
+  imageUrl?: string,
 ): Promise<{ data: Message | null; recipientId: string | null; isBuyerSending: boolean; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: null, recipientId: null, isBuyerSending: false, error: 'Not authenticated' };
 
+  const messageType = imageUrl ? 'image' : 'text';
+  const messageContent = imageUrl ? (content || '📷 صورة') : content;
+
   // Insert message
   const { data, error } = await supabase
     .from('messages')
-    .insert({ conversation_id: conversationId, sender_id: user.id, content })
+    .insert({
+      conversation_id: conversationId,
+      sender_id: user.id,
+      content: messageContent,
+      image_url: imageUrl ?? null,
+      message_type: messageType,
+    })
     .select()
     .single();
 

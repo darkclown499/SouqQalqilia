@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Platform } from 'react-native';
+import { Platform, AppState, AppStateStatus } from 'react-native';
 import {
   fetchMessages,
   fetchMessagesSince,
@@ -8,6 +8,8 @@ import {
   Message,
   Conversation,
   savePushToken,
+  getOfflineQueue,
+  saveOfflineQueue,
 } from '@/services/chatService';
 import { getSupabaseClient } from '@/template';
 import { CHAT_POLL_INTERVAL, READ_RECEIPT_INTERVAL } from '@/constants/config';
@@ -51,23 +53,37 @@ export async function registerPushToken(): Promise<void> {
   }
 }
 
+// ─── Exponential backoff helper ───────────────────────────────────────────────
+// Doubles the retry delay on each consecutive failure (capped at 32s).
+// Resets to base interval on the first successful poll.
+const BASE_POLL_MS = 2500;
+const MAX_BACKOFF_MS = 32_000;
+
+function nextBackoff(currentMs: number): number {
+  return Math.min(currentMs * 2, MAX_BACKOFF_MS);
+}
+
 // ─── useMessages ───────────────────────────────────────────────────────────────
 // Optimized polling strategy:
 // • Initial load: fetches all messages (full hydration)
 // • Subsequent polls: fetches ONLY messages newer than last known created_at
 //   → Eliminates transferring the full history on every tick
 // • Typing + messages share ONE interval (no duplicate timers)
+// • Exponential backoff on network failure — no hammering during outages
+// • Pauses polling when app is in background to conserve battery
 
 export interface UseMessagesResult {
   messages: Message[];
   loading: boolean;
   refreshing: boolean;
   otherTyping: boolean;
+  isOnline: boolean;
   reload: () => Promise<void>;
   pollSilent: () => Promise<void>;
   appendMessage: (msg: Message) => void;
   updateMessage: (tempId: string, real: Message) => void;
   markReadLocally: (currentUserId: string) => void;
+  removeMessage: (id: string) => void;
 }
 
 export function useMessages(
@@ -79,27 +95,59 @@ export function useMessages(
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [otherTyping, setOtherTyping] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
 
   // Track the most recent message timestamp to enable incremental fetching
   const lastCreatedAtRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Prevent concurrent polls from overlapping
   const pollingRef = useRef(false);
+  // Exponential backoff: current delay between polls
+  const currentPollDelayRef = useRef(BASE_POLL_MS);
+  // Track consecutive failures to manage backoff
+  const failureCountRef = useRef(0);
+  // Whether app is in foreground
+  const isActiveRef = useRef(true);
 
   /**
    * INCREMENTAL poll — fetches only messages newer than the last known message.
    * Falls back to full fetch if no anchor exists.
    * Also reads typing indicator from the conversation row (same DB round-trip).
    */
+  // Schedule the next poll tick with current backoff delay
+  const scheduleNextPoll = useCallback(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(pollSilentRef.current, currentPollDelayRef.current);
+  }, []);
+
   const pollSilent = useCallback(async () => {
     if (!conversationId || pollingRef.current) return;
+    // Skip polling when app is backgrounded (saves battery + reduces server load)
+    if (!isActiveRef.current) return;
     pollingRef.current = true;
     try {
       const since = lastCreatedAtRef.current;
 
       if (since) {
         // ── Fast path: incremental fetch ────────────────────────────────────
-        const { data: newMsgs, typing } = await fetchMessagesSince(conversationId, since, isBuyer);
+        const { data: newMsgs, typing, error } = await fetchMessagesSince(conversationId, since, isBuyer);
+
+        if (error) {
+          // Network or server error → apply exponential backoff
+          failureCountRef.current += 1;
+          currentPollDelayRef.current = nextBackoff(currentPollDelayRef.current);
+          setIsOnline(false);
+          scheduleNextPoll();
+          return;
+        }
+
+        // Success → reset backoff
+        if (failureCountRef.current > 0) {
+          failureCountRef.current = 0;
+          currentPollDelayRef.current = BASE_POLL_MS;
+          setIsOnline(true);
+          scheduleNextPoll();
+        }
 
         if (newMsgs.length > 0) {
           setMessages(prev => {
@@ -125,7 +173,20 @@ export function useMessages(
 
       } else {
         // ── Fallback: full fetch (first poll or after unmount) ───────────────
-        const { data } = await fetchMessages(conversationId);
+        const { data, error } = await fetchMessages(conversationId);
+        if (error) {
+          failureCountRef.current += 1;
+          currentPollDelayRef.current = nextBackoff(currentPollDelayRef.current);
+          setIsOnline(false);
+          scheduleNextPoll();
+          return;
+        }
+        if (failureCountRef.current > 0) {
+          failureCountRef.current = 0;
+          currentPollDelayRef.current = BASE_POLL_MS;
+          setIsOnline(true);
+          scheduleNextPoll();
+        }
         if (data.length > 0) {
           setMessages(data);
           lastCreatedAtRef.current = data[data.length - 1].created_at;
@@ -140,7 +201,11 @@ export function useMessages(
     } finally {
       pollingRef.current = false;
     }
-  }, [conversationId, isBuyer]);
+  }, [conversationId, isBuyer, scheduleNextPoll]);
+
+  // Stable ref so scheduleNextPoll can always call the latest pollSilent
+  const pollSilentRef = useRef(pollSilent);
+  useEffect(() => { pollSilentRef.current = pollSilent; }, [pollSilent]);
 
   /** Manual pull-to-refresh — full fetch, resets anchor */
   const reload = useCallback(async () => {
@@ -198,11 +263,18 @@ export function useMessages(
     );
   }, []);
 
+  /** Remove a message by id (e.g. failed offline message cleanup) */
+  const removeMessage = useCallback((id: string) => {
+    setMessages(prev => prev.filter(m => m.id !== id));
+  }, []);
+
   useEffect(() => {
     if (!conversationId) return;
 
     // Initial full load
     setLoading(true);
+    currentPollDelayRef.current = BASE_POLL_MS;
+    failureCountRef.current = 0;
     fetchMessages(conversationId).then(({ data }) => {
       setMessages(data);
       if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
@@ -210,11 +282,25 @@ export function useMessages(
     });
 
     // Single unified interval: handles both incremental message fetch + typing indicator
-    // READ_RECEIPT_INTERVAL = 2500ms keeps typing lag minimal
-    intervalRef.current = setInterval(pollSilent, READ_RECEIPT_INTERVAL);
+    intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
+
+    // Pause polling when app goes to background, resume on foreground
+    const handleAppState = (state: AppStateStatus) => {
+      isActiveRef.current = state === 'active';
+      if (state === 'active') {
+        // Resumed from background: reset backoff and do an immediate poll
+        currentPollDelayRef.current = BASE_POLL_MS;
+        failureCountRef.current = 0;
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
+        pollSilentRef.current();
+      }
+    };
+    const appStateSub = AppState.addEventListener('change', handleAppState);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      appStateSub.remove();
       // Reset anchor on unmount so next mount does a full fetch
       lastCreatedAtRef.current = null;
       pollingRef.current = false;
@@ -225,22 +311,24 @@ export function useMessages(
   useEffect(() => {
     if (isBuyer === null) return;
     if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(pollSilent, READ_RECEIPT_INTERVAL);
+    intervalRef.current = setInterval(() => pollSilentRef.current(), currentPollDelayRef.current);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isBuyer, pollSilent]);
+  }, [isBuyer]);
 
   return {
     messages,
     loading,
     refreshing,
     otherTyping,
+    isOnline,
     reload,
     pollSilent,
     appendMessage,
     updateMessage,
     markReadLocally,
+    removeMessage,
   };
 }
 

@@ -10,7 +10,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert } from '@/template';
 import { useMessages } from '@/hooks/useChat';
-import { fetchConversationById, sendMessage, markMessagesRead, updateTypingIndicator, notifyRecipient, deleteConversation, Conversation, Message } from '@/services/chatService';
+import {
+  fetchConversationById, sendMessage, markMessagesRead, updateTypingIndicator,
+  notifyRecipient, deleteConversation, uploadChatImage,
+  addToOfflineQueue, removeFromOfflineQueue, getOfflineQueue,
+  Conversation, Message,
+} from '@/services/chatService';
 import { blockUser, isUserBlocked } from '@/services/blockService';
 import { updateAdStatus } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -89,7 +94,8 @@ export default function ChatScreen() {
   // null until conversation loads (hook handles null gracefully)
   const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
 
-  const { messages, loading, refreshing, otherTyping, reload, pollSilent, appendMessage, updateMessage, markReadLocally } = useMessages(id, isBuyer);
+  const { messages, loading, refreshing, otherTyping, isOnline, reload, pollSilent, appendMessage, updateMessage, markReadLocally, removeMessage } = useMessages(id, isBuyer);
+  const [imageUploading, setImageUploading] = useState(false);
   // NOTE: Do NOT call useConversations() here — it would create an isolated instance
   // disconnected from the tab layout's badge. The tab layout polls every 2s and will
   // auto-refresh the unread count after markMessagesRead() updates the DB.
@@ -109,6 +115,24 @@ export default function ChatScreen() {
 
   // Typing indicator is now handled inside useMessages via the unified poll interval.
   // No separate interval needed here — this eliminates one redundant DB query per tick.
+
+  // ── Flush offline queue when connection is restored ────────────────────────
+  useEffect(() => {
+    if (!isOnline || !id || !user) return;
+    (async () => {
+      const queue = await getOfflineQueue();
+      const forThisConv = queue.filter(q => q.conversationId === id);
+      if (forThisConv.length === 0) return;
+      for (const qMsg of forThisConv) {
+        const { data: sent, error } = await sendMessage(id, qMsg.content, qMsg.image_url);
+        if (!error && sent) {
+          // Replace the local _failed message with the real one
+          updateMessage(qMsg.tempId, sent);
+          await removeFromOfflineQueue(qMsg.tempId);
+        }
+      }
+    })();
+  }, [isOnline, id, user?.id]);
 
   const QUICK_REPLIES_AR = [
     'هل السعر قابل للتفاوض؟',
@@ -184,52 +208,92 @@ export default function ChatScreen() {
     setShowQuickReplies(false);
   };
 
+  const handleSendMessage = async (content: string, imageUrl?: string) => {
+    if (!id) return;
+    const tempId = `temp_${Date.now()}`;
+    const tempMsg: Message = {
+      id: tempId,
+      conversation_id: id,
+      sender_id: user?.id ?? '',
+      content: imageUrl ? (content || '\uD83D\uDCF7 صورة') : content,
+      image_url: imageUrl ?? null,
+      message_type: imageUrl ? 'image' : 'text',
+      read_at: null,
+      created_at: new Date().toISOString(),
+      _pending: true,
+    };
+    appendMessage(tempMsg);
+
+    const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl);
+    if (error) {
+      // Mark as failed in local state + save to offline queue
+      updateMessage(tempId, { ...tempMsg, _pending: false, _failed: true });
+      await addToOfflineQueue({
+        tempId,
+        conversationId: id,
+        content: imageUrl ? (content || '\uD83D\uDCF7 صورة') : content,
+        image_url: imageUrl,
+        message_type: imageUrl ? 'image' : 'text',
+        created_at: tempMsg.created_at,
+      });
+    } else {
+      if (sent) updateMessage(tempId, sent);
+      if (recipientId) {
+        const senderDisplayName = user?.username || user?.email?.split('@')[0] || 'رسالة جديدة';
+        notifyRecipient(recipientId, senderDisplayName, content || '\uD83D\uDCF7 صورة', id, !isBuyerSending);
+      }
+    }
+  };
+
   const handleSend = async () => {
     const content = text.trim();
     if (!content || !id || sending) return;
     setSending(true);
     setText('');
-
-    // Optimistic: show message instantly before DB confirms
-    const tempId = `temp_${Date.now()}`;
-    // Explicitly using the imported Message type for clarity and correctness
-    const tempMsg: Message = {
-      id: tempId,
-      conversation_id: id,
-      sender_id: user?.id ?? '', // Ensure sender_id is never null
-      content,
-      read_at: null,
-      created_at: new Date().toISOString(),
-    };
-    appendMessage(tempMsg);
-
-    const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content);
-    if (error) {
-      showAlert(isAr ? 'خطأ' : 'Error', error);
-      // Remove the optimistic message on failure so it does not linger
-      updateMessage(tempId, { ...tempMsg, id: tempId });
-    } else {
-      // Replace temp with confirmed DB message (prevents duplicate on next poll)
-      if (sent) updateMessage(tempId, sent);
-      // Send push notification to the other party (fire-and-forget)
-      // Pass is_buyer_recipient so the edge function checks the correct polling column
-      if (recipientId) {
-        const senderDisplayName =
-          user?.username || user?.email?.split('@')[0] || 'رسالة جديدة';
-        notifyRecipient(
-          recipientId,
-          senderDisplayName,
-          content,
-          id,
-          !isBuyerSending, // recipient is buyer when sender is seller, and vice-versa
-        );
-      }
-    }
+    await handleSendMessage(content);
     setSending(false);
     // Clear typing indicator after send
     if (isBuyer !== null) {
       updateTypingIndicator(id!, isBuyer, false).catch(() => {});
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    }
+  };
+
+  /** Pick an image from library and send it as a chat message */
+  const handleImagePick = async () => {
+    if (!id || imageUploading) return;
+    try {
+      const ImagePicker = await import('expo-image-picker');
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        showAlert(
+          isAr ? 'لا يوجد إذن' : 'Permission Denied',
+          isAr ? 'يرجى السماح للتطبيق بالوصول إلى معرض الصور' : 'Please allow access to your photo library.',
+        );
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.75,
+        allowsEditing: true,
+        aspect: [4, 3],
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const asset = result.assets[0];
+      setImageUploading(true);
+      const fileName = asset.fileName ?? `chat_${Date.now()}.jpg`;
+      const { url, error } = await uploadChatImage(asset.uri, fileName);
+      setImageUploading(false);
+
+      if (error || !url) {
+        showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? 'Unknown error');
+        return;
+      }
+      await handleSendMessage('', url);
+    } catch (e: any) {
+      setImageUploading(false);
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Could not pick image');
     }
   };
 
@@ -399,6 +463,16 @@ export default function ChatScreen() {
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
 
         {/* ── HEADER ── */}
+        {/* ── OFFLINE BANNER ── */}
+        {!isOnline ? (
+          <View style={[styles.offlineBanner, { backgroundColor: '#F59E0B' }]}>
+            <MaterialIcons name="wifi-off" size={14} color="#fff" />
+            <Text style={styles.offlineBannerText}>
+              {isAr ? 'أنت غير متصل — الرسائل ستُرسل عند استعادة الاتصال' : 'You are offline — messages will be sent when connection is restored'}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={[styles.header, { backgroundColor: colors.primary }]}>
           <Pressable
             style={[styles.backBtn, { flexDirection: isAr ? 'row-reverse' : 'row' }]}
@@ -629,6 +703,9 @@ export default function ChatScreen() {
               const msg = item; // item is now correctly typed as Message
               const isMine = msg.sender_id === user?.id;
               const isRead = !!msg.read_at;
+              const isPending = !!(msg as any)._pending;
+              const isFailed = !!(msg as any)._failed;
+              const isImage = msg.message_type === 'image' && !!msg.image_url;
 
               return (
                 <View style={[
@@ -645,26 +722,58 @@ export default function ChatScreen() {
                   <View style={styles.bubbleWrap}>
                     <View style={[
                       styles.bubble,
+                      isImage ? styles.bubbleImage : null,
                       isMine
-                        ? { backgroundColor: colors.primary, borderBottomRightRadius: isAr ? Radius.lg : 4, borderBottomLeftRadius: isAr ? 4 : Radius.lg }
+                        ? { backgroundColor: isFailed ? '#EF4444' : colors.primary, borderBottomRightRadius: isAr ? Radius.lg : 4, borderBottomLeftRadius: isAr ? 4 : Radius.lg }
                         : { backgroundColor: colors.surface, borderBottomLeftRadius: isAr ? Radius.lg : 4, borderBottomRightRadius: isAr ? 4 : Radius.lg, ...Shadow.sm },
                     ]}>
-                      <Text style={[styles.msgText, { color: isMine ? '#fff' : colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]}>
-                        {msg.content}
-                      </Text>
+                      {isImage ? (
+                        <Image
+                          source={{ uri: msg.image_url! }}
+                          style={styles.msgImage}
+                          contentFit="cover"
+                          transition={200}
+                          cachePolicy="memory-disk"
+                        />
+                      ) : null}
+                      {msg.content && msg.content !== '\uD83D\uDCF7 صورة' ? (
+                        <Text style={[styles.msgText, { color: isMine ? '#fff' : colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]}>
+                          {msg.content}
+                        </Text>
+                      ) : !isImage ? (
+                        <Text style={[styles.msgText, { color: isMine ? '#fff' : colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]}>
+                          {msg.content}
+                        </Text>
+                      ) : null}
                     </View>
                     <View style={[styles.msgMeta, { flexDirection: isMine ? (isAr ? 'row' : 'row-reverse') : (isAr ? 'row-reverse' : 'row'), gap: 4 }]}>
                       <Text style={[styles.msgTime, { color: colors.textMuted }]}>
                         {formatTime(msg.created_at)}
                       </Text>
                       {isMine ? (
-                        <MaterialIcons
-                          name={isRead ? 'done-all' : 'done'}
-                          size={14}
-                          color={isRead ? colors.primary : colors.textMuted}
-                        />
+                        isFailed ? (
+                          <Pressable onPress={() => {
+                            removeMessage(msg.id);
+                            removeFromOfflineQueue(msg.id);
+                          }} hitSlop={6}>
+                            <MaterialIcons name="error-outline" size={14} color="#EF4444" />
+                          </Pressable>
+                        ) : isPending ? (
+                          <MaterialIcons name="schedule" size={12} color={colors.textMuted} />
+                        ) : (
+                          <MaterialIcons
+                            name={isRead ? 'done-all' : 'done'}
+                            size={14}
+                            color={isRead ? '#4ADE80' : colors.textMuted}
+                          />
+                        )
                       ) : null}
                     </View>
+                    {isFailed ? (
+                      <Text style={[styles.failedLabel, { color: '#EF4444' }]}>
+                        {isAr ? 'فشل الإرسال — اضغط ✕ للحذف' : 'Failed to send — tap ✕ to remove'}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
               );
@@ -722,12 +831,25 @@ export default function ChatScreen() {
             flexDirection: isAr ? 'row-reverse' : 'row',
           },
         ]}>
+          {/* Quick replies toggle */}
           <Pressable
             style={[styles.quickReplyToggleBtn, { backgroundColor: showQuickReplies ? colors.primary : colors.primaryGhost }]}
             onPress={() => setShowQuickReplies(v => !v)}
             hitSlop={4}
           >
             <MaterialIcons name="quickreply" size={20} color={showQuickReplies ? '#fff' : colors.primary} />
+          </Pressable>
+          {/* Image attachment button */}
+          <Pressable
+            style={[styles.quickReplyToggleBtn, { backgroundColor: imageUploading ? colors.primary : colors.primaryGhost }]}
+            onPress={handleImagePick}
+            disabled={imageUploading}
+            hitSlop={4}
+          >
+            {imageUploading
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <MaterialIcons name="image" size={20} color={colors.primary} />
+            }
           </Pressable>
           <TextInput
             style={[styles.textInput, {
@@ -889,9 +1011,34 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg, borderBottomLeftRadius: 4,
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
   },
-  quickRepliesWrap: {
-    borderTopWidth: 1,
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
     paddingVertical: 8,
+  },
+  offlineBannerText: {
+    color: '#fff',
+    fontSize: FontSize.xs,
+    fontWeight: '600',
+    flex: 1,
+  },
+  bubbleImage: {
+    padding: 0,
+    overflow: 'hidden',
+    borderRadius: Radius.lg,
+  },
+  msgImage: {
+    width: 200,
+    height: 150,
+    borderRadius: Radius.lg,
+  },
+  failedLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 2,
+    textAlign: 'center',
   },
   quickRepliesContent: {
     paddingHorizontal: Spacing.md,
