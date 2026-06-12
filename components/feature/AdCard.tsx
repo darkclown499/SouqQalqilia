@@ -33,9 +33,19 @@ function formatPrice(price: number, isAr: boolean) {
 
 // ── Shimmer skeleton component ───────────────────────────────────────────────
 // Renders an animated shine-sweep over a rounded rectangle.
-// `width` must be a concrete pixel value (not '100%') for the gradient to sweep.
-function ShimmerBlock({ style }: { style: object }) {
+// `isDark` controls the sweep opacity so dark-theme skeletons never flash
+// jarring bright-white gradients; instead they use a muted translucent sweep.
+interface ShimmerBlockProps {
+  style: object;
+  isDark?: boolean;
+}
+
+export function ShimmerBlock({ style, isDark = false }: ShimmerBlockProps) {
   const shimmer = useRef(new Animated.Value(0)).current;
+
+  // Dark mode: soft white sweep that blends with dark surfaces.
+  // Light mode: standard 42% white sweep that pops against pale backgrounds.
+  const sweepColor = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.42)';
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -65,7 +75,7 @@ function ShimmerBlock({ style }: { style: object }) {
         ]}
       >
         <LinearGradient
-          colors={['transparent', 'rgba(255,255,255,0.42)', 'transparent']}
+          colors={['transparent', sweepColor, 'transparent']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={shimStyles.gradient}
@@ -96,7 +106,7 @@ const shimmerOverrideStyle = { opacity: 0, position: 'absolute' as const, zIndex
 
 export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited = false, onFavoritePress, onAdPress, isBlocked = false }: AdCardProps) {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { t, language, isRTL } = useLanguage();
   const isAr = language === 'ar';
   const [imgError, setImgError] = useState(false);
@@ -175,6 +185,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
               styles.shimmerImage,
               { backgroundColor: colors.surfaceTint },
             ]}
+            isDark={isDark}
           />
         ) : null}
 
@@ -305,6 +316,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
         {!imgLoaded && !imgError ? (
           <ShimmerBlock
             style={[styles.shimmerTitle, { backgroundColor: colors.surfaceTint }]}
+            isDark={isDark}
           />
         ) : (
           <Text
@@ -319,6 +331,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
         {!imgLoaded && !imgError ? (
           <ShimmerBlock
             style={[styles.shimmerSubline, { backgroundColor: colors.surfaceTint }]}
+            isDark={isDark}
           />
         ) : null}
 

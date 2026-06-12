@@ -7,7 +7,108 @@ import { Radius, FontSize, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { timeAgo } from '@/utils/timeAgo';
+import { ShimmerBlock } from '@/components/feature/AdCard';
 
+// ── Skeleton loading row ──────────────────────────────────────────────────────────────────
+// Mimics the exact flex layout of MessagePreview so the loading state
+// visually matches the real list without layout shift.
+function MessageSkeletonRow({ isDark, colors }: { isDark: boolean; colors: any }) {
+  return (
+    <View style={skelStyles.row}>
+      {/* Circular avatar placeholder */}
+      <ShimmerBlock
+        style={[skelStyles.avatar, { backgroundColor: colors.surfaceTint }]}
+        isDark={isDark}
+      />
+      {/* Central content column */}
+      <View style={skelStyles.content}>
+        {/* Name line — shorter, heavier */}
+        <ShimmerBlock
+          style={[skelStyles.nameLine, { backgroundColor: colors.surfaceTint }]}
+          isDark={isDark}
+        />
+        {/* Ad reference stub */}
+        <ShimmerBlock
+          style={[skelStyles.adLine, { backgroundColor: colors.surfaceTint }]}
+          isDark={isDark}
+        />
+        {/* Last message line — wider, thinner */}
+        <ShimmerBlock
+          style={[skelStyles.msgLine, { backgroundColor: colors.surfaceTint }]}
+          isDark={isDark}
+        />
+      </View>
+      {/* Timestamp badge on far right */}
+      <ShimmerBlock
+        style={[skelStyles.timeBadge, { backgroundColor: colors.surfaceTint }]}
+        isDark={isDark}
+      />
+    </View>
+  );
+}
+
+/** Drop-in loading placeholder for the messages tab.
+ *  Renders 6 skeleton rows that accurately mirror the real MessagePreview layout.
+ *  Pass this in place of an empty / null list while conversations are fetching.
+ */
+export function MessageListSkeleton() {
+  const { colors, isDark } = useTheme();
+  return (
+    <View style={skelStyles.container}>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <MessageSkeletonRow key={i} isDark={isDark} colors={colors} />
+      ))}
+    </View>
+  );
+}
+
+const skelStyles = StyleSheet.create({
+  container: { flex: 1 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 14,
+    gap: Spacing.md,
+  },
+  // Circle matching the avatar in the real row (54×54, radius 27)
+  avatar: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    flexShrink: 0,
+  },
+  content: { flex: 1, gap: 6, minWidth: 0 },
+  // Sender name: 55% width, 13px tall — feels like a bold short name
+  nameLine: {
+    height: 13,
+    borderRadius: 6,
+    width: '55%',
+  },
+  // Ad reference stub: 35% width, 10px tall
+  adLine: {
+    height: 10,
+    borderRadius: 5,
+    width: '35%',
+  },
+  // Last message: 85% width, 11px tall
+  msgLine: {
+    height: 11,
+    borderRadius: 5,
+    width: '85%',
+  },
+  // Timestamp on the right: small rectangular pill
+  timeBadge: {
+    width: 38,
+    height: 10,
+    borderRadius: 5,
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+    marginTop: 3,
+  },
+});
+
+// ────────────────────────────────────────────────────────────────────────
 interface MessagePreviewProps {
   conversation: Conversation;
   currentUserId: string;

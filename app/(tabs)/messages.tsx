@@ -1,3 +1,4 @@
+
 import React, { useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
@@ -7,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '@/template';
 import { MessagePreview, EmptyState, Button } from '@/components';
+import { MessageListSkeleton } from '@/components/feature/MessagePreview';
 import { useConversations } from '@/hooks/useChat';
 import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -138,7 +140,9 @@ export default function MessagesScreen() {
           ) : null
         }
         ListEmptyComponent={
-          !loading ? (
+          loading ? (
+            <MessageListSkeleton />
+          ) : (
             <View style={styles.emptyWrap}>
               <View style={[styles.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
                 <MaterialIcons name="chat-bubble-outline" size={44} color={colors.primary} />
@@ -153,7 +157,7 @@ export default function MessagesScreen() {
                 <Text style={styles.browseBtnText}>{isAr ? 'تصفح الإعلانات' : 'Browse Listings'}</Text>
               </Pressable>
             </View>
-          ) : null
+          )
         }
         contentContainerStyle={totalConvs === 0 ? { flex: 1 } : { paddingBottom: 16 }}
       />

@@ -259,6 +259,44 @@ export default function ChatScreen() {
     }
   };
 
+  /** Capture a photo directly from the camera and send it as a chat message */
+  const handleCameraCapture = async () => {
+    if (!id || imageUploading) return;
+    try {
+      const ImagePicker = await import('expo-image-picker');
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') {
+        showAlert(
+          isAr ? 'لا يوجد إذن' : 'Permission Denied',
+          isAr ? 'يرجى السماح للتطبيق بالوصول إلى الكاميرا' : 'Please allow camera access to take photos.',
+        );
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsEditing: true,
+        aspect: [4, 3],
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const asset = result.assets[0];
+      setImageUploading(true);
+      const fileName = asset.fileName ?? `cam_${Date.now()}.jpg`;
+      const { url, error } = await uploadChatImage(asset.uri, fileName);
+      setImageUploading(false);
+
+      if (error || !url) {
+        showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? 'Unknown error');
+        return;
+      }
+      await handleSendMessage('', url);
+    } catch (e: any) {
+      setImageUploading(false);
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Could not open camera');
+    }
+  };
+
   /** Pick an image from library and send it as a chat message */
   const handleImagePick = async () => {
     if (!id || imageUploading) return;
@@ -839,17 +877,26 @@ export default function ChatScreen() {
           >
             <MaterialIcons name="quickreply" size={20} color={showQuickReplies ? '#fff' : colors.primary} />
           </Pressable>
-          {/* Image attachment button */}
+          {/* Camera capture button */}
           <Pressable
             style={[styles.quickReplyToggleBtn, { backgroundColor: imageUploading ? colors.primary : colors.primaryGhost }]}
-            onPress={handleImagePick}
+            onPress={handleCameraCapture}
             disabled={imageUploading}
             hitSlop={4}
           >
             {imageUploading
               ? <ActivityIndicator size="small" color="#fff" />
-              : <MaterialIcons name="image" size={20} color={colors.primary} />
+              : <MaterialIcons name="camera-alt" size={20} color={colors.primary} />
             }
+          </Pressable>
+          {/* Image gallery picker button */}
+          <Pressable
+            style={[styles.quickReplyToggleBtn, { backgroundColor: colors.primaryGhost }]}
+            onPress={handleImagePick}
+            disabled={imageUploading}
+            hitSlop={4}
+          >
+            <MaterialIcons name="photo-library" size={20} color={colors.primary} />
           </Pressable>
           <TextInput
             style={[styles.textInput, {
