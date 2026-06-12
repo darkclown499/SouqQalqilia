@@ -263,21 +263,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
           </Pressable>
         ) : null}
 
-        {/* Image count pill */}
-        {sortedImages.length > 1 ? (
-          <View style={styles.imgCount}>
-            <MaterialIcons name="photo-library" size={9} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.imgCountText}>{sortedImages.length}</Text>
-          </View>
-        ) : null}
 
-        {/* Serial number reference badge — bottom-left, matches image-count pill aesthetic */}
-        {ad.serial_number ? (
-          <View style={[styles.serialBadge, isRTL ? { right: 8, left: undefined } : { left: 8 }]}>
-            <MaterialIcons name="tag" size={8} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.serialBadgeText}>#{ad.serial_number}</Text>
-          </View>
-        ) : null}
 
         {/* Sold overlay */}
         {isSold ? (
