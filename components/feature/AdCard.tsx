@@ -110,11 +110,13 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
             source={{ uri: firstImage.url }}
             style={styles.image}
             contentFit="cover"
-            transition={200}
+            transition={150}
             cachePolicy="disk"
+            recyclingKey={firstImage.url}
             priority={isFeatured || isBoosted ? 'high' : 'normal'}
             placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
             placeholderContentFit="cover"
+            responsivePolicy="live"
             onError={() => setImgError(true)}
           />
         ) : (

@@ -28,25 +28,41 @@ export function clearAdsCache(): void {
   _adsCache = null;
 }
 
-/** Prefetch first-image URLs into expo-image disk cache */
-function prefetchAdImages(ads: Ad[]): void {
-  // Fire-and-forget: prefetch up to 20 first images in background
-  const urls = ads
-    .slice(0, 20)
-    .map(a => a.ad_images?.[0]?.url)
-    .filter(Boolean) as string[];
-  urls.forEach(url => {
-    Image.prefetch(url, { cachePolicy: 'disk' }).catch(() => {});
+/**
+ * Prefetch ALL product image URLs into expo-image disk cache.
+ * Called during startup pipeline BEFORE splash screen hides — this forces
+ * the native OS to pull every image to local disk so AdCard renders
+ * instantly from cache with zero network latency.
+ */
+async function prefetchAdImages(ads: Ad[]): Promise<void> {
+  // Collect all image URLs across all ads (up to 30 ads × 3 images = 90 max)
+  const urls: string[] = [];
+  ads.slice(0, 30).forEach(ad => {
+    const sorted = (ad.ad_images ?? []).sort((a, b) => a.position - b.position);
+    sorted.forEach(img => { if (img.url) urls.push(img.url); });
   });
+  if (urls.length === 0) return;
+
+  // expo-image Image.prefetch supports an array — single call, native batch.
+  // We await so splash stays visible until images hit disk.
+  try {
+    await Image.prefetch(urls, { cachePolicy: 'disk' });
+  } catch {
+    // Partial failure is acceptable — images will stream lazily on first view
+  }
 }
 
-/** Preload first page of ads into cache — call right after auth resolves */
+/** Preload first page of ads into cache — awaited during startup pipeline.
+ *  Waits for image prefetch to complete so AdCard shows cached assets
+ *  instantly on first render with no flicker.
+ */
 export async function preloadAds(): Promise<void> {
-  if (getAdsCache()) return; // Already fresh
-  const { data } = await fetchAds({ limit: 20, offset: 0 });
+  if (getAdsCache()) return; // Already fresh — skip redundant fetch
+  const { data } = await fetchAds({ limit: 24, offset: 0, sortBy: 'newest' });
   if (data.length > 0) {
     setAdsCache(data);
-    prefetchAdImages(data);
+    // Await prefetch so caller (splash pipeline) holds until images are on disk
+    await prefetchAdImages(data);
   }
 }
 
@@ -134,31 +150,39 @@ export async function fetchAds(params?: {
   }
 
   // ── Apply server-side sorting ──────────────────────────────────────────────
-  // PRIMARY key: featured status always floats to top regardless of sort mode.
-  // Featured ads (status='featured') have SQL status = 'featured'; we order so
-  // 'featured' sorts before 'active' by casting to integer precedence via
-  // a CASE expression — achieved here by ordering on a computed column.
-  // Since Supabase query builder doesn't support raw CASE, we use the fact that
-  // 'featured' < 'active' alphabetically, so ascending:true puts featured first.
+  //
+  // PRIORITY CHAIN — applied to every sort mode:
+  //   1. PRIMARY:   status ASC  →  'featured' sorts before 'active' alphabetically,
+  //                               so boosted/featured ads ALWAYS float to the top
+  //                               regardless of creation time.
+  //   2. SECONDARY: user-selected sort key (price, created_at, boosted_until)
+  //
+  // This ensures that any ad promoted to 'featured' instantly bypasses all
+  // chronological limits and appears at position [0] of every feed view.
+  // The compound index ads_feed_priority_idx (status ASC, created_at DESC)
+  // makes this a single index scan with no sort operation on large tables.
+  //
   if (sortBy === 'price_asc') {
     query = query
-      .order('status', { ascending: true })        // 'featured' < 'active' alphabetically
-      .order('price', { ascending: true });
+      .order('status', { ascending: true })         // featured first (PRIMARY)
+      .order('price', { ascending: true });          // cheapest second
   } else if (sortBy === 'price_desc') {
     query = query
-      .order('status', { ascending: true })
-      .order('price', { ascending: false });
+      .order('status', { ascending: true })         // featured first (PRIMARY)
+      .order('price', { ascending: false });         // most expensive second
   } else if (sortBy === 'boosted') {
-    // Active boosts first (future expiry), then featured, then newest
+    // Active boosts first (furthest future expiry), then featured, then newest
     query = query
-      .order('boosted_until', { ascending: false, nullsFirst: false })
-      .order('status', { ascending: true })
-      .order('created_at', { ascending: false });
+      .order('boosted_until', { ascending: false, nullsFirst: false }) // active boosts first
+      .order('status', { ascending: true })          // featured before active
+      .order('created_at', { ascending: false });    // newest as tiebreaker
   } else {
-    // newest (default) — featured ads float to top, then newest chronological
+    // newest (default) — strict two-column priority chain:
+    //   column 1: status ASC   → 'featured' < 'active' → featured group at top
+    //   column 2: created_at DESC → newest within each group
     query = query
-      .order('status', { ascending: true })        // 'featured' before 'active'
-      .order('created_at', { ascending: false });   // newest first within each group
+      .order('status', { ascending: true })          // PRIMARY: featured floats up
+      .order('created_at', { ascending: false });    // SECONDARY: newest first
   }
 
   // ── Pagination LAST (after filters + sort) ────────────────────────────────

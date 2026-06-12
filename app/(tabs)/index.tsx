@@ -580,11 +580,11 @@ export default function HomeScreen() {
           renderItem={renderRow}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          windowSize={5}
-          maxToRenderPerBatch={6}
-          initialNumToRender={4}
-          updateCellsBatchingPeriod={80}
-          removeClippedSubviews={Platform.OS !== 'web'}
+          windowSize={7}
+          maxToRenderPerBatch={4}
+          initialNumToRender={6}
+          updateCellsBatchingPeriod={50}
+          removeClippedSubviews={false}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           refreshControl={

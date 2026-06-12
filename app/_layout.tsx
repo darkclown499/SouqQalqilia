@@ -1,3 +1,4 @@
+import * as SplashScreen from 'expo-splash-screen';
 import { AlertProvider, AuthProvider, getSupabaseClient } from '@/template';
 import { preloadAds } from '@/services/adsService';
 import { preloadBanners } from '@/services/bannersService';
@@ -5,10 +6,15 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Platform, InteractionManager } from 'react-native';
 import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
 import { APP_VERSION } from '@/constants/config';
+
+// ── Lock the splash screen immediately at module evaluation time ──────────────
+// Must be called before any component renders; calling it here guarantees it
+// runs synchronously as the JS bundle is parsed — before React mounts.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // ── Configure notification handler SYNCHRONOUSLY at module level ─────────────
 // Must run before any notification arrives (foreground + background display)
@@ -82,6 +88,52 @@ function isVersionOutdated(current: string, minimum: string): boolean {
 
 export default function RootLayout() {
   const [forceUpdate, setForceUpdate] = useState<{ required: boolean; minVersion: string } | null>(null);
+  const [appIsReady, setAppIsReady] = useState(false);
+
+  // ── Initialization pipeline: parallel splash-locked startup sequence ─────
+  // Runs once: fetches critical data + prefetches images, then hides splash.
+  // A 3.5 s safety timeout ensures the user is never frozen on a slow network.
+  useEffect(() => {
+    let cancelled = false;
+
+    const MAX_INIT_MS = 3_500; // 3.5 second safety guardrail
+
+    async function prepare() {
+      const deadline = new Promise<void>(resolve => setTimeout(resolve, MAX_INIT_MS));
+
+      const work = (async () => {
+        try {
+          // Run all heavy startup tasks in parallel:
+          //  1. Preload first page of ads (fetches data + prefetches images)
+          //  2. Preload banners
+          // Both functions already handle their own error catching internally.
+          await Promise.all([
+            preloadAds(),
+            preloadBanners(),
+          ]);
+        } catch {
+          // Never block the user — swallow any unexpected error
+        }
+      })();
+
+      // Race the work against the deadline — whichever finishes first wins.
+      await Promise.race([work, deadline]);
+
+      if (!cancelled) {
+        setAppIsReady(true);
+      }
+    }
+
+    prepare();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Hide splash screen once app is ready ─────────────────────────────────
+  const onLayoutRootView = useCallback(async () => {
+    if (appIsReady) {
+      await SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [appIsReady]);
 
   // ── Check minimum required version on mount ────────────────────────────────
   useEffect(() => {
@@ -215,6 +267,14 @@ export default function RootLayout() {
     };
   }, []);
 
+  // ── Block render until initialization pipeline completes ─────────────────
+  // This holds the splash screen visible until data + images are preloaded.
+  // The onLayoutRootView callback fires when the root <View> mounts, triggering
+  // SplashScreen.hideAsync() precisely when the layout is ready to paint.
+  if (!appIsReady) {
+    return null; // Splash screen remains visible while appIsReady=false
+  }
+
   // ── Force update wall — rendered outside all providers intentionally ────────
   if (forceUpdate?.required) {
     return (
@@ -226,7 +286,7 @@ export default function RootLayout() {
 
   return (
     <AlertProvider>
-      <SafeAreaProvider>
+      <SafeAreaProvider onLayout={onLayoutRootView}>
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
