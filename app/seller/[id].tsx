@@ -10,7 +10,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { getSupabaseClient, useAuth } from '@/template';
 import { fetchAds, Ad } from '@/services/adsService';
-import { AdCard } from '@/components/feature/AdCard';
+import { AdCard, ShimmerBlock } from '@/components/feature/AdCard';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
@@ -23,46 +23,44 @@ const CARD_W = (SCREEN_W - H_PAD * 2 - COLUMN_GAP) / 2;
 const COVER_H = 220;
 const AVATAR_SIZE = 96;
 
-// ── Skeleton shimmer ─────────────────────────────────────────────────────────
-function SkeletonBox({ w = '100%' as number | string, h, br = 8, baseColor, style }: {
-  w?: number | string; h: number; br?: number; baseColor: string; style?: any;
-}) {
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0, duration: 900, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [anim]);
-  const opacity = anim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
-  return (
-    <Animated.View style={[{ width: w as any, height: h, borderRadius: br, backgroundColor: baseColor, opacity }, style]} />
-  );
-}
-
-function SellerSkeleton({ colors }: { colors: any }) {
+// ── Skeleton shimmer using shared ShimmerBlock ───────────────────────────────
+function SellerSkeleton({ colors, isDark }: { colors: any; isDark: boolean }) {
   const base = colors.surfaceTint;
   const dark = colors.border;
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <SkeletonBox w={SCREEN_W} h={COVER_H} br={0} baseColor={dark} />
+      {/* Cover photo skeleton */}
+      <ShimmerBlock
+        style={{ width: SCREEN_W, height: COVER_H, borderRadius: 0, backgroundColor: dark }}
+        isDark={isDark}
+      />
+      {/* Avatar + name area */}
       <View style={{ alignItems: 'center', marginTop: -(AVATAR_SIZE / 2) - 4, marginBottom: 20, gap: 12 }}>
-        <SkeletonBox w={AVATAR_SIZE + 8} h={AVATAR_SIZE + 8} br={(AVATAR_SIZE + 8) / 2} baseColor={dark} />
-        <SkeletonBox w={160} h={20} br={10} baseColor={base} />
-        <SkeletonBox w={110} h={14} br={6} baseColor={base} />
+        <ShimmerBlock
+          style={{ width: AVATAR_SIZE + 8, height: AVATAR_SIZE + 8, borderRadius: (AVATAR_SIZE + 8) / 2, backgroundColor: dark }}
+          isDark={isDark}
+        />
+        <ShimmerBlock style={{ width: 160, height: 20, borderRadius: 10, backgroundColor: base }} isDark={isDark} />
+        <ShimmerBlock style={{ width: 110, height: 14, borderRadius: 6, backgroundColor: base }} isDark={isDark} />
       </View>
+      {/* Stats row */}
       <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: H_PAD, marginBottom: 20 }}>
         {[1, 2, 3].map(i => (
-          <SkeletonBox key={i} w={(SCREEN_W - H_PAD * 2 - 20) / 3} h={88} br={18} baseColor={base} />
+          <ShimmerBlock
+            key={i}
+            style={{ flex: 1, height: 88, borderRadius: 18, backgroundColor: base }}
+            isDark={isDark}
+          />
         ))}
       </View>
+      {/* Ad card grid skeletons */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: H_PAD, gap: COLUMN_GAP }}>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <SkeletonBox key={i} w={CARD_W} h={200} br={14} baseColor={base} style={{ marginBottom: COLUMN_GAP }} />
+        {Array.from({ length: 6 }).map((_, i) => (
+          <ShimmerBlock
+            key={i}
+            style={{ width: CARD_W, height: 200, borderRadius: 14, backgroundColor: base, marginBottom: COLUMN_GAP }}
+            isDark={isDark}
+          />
         ))}
       </View>
     </View>
@@ -382,7 +380,7 @@ export default function SellerProfileScreen() {
   if (pageLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <SellerSkeleton colors={colors} />
+        <SellerSkeleton colors={colors} isDark={isDark} />
         <View style={[styles.backBar, { top: insets.top + 8 }]}>
           <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
             <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={20} color="#fff" />

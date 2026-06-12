@@ -18,6 +18,7 @@ import { ImageZoomGallery } from '@/components/feature/ImageZoomGallery';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
+import { ShimmerBlock } from '@/components/feature/AdCard';
 import { useLanguage } from '@/hooks/useLanguage';
 import { timeAgoLong } from '@/utils/timeAgo';
 
@@ -41,7 +42,7 @@ export default function AdDetailScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { showAlert } = useAlert();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { t, language } = useLanguage();
   const isAr = language === 'ar';
 
@@ -167,8 +168,36 @@ export default function AdDetailScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.primary} size="large" />
+      <View style={[styles.skeletonContainer, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        {/* Gallery skeleton */}
+        <ShimmerBlock style={styles.skeletonGallery} isDark={isDark} />
+        {/* Content skeleton */}
+        <View style={styles.skeletonContent}>
+          {/* Price + condition row */}
+          <View style={styles.skeletonRow}>
+            <ShimmerBlock style={[styles.skeletonPrice, { backgroundColor: colors.surfaceTint }]} isDark={isDark} />
+            <ShimmerBlock style={[styles.skeletonBadge, { backgroundColor: colors.surfaceTint }]} isDark={isDark} />
+          </View>
+          {/* Title */}
+          <ShimmerBlock style={[styles.skeletonTitle, { backgroundColor: colors.surfaceTint }]} isDark={isDark} />
+          <ShimmerBlock style={[styles.skeletonTitleShort, { backgroundColor: colors.surfaceTint }]} isDark={isDark} />
+          {/* Meta chips */}
+          <View style={styles.skeletonRow}>
+            {[72, 90, 80].map((w, i) => (
+              <ShimmerBlock key={i} style={[styles.skeletonChip, { width: w, backgroundColor: colors.surfaceTint }]} isDark={isDark} />
+            ))}
+          </View>
+          {/* Description block */}
+          <ShimmerBlock style={[styles.skeletonDescCard, { backgroundColor: colors.surfaceTint }]} isDark={isDark} />
+          {/* Seller card */}
+          <View style={[styles.skeletonSellerCard, { backgroundColor: colors.surfaceTint }]}>
+            <ShimmerBlock style={[styles.skeletonAvatar, { backgroundColor: colors.border }]} isDark={isDark} />
+            <View style={{ flex: 1, gap: 8 }}>
+              <ShimmerBlock style={[styles.skeletonSellerName, { backgroundColor: colors.border }]} isDark={isDark} />
+              <ShimmerBlock style={[styles.skeletonSellerSub, { backgroundColor: colors.border }]} isDark={isDark} />
+            </View>
+          </View>
+        </View>
       </View>
     );
   }
@@ -800,6 +829,76 @@ function AdDetailScrollContent({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  // ── Skeleton loading layout ──
+  skeletonContainer: { flex: 1 },
+  skeletonGallery: {
+    width: '100%',
+    height: 320,
+    borderRadius: 0,
+    backgroundColor: '#CBD5E1',
+  },
+  skeletonContent: {
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  skeletonPrice: {
+    width: 88,
+    height: 36,
+    borderRadius: Radius.md,
+  },
+  skeletonBadge: {
+    width: 70,
+    height: 28,
+    borderRadius: Radius.full,
+  },
+  skeletonTitle: {
+    height: 22,
+    borderRadius: 8,
+    width: '90%',
+  },
+  skeletonTitleShort: {
+    height: 22,
+    borderRadius: 8,
+    width: '65%',
+  },
+  skeletonChip: {
+    height: 28,
+    borderRadius: Radius.full,
+  },
+  skeletonDescCard: {
+    height: 110,
+    borderRadius: Radius.lg,
+    width: '100%',
+  },
+  skeletonSellerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+  },
+  skeletonAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    flexShrink: 0,
+  },
+  skeletonSellerName: {
+    height: 14,
+    borderRadius: 7,
+    width: '60%',
+  },
+  skeletonSellerSub: {
+    height: 10,
+    borderRadius: 5,
+    width: '40%',
+  },
   errorText: { fontSize: FontSize.lg, marginTop: 12 },
   backBtnWrap: { position: 'absolute', zIndex: 20 },
   topRightBtns: { position: 'absolute', zIndex: 20, flexDirection: 'row', gap: 8 },
