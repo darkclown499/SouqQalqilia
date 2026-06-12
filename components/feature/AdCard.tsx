@@ -271,6 +271,14 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
           </View>
         ) : null}
 
+        {/* Serial number reference badge — bottom-left, matches image-count pill aesthetic */}
+        {ad.serial_number ? (
+          <View style={[styles.serialBadge, isRTL ? { right: 8, left: undefined } : { left: 8 }]}>
+            <MaterialIcons name="tag" size={8} color="rgba(255,255,255,0.85)" />
+            <Text style={styles.serialBadgeText}>#{ad.serial_number}</Text>
+          </View>
+        ) : null}
+
         {/* Sold overlay */}
         {isSold ? (
           <View style={styles.soldOverlay}>
@@ -472,6 +480,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xs, paddingHorizontal: 5, paddingVertical: 2,
   },
   sponsoredText: { fontSize: 9, fontWeight: '700' },
+
+  // Serial number badge — bottom-left corner, matches image-count pill style
+  serialBadge: {
+    position: 'absolute', bottom: 32,
+    flexDirection: 'row', alignItems: 'center', gap: 2,
+    backgroundColor: 'rgba(0,0,0,0.60)',
+    borderRadius: Radius.xs, paddingHorizontal: 5, paddingVertical: 2,
+    zIndex: 9,
+  },
+  serialBadgeText: { color: 'rgba(255,255,255,0.9)', fontSize: 8, fontWeight: '700', letterSpacing: 0.2 },
 
   // Price badge
   priceBadge: {

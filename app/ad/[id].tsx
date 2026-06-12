@@ -14,6 +14,7 @@ import { blockUser, isUserBlocked, unblockUser } from '@/services/blockService';
 import { fetchOrCreateConversation } from '@/services/chatService';
 import { getSupabaseClient } from '@/template';
 import { PromotionModal } from '@/components/feature/PromotionModal';
+import { Modal as RNModal } from 'react-native';
 import { ImageZoomGallery } from '@/components/feature/ImageZoomGallery';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -56,6 +57,9 @@ export default function AdDetailScreen() {
   const [selectedReason, setSelectedReason] = useState('');
   const [reporting, setReporting] = useState(false);
   const [promoteVisible, setPromoteVisible] = useState(false);
+  const [boostModalVisible, setBoostModalVisible] = useState(false);
+  const [boostDays, setBoostDays] = useState<1 | 3 | 7>(1);
+  const [boosting, setBoosting] = useState(false);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [relatedAds, setRelatedAds] = useState<Ad[]>([]);
@@ -89,6 +93,34 @@ export default function AdDetailScreen() {
       }
     });
   }, [id]);
+
+  const handleBoostAd = async () => {
+    if (!ad || !user) return;
+    setBoosting(true);
+    const boostedUntil = new Date(Date.now() + boostDays * 24 * 60 * 60 * 1000).toISOString();
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('ads')
+      .update({ status: 'featured', boosted_until: boostedUntil })
+      .eq('id', ad.id);
+    setBoosting(false);
+    if (error) {
+      showAlert(isAr ? 'خطأ' : 'Error', error.message);
+      return;
+    }
+    // Update local state immediately
+    setAd(prev => prev ? { ...prev, status: 'featured', boosted_until: boostedUntil } : prev);
+    // Clear ads cache so feed refetches and boosted ad floats to top
+    const { clearAdsCache } = await import('@/services/adsService');
+    clearAdsCache();
+    setBoostModalVisible(false);
+    showAlert(
+      isAr ? 'تم التفعيل! ⚡' : 'Boosted! ⚡',
+      isAr
+        ? `إعلانك مميز الآن لمدة ${boostDays} ${boostDays === 1 ? 'يوم' : 'أيام'}. سيظهر في أعلى قائمة الإعلانات.`
+        : `Your ad is now boosted for ${boostDays} ${boostDays === 1 ? 'day' : 'days'}. It will appear at the top of listings.`
+    );
+  };
 
   const handleChat = async () => {
     if (!user) return router.push('/login');
@@ -346,6 +378,16 @@ export default function AdDetailScreen() {
                 <MaterialIcons name="edit" size={13} color={colors.primary} />
                 <Text style={[styles.adActionBtnText, { color: colors.primary }]}>{isAr ? 'تعديل' : 'Edit'}</Text>
               </Pressable>
+              {/* Boost */}
+              {(ad.status === 'active' || ad.status === 'featured') ? (
+                <Pressable
+                  style={[styles.adActionBtn, { backgroundColor: '#FEF3C7', borderColor: '#D97706' }]}
+                  onPress={() => setBoostModalVisible(true)}
+                >
+                  <MaterialIcons name="bolt" size={13} color="#D97706" />
+                  <Text style={[styles.adActionBtnText, { color: '#D97706' }]}>{isAr ? 'تمييز' : 'Boost'}</Text>
+                </Pressable>
+              ) : null}
               {ad.status === 'active' || ad.status === 'featured' ? (
                 <>
                   {/* Mark as sold */}
@@ -459,6 +501,77 @@ export default function AdDetailScreen() {
 
       {/* ── PROMOTION MODAL ── */}
       <PromotionModal visible={promoteVisible} onClose={() => setPromoteVisible(false)} />
+
+      {/* ── BOOST DURATION PICKER MODAL ── */}
+      <RNModal
+        visible={boostModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setBoostModalVisible(false)}
+        statusBarTranslucent
+      >
+        <Pressable style={boostS.overlay} onPress={() => setBoostModalVisible(false)}>
+          <Pressable style={[boostS.sheet, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
+            <View style={[boostS.handle, { backgroundColor: colors.border }]} />
+            <View style={boostS.headerRow}>
+              <View style={[boostS.headerIcon, { backgroundColor: '#FFF7ED' }]}>
+                <MaterialIcons name="bolt" size={22} color="#D97706" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[boostS.title, { color: colors.textPrimary }]}>
+                  {isAr ? 'تمييز الإعلان ⚡' : 'Boost this Ad ⚡'}
+                </Text>
+                <Text style={[boostS.sub, { color: colors.textMuted }]}>
+                  {isAr ? 'اختر مدة التمييز' : 'Select boost duration'}
+                </Text>
+              </View>
+            </View>
+
+            {([1, 3, 7] as const).map(days => {
+              const isSelected = boostDays === days;
+              const label = isAr
+                ? days === 1 ? 'يوم واحد' : days === 3 ? 'ثلاثة أيام' : 'سبعة أيام'
+                : days === 1 ? '1 Day' : days === 3 ? '3 Days' : '7 Days';
+              const sub = isAr
+                ? days === 1 ? 'ظهور سريع لمدة 24 ساعة' : days === 3 ? 'ظهور معزز لثلاثة أيام' : 'البقاء في القمة لمدة أسبوع'
+                : days === 1 ? '24-hour visibility boost' : days === 3 ? 'Enhanced exposure for 3 days' : 'Stay on top for a week';
+              return (
+                <Pressable
+                  key={days}
+                  style={[boostS.option, { borderColor: isSelected ? '#D97706' : colors.border, backgroundColor: isSelected ? '#FFF7ED' : colors.background }]}
+                  onPress={() => setBoostDays(days)}
+                >
+                  <View style={[boostS.optIcon, { backgroundColor: isSelected ? '#FEF3C7' : colors.surfaceTint }]}>
+                    <Text style={boostS.optEmoji}>{days === 1 ? '⚡' : days === 3 ? '🔥' : '🚀'}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[boostS.optLabel, { color: isSelected ? '#92400E' : colors.textPrimary }]}>{label}</Text>
+                    <Text style={[boostS.optSub, { color: isSelected ? '#B45309' : colors.textMuted }]}>{sub}</Text>
+                  </View>
+                  {isSelected ? <MaterialIcons name="check-circle" size={20} color="#D97706" /> : <View style={[boostS.optRadio, { borderColor: colors.border }]} />}
+                </Pressable>
+              );
+            })}
+
+            <Pressable
+              style={[boostS.confirmBtn, { backgroundColor: '#D97706', opacity: boosting ? 0.7 : 1 }]}
+              onPress={handleBoostAd}
+              disabled={boosting}
+            >
+              {boosting
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <MaterialIcons name="bolt" size={20} color="#fff" />}
+              <Text style={boostS.confirmText}>
+                {boosting ? (isAr ? 'جاري التفعيل...' : 'Activating...') : (isAr ? 'تفعيل التمييز' : 'Activate Boost')}
+              </Text>
+            </Pressable>
+
+            <Pressable style={[boostS.cancelBtn, { backgroundColor: colors.background }]} onPress={() => setBoostModalVisible(false)}>
+              <Text style={[boostS.cancelText, { color: colors.textPrimary }]}>{isAr ? 'إلغاء' : 'Cancel'}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </RNModal>
 
       {/* ── IMAGE ZOOM GALLERY ── */}
       {images.length > 0 ? (

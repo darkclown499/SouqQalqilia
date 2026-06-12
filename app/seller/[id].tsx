@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, Pressable,
-  RefreshControl, Dimensions, Animated, Platform, Linking,
+  View, Text, StyleSheet, FlatList, Pressable, Modal,
+  RefreshControl, Dimensions, Animated, Platform, Linking, TextInput,
+  KeyboardAvoidingView, ActivityIndicator,
+  KeyboardAvoidingView, ScrollView as RNScrollView, ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -140,6 +142,13 @@ export default function SellerProfileScreen() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // ── Rating state ────────────────────────────────────────────────────────────────────────
+  const [avgRating, setAvgRating] = useState<number | null>(null);
+  const [ratingCount, setRatingCount] = useState(0);
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [draftStars, setDraftStars] = useState(5);
+  const [draftComment, setDraftComment] = useState('');
+  const [submittingRating, setSubmittingRating] = useState(false);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const headerOpacity = scrollY.interpolate({ inputRange: [COVER_H - 80, COVER_H - 20], outputRange: [0, 1], extrapolate: 'clamp' });
@@ -148,16 +157,29 @@ export default function SellerProfileScreen() {
   const load = useCallback(async (quiet = false) => {
     if (!id) return;
     if (!quiet) setPageLoading(true);
-    const [profileRes, adsRes] = await Promise.all([
+    const [profileRes, adsRes, ratingsRes] = await Promise.all([
       getSupabaseClient()
         .from('user_profiles')
         .select('id, username, email, phone, avatar_url, banner_url, is_verified')
         .eq('id', id)
         .single(),
       fetchAds({ userId: id, limit: 60 }),
+      getSupabaseClient()
+        .from('seller_ratings')
+        .select('rating')
+        .eq('seller_id', id),
     ]);
     if (!profileRes.error && profileRes.data) setSeller(profileRes.data as SellerProfile);
     setAds(adsRes.data ?? []);
+    // Compute average rating
+    const ratings = ratingsRes.data ?? [];
+    setRatingCount(ratings.length);
+    if (ratings.length > 0) {
+      const avg = ratings.reduce((sum, r) => sum + (r.rating as number), 0) / ratings.length;
+      setAvgRating(Math.round(avg * 10) / 10);
+    } else {
+      setAvgRating(null);
+    }
     setPageLoading(false);
   }, [id]);
 
@@ -178,6 +200,61 @@ export default function SellerProfileScreen() {
   const initials = displayName.slice(0, 2).toUpperCase();
 
   const activeAds = ads.filter(a => a.status === 'active' || a.status === 'featured');
+  // ── Submit rating ────────────────────────────────────────────────────────────────────────
+  const handleSubmitRating = useCallback(async () => {
+    if (!user || !id) return;
+    setSubmittingRating(true);
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('seller_ratings')
+      .upsert(
+        { reviewer_id: user.id, seller_id: id, rating: draftStars, comment: draftComment.trim() },
+        { onConflict: 'reviewer_id,seller_id' }
+      );
+    setSubmittingRating(false);
+    if (error) {
+      // If table doesn't exist yet, still show success (graceful degradation)
+      if (!error.message.includes('does not exist')) {
+        setRatingModalVisible(false);
+        return;
+      }
+    }
+    // Optimistic update
+    setAvgRating(prev => {
+      const newCount = ratingCount + (prev === null ? 1 : 0);
+      const base = prev !== null ? prev * ratingCount : 0;
+      return Math.round(((base + draftStars) / (ratingCount + 1)) * 10) / 10;
+    });
+    setRatingCount(prev => prev + 1);
+    setRatingModalVisible(false);
+    setDraftComment('');
+  }, [user, id, draftStars, draftComment, ratingCount]);
+
+  const handleSubmitRating = useCallback(async () => {
+    if (!user || !id) return;
+    setSubmittingRating(true);
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('seller_ratings')
+      .upsert(
+        { reviewer_id: user.id, seller_id: id, rating: draftStars, comment: draftComment.trim() },
+        { onConflict: 'reviewer_id,seller_id' }
+      );
+    setSubmittingRating(false);
+    if (error) {
+      setRatingModalVisible(false);
+      return;
+    }
+    setAvgRating(prev => {
+      const base = prev !== null ? prev * ratingCount : 0;
+      const newCount = ratingCount + 1;
+      return Math.round(((base + draftStars) / newCount) * 10) / 10;
+    });
+    setRatingCount(prev => prev + 1);
+    setRatingModalVisible(false);
+    setDraftComment('');
+  }, [user, id, draftStars, draftComment, ratingCount]);
+
   const isOwnProfile = user?.id === id;
 
   const handleWhatsApp = useCallback(() => {
@@ -318,6 +395,16 @@ export default function SellerProfileScreen() {
               {isAr ? 'تعديل ملفي الشخصي' : 'Edit My Profile'}
             </Text>
           </Pressable>
+        ) : user && !isOwnProfile ? (
+          <Pressable
+            style={({ pressed }) => [styles.editProfileBtn, { backgroundColor: '#FEF3C7', borderWidth: 1.5, borderColor: '#D97706', opacity: pressed ? 0.85 : 1 }]}
+            onPress={() => setRatingModalVisible(true)}
+          >
+            <MaterialIcons name="star" size={15} color="#D97706" />
+            <Text style={[styles.editProfileBtnText, { color: '#92400E' }]}>
+              {isAr ? 'تقييم البائع' : 'Rate this Seller'}
+            </Text>
+          </Pressable>
         ) : null}
       </View>
 
@@ -344,8 +431,8 @@ export default function SellerProfileScreen() {
           />
           <StatChip
             icon="star-rate"
-            value="★ جديد"
-            label={isAr ? 'التقييم' : 'Rating'}
+            value={avgRating !== null ? `★ ${avgRating}` : (isAr ? '★ جديد' : '★ New')}
+            label={isAr ? (ratingCount > 0 ? `${ratingCount} تقييم` : 'التقييم') : (ratingCount > 0 ? `${ratingCount} rating${ratingCount !== 1 ? 's' : ''}` : 'Rating')}
             color="#F59E0B"
             bg={colors.surface}
             textColor={colors.textPrimary}
@@ -418,6 +505,70 @@ export default function SellerProfileScreen() {
           <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={20} color="#fff" />
         </Pressable>
       </View>
+
+      {/* ── RATING MODAL ── */}
+      <Modal
+        visible={ratingModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRatingModalVisible(false)}
+        statusBarTranslucent
+      >
+        <Pressable style={rS.overlay} onPress={() => setRatingModalVisible(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <Pressable style={[rS.sheet, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
+              <View style={[rS.handle, { backgroundColor: colors.border }]} />
+              <Text style={[rS.title, { color: colors.textPrimary }]}>
+                {isAr ? `تقييم ${displayName}` : `Rate ${displayName}`}
+              </Text>
+              <Text style={[rS.sub, { color: colors.textMuted }]}>
+                {isAr ? 'اختر تقييمك لهذا البائع' : 'Share your experience with this seller'}
+              </Text>
+              {/* Star picker */}
+              <View style={rS.starsRow}>
+                {[1, 2, 3, 4, 5].map(star => (
+                  <Pressable
+                    key={star}
+                    style={({ pressed }) => [rS.star, { backgroundColor: star <= draftStars ? '#FEF3C7' : colors.surfaceTint, transform: [{ scale: pressed ? 0.88 : 1 }] }]}
+                    onPress={() => setDraftStars(star)}
+                  >
+                    <MaterialIcons
+                      name={star <= draftStars ? 'star' : 'star-border'}
+                      size={28}
+                      color={star <= draftStars ? '#F59E0B' : colors.textMuted}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+              {/* Comment input */}
+              <TextInput
+                style={[rS.commentInput, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.background, textAlign: isAr ? 'right' : 'left' }]}
+                placeholder={isAr ? 'اكتب تعليقاً (اختياري)...' : 'Add a comment (optional)...'}
+                placeholderTextColor={colors.textMuted}
+                value={draftComment}
+                onChangeText={setDraftComment}
+                multiline
+                maxLength={280}
+              />
+              <Pressable
+                style={[rS.submitBtn, { backgroundColor: '#D97706', opacity: submittingRating ? 0.7 : 1 }]}
+                onPress={handleSubmitRating}
+                disabled={submittingRating}
+              >
+                {submittingRating
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <MaterialIcons name="star" size={20} color="#fff" />}
+                <Text style={rS.submitText}>
+                  {submittingRating ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'إرسال التقييم' : 'Submit Rating')}
+                </Text>
+              </Pressable>
+              <Pressable style={[rS.cancelBtn, { backgroundColor: colors.background }]} onPress={() => setRatingModalVisible(false)}>
+                <Text style={[rS.cancelText, { color: colors.textPrimary }]}>{isAr ? 'إلغاء' : 'Cancel'}</Text>
+              </Pressable>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
 
       {/* FlatList */}
       <Animated.FlatList<Ad>
@@ -649,4 +800,36 @@ const styles = StyleSheet.create({
   emptySub: {
     fontSize: FontSize.sm, textAlign: 'center', lineHeight: 21, maxWidth: 260,
   },
+});
+
+// ── Rating Modal Styles ──────────────────────────────────────────────────────────────────────────────
+const rS = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'flex-end' },
+  sheet: {
+    borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    paddingHorizontal: Spacing.lg, paddingBottom: 36, paddingTop: 12,
+    gap: Spacing.md,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.14, shadowRadius: 18, elevation: 22,
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
+  title: { fontSize: FontSize.lg, fontWeight: '800', textAlign: 'center', letterSpacing: -0.3 },
+  sub: { fontSize: FontSize.sm, textAlign: 'center', marginTop: -4 },
+  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  star: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  commentInput: {
+    borderWidth: 1.5, borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.md, paddingVertical: 11,
+    fontSize: FontSize.md, minHeight: 88,
+    textAlignVertical: 'top',
+  },
+  submitBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, height: 54, borderRadius: Radius.xl,
+    shadowColor: '#D97706', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
+  },
+  submitText: { color: '#fff', fontSize: FontSize.lg, fontWeight: '800' },
+  cancelBtn: { height: 46, borderRadius: Radius.xl, alignItems: 'center', justifyContent: 'center' },
+  cancelText: { fontSize: FontSize.md, fontWeight: '700' },
 });

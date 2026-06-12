@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
@@ -10,6 +11,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
 const MAX_RECENTLY_VIEWED = 6;
+const SEARCH_HISTORY_KEY = 'search_history_v1';
+const MAX_SEARCH_HISTORY = 8;
+
+async function loadSearchHistory(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+async function saveSearchHistory(query: string, current: string[]): Promise<string[]> {
+  try {
+    const deduped = [query, ...current.filter(q => q !== query)].slice(0, MAX_SEARCH_HISTORY);
+    await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(deduped));
+    return deduped;
+  } catch { return current; }
+}
+
+async function clearSearchHistory(): Promise<void> {
+  try { await AsyncStorage.removeItem(SEARCH_HISTORY_KEY); } catch { /* ignore */ }
+}
 
 async function addToRecentlyViewed(ad: Ad): Promise<void> {
   try {
@@ -122,6 +144,7 @@ export default function HomeScreen() {
   const [appliedMaxPrice, setAppliedMaxPrice] = useState<number | undefined>(undefined);
   const [appliedCondition, setAppliedCondition] = useState<Condition>(null);
 
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [interstitials, setInterstitials] = useState<InterstitialAd[]>(_interstitialsCache ?? []);
   const [activeInterstitial, setActiveInterstitial] = useState<InterstitialAd | null>(null);
   const [interstitialVisible, setInterstitialVisible] = useState(false);
@@ -133,7 +156,10 @@ export default function HomeScreen() {
   const activeFilterCount = [appliedArea, appliedMaxPrice !== undefined ? '1' : null, appliedCondition].filter(Boolean).length;
   const isAr = language === 'ar';
 
-  useEffect(() => { loadRecentlyViewed().then(setRecentlyViewed); }, []);
+  useEffect(() => {
+    loadRecentlyViewed().then(setRecentlyViewed);
+    loadSearchHistory().then(setSearchHistory);
+  }, []);
 
   useEffect(() => {
     getSupabaseClient()
@@ -164,7 +190,7 @@ export default function HomeScreen() {
       condition: appliedCondition ?? undefined,
       sortBy,
     });
-  }, [selectedCategory, sortBy, appliedArea, appliedMaxPrice, appliedCondition]);
+  }, [selectedCategory, sortBy, appliedArea, appliedMaxPrice, appliedCondition, load]);
 
   useEffect(() => {
     if (!getBannersCache()) {
@@ -209,13 +235,15 @@ export default function HomeScreen() {
   const feedRows = useMemo(() => buildFeedRows(filteredAds), [filteredAds]);
 
   const handleLoadMore = useCallback(() => {
-    if (!loadingMore && hasMore) loadMore({
-      categoryId: selectedCategory ?? undefined,
-      location: appliedArea ?? undefined,
-      maxPrice: appliedMaxPrice,
-      condition: appliedCondition ?? undefined,
-      sortBy,
-    });
+    if (!loadingMore && hasMore) {
+      loadMore({
+        categoryId: selectedCategory ?? undefined,
+        location: appliedArea ?? undefined,
+        maxPrice: appliedMaxPrice,
+        condition: appliedCondition ?? undefined,
+        sortBy,
+      });
+    }
   }, [loadingMore, hasMore, selectedCategory, appliedArea, appliedMaxPrice, appliedCondition, sortBy, loadMore]);
 
   const handleRefresh = useCallback(() => {
@@ -269,6 +297,16 @@ export default function HomeScreen() {
   const handleRemoveRecent = useCallback((adId: string) => {
     removeFromRecentlyViewed(adId);
     setRecentlyViewed(prev => prev.filter(a => a.id !== adId));
+  }, []);
+
+  const handleSearchHistoryChipPress = useCallback((query: string) => {
+    saveSearchHistory(query, searchHistory).then(setSearchHistory);
+    router.push({ pathname: '/search', params: { q: query } } as any);
+  }, [searchHistory, router]);
+
+  const handleClearSearchHistory = useCallback(async () => {
+    await clearSearchHistory();
+    setSearchHistory([]);
   }, []);
 
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
@@ -440,6 +478,36 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
+      {/* ── SEARCH HISTORY CHIPS ── */}
+      {searchHistory.length > 0 ? (
+        <View style={[styles.historySection, { paddingHorizontal: H_PAD }]}>
+          <View style={[styles.historyHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
+              <MaterialIcons name="history" size={14} color={colors.primary} />
+            </View>
+            <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>
+              {isAr ? 'عمليات البحث السابقة' : 'Recent Searches'}
+            </Text>
+            <Pressable onPress={handleClearSearchHistory} hitSlop={8} style={[styles.clearHistoryBtn, { backgroundColor: colors.surfaceTint }]}>
+              <MaterialIcons name="delete-sweep" size={13} color={colors.textMuted} />
+              <Text style={[styles.clearHistoryText, { color: colors.textMuted }]}>{isAr ? 'مسح الكل' : 'Clear all'}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.historyChips}>
+            {searchHistory.map((q, i) => (
+              <Pressable
+                key={i}
+                style={({ pressed }) => [styles.historyChip, { backgroundColor: pressed ? colors.primary : colors.surface, borderColor: pressed ? colors.primary : colors.border }]}
+                onPress={() => handleSearchHistoryChipPress(q)}
+              >
+                <MaterialIcons name="search" size={12} color={colors.textMuted} />
+                <Text style={[styles.historyChipText, { color: colors.textSecondary }]} numberOfLines={1}>{q}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       {/* ── LISTINGS HEADER ── */}
       <View style={[styles.listingsHeader, { flexDirection: isRTL ? 'row-reverse' : 'row', borderTopColor: colors.borderLight }]}>
         <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
@@ -472,7 +540,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleOpenFilter, handleClearFilters, router, setSortBy]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, router, setSortBy, filteredAds.length]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -1026,6 +1094,22 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   endOfListText: { fontSize: FontSize.sm, fontWeight: '500' },
+
+  // ── Search history ──
+  historySection: { marginBottom: Spacing.lg },
+  historyHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.sm },
+  clearHistoryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: Radius.full, paddingHorizontal: 9, paddingVertical: 5,
+  },
+  clearHistoryText: { fontSize: FontSize.xs, fontWeight: '600' },
+  historyChips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  historyChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: Radius.full, borderWidth: 1.5,
+  },
+  historyChipText: { fontSize: FontSize.xs, fontWeight: '600', maxWidth: 130 },
 });
 
 // ── Filter Sheet Styles ────────────────────────────────────────────────────────
