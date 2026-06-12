@@ -247,6 +247,7 @@ export default function RootLayout() {
                 <Stack.Screen name="edit-ad/[id]" options={{ headerShown: false }} />
                 <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
                 <Stack.Screen name="seller/[id]" options={{ headerShown: false }} />
+                <Stack.Screen name="ai-support" options={{ headerShown: false }} />
 
               </Stack>
             </AuthProvider>

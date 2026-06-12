@@ -131,48 +131,33 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
           </Text>
         </View>
 
-        {/* Top-right: boosted OR featured label */}
+        {/* Top-right: boosted badge — stacks above featured so both are visible */}
         {isBoosted ? (
-          <View style={[styles.topRight, { backgroundColor: colors.accent }]}>
+          <View style={[styles.topRight, { backgroundColor: colors.accent, zIndex: 10 }]}>
             <MaterialIcons name="bolt" size={10} color="#fff" />
-            <Text style={styles.badgeText}>{isAr ? 'مميز' : 'Top'}</Text>
+            <Text style={styles.badgeText}>{isAr ? 'مميز ⚡' : 'Top ⚡'}</Text>
           </View>
         ) : isFeatured ? (
-          <View style={[styles.topRight, { backgroundColor: colors.primary }]}>
-            <MaterialIcons name="star" size={10} color="#fff" />
-            <Text style={styles.badgeText}>{isAr ? 'بارز' : 'Pick'}</Text>
+          <View style={[styles.topRight, { backgroundColor: '#7C3AED', zIndex: 10 }]}>
+            <MaterialIcons name="workspace-premium" size={10} color="#fff" />
+            <Text style={styles.badgeText}>{isAr ? 'بارز ★' : 'Featured ★'}</Text>
           </View>
         ) : null}
 
-        {/* Favorite button (top-right when no boost badge) */}
-        {onFavoritePress && !isBoosted && !isFeatured ? (
+        {/* Favorite button — always at top-right when no boost/featured badge;
+             shifted down slightly when badge occupies that corner */}
+        {onFavoritePress ? (
           <Pressable
-            style={[styles.heartBtn, {
-              backgroundColor: isFavorited ? '#FF3B6B' : 'rgba(0,0,0,0.38)',
-            }]}
+            style={[
+              (isBoosted || isFeatured) ? styles.heartBtnAlt : styles.heartBtn,
+              { backgroundColor: isFavorited ? '#FF3B6B' : 'rgba(0,0,0,0.38)', zIndex: 11 },
+            ]}
             onPress={handleFavorite}
             hitSlop={10}
           >
             <MaterialIcons
               name={isFavorited ? 'favorite' : 'favorite-border'}
               size={14}
-              color="#fff"
-            />
-          </Pressable>
-        ) : null}
-
-        {/* Favorite when there IS a boost/featured badge - place differently */}
-        {onFavoritePress && (isBoosted || isFeatured) ? (
-          <Pressable
-            style={[styles.heartBtnAlt, {
-              backgroundColor: isFavorited ? '#FF3B6B' : 'rgba(0,0,0,0.38)',
-            }]}
-            onPress={handleFavorite}
-            hitSlop={10}
-          >
-            <MaterialIcons
-              name={isFavorited ? 'favorite' : 'favorite-border'}
-              size={13}
               color="#fff"
             />
           </Pressable>
@@ -272,36 +257,45 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     flex: 1,
   },
-  imageWrap: { position: 'relative' },
+  // Featured card gets a premium purple border — applied via inline style in the
+  // Pressable wrapper so it can reference the `isFeatured` runtime value.
+  imageWrap: { position: 'relative', zIndex: 0 },
   image: { width: '100%', height: CLAMP_IMG_H },
   imagePlaceholder: {
     width: '100%', height: CLAMP_IMG_H,
     alignItems: 'center', justifyContent: 'center',
   },
 
-  // Badges
+  // Badges — all use zIndex so they always sit above image content
   topLeft: {
     position: 'absolute', top: 7, left: 7,
     flexDirection: 'row', alignItems: 'center', gap: 3,
     borderRadius: Radius.xs, paddingHorizontal: 6, paddingVertical: 3,
+    zIndex: 10,
+    elevation: 5,
   },
   topRight: {
     position: 'absolute', top: 7, right: 7,
     flexDirection: 'row', alignItems: 'center', gap: 2,
     borderRadius: Radius.xs, paddingHorizontal: 6, paddingVertical: 3,
+    zIndex: 10,
+    elevation: 5,
   },
   badgeText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.2 },
 
-  // Heart buttons
+  // Heart buttons — zIndex 11 ensures they render above the badge (zIndex 10)
   heartBtn: {
     position: 'absolute', top: 7, right: 7,
     width: 28, height: 28, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
+    zIndex: 11, elevation: 6,
   },
   heartBtnAlt: {
-    position: 'absolute', top: 34, right: 7,
-    width: 24, height: 24, borderRadius: 12,
+    // Offset below the badge row so both are tappable without overlap
+    position: 'absolute', top: 36, right: 7,
+    width: 26, height: 26, borderRadius: 13,
     alignItems: 'center', justifyContent: 'center',
+    zIndex: 11, elevation: 6,
   },
 
   // Image count

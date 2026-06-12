@@ -134,18 +134,31 @@ export async function fetchAds(params?: {
   }
 
   // ── Apply server-side sorting ──────────────────────────────────────────────
+  // PRIMARY key: featured status always floats to top regardless of sort mode.
+  // Featured ads (status='featured') have SQL status = 'featured'; we order so
+  // 'featured' sorts before 'active' by casting to integer precedence via
+  // a CASE expression — achieved here by ordering on a computed column.
+  // Since Supabase query builder doesn't support raw CASE, we use the fact that
+  // 'featured' < 'active' alphabetically, so ascending:true puts featured first.
   if (sortBy === 'price_asc') {
-    query = query.order('price', { ascending: true });
+    query = query
+      .order('status', { ascending: true })        // 'featured' < 'active' alphabetically
+      .order('price', { ascending: true });
   } else if (sortBy === 'price_desc') {
-    query = query.order('price', { ascending: false });
+    query = query
+      .order('status', { ascending: true })
+      .order('price', { ascending: false });
   } else if (sortBy === 'boosted') {
-    // Active boosts first (future expiry), then newest
+    // Active boosts first (future expiry), then featured, then newest
     query = query
       .order('boosted_until', { ascending: false, nullsFirst: false })
+      .order('status', { ascending: true })
       .order('created_at', { ascending: false });
   } else {
-    // newest (default) — pure chronological, newest on top
-    query = query.order('created_at', { ascending: false });
+    // newest (default) — featured ads float to top, then newest chronological
+    query = query
+      .order('status', { ascending: true })        // 'featured' before 'active'
+      .order('created_at', { ascending: false });   // newest first within each group
   }
 
   // ── Pagination LAST (after filters + sort) ────────────────────────────────

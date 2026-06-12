@@ -702,7 +702,28 @@ export default function ProfileScreen() {
               <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <SectionHeader icon="support-agent" label={isRTL ? 'مركز المساعدة' : 'Help Center'} color="#0A6E5C" bg={colors.primaryGhost} />
 
-                {/* WhatsApp */}
+                {/* ── AI SUPPORT CHAT ── */}
+              <View style={[styles.waWrap, { borderBottomColor: colors.borderLight }]}>
+                <Pressable
+                  style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1, backgroundColor: colors.primary }]}
+                  onPress={() => router.push('/ai-support')}
+                >
+                  <View style={styles.waIconBadge}>
+                    <MaterialIcons name="smart-toy" size={26} color="#fff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.waTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+                      {isRTL ? 'مساعد سوق قلقيلية الذكي' : 'Souq Qalqilya AI Assistant'}
+                    </Text>
+                    <Text style={[styles.waSub, { textAlign: isRTL ? 'right' : 'left' }]}>
+                      {isRTL ? 'إجابات فورية على أسئلتك بالعربية' : 'Instant answers to your questions'}
+                    </Text>
+                  </View>
+                  <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={18} color="rgba(255,255,255,0.7)" />
+                </Pressable>
+              </View>
+
+              {/* WhatsApp */}
                 <View style={[styles.waWrap, { borderBottomColor: colors.borderLight }]}>
                   <Pressable style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1 }]} onPress={handleWhatsApp}>
                     <View style={styles.waIconBadge}><MaterialIcons name="support-agent" size={26} color="#fff" /></View>
