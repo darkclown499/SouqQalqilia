@@ -40,7 +40,6 @@ export async function fetchMyConversations(): Promise<{ data: Conversation[]; er
 
   if (error) return { data: [], error: error.message };
 
-  // Attach per-conversation unread count
   // Batch unread count: one query for all conversations (avoids N+1 queries)
   const convIds = (data as any[]).map((c) => c.id);
   let unreadMap: Record<string, number> = {};
@@ -107,6 +106,7 @@ export async function fetchConversationById(id: string): Promise<{ data: Convers
   return { data: data as Conversation, error: null };
 }
 
+/** Full message fetch — used for initial load and pull-to-refresh */
 export async function fetchMessages(conversationId: string): Promise<{ data: Message[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -119,13 +119,78 @@ export async function fetchMessages(conversationId: string): Promise<{ data: Mes
   return { data: data as Message[], error: null };
 }
 
+/**
+ * INCREMENTAL fetch — fetches only messages newer than `since` timestamp.
+ * Also reads the other party's typing_at field in the same request.
+ * This eliminates re-sending the full message history on every poll tick.
+ *
+ * @param since         ISO timestamp of the last known message
+ * @param isBuyer       Role of the current user (determines which typing field to read)
+ * @returns             New messages + the other party's typing timestamp
+ */
+export async function fetchMessagesSince(
+  conversationId: string,
+  since: string,
+  isBuyer: boolean | null,
+): Promise<{ data: Message[]; typing: string | null; error: string | null }> {
+  const supabase = getSupabaseClient();
+
+  // Run both queries in parallel: new messages + typing status
+  const [msgsResult, convResult] = await Promise.all([
+    supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .gt('created_at', since)          // ← only messages strictly newer
+      .order('created_at', { ascending: true }),
+    // Only fetch typing field when we know the role
+    isBuyer !== null
+      ? supabase
+          .from('conversations')
+          .select('buyer_typing_at, seller_typing_at')
+          .eq('id', conversationId)
+          .single()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (msgsResult.error) return { data: [], typing: null, error: msgsResult.error.message };
+
+  // Determine which typing field belongs to the OTHER party
+  let typing: string | null = null;
+  if (isBuyer !== null && convResult.data) {
+    typing = isBuyer
+      ? (convResult.data as any).seller_typing_at ?? null
+      : (convResult.data as any).buyer_typing_at ?? null;
+  }
+
+  return { data: msgsResult.data as Message[], typing, error: null };
+}
+
+/**
+ * Record that the current user is actively viewing this conversation.
+ * The push-notify edge function reads this to decide whether to send a push
+ * notification (skips it if the recipient polled within the last 10 seconds).
+ */
+export async function updateLastPolled(
+  conversationId: string,
+  isBuyer: boolean | null,
+): Promise<void> {
+  if (isBuyer === null) return;
+  const supabase = getSupabaseClient();
+  const col = isBuyer ? 'buyer_last_polled_at' : 'seller_last_polled_at';
+  await supabase
+    .from('conversations')
+    .update({ [col]: new Date().toISOString() })
+    .eq('id', conversationId);
+}
+
 export async function sendMessage(
   conversationId: string,
   content: string
-): Promise<{ data: Message | null; recipientId: string | null; error: string | null }> {
+): Promise<{ data: Message | null; recipientId: string | null; isBuyerSending: boolean; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { data: null, recipientId: null, error: 'Not authenticated' };
+  if (!user) return { data: null, recipientId: null, isBuyerSending: false, error: 'Not authenticated' };
 
   // Insert message
   const { data, error } = await supabase
@@ -134,30 +199,33 @@ export async function sendMessage(
     .select()
     .single();
 
-  if (error) return { data: null, recipientId: null, error: error.message };
+  if (error) return { data: null, recipientId: null, isBuyerSending: false, error: error.message };
 
-  // Update conversation last_message
-  await supabase
-    .from('conversations')
-    .update({ last_message: content, last_message_at: new Date().toISOString() })
-    .eq('id', conversationId);
+  // Update conversation last_message (parallel with recipient lookup)
+  const [, convResult] = await Promise.all([
+    supabase
+      .from('conversations')
+      .update({ last_message: content, last_message_at: new Date().toISOString() })
+      .eq('id', conversationId),
+    supabase
+      .from('conversations')
+      .select('buyer_id, seller_id')
+      .eq('id', conversationId)
+      .single(),
+  ]);
 
-  // Determine recipient
-  const { data: conv } = await supabase
-    .from('conversations')
-    .select('buyer_id, seller_id')
-    .eq('id', conversationId)
-    .single();
-
+  const conv = convResult.data;
   const recipientId = conv
     ? (conv.buyer_id === user.id ? conv.seller_id : conv.buyer_id)
     : null;
+  const isBuyerSending = conv?.buyer_id === user.id;
 
-  return { data: data as Message, recipientId, error: null };
+  return { data: data as Message, recipientId, isBuyerSending, error: null };
 }
 
 /**
  * Send a push notification to the message recipient via the push-notify edge function.
+ * Passes `is_buyer_recipient` so the edge function can check the correct polling column.
  * Fire-and-forget — never throws.
  */
 export async function notifyRecipient(
@@ -165,18 +233,20 @@ export async function notifyRecipient(
   senderName: string,
   messageContent: string,
   conversationId?: string,
+  /** true = recipient is the buyer (seller just sent), false = recipient is the seller */
+  isBuyerRecipient?: boolean,
 ): Promise<void> {
   try {
     const supabase = getSupabaseClient();
-    // Non-blocking — don't await the result in the critical path
     supabase.functions.invoke('push-notify', {
       body: {
         recipient_id: recipientId,
         sender_name: senderName,
         message_preview: messageContent.substring(0, 100),
         conversation_id: conversationId,
+        is_buyer_recipient: isBuyerRecipient,
       },
-    }).catch(() => {}); // swallow all errors silently
+    }).catch(() => {});
   } catch (_) {}
 }
 
@@ -193,7 +263,7 @@ export async function markMessagesRead(
     .neq('sender_id', currentUserId)
     .is('read_at', null);
 
-  // Reset app icon badge to 0 — fire-and-forget
+  // Reset app icon badge — fire-and-forget
   supabase.functions.invoke('push-notify', {
     body: { action: 'reset_badge', user_id: currentUserId },
   }).catch(() => {});

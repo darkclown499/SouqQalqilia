@@ -10,7 +10,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert } from '@/template';
 import { useMessages } from '@/hooks/useChat';
-import { fetchConversationById, sendMessage, markMessagesRead, updateTypingIndicator, fetchTypingStatus, notifyRecipient, deleteConversation, Conversation, Message } from '@/services/chatService';
+import { fetchConversationById, sendMessage, markMessagesRead, updateTypingIndicator, notifyRecipient, deleteConversation, Conversation, Message } from '@/services/chatService';
 import { blockUser, isUserBlocked } from '@/services/blockService';
 import { updateAdStatus } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -79,13 +79,17 @@ export default function ChatScreen() {
   const [text, setText] = useState('');
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [sending, setSending] = useState(false);
-  const [otherTyping, setOtherTyping] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const listRef = useRef<FlatList<MsgItem>>(null); // Added type argument to FlatList
-  const { messages, loading, refreshing, reload, pollSilent, appendMessage, updateMessage, markReadLocally } = useMessages(id);
+  const listRef = useRef<FlatList<MsgItem>>(null);
+
+  // Determine role — needed by useMessages for incremental fetch + typing field selection
+  // null until conversation loads (hook handles null gracefully)
+  const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
+
+  const { messages, loading, refreshing, otherTyping, reload, pollSilent, appendMessage, updateMessage, markReadLocally } = useMessages(id, isBuyer);
   // NOTE: Do NOT call useConversations() here — it would create an isolated instance
   // disconnected from the tab layout's badge. The tab layout polls every 2s and will
   // auto-refresh the unread count after markMessagesRead() updates the DB.
@@ -103,24 +107,8 @@ export default function ChatScreen() {
     }
   }, [id, user?.id]);
 
-  // Poll typing indicator every 2 seconds
-  useEffect(() => {
-    if (!id || !user || !conversation) return;
-    const isBuyer = conversation.buyer_id === user.id;
-    const check = async () => {
-      const status = await fetchTypingStatus(id);
-      const otherAt = isBuyer ? status.seller_typing_at : status.buyer_typing_at;
-      if (otherAt) {
-        const diff = Date.now() - new Date(otherAt).getTime();
-        setOtherTyping(diff < 4000);
-      } else {
-        setOtherTyping(false);
-      }
-    };
-    check();
-    const interval = setInterval(check, 2000);
-    return () => clearInterval(interval);
-  }, [id, user?.id, conversation]);
+  // Typing indicator is now handled inside useMessages via the unified poll interval.
+  // No separate interval needed here — this eliminates one redundant DB query per tick.
 
   const QUICK_REPLIES_AR = [
     'هل السعر قابل للتفاوض؟',
@@ -142,8 +130,7 @@ export default function ChatScreen() {
 
   const handleTyping = (val: string) => {
     setText(val);
-    if (!id || !user || !conversation) return;
-    const isBuyer = conversation.buyer_id === user.id;
+    if (!id || !user || isBuyer === null) return;
     updateTypingIndicator(id, isBuyer, true).catch(() => {});
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(() => {
@@ -155,12 +142,11 @@ export default function ChatScreen() {
   useEffect(() => {
     return () => {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-      if (id && user && conversation) {
-        const isBuyer = conversation.buyer_id === user.id;
+      if (id && user && isBuyer !== null) {
         updateTypingIndicator(id, isBuyer, false).catch(() => {});
       }
     };
-  }, [id, user?.id, conversation]);
+  }, [id, user?.id, isBuyer]);
 
   // ── Mark messages as read ──────────────────────────────────────────────────
   // Fires immediately on mount and whenever we detect new unread messages.
@@ -217,31 +203,36 @@ export default function ChatScreen() {
     };
     appendMessage(tempMsg);
 
-    const { data: sent, recipientId, error } = await sendMessage(id, content);
+    const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content);
     if (error) {
       showAlert(isAr ? 'خطأ' : 'Error', error);
+      // Remove the optimistic message on failure so it does not linger
+      updateMessage(tempId, { ...tempMsg, id: tempId });
     } else {
-      // Replace temp with confirmed DB message
+      // Replace temp with confirmed DB message (prevents duplicate on next poll)
       if (sent) updateMessage(tempId, sent);
-      // Reconcile with DB silently
-      pollSilent();
       // Send push notification to the other party (fire-and-forget)
+      // Pass is_buyer_recipient so the edge function checks the correct polling column
       if (recipientId) {
         const senderDisplayName =
           user?.username || user?.email?.split('@')[0] || 'رسالة جديدة';
-        notifyRecipient(recipientId, senderDisplayName, content, id);
+        notifyRecipient(
+          recipientId,
+          senderDisplayName,
+          content,
+          id,
+          !isBuyerSending, // recipient is buyer when sender is seller, and vice-versa
+        );
       }
     }
     setSending(false);
     // Clear typing indicator after send
-    if (conversation) {
-      const isBuyer = conversation.buyer_id === user?.id; // Added user?.id
+    if (isBuyer !== null) {
       updateTypingIndicator(id!, isBuyer, false).catch(() => {});
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     }
   };
 
-  const isBuyer = conversation?.buyer_id === user?.id;
   const isSeller = conversation?.seller_id === user?.id;
   const adStatus = (conversation as any)?.ads?.status as string | undefined;
   const adId = conversation?.ad_id;

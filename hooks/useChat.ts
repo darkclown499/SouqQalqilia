@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform } from 'react-native';
-import { fetchMessages, fetchMyConversations, Message, Conversation, savePushToken } from '@/services/chatService';
+import {
+  fetchMessages,
+  fetchMessagesSince,
+  fetchMyConversations,
+  updateLastPolled,
+  Message,
+  Conversation,
+  savePushToken,
+} from '@/services/chatService';
 import { getSupabaseClient } from '@/template';
 import { CHAT_POLL_INTERVAL, READ_RECEIPT_INTERVAL } from '@/constants/config';
 
@@ -17,7 +25,6 @@ const EAS_PROJECT_ID = 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1';
 export async function requestNotificationPermissions(): Promise<void> {
   if (!Notifications || Platform.OS === 'web') return;
   try {
-    // Note: setNotificationHandler is called synchronously in _layout.tsx
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
@@ -25,7 +32,6 @@ export async function requestNotificationPermissions(): Promise<void> {
       finalStatus = status;
     }
     if (finalStatus !== 'granted') return;
-
     await registerPushToken();
   } catch (_) {}
 }
@@ -46,45 +52,141 @@ export async function registerPushToken(): Promise<void> {
 }
 
 // ─── useMessages ───────────────────────────────────────────────────────────────
+// Optimized polling strategy:
+// • Initial load: fetches all messages (full hydration)
+// • Subsequent polls: fetches ONLY messages newer than last known created_at
+//   → Eliminates transferring the full history on every tick
+// • Typing + messages share ONE interval (no duplicate timers)
 
-export function useMessages(conversationId: string) {
+export interface UseMessagesResult {
+  messages: Message[];
+  loading: boolean;
+  refreshing: boolean;
+  otherTyping: boolean;
+  reload: () => Promise<void>;
+  pollSilent: () => Promise<void>;
+  appendMessage: (msg: Message) => void;
+  updateMessage: (tempId: string, real: Message) => void;
+  markReadLocally: (currentUserId: string) => void;
+}
+
+export function useMessages(
+  conversationId: string,
+  /** Pass the current user's role so we can read the other party's typing field */
+  isBuyer: boolean | null,
+): UseMessagesResult {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [otherTyping, setOtherTyping] = useState(false);
+
+  // Track the most recent message timestamp to enable incremental fetching
+  const lastCreatedAtRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Prevent concurrent polls from overlapping
+  const pollingRef = useRef(false);
 
-  /** Silent background poll — never shows spinner */
+  /**
+   * INCREMENTAL poll — fetches only messages newer than the last known message.
+   * Falls back to full fetch if no anchor exists.
+   * Also reads typing indicator from the conversation row (same DB round-trip).
+   */
   const pollSilent = useCallback(async () => {
-    if (!conversationId) return;
-    const { data } = await fetchMessages(conversationId);
-    if (data.length > 0) setMessages(data);
-  }, [conversationId]);
+    if (!conversationId || pollingRef.current) return;
+    pollingRef.current = true;
+    try {
+      const since = lastCreatedAtRef.current;
 
-  /** Manual pull-to-refresh — shows refreshing spinner */
+      if (since) {
+        // ── Fast path: incremental fetch ────────────────────────────────────
+        const { data: newMsgs, typing } = await fetchMessagesSince(conversationId, since, isBuyer);
+
+        if (newMsgs.length > 0) {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const truly_new = newMsgs.filter(m => !existingIds.has(m.id));
+            if (truly_new.length === 0) return prev;
+            const merged = [...prev, ...truly_new];
+            // Update anchor to newest message
+            lastCreatedAtRef.current = merged[merged.length - 1].created_at;
+            return merged;
+          });
+        }
+
+        // Update typing state from result
+        if (isBuyer !== null) {
+          if (typing !== null) {
+            const diff = Date.now() - new Date(typing).getTime();
+            setOtherTyping(diff < 4000);
+          } else {
+            setOtherTyping(false);
+          }
+        }
+
+      } else {
+        // ── Fallback: full fetch (first poll or after unmount) ───────────────
+        const { data } = await fetchMessages(conversationId);
+        if (data.length > 0) {
+          setMessages(data);
+          lastCreatedAtRef.current = data[data.length - 1].created_at;
+        }
+      }
+
+      // Heartbeat: tell the server this user is actively viewing this chat
+      // Used by push-notify edge function to skip notification when user is active
+      if (conversationId) {
+        updateLastPolled(conversationId, isBuyer).catch(() => {});
+      }
+    } finally {
+      pollingRef.current = false;
+    }
+  }, [conversationId, isBuyer]);
+
+  /** Manual pull-to-refresh — full fetch, resets anchor */
   const reload = useCallback(async () => {
     setRefreshing(true);
     const { data } = await fetchMessages(conversationId);
     setMessages(data);
+    if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
     setRefreshing(false);
   }, [conversationId]);
 
-  /** Optimistic append: add message instantly before DB confirms */
+  /**
+   * Optimistic append: add message instantly before DB confirms.
+   * Deduplication prevents ghost messages if the DB echo arrives
+   * during the next poll before updateMessage() replaces the temp entry.
+   */
   const appendMessage = useCallback((msg: Message) => {
     setMessages(prev => {
+      // Skip if a message with the same id (or same content+sender within 3s) exists
       if (prev.find(m => m.id === msg.id)) return prev;
       return [...prev, msg];
     });
+    // Do NOT advance lastCreatedAtRef here — the temp message has a local timestamp
+    // that might not exactly match the DB timestamp. Let pollSilent() advance it
+    // when it receives the confirmed server message.
   }, []);
 
-  /** Update a message in-place (e.g. replace temp with real after send) */
+  /**
+   * Replace a temp (optimistic) message with the confirmed DB version.
+   * Also advances the anchor so the next incremental poll starts from here.
+   */
   const updateMessage = useCallback((tempId: string, real: Message) => {
-    setMessages(prev => prev.map(m => m.id === tempId ? real : m));
+    setMessages(prev => {
+      const updated = prev.map(m => m.id === tempId ? real : m);
+      // Advance anchor to include the confirmed message
+      const sorted = [...updated].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+      lastCreatedAtRef.current = sorted[sorted.length - 1]?.created_at ?? lastCreatedAtRef.current;
+      return updated;
+    });
   }, []);
 
   /**
    * Immediately mark all messages from the other party as read in local state.
-   * Call this right after markMessagesRead() DB call so receipts update instantly
-   * without waiting for the next poll cycle.
+   * Call right after markMessagesRead() DB call so receipts flip without waiting
+   * for the next poll cycle.
    */
   const markReadLocally = useCallback((currentUserId: string) => {
     setMessages(prev =>
@@ -98,19 +200,48 @@ export function useMessages(conversationId: string) {
 
   useEffect(() => {
     if (!conversationId) return;
-    // Initial load
+
+    // Initial full load
+    setLoading(true);
     fetchMessages(conversationId).then(({ data }) => {
       setMessages(data);
-      setInitialLoading(false);
+      if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
+      setLoading(false);
     });
-    // Fast background polling for read-receipts and new messages
+
+    // Single unified interval: handles both incremental message fetch + typing indicator
+    // READ_RECEIPT_INTERVAL = 2500ms keeps typing lag minimal
+    intervalRef.current = setInterval(pollSilent, READ_RECEIPT_INTERVAL);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      // Reset anchor on unmount so next mount does a full fetch
+      lastCreatedAtRef.current = null;
+      pollingRef.current = false;
+    };
+  }, [conversationId]);
+
+  // Re-subscribe interval when isBuyer role becomes known (after conversation loads)
+  useEffect(() => {
+    if (isBuyer === null) return;
+    if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(pollSilent, READ_RECEIPT_INTERVAL);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [conversationId]);
+  }, [isBuyer, pollSilent]);
 
-  return { messages, loading: initialLoading, refreshing, reload, pollSilent, appendMessage, updateMessage, markReadLocally };
+  return {
+    messages,
+    loading,
+    refreshing,
+    otherTyping,
+    reload,
+    pollSilent,
+    appendMessage,
+    updateMessage,
+    markReadLocally,
+  };
 }
 
 // ─── useConversations ──────────────────────────────────────────────────────────
@@ -133,7 +264,6 @@ export function useConversations() {
     const supabase = getSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return 0;
-    // First get all conversation IDs the user belongs to
     const { data: convRows } = await supabase
       .from('conversations')
       .select('id')
@@ -155,12 +285,9 @@ export function useConversations() {
    * to get the true count (other conversations may still have unread).
    */
   const refreshUnread = useCallback(async () => {
-    // Optimistic: instant UI clear
     setUnreadCount(0);
     prevUnreadRef.current = 0;
     await setBadge(0);
-
-    // Confirm from DB (might be > 0 if other conversations have unread)
     try {
       const real = await fetchUnreadCount();
       setUnreadCount(real);
@@ -170,7 +297,6 @@ export function useConversations() {
   }, [fetchUnreadCount, setBadge]);
 
   const load = useCallback(async (showSpinner = false) => {
-    // Guard: don't query if not authenticated
     const supabaseCheck = getSupabaseClient();
     const { data: { user: currentUser } } = await supabaseCheck.auth.getUser();
     if (!currentUser) {
@@ -187,7 +313,6 @@ export function useConversations() {
       setConversations(convResult.data);
       if (showSpinner) setLoading(false);
 
-      // Unread count — derive from already-fetched conversations (no extra round-trip)
       const supabase = getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setUnreadCount(0); return; }

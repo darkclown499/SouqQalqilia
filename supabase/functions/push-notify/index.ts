@@ -3,8 +3,14 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
 // ── In-memory deduplication ───────────────────────────────────────────────────
+// Prevents sending duplicate push notifications for rapid messages in the same
+// conversation within the dedup window.
 const lastNotified = new Map<string, number>();
 const DEDUP_WINDOW_MS = 8_000;
+
+// How recent a poll must be to consider the recipient "active in chat"
+// If the recipient polled within this window, skip the push notification.
+const ACTIVE_POLL_THRESHOLD_MS = 10_000; // 10 seconds
 
 function cleanupDedup() {
   const cutoff = Date.now() - DEDUP_WINDOW_MS * 20;
@@ -93,11 +99,7 @@ serve(async (req) => {
     const body = await req.json();
 
     // ── ACTION: broadcast ─────────────────────────────────────────────────────
-    // Sends a notification to ALL users who have a push_token.
-    // Requires: title (string), message (string)
-    // Optional: data (object)
     if (body.action === 'broadcast') {
-      // Verify caller is an admin
       const authHeader = req.headers.get('Authorization');
       const token = authHeader?.replace('Bearer ', '');
       if (!token) {
@@ -146,7 +148,6 @@ serve(async (req) => {
         );
       }
 
-      // Fetch all push tokens (only valid ExponentPushToken format)
       const { data: profiles, error: fetchErr } = await supabaseAdmin
         .from('user_profiles')
         .select('push_token')
@@ -225,11 +226,14 @@ serve(async (req) => {
       sender_name,
       message_preview,
       conversation_id,
+      is_buyer_recipient,
     }: {
       recipient_id: string;
       sender_name: string;
       message_preview: string;
       conversation_id?: string;
+      /** true = recipient is the buyer; false = recipient is the seller */
+      is_buyer_recipient?: boolean;
     } = body;
 
     if (!recipient_id || !sender_name) {
@@ -239,7 +243,34 @@ serve(async (req) => {
       );
     }
 
-    // Deduplication
+    // ── Smart skip: recipient is actively viewing the chat ────────────────────
+    // If the recipient polled within ACTIVE_POLL_THRESHOLD_MS, they are already
+    // seeing the message in real-time — sending a push notification would be
+    // redundant and noisy. Skip it.
+    if (conversation_id && is_buyer_recipient !== undefined) {
+      const polledCol = is_buyer_recipient ? 'buyer_last_polled_at' : 'seller_last_polled_at';
+      const { data: convRow } = await supabaseAdmin
+        .from('conversations')
+        .select(polledCol)
+        .eq('id', conversation_id)
+        .single();
+
+      const lastPolled: string | null = convRow?.[polledCol] ?? null;
+      if (lastPolled) {
+        const elapsed = Date.now() - new Date(lastPolled).getTime();
+        if (elapsed < ACTIVE_POLL_THRESHOLD_MS) {
+          console.log(
+            `[push-notify] Recipient is active (last poll ${elapsed}ms ago) — skipping notification for conv=${conversation_id}`
+          );
+          return new Response(
+            JSON.stringify({ ok: true, skipped: 'recipient_active' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+          );
+        }
+      }
+    }
+
+    // ── Deduplication ─────────────────────────────────────────────────────────
     if (conversation_id) {
       const dedupKey = `${recipient_id}:${conversation_id}`;
       const lastTime = lastNotified.get(dedupKey) ?? 0;
@@ -255,6 +286,7 @@ serve(async (req) => {
       if (lastNotified.size > 500) cleanupDedup();
     }
 
+    // ── Fetch push token + unread count in parallel ───────────────────────────
     const [profileResult, convResult] = await Promise.all([
       supabaseAdmin.from('user_profiles').select('push_token').eq('id', recipient_id).single(),
       supabaseAdmin.from('conversations').select('id').or(`buyer_id.eq.${recipient_id},seller_id.eq.${recipient_id}`),
@@ -293,7 +325,12 @@ serve(async (req) => {
       badge: unreadCount,
       'content-available': 1,
       channelId: 'messages',
-      data: { type: 'new_message', recipient_id, conversation_id: conversation_id ?? null, unread_count: unreadCount },
+      data: {
+        type: 'new_message',
+        recipient_id,
+        conversation_id: conversation_id ?? null,
+        unread_count: unreadCount,
+      },
       priority: 'high',
     });
 
