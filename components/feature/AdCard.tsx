@@ -1,8 +1,8 @@
-import React, { memo, useCallback, useMemo } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Ad } from '@/services/adsService';
 import { Radius, FontSize, Spacing, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
@@ -30,11 +30,15 @@ function formatPrice(price: number, isAr: boolean) {
   return `₪${price.toLocaleString()}`;
 }
 
+// Neutral grey blurhash placeholder — renders instantly while image loads
+const PLACEHOLDER_BLURHASH = 'L5H2EC=PM+yV0g-mq.wG9c010J}I';
+
 export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited = false, onFavoritePress, onAdPress, isBlocked = false }: AdCardProps) {
   const router = useRouter();
   const { colors } = useTheme();
   const { t, language, isRTL } = useLanguage();
   const isAr = language === 'ar';
+  const [imgError, setImgError] = useState(false);
 
   // ── All derived values memoized to prevent recalculation on every render ─
   const sortedImages = useMemo(
@@ -101,18 +105,26 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
     >
       {/* ── IMAGE ── */}
       <View style={styles.imageWrap}>
-        {firstImage ? (
+        {firstImage && !imgError ? (
           <Image
             source={{ uri: firstImage.url }}
             style={styles.image}
             contentFit="cover"
-            transition={150}
-            cachePolicy="memory-disk"
-            priority="high"
+            transition={200}
+            cachePolicy="disk"
+            priority={isFeatured || isBoosted ? 'high' : 'normal'}
+            placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+            placeholderContentFit="cover"
+            onError={() => setImgError(true)}
           />
         ) : (
           <View style={[styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
-            <MaterialIcons name="camera-alt" size={26} color={colors.border} />
+            <MaterialIcons name={imgError ? 'broken-image' : 'camera-alt'} size={26} color={colors.border} />
+            {imgError ? (
+              <Text style={[styles.imgErrorText, { color: colors.textMuted }]}>
+                {isAr ? 'تعذّر التحميل' : 'Failed to load'}
+              </Text>
+            ) : null}
           </View>
         )}
 
@@ -365,4 +377,5 @@ const styles = StyleSheet.create({
   },
   catText: { fontSize: 9, fontWeight: '700', flexShrink: 1 },
   timeText: { fontSize: 9, fontWeight: '500', flexShrink: 0 },
+  imgErrorText: { fontSize: 9, fontWeight: '600', marginTop: 4 },
 });

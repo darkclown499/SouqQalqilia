@@ -512,6 +512,13 @@ export default function HomeScreen() {
             >
               <MaterialIcons name="search" size={20} color="#fff" />
             </Pressable>
+            <Pressable
+              style={styles.headerIconBtn}
+              onPress={() => router.push('/ai-support')}
+              hitSlop={6}
+            >
+              <MaterialIcons name="smart-toy" size={20} color="#fff" />
+            </Pressable>
           </View>
         </View>
 
