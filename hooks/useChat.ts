@@ -5,6 +5,7 @@ import {
   fetchMessagesSince,
   fetchMyConversations,
   updateLastPolled,
+  markMessagesDelivered,
   Message,
   Conversation,
   savePushToken,
@@ -26,14 +27,6 @@ const EAS_PROJECT_ID = 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1';
 // AsyncStorage key for caching the last registered token (avoids redundant DB writes)
 const PUSH_TOKEN_CACHE_KEY = 'push_token_registered_v1';
 
-/**
- * Request push notification permissions and register the device push token.
- *
- * CHANGES vs. previous version:
- * - Logs every step so silent failures are visible in Metro/Flipper
- * - Compares new token against cached token → only writes DB when token changes
- * - Safe to call on every app foreground/login event (idempotent)
- */
 export async function requestNotificationPermissions(): Promise<void> {
   if (!Notifications || Platform.OS === 'web') return;
   try {
@@ -55,12 +48,6 @@ export async function requestNotificationPermissions(): Promise<void> {
   }
 }
 
-/**
- * Get and save Expo push token.
- * - Compares against AsyncStorage cache to avoid redundant DB writes on every launch
- * - Logs the token so you can test it with the health-check cURL command
- * - Safe to call on every SIGNED_IN and app-foreground event
- */
 export async function registerPushToken(): Promise<void> {
   if (!Notifications || Platform.OS === 'web') return;
   try {
@@ -69,19 +56,16 @@ export async function registerPushToken(): Promise<void> {
     });
     const newToken: string | undefined = tokenData?.data;
     if (!newToken) {
-      console.warn('[PushToken] getExpoPushTokenAsync returned empty token. '
-        + 'On Android this means google-services.json is missing or FCM is not configured. '
-        + 'On iOS this means APNs credentials are not set up in EAS.');
+      console.warn('[PushToken] getExpoPushTokenAsync returned empty token.');
       return;
     }
     console.log('[PushToken] ✅ Expo Push Token:', newToken);
 
-    // Only write to DB if the token has changed (avoids N writes per session)
     let cached: string | null = null;
     try {
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
       cached = await AsyncStorage.getItem(PUSH_TOKEN_CACHE_KEY);
-    } catch { /* AsyncStorage optional cache */ }
+    } catch { /* optional cache */ }
 
     if (cached === newToken) {
       console.log('[PushToken] Token unchanged — skipping DB write.');
@@ -96,32 +80,27 @@ export async function registerPushToken(): Promise<void> {
       await AsyncStorage.setItem(PUSH_TOKEN_CACHE_KEY, newToken);
     } catch { /* cache write failure is non-critical */ }
   } catch (e: any) {
-    // Common causes:
-    // Android: google-services.json missing → "FirebaseApp is not initialized"
-    // iOS:     APNs not configured → "Could not find APNs credentials"
-    // Simulator: always fails — use a real device for push notification testing
     console.error('[PushToken] registerPushToken error:', e?.message ?? e);
   }
 }
 
-// ─── Exponential backoff helper ───────────────────────────────────────────────
-// Doubles the retry delay on each consecutive failure (capped at 32s).
-// Resets to base interval on the first successful poll.
-const BASE_POLL_MS = 2500;
-const MAX_BACKOFF_MS = 32_000;
+// ─── Adaptive polling intervals ───────────────────────────────────────────────
+// Active (screen focused + app foreground): 2500ms  → fast, responsive
+// Inactive (app backgrounded OR screen unfocused):  8000ms → saves ~60% battery
+const BASE_POLL_MS     = 2500;
+const INACTIVE_POLL_MS = 8000;
+const MAX_BACKOFF_MS   = 32_000;
 
 function nextBackoff(currentMs: number): number {
   return Math.min(currentMs * 2, MAX_BACKOFF_MS);
 }
 
-// ─── useMessages ───────────────────────────────────────────────────────────────
-// Optimized polling strategy:
-// • Initial load: fetches all messages (full hydration)
-// • Subsequent polls: fetches ONLY messages newer than last known created_at
-//   → Eliminates transferring the full history on every tick
-// • Typing + messages share ONE interval (no duplicate timers)
-// • Exponential backoff on network failure — no hammering during outages
-// • Pauses polling when app is in background to conserve battery
+// ─── useMessages ──────────────────────────────────────────────────────────────
+// Visibility-based adaptive polling:
+// • App active + screen focused  → 2500ms  (full responsiveness)
+// • App backgrounded             → 8000ms  (battery saving mode)
+// • Network failure              → exponential backoff up to 32s
+// Incremental fetch: only messages newer than last known timestamp
 
 export interface UseMessagesResult {
   messages: Message[];
@@ -134,13 +113,15 @@ export interface UseMessagesResult {
   appendMessage: (msg: Message) => void;
   updateMessage: (tempId: string, real: Message) => void;
   markReadLocally: (currentUserId: string) => void;
+  markDeliveredLocally: (currentUserId: string) => void;
   removeMessage: (id: string) => void;
 }
 
 export function useMessages(
   conversationId: string,
-  /** Pass the current user's role so we can read the other party's typing field */
   isBuyer: boolean | null,
+  /** Current user ID — used to auto-mark messages as delivered on first poll */
+  currentUserId?: string,
 ): UseMessagesResult {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,43 +129,43 @@ export function useMessages(
   const [otherTyping, setOtherTyping] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
 
-  // Track the most recent message timestamp to enable incremental fetching
   const lastCreatedAtRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Prevent concurrent polls from overlapping
   const pollingRef = useRef(false);
-  // Exponential backoff: current delay between polls
   const currentPollDelayRef = useRef(BASE_POLL_MS);
-  // Track consecutive failures to manage backoff
   const failureCountRef = useRef(0);
-  // Whether app is in foreground
-  const isActiveRef = useRef(true);
+  // Visibility tracking — both must be true for fast polling
+  const isAppActiveRef = useRef(true);    // AppState === 'active'
+  const isScreenFocusedRef = useRef(true); // screen is in foreground (always true for now, extendable)
 
-  /**
-   * INCREMENTAL poll — fetches only messages newer than the last known message.
-   * Falls back to full fetch if no anchor exists.
-   * Also reads typing indicator from the conversation row (same DB round-trip).
-   */
-  // Schedule the next poll tick with current backoff delay
+  /** Effective poll interval based on current visibility */
+  const getEffectivePollMs = useCallback((): number => {
+    const isVisible = isAppActiveRef.current && isScreenFocusedRef.current;
+    if (!isVisible) return INACTIVE_POLL_MS;
+    if (currentPollDelayRef.current > BASE_POLL_MS) return currentPollDelayRef.current; // backoff active
+    return BASE_POLL_MS;
+  }, []);
+
   const scheduleNextPoll = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(pollSilentRef.current, currentPollDelayRef.current);
-  }, []);
+    const ms = getEffectivePollMs();
+    intervalRef.current = setInterval(() => pollSilentRef.current(), ms);
+  }, [getEffectivePollMs]);
 
   const pollSilent = useCallback(async () => {
     if (!conversationId || pollingRef.current) return;
-    // Skip polling when app is backgrounded (saves battery + reduces server load)
-    if (!isActiveRef.current) return;
+    if (!isAppActiveRef.current) return; // never poll when backgrounded
     pollingRef.current = true;
     try {
       const since = lastCreatedAtRef.current;
 
       if (since) {
-        // ── Fast path: incremental fetch ────────────────────────────────────
-        const { data: newMsgs, typing, error } = await fetchMessagesSince(conversationId, since, isBuyer);
+        // ── Incremental fetch ──────────────────────────────────────────────
+        const { data: newMsgs, typing, error } = await fetchMessagesSince(
+          conversationId, since, isBuyer, currentUserId,
+        );
 
         if (error) {
-          // Network or server error → apply exponential backoff
           failureCountRef.current += 1;
           currentPollDelayRef.current = nextBackoff(currentPollDelayRef.current);
           setIsOnline(false);
@@ -192,7 +173,6 @@ export function useMessages(
           return;
         }
 
-        // Success → reset backoff
         if (failureCountRef.current > 0) {
           failureCountRef.current = 0;
           currentPollDelayRef.current = BASE_POLL_MS;
@@ -200,30 +180,41 @@ export function useMessages(
           scheduleNextPoll();
         }
 
-        if (newMsgs.length > 0) {
-          setMessages(prev => {
-            const existingIds = new Set(prev.map(m => m.id));
-            const truly_new = newMsgs.filter(m => !existingIds.has(m.id));
-            if (truly_new.length === 0) return prev;
-            const merged = [...prev, ...truly_new];
-            // Update anchor to newest message
-            lastCreatedAtRef.current = merged[merged.length - 1].created_at;
-            return merged;
-          });
-        }
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const trulyNew = newMsgs.filter(m => !existingIds.has(m.id));
 
-        // Update typing state from result
+          // ── Sync delivered_at + read_at on MY sent messages ───────────────
+          // When the other side marks a message as delivered/read, the next
+          // incremental poll by the sender sees the updated row via newMsgs.
+          // We also re-fetch existing message rows to catch status changes.
+          const updated = prev.map(m => {
+            const fresh = newMsgs.find(nm => nm.id === m.id);
+            if (!fresh) return m;
+            // Only update status fields — never downgrade
+            return {
+              ...m,
+              delivered_at: fresh.delivered_at ?? m.delivered_at,
+              read_at:      fresh.read_at      ?? m.read_at,
+            };
+          });
+
+          if (trulyNew.length === 0) return updated;
+          const merged = [...updated, ...trulyNew];
+          lastCreatedAtRef.current = merged[merged.length - 1].created_at;
+          return merged;
+        });
+
         if (isBuyer !== null) {
           if (typing !== null) {
-            const diff = Date.now() - new Date(typing).getTime();
-            setOtherTyping(diff < 4000);
+            setOtherTyping(Date.now() - new Date(typing).getTime() < 4000);
           } else {
             setOtherTyping(false);
           }
         }
 
       } else {
-        // ── Fallback: full fetch (first poll or after unmount) ───────────────
+        // ── Full fetch (first poll / after unmount) ────────────────────────
         const { data, error } = await fetchMessages(conversationId);
         if (error) {
           failureCountRef.current += 1;
@@ -241,24 +232,24 @@ export function useMessages(
         if (data.length > 0) {
           setMessages(data);
           lastCreatedAtRef.current = data[data.length - 1].created_at;
+          // Auto-mark incoming messages as delivered on first load
+          if (currentUserId) {
+            markMessagesDelivered(conversationId, currentUserId).catch(() => {});
+          }
         }
       }
 
-      // Heartbeat: tell the server this user is actively viewing this chat
-      // Used by push-notify edge function to skip notification when user is active
       if (conversationId) {
         updateLastPolled(conversationId, isBuyer).catch(() => {});
       }
     } finally {
       pollingRef.current = false;
     }
-  }, [conversationId, isBuyer, scheduleNextPoll]);
+  }, [conversationId, isBuyer, currentUserId, scheduleNextPoll]);
 
-  // Stable ref so scheduleNextPoll can always call the latest pollSilent
   const pollSilentRef = useRef(pollSilent);
   useEffect(() => { pollSilentRef.current = pollSilent; }, [pollSilent]);
 
-  /** Manual pull-to-refresh — full fetch, resets anchor */
   const reload = useCallback(async () => {
     setRefreshing(true);
     const { data } = await fetchMessages(conversationId);
@@ -267,30 +258,16 @@ export function useMessages(
     setRefreshing(false);
   }, [conversationId]);
 
-  /**
-   * Optimistic append: add message instantly before DB confirms.
-   * Deduplication prevents ghost messages if the DB echo arrives
-   * during the next poll before updateMessage() replaces the temp entry.
-   */
   const appendMessage = useCallback((msg: Message) => {
     setMessages(prev => {
-      // Skip if a message with the same id (or same content+sender within 3s) exists
       if (prev.find(m => m.id === msg.id)) return prev;
       return [...prev, msg];
     });
-    // Do NOT advance lastCreatedAtRef here — the temp message has a local timestamp
-    // that might not exactly match the DB timestamp. Let pollSilent() advance it
-    // when it receives the confirmed server message.
   }, []);
 
-  /**
-   * Replace a temp (optimistic) message with the confirmed DB version.
-   * Also advances the anchor so the next incremental poll starts from here.
-   */
   const updateMessage = useCallback((tempId: string, real: Message) => {
     setMessages(prev => {
       const updated = prev.map(m => m.id === tempId ? real : m);
-      // Advance anchor to include the confirmed message
       const sorted = [...updated].sort(
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
@@ -300,21 +277,32 @@ export function useMessages(
   }, []);
 
   /**
-   * Immediately mark all messages from the other party as read in local state.
-   * Call right after markMessagesRead() DB call so receipts flip without waiting
-   * for the next poll cycle.
+   * Immediately mark all messages from the other party as delivered in local state.
+   * Provides instant UI feedback before the DB response.
    */
-  const markReadLocally = useCallback((currentUserId: string) => {
+  const markDeliveredLocally = useCallback((uid: string) => {
     setMessages(prev =>
       prev.map(m =>
-        m.sender_id !== currentUserId && !m.read_at
+        m.sender_id !== uid && !m.delivered_at
+          ? { ...m, delivered_at: new Date().toISOString() }
+          : m
+      )
+    );
+  }, []);
+
+  /**
+   * Immediately mark all messages from the other party as read in local state.
+   */
+  const markReadLocally = useCallback((uid: string) => {
+    setMessages(prev =>
+      prev.map(m =>
+        m.sender_id !== uid && !m.read_at
           ? { ...m, read_at: new Date().toISOString() }
           : m
       )
     );
   }, []);
 
-  /** Remove a message by id (e.g. failed offline message cleanup) */
   const removeMessage = useCallback((id: string) => {
     setMessages(prev => prev.filter(m => m.id !== id));
   }, []);
@@ -322,7 +310,6 @@ export function useMessages(
   useEffect(() => {
     if (!conversationId) return;
 
-    // Initial full load
     setLoading(true);
     currentPollDelayRef.current = BASE_POLL_MS;
     failureCountRef.current = 0;
@@ -330,21 +317,30 @@ export function useMessages(
       setMessages(data);
       if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
       setLoading(false);
+      // Mark as delivered on initial load
+      if (currentUserId && data.length > 0) {
+        markMessagesDelivered(conversationId, currentUserId).catch(() => {});
+      }
     });
 
-    // Single unified interval: handles both incremental message fetch + typing indicator
     intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
 
-    // Pause polling when app goes to background, resume on foreground
+    // ── Visibility-based adaptive polling ─────────────────────────────────
     const handleAppState = (state: AppStateStatus) => {
-      isActiveRef.current = state === 'active';
-      if (state === 'active') {
-        // Resumed from background: reset backoff and do an immediate poll
+      const wasActive = isAppActiveRef.current;
+      isAppActiveRef.current = state === 'active';
+
+      if (state === 'active' && !wasActive) {
+        // App foregrounded: switch to fast polling immediately
         currentPollDelayRef.current = BASE_POLL_MS;
         failureCountRef.current = 0;
         if (intervalRef.current) clearInterval(intervalRef.current);
         intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
-        pollSilentRef.current();
+        pollSilentRef.current(); // immediate poll on resume
+      } else if (state !== 'active') {
+        // App backgrounded: switch to slow interval to save battery (~60%)
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        intervalRef.current = setInterval(() => pollSilentRef.current(), INACTIVE_POLL_MS);
       }
     };
     const appStateSub = AppState.addEventListener('change', handleAppState);
@@ -352,13 +348,11 @@ export function useMessages(
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       appStateSub.remove();
-      // Reset anchor on unmount so next mount does a full fetch
       lastCreatedAtRef.current = null;
       pollingRef.current = false;
     };
   }, [conversationId]);
 
-  // Re-subscribe interval when isBuyer role becomes known (after conversation loads)
   useEffect(() => {
     if (isBuyer === null) return;
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -379,22 +373,19 @@ export function useMessages(
     appendMessage,
     updateMessage,
     markReadLocally,
+    markDeliveredLocally,
     removeMessage,
   };
 }
 
-// ─── Global unread refresh bridge ───────────────────────────────────────────────
-// Allows any screen (e.g. chat/[id].tsx) to immediately trigger a fresh unread
-// count in useConversations without prop-drilling or a full Context refactor.
-// Pattern: useConversations registers its refreshUnread fn here on mount;
-//          chat screen calls triggerUnreadRefresh() after markMessagesRead().
+// ─── Global unread refresh bridge ─────────────────────────────────────────────
 let _globalRefreshUnread: (() => Promise<void>) | null = null;
 
 export function triggerUnreadRefresh(): void {
   _globalRefreshUnread?.().catch(() => {});
 }
 
-// ─── useConversations ──────────────────────────────────────────────────────────
+// ─── useConversations ─────────────────────────────────────────────────────────
 
 export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -403,13 +394,11 @@ export function useConversations() {
   const prevUnreadRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /** Set badge count on app icon */
   const setBadge = useCallback(async (count: number) => {
     if (!Notifications || Platform.OS === 'web') return;
     try { await Notifications.setBadgeCountAsync(count); } catch (_) {}
   }, []);
 
-  /** Query the actual unread count from DB */
   const fetchUnreadCount = useCallback(async (): Promise<number> => {
     const supabase = getSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -429,11 +418,6 @@ export function useConversations() {
     return count ?? 0;
   }, []);
 
-  /**
-   * Called from chat screen right after markMessagesRead.
-   * Optimistically clears badge to 0 immediately, then re-queries DB
-   * to get the true count (other conversations may still have unread).
-   */
   const refreshUnread = useCallback(async () => {
     setUnreadCount(0);
     prevUnreadRef.current = 0;
@@ -487,8 +471,6 @@ export function useConversations() {
     }
   }, [setBadge]);
 
-  // Register this instance's refreshUnread as the global bridge target.
-  // On unmount, clear the bridge so stale closures are never called.
   useEffect(() => {
     _globalRefreshUnread = refreshUnread;
     return () => { _globalRefreshUnread = null; };

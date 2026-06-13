@@ -184,7 +184,7 @@ export default function ChatScreen() {
 
   const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
 
-  const { messages, loading, refreshing, otherTyping, isOnline, reload, appendMessage, updateMessage, markReadLocally, removeMessage } = useMessages(id, isBuyer);
+  const { messages, loading, refreshing, otherTyping, isOnline, reload, appendMessage, updateMessage, markReadLocally, markDeliveredLocally, removeMessage } = useMessages(id, isBuyer, user?.id);
 
   const [imageUploading, setImageUploading] = useState(false);
 
@@ -393,6 +393,7 @@ export default function ChatScreen() {
     if (!id || !user) return;
     await markMessagesRead(id, user.id);
     markReadLocally(user.id);
+    markDeliveredLocally(user.id);
     // ── Immediately sync the in-app tab-bar unread badge ──────────────────
     triggerUnreadRefresh();
     // ── Also update the OS app-icon badge ─────────────────────────────────
@@ -898,6 +899,7 @@ export default function ChatScreen() {
               const msg = item;
               const isMine = msg.sender_id === user?.id;
               const isRead = !!msg.read_at;
+              const isDelivered = !!(msg as any).delivered_at;
               const isPending = !!(msg as any)._pending;
               const isFailed = !!(msg as any)._failed;
               // ── Detect voice vs image ─────────────────────────────────────
@@ -1027,7 +1029,16 @@ export default function ChatScreen() {
                         ) : isPending ? (
                           <MaterialIcons name="schedule" size={12} color={colors.textMuted} />
                         ) : (
-                          <MaterialIcons name={isRead ? 'done-all' : 'done'} size={14} color={isRead ? '#4ADE80' : colors.textMuted} />
+                          isRead ? (
+                            // ✓✓ Green — READ by recipient
+                            <MaterialIcons name="done-all" size={14} color="#4ADE80" />
+                          ) : isDelivered ? (
+                            // ✓✓ Grey — DELIVERED to device
+                            <MaterialIcons name="done-all" size={14} color={colors.textMuted} />
+                          ) : (
+                            // ✓ Single — sent to server only
+                            <MaterialIcons name="done" size={14} color={colors.textMuted} />
+                          )
                         )
                       ) : null}
                     </View>

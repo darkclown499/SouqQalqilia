@@ -58,6 +58,7 @@ export interface Message {
   image_url?: string | null;
   message_type?: 'text' | 'image';
   read_at?: string | null;
+  delivered_at?: string | null;   // Set when recipient's device first polls the message
   created_at: string;
   // Local-only status flags (not persisted to DB)
   _pending?: boolean;   // Optimistic: not yet confirmed by DB
@@ -148,6 +149,26 @@ export async function fetchConversationById(id: string): Promise<{ data: Convers
   return { data: data as Conversation, error: null };
 }
 
+/**
+ * Mark messages as delivered (recipient's device has received them).
+ * Called when the recipient first fetches messages — batch update for efficiency.
+ * Only updates messages where: sender != me AND delivered_at IS NULL
+ */
+export async function markMessagesDelivered(
+  conversationId: string,
+  currentUserId: string,
+): Promise<void> {
+  try {
+    const supabase = getSupabaseClient();
+    await supabase
+      .from('messages')
+      .update({ delivered_at: new Date().toISOString() })
+      .eq('conversation_id', conversationId)
+      .neq('sender_id', currentUserId)
+      .is('delivered_at', null);
+  } catch { /* fire-and-forget */ }
+}
+
 /** Full message fetch — used for initial load and pull-to-refresh */
 export async function fetchMessages(conversationId: string): Promise<{ data: Message[]; error: string | null }> {
   try {
@@ -178,6 +199,8 @@ export async function fetchMessagesSince(
   conversationId: string,
   since: string,
   isBuyer: boolean | null,
+  /** Pass currentUserId to auto-mark incoming messages as delivered on first poll */
+  currentUserId?: string,
 ): Promise<{ data: Message[]; typing: string | null; error: string | null }> {
   try {
   const supabase = getSupabaseClient();
@@ -201,6 +224,16 @@ export async function fetchMessagesSince(
   ]);
 
   if (msgsResult.error) return { data: [], typing: null, error: msgsResult.error.message };
+
+  // Auto-mark newly received messages as delivered (fire-and-forget)
+  if (currentUserId && msgsResult.data && msgsResult.data.length > 0) {
+    const undelivered = msgsResult.data.filter(
+      (m: any) => m.sender_id !== currentUserId && !m.delivered_at
+    );
+    if (undelivered.length > 0) {
+      markMessagesDelivered(conversationId, currentUserId).catch(() => {});
+    }
+  }
 
   // Determine which typing field belongs to the OTHER party
   let typing: string | null = null;
