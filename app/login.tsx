@@ -859,6 +859,22 @@ const OtpPanel = React.memo(function OtpPanel({ email, otp, setOtp, resendCooldo
           <Text style={[s.phonePillText, { color: colors.primary }]} numberOfLines={1}>{email}</Text>
         </View>
       </View>
+
+      {/* ── Spam warning banner ── */}
+      <View style={[s.spamBanner, { backgroundColor: '#FEF9C3', borderColor: '#FDE047' }]}>
+        <MaterialIcons name="warning-amber" size={16} color="#A16207" />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={[s.spamBannerTitle, { color: '#854D0E' }]}>
+            {isAr ? 'لم يصلك الرمز؟' : "Didn't receive the code?"}
+          </Text>
+          <Text style={[s.spamBannerText, { color: '#A16207' }]}>
+            {isAr
+              ? 'تحقق من مجلد الرسائل غير المرغوب فيها (Spam) أو مجلد الجنك في بريدك الإلكتروني'
+              : 'Check your Spam or Junk folder — verification emails sometimes end up there'}
+          </Text>
+        </View>
+      </View>
+
       <PremiumInput
         label={t.verificationCode} placeholder="•  •  •  •"
         value={otp} onChangeText={setOtp}
@@ -1104,4 +1120,12 @@ const s = StyleSheet.create({
   eulaBodyText: { fontSize: FontSize.sm, lineHeight: 24 },
   eulaAcceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, margin: Spacing.lg, marginTop: Spacing.sm, paddingVertical: 14, borderRadius: Radius.xl },
   eulaAcceptLabel: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+
+  // ── Spam warning ──
+  spamBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    padding: 12, borderRadius: Radius.md, borderWidth: 1.5,
+  },
+  spamBannerTitle: { fontSize: FontSize.xs, fontWeight: '700' },
+  spamBannerText: { fontSize: FontSize.xs, lineHeight: 18 },
 });
