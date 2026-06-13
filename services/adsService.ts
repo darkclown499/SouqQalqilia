@@ -340,6 +340,8 @@ export async function createAd(
     .select()
     .single();
   if (error) return { data: null, error: error.message };
+  // Invalidate cache so the new ad appears in the home feed immediately
+  clearAdsCache();
   return { data: data as Ad, error: null };
 }
 
@@ -398,6 +400,12 @@ export async function reportAd(
     username: user.user_metadata?.username ?? user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? '',
   }, { onConflict: 'id', ignoreDuplicates: true });
 
-  const { error } = await supabase.from('reports').insert({ ad_id: adId, reporter_id: user.id, reason });
+  // Upsert prevents duplicate-constraint errors if user tries to report twice
+  const { error } = await supabase
+    .from('reports')
+    .upsert(
+      { ad_id: adId, reporter_id: user.id, reason },
+      { onConflict: 'ad_id,reporter_id', ignoreDuplicates: true }
+    );
   return { error: error ? error.message : null };
 }

@@ -119,7 +119,11 @@ export async function uploadImage(
     .from(STORAGE_BUCKET)
     .upload(path, byteArray, { contentType: 'image/jpeg', upsert: false });
 
-  if (error) return { url: null, error: error.message };
+  if (error) {
+    // Clean up any partial object that was written before the error
+    supabase.storage.from(STORAGE_BUCKET).remove([path]).catch(() => {});
+    return { url: null, error: error.message };
+  }
 
   const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, error: null };

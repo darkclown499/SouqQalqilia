@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+
+// Module-level AbortController reference — cancels stale fetch when a newer
+// one starts (e.g. rapid filter changes).  One slot per hook instance is
+// enough because useAds is only mounted once in the home screen at a time.
+let _activeController: AbortController | null = null;
 import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache, subscribeToCacheInvalidation, CACHE_TTL_MS } from '@/services/adsService';
 
 const PAGE_SIZE = 20;
@@ -21,6 +26,11 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     setError(null);
     const p = overrideParams ?? params;
     const isDefault = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
+
+    // Cancel any in-flight fetch before starting a new one
+    if (_activeController) { try { _activeController.abort(); } catch {} }
+    _activeController = new AbortController();
+    const signal = _activeController.signal;
 
     // Reset pagination state immediately before fetch
     loadedCountRef.current = 0;
@@ -44,6 +54,8 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
       limit: PAGE_SIZE,
       offset: 0,
     });
+    // Ignore result if this fetch was cancelled by a newer one
+    if (signal.aborted) return;
     if (isDefault && data.length > 0) setAdsCache(data);
     setAds(data);
     loadedCountRef.current = data.length;

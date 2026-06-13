@@ -94,8 +94,9 @@ export default function AdDetailScreen() {
   }, [id]);
 
   const handleBoostAd = async () => {
-    if (!ad || !user || boosting) return;
+    if (!ad || !user || boosting) return; // guard against double-tap
     setBoosting(true);
+    // Immediately disable the button by keeping `boosting=true` until fully done
     try {
       const boostedUntil = new Date(Date.now() + boostDays * 24 * 60 * 60 * 1000).toISOString();
       const supabase = getSupabaseClient();
@@ -187,7 +188,8 @@ export default function AdDetailScreen() {
     setReporting(true);
     try {
       const { error } = await reportAd(ad.id, selectedReason);
-      if (error && error.includes('unique')) {
+      // reportAd now uses upsert — only surface genuine errors, not duplicate-constraint ones
+      if (error && (error.includes('unique') || error.includes('duplicate'))) {
         showAlert(t.reportAlready, t.reportAlreadyMsg);
       } else if (error) {
         showAlert(isAr ? 'خطأ في الإبلاغ' : 'Report Error', error);
