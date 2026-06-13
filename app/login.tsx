@@ -330,25 +330,54 @@ export default function LoginScreen() {
         showAlert(isAr ? 'خطأ' : 'Error', error?.message ?? (isAr ? 'تعذّر الاتصال بـ Google' : 'Could not connect to Google'));
         setGoogleLoading(false); return;
       }
+      // ── Detailed diagnostic logging for production debugging ──────────────
+      console.log('[GoogleSignIn] WebBrowser result type:', result?.type);
+      if ((result as any)?.url) console.log('[GoogleSignIn] Redirect URL:', (result as any).url.substring(0, 120));
+
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo) as { type: string; url?: string };
+
+      console.log('[GoogleSignIn] Browser session result:', result.type);
+
       if (result.type === 'success' && result.url) {
         const parsed = new URL(result.url);
         const params = new URLSearchParams(parsed.searchParams);
         if (parsed.hash?.startsWith('#')) new URLSearchParams(parsed.hash.slice(1)).forEach((v, k) => params.set(k, v));
         const code = params.get('code');
+        const errorParam = params.get('error');
+        const errorDesc = params.get('error_description');
+
+        // Log the actual OAuth error returned in the redirect URL
+        if (errorParam) {
+          console.error('[GoogleSignIn] OAuth error in redirect:', errorParam, '|', errorDesc);
+          subscription.unsubscribe();
+          authResolved = true;
+          showAlert(isAr ? 'خطأ Google' : 'Google Error', `${errorParam}: ${errorDesc ?? ''}`);
+          setGoogleLoading(false);
+          return;
+        }
+
         if (code) {
+          console.log('[GoogleSignIn] Exchanging auth code for session...');
           const { error: exchErr } = await supabase.auth.exchangeCodeForSession(code);
+          console.log('[GoogleSignIn] exchangeCodeForSession result:', exchErr ? exchErr.message : 'success');
           if (!exchErr && !authResolved) { authResolved = true; subscription.unsubscribe(); setGoogleLoading(false); router.replace('/(tabs)'); return; }
           if (exchErr && !authResolved) { subscription.unsubscribe(); authResolved = true; showAlert(isAr ? 'خطأ' : 'Error', exchErr.message); setGoogleLoading(false); return; }
         } else {
           const at = params.get('access_token'), rt = params.get('refresh_token');
+          console.log('[GoogleSignIn] Token path — access_token present:', !!at, 'refresh_token present:', !!rt);
           if (at && rt && !authResolved) {
             const { error: sessErr } = await supabase.auth.setSession({ access_token: at, refresh_token: rt });
+            console.log('[GoogleSignIn] setSession result:', sessErr ? sessErr.message : 'success');
             if (sessErr && !authResolved) { subscription.unsubscribe(); authResolved = true; showAlert(isAr ? 'خطأ' : 'Error', sessErr.message); setGoogleLoading(false); return; }
           }
         }
         return;
       }
+
+      // Browser was dismissed or returned non-success type
+      console.warn('[GoogleSignIn] Browser did not return success. Type:', result.type,
+        '— Common causes: SHA-1 mismatch, wrong redirect URI, or user cancelled.');
+
       if (!authResolved) {
         let attempts = 0;
         const poll = setInterval(async () => {
