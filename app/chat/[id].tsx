@@ -221,18 +221,30 @@ export default function ChatScreen() {
     setIsRecording(false);
     setRecordingDuration(0);
     if (!recordingRef.current) return;
+    let tempUri: string | null = null;
     try {
       await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
+      tempUri = recordingRef.current.getURI() ?? null;
       recordingRef.current = null;
-      if (!send || !uri) return;
+      if (!send || !tempUri) return;
       setImageUploading(true);
       const fileName = `voice_${Date.now()}.m4a`;
-      const { url, error } = await uploadChatImage(uri, fileName);
+      const { url, error } = await uploadChatImage(tempUri, fileName);
       setImageUploading(false);
       if (error || !url) { showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? ''); return; }
       await handleSendMessage('🎤 رسالة صوتية', url);
-    } catch { recordingRef.current = null; setImageUploading(false); }
+    } catch {
+      recordingRef.current = null;
+      setImageUploading(false);
+    } finally {
+      // ── Fix #3: Always delete the local temp file to prevent storage accumulation ──
+      if (tempUri) {
+        try {
+          const { deleteAsync } = await import('expo-file-system') as any;
+          await deleteAsync(tempUri, { idempotent: true });
+        } catch { /* non-critical — ignore if file already gone */ }
+      }
+    }
   }, [isAr, showAlert]);
 
   const handlePlayVoice = useCallback(async (msgId: string, voiceUrl: string) => {
@@ -440,9 +452,18 @@ export default function ChatScreen() {
 
   const handleSendMessage = async (content: string, imageUrl?: string) => {
     if (!id) return;
-    const tempId = `temp_${Date.now()}`;
+    // ── Fix #2: Generate client-side UUID before sending ──────────────────────
+    // The same UUID is used as both the optimistic temp ID and the real DB row ID.
+    // If the network drops the response after a successful insert, retrying with
+    // the same UUID hits the upsert's onConflict='id' path — no duplicate row.
+    const clientId = (() => {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+    })();
     const tempMsg: Message = {
-      id: tempId,
+      id: clientId,
       conversation_id: id,
       sender_id: user?.id ?? '',
       content: imageUrl ? (content || '📷 صورة') : content,
@@ -454,18 +475,18 @@ export default function ChatScreen() {
     };
     appendMessage(tempMsg);
 
-    const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl);
+    const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
     if (error) {
-      updateMessage(tempId, { ...tempMsg, _pending: false, _failed: true });
+      updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
       await addToOfflineQueue({
-        tempId, conversationId: id,
+        tempId: clientId, conversationId: id,
         content: imageUrl ? (content || '📷 صورة') : content,
         image_url: imageUrl,
         message_type: imageUrl ? 'image' : 'text',
         created_at: tempMsg.created_at,
       });
     } else {
-      if (sent) updateMessage(tempId, sent);
+      if (sent) updateMessage(clientId, sent);
       if (recipientId) {
         const senderDisplayName = user?.username || user?.email?.split('@')[0] || 'رسالة جديدة';
         notifyRecipient(recipientId, senderDisplayName, content || '📷 صورة', id, !isBuyerSending);

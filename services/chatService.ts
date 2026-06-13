@@ -26,10 +26,15 @@ export async function saveOfflineQueue(queue: QueuedMessage[]): Promise<void> {
   } catch {}
 }
 
+// ── FIFO eviction: never exceed 50 queued messages ──────────────────────────
+const OFFLINE_QUEUE_MAX = 50;
+
 export async function addToOfflineQueue(msg: QueuedMessage): Promise<void> {
   const q = await getOfflineQueue();
   q.push(msg);
-  await saveOfflineQueue(q);
+  // Drop oldest messages if we exceed the cap (FIFO eviction)
+  const trimmed = q.length > OFFLINE_QUEUE_MAX ? q.slice(q.length - OFFLINE_QUEUE_MAX) : q;
+  await saveOfflineQueue(trimmed);
 }
 
 export async function removeFromOfflineQueue(tempId: string): Promise<void> {
@@ -312,10 +317,22 @@ export async function uploadChatImage(
   }
 }
 
+// ── Client-side UUID v4 generator ────────────────────────────────────────────
+// Avoids dependency on external packages; works on all React Native targets.
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export async function sendMessage(
   conversationId: string,
   content: string,
   imageUrl?: string,
+  /** Optional client-generated UUID for idempotent upsert (prevents duplicate on network retry) */
+  clientMessageId?: string,
 ): Promise<{ data: Message | null; recipientId: string | null; isBuyerSending: boolean; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -323,17 +340,21 @@ export async function sendMessage(
 
   const messageType = imageUrl ? 'image' : 'text';
   const messageContent = imageUrl ? (content || '📷 صورة') : content;
+  // Use caller-provided UUID or generate a new one.
+  // Upsert on `id` means a retry after a dropped response won't create a duplicate row.
+  const messageId = clientMessageId ?? generateUUID();
 
-  // Insert message
+  // Upsert message — idempotent: safe to retry on network failure
   const { data, error } = await supabase
     .from('messages')
-    .insert({
+    .upsert({
+      id: messageId,
       conversation_id: conversationId,
       sender_id: user.id,
       content: messageContent,
       image_url: imageUrl ?? null,
       message_type: messageType,
-    })
+    }, { onConflict: 'id', ignoreDuplicates: false })
     .select()
     .single();
 
