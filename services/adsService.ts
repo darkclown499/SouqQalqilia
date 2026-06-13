@@ -12,7 +12,7 @@ export interface AdsCache {
   fetchedAt: number;
 }
 let _adsCache: AdsCache | null = null;
-const CACHE_TTL_MS = 90_000; // 90 seconds
+export const CACHE_TTL_MS = 90_000; // 90 seconds — exported for useAds AppState guard
 
 export function getAdsCache(): AdsCache | null {
   if (!_adsCache) return null;

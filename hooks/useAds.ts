@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache, subscribeToCacheInvalidation } from '@/services/adsService';
+import { AppState, AppStateStatus } from 'react-native';
+import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache, subscribeToCacheInvalidation, CACHE_TTL_MS } from '@/services/adsService';
 
 const PAGE_SIZE = 20;
 
@@ -65,6 +66,30 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
       }
     });
     return unsub;
+  }, [load]);
+
+  // Re-fetch when app returns from background, but only if cache is expired.
+  // Prevents redundant API calls when user briefly locks/unlocks the screen.
+  useEffect(() => {
+    const p = params;
+    const isDefault =
+      !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice &&
+      !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
+    if (!isDefault) return; // Only auto-refresh the unfiltered default feed
+
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        // Only re-fetch if cache is stale (expired beyond CACHE_TTL_MS)
+        const cached = getAdsCache();
+        const isStale = !cached || (Date.now() - cached.fetchedAt > CACHE_TTL_MS);
+        if (isStale) {
+          load();
+        }
+      }
+    };
+
+    const sub = AppState.addEventListener('change', handleAppStateChange);
+    return () => sub.remove();
   }, [load]);
 
   const loadMore = useCallback(async (currentParams?: typeof params) => {

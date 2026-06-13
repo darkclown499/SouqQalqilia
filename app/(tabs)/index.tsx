@@ -4,6 +4,7 @@ import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
   Dimensions, RefreshControl, ActivityIndicator, Platform, TextInput, Linking,
 } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -82,6 +83,10 @@ const CARD_GAP = SCREEN_W < 375 ? 8 : Spacing.sm;
 const CARD_WIDTH = (SCREEN_W - H_PAD * 2 - CARD_GAP) / 2;
 const CONTENT_W = SCREEN_W - H_PAD * 2;
 const BANNER_H = Math.round(CONTENT_W * (720 / 1280));
+// Fixed row height for getItemLayout — image (max 190) + info area (~92) + gap
+const CLAMP_IMG_H = Math.max(130, Math.min(Math.round(CARD_WIDTH * 0.75), 190));
+const CARD_INFO_H = 92;   // title + price + location + padding
+const ROW_H = CLAMP_IMG_H + CARD_INFO_H + CARD_GAP; // total pair-row height incl. bottom gap
 let _interstitialsCache: InterstitialAd[] | null = null;
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'boosted';
@@ -126,6 +131,7 @@ export default function HomeScreen() {
   const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
 
+  const [isOnline, setIsOnline] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [recentlyViewed, setRecentlyViewed] = useState<Ad[]>([]);
   const [featuredIndex, setFeaturedIndex] = useState(0);
@@ -155,6 +161,14 @@ export default function HomeScreen() {
 
   const activeFilterCount = [appliedArea, appliedMaxPrice !== undefined ? '1' : null, appliedCondition].filter(Boolean).length;
   const isAr = language === 'ar';
+
+  // ── Network state listener ────────────────────────────────────────────────
+  useEffect(() => {
+    // Seed initial state
+    NetInfo.fetch().then(s => setIsOnline(s.isConnected !== false));
+    const unsub = NetInfo.addEventListener(s => setIsOnline(s.isConnected !== false));
+    return unsub;
+  }, []);
 
   useEffect(() => {
     loadRecentlyViewed().then(setRecentlyViewed);
@@ -638,6 +652,16 @@ export default function HomeScreen() {
         ) : null}
       </View>
 
+      {/* ── OFFLINE BANNER ── */}
+      {!isOnline ? (
+        <View style={styles.offlineBanner}>
+          <MaterialIcons name="wifi-off" size={15} color="#92400E" />
+          <Text style={styles.offlineBannerText}>
+            {isAr ? 'أنت غير متصل — يتم عرض البيانات المحفوظة' : 'You are offline — showing cached data'}
+          </Text>
+        </View>
+      ) : null}
+
       {/* ── CONTENT ── */}
       {loading && ads.length === 0 ? (
         <SkeletonHomeFeed />
@@ -650,9 +674,14 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
           windowSize={9}
           maxToRenderPerBatch={6}
-          initialNumToRender={8}
+          initialNumToRender={6}
           updateCellsBatchingPeriod={50}
-          removeClippedSubviews={false}
+          removeClippedSubviews={Platform.OS === 'android'}
+          getItemLayout={(_data, index) => ({
+            length: ROW_H,
+            offset: ROW_H * index,
+            index,
+          })}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           refreshControl={
@@ -828,6 +857,15 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
+  offlineBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FEF3C7', paddingHorizontal: H_PAD, paddingVertical: 9,
+    borderBottomWidth: 1, borderBottomColor: '#FDE68A',
+  },
+  offlineBannerText: {
+    color: '#92400E', fontSize: FontSize.xs, fontWeight: '600', flex: 1,
+  },
 
   filterDot: {
     position: 'absolute', top: 6, right: 6,

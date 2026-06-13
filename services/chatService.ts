@@ -280,14 +280,18 @@ export async function uploadChatImage(
   fileUri: string,
   fileName: string,
 ): Promise<{ url: string | null; error: string | null }> {
+  const supabase = getSupabaseClient();
+  let storagePath: string | null = null;    // track path for orphan cleanup
+  let uploadAttempted = false;
+
   try {
-    const supabase = getSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { url: null, error: 'Not authenticated' };
 
     const ext = fileName.split('.').pop()?.toLowerCase() ?? 'jpg';
-    const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
-    const path = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const mimeType = ext === 'png' ? 'image/png' :
+      (ext === 'm4a' || ext === 'mp3' || ext === 'aac') ? 'audio/mp4' : 'image/jpeg';
+    storagePath = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
     // Mobile: read file as base64 via expo-file-system
     let uploadData: ArrayBuffer;
@@ -304,15 +308,24 @@ export async function uploadChatImage(
       uploadData = await response.arrayBuffer();
     }
 
+    uploadAttempted = true;
     const { error: uploadError } = await supabase.storage
       .from('chat-images')
-      .upload(path, uploadData, { contentType: mimeType, upsert: false });
+      .upload(storagePath, uploadData, { contentType: mimeType, upsert: false });
 
-    if (uploadError) return { url: null, error: uploadError.message };
+    if (uploadError) {
+      // Upload failed after reaching storage — clean up any partial object
+      supabase.storage.from('chat-images').remove([storagePath]).catch(() => {});
+      return { url: null, error: uploadError.message };
+    }
 
-    const { data: urlData } = supabase.storage.from('chat-images').getPublicUrl(path);
+    const { data: urlData } = supabase.storage.from('chat-images').getPublicUrl(storagePath);
     return { url: urlData.publicUrl, error: null };
   } catch (e: any) {
+    // If upload had started but we never got a clean success, remove the orphan
+    if (uploadAttempted && storagePath) {
+      supabase.storage.from('chat-images').remove([storagePath]).catch(() => {});
+    }
     return { url: null, error: e?.message ?? 'Upload failed' };
   }
 }
