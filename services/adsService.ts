@@ -207,40 +207,24 @@ export async function fetchAds(params?: {
 
   // ── Apply server-side sorting ──────────────────────────────────────────────
   //
-  // PRIORITY CHAIN — applied to every sort mode:
-  //   1. PRIMARY:   status ASC  →  'featured' sorts before 'active' alphabetically,
-  //                               so boosted/featured ads ALWAYS float to the top
-  //                               regardless of creation time.
-  //   2. SECONDARY: user-selected sort key (price, created_at, boosted_until)
-  //
-  // This ensures that any ad promoted to 'featured' instantly bypasses all
-  // chronological limits and appears at position [0] of every feed view.
-  // The compound index ads_feed_priority_idx (status ASC, created_at DESC)
-  // makes this a single index scan with no sort operation on large tables.
+  // DB sort is intentionally simple (status + created_at) so that pagination
+  // offsets remain stable across pages.  Active-boost prioritisation is applied
+  // CLIENT-SIDE after the fetch (see `applyClientSort` below) so that expired
+  // boosted_until dates never float above fresh regular ads.
   //
   if (sortBy === 'price_asc') {
     query = query
-      .order('status', { ascending: true })         // featured first (PRIMARY)
-      .order('price', { ascending: true });          // cheapest second
+      .order('status', { ascending: true })         // featured first
+      .order('price', { ascending: true });
   } else if (sortBy === 'price_desc') {
     query = query
-      .order('status', { ascending: true })         // featured first (PRIMARY)
-      .order('price', { ascending: false });         // most expensive second
-  } else if (sortBy === 'boosted') {
-    // Active boosts first (furthest future expiry), then featured, then newest
-    query = query
-      .order('boosted_until', { ascending: false, nullsFirst: false }) // active boosts first
-      .order('status', { ascending: true })          // featured before active
-      .order('created_at', { ascending: false });    // newest as tiebreaker
+      .order('status', { ascending: true })         // featured first
+      .order('price', { ascending: false });
   } else {
-    // newest (default) — three-column priority chain:
-    //   column 1: boosted_until DESC nullsFirst=false → active boosts float to top
-    //   column 2: status ASC              → 'featured' < 'active' → featured group next
-    //   column 3: created_at DESC         → newest within each group
+    // newest + boosted: DB fetches newest first; client re-sorts for active boosts
     query = query
-      .order('boosted_until', { ascending: false, nullsFirst: false }) // PRIMARY: active boosts
-      .order('status', { ascending: true })                            // SECONDARY: featured
-      .order('created_at', { ascending: false });                      // TERTIARY: newest
+      .order('status', { ascending: true })         // 'featured' < 'active'
+      .order('created_at', { ascending: false });   // newest within each group
   }
 
   // ── Pagination LAST (after filters + sort) ────────────────────────────────
@@ -248,7 +232,47 @@ export async function fetchAds(params?: {
 
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
-  return { data: data as Ad[], error: null };
+
+  // ── Client-side priority sort ────────────────────────────────────────────
+  // Only applied for the default / boosted views (not price sorts whose
+  // ordering must remain strictly by price).
+  const sorted =
+    sortBy === 'price_asc' || sortBy === 'price_desc'
+      ? (data as Ad[])
+      : applyClientSort(data as Ad[]);
+
+  return { data: sorted, error: null };
+}
+
+/**
+ * Re-orders a page of ads so that:
+ *   1. Ads with a FUTURE boosted_until appear first (sorted furthest-expiry first)
+ *   2. Then featured (status='featured') ads
+ *   3. Then the rest in their original DB order (newest first)
+ *
+ * Expired boosted_until (past date) is treated the same as null — the ad
+ * drops into group 3 so it no longer unfairly floats above fresh listings.
+ */
+function applyClientSort(ads: Ad[]): Ad[] {
+  const now = Date.now();
+  return [...ads].sort((a, b) => {
+    const aActive = !!a.boosted_until && new Date(a.boosted_until).getTime() > now;
+    const bActive = !!b.boosted_until && new Date(b.boosted_until).getTime() > now;
+
+    // Group 1: active boosts — sort by furthest expiry first
+    if (aActive && bActive) {
+      return new Date(b.boosted_until!).getTime() - new Date(a.boosted_until!).getTime();
+    }
+    if (aActive) return -1;
+    if (bActive) return 1;
+
+    // Group 2: featured status (no active boost)
+    if (a.status === 'featured' && b.status !== 'featured') return -1;
+    if (a.status !== 'featured' && b.status === 'featured') return 1;
+
+    // Group 3: regular — preserve DB order (newest first)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 }
 
 /** Fetch a single ad by ID */
