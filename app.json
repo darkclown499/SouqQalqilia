@@ -142,8 +142,7 @@
         {
           "icon": "./assets/images/plankton-logo.png",
           "color": "#0A6E5C",
-          "defaultChannel": "messages",
-          "projectId": "c102ae5b-583e-4af3-9643-7f32b9e5f1b1"
+          "defaultChannel": "messages"
         }
       ]
     ],
