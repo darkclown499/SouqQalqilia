@@ -32,9 +32,6 @@ function HighlightedText({
 }: { text: string; query: string; baseStyle: any; highlightColor: string }) {
   if (!query.trim()) return <Text style={baseStyle}>{text}</Text>;
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // NOTE: Do NOT use the 'g' flag on a regex stored in a variable and then call
-  // .test() on it in a map — the stateful lastIndex causes alternating match/miss.
-  // Instead, split with the capturing group and check each part with a fresh test.
   const splitRegex = new RegExp(`(${escaped})`, 'gi');
   const matchRegex = new RegExp(`^${escaped}$`, 'i');
   const parts = text.split(splitRegex);
@@ -77,11 +74,7 @@ function EmojiPicker({
     <Animated.View
       style={[
         emojiStyles.picker,
-        {
-          backgroundColor: isDark ? '#2D3748' : '#fff',
-          transform: [{ scale }],
-          opacity,
-        },
+        { backgroundColor: isDark ? '#2D3748' : '#fff', transform: [{ scale }], opacity },
       ]}
     >
       {REACTION_EMOJIS.map(emoji => (
@@ -100,26 +93,14 @@ function EmojiPicker({
 
 const emojiStyles = StyleSheet.create({
   picker: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 28,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 2,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.16,
-    shadowRadius: 12,
-    elevation: 16,
-    alignSelf: 'center',
-    marginBottom: 4,
+    flexDirection: 'row', alignItems: 'center', borderRadius: 28,
+    paddingHorizontal: 10, paddingVertical: 8, gap: 2,
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16, shadowRadius: 12, elevation: 16,
+    alignSelf: 'center', marginBottom: 4,
   },
-  emojiBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  emojiBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   emojiText: { fontSize: 24 },
 });
 
@@ -193,7 +174,6 @@ export default function ChatScreen() {
 
   // ── Emoji reaction state ──────────────────────────────────────────────────
   const [pickerMsgId, setPickerMsgId] = useState<string | null>(null);
-  // local reaction overrides: msgId → emoji (optimistic)
   const [localReactions, setLocalReactions] = useState<Record<string, string>>({});
 
   // ── Message search state ──────────────────────────────────────────────────
@@ -205,16 +185,91 @@ export default function ChatScreen() {
   const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
 
   const { messages, loading, refreshing, otherTyping, isOnline, reload, appendMessage, updateMessage, markReadLocally, removeMessage } = useMessages(id, isBuyer);
+
   const [imageUploading, setImageUploading] = useState(false);
 
+  // ── Voice Note state ──────────────────────────────────────────────────────
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const [voiceProgress, setVoiceProgress] = useState<Record<string, number>>({});
+  const recordingRef = useRef<any>(null);
+  const soundRef = useRef<any>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const handleStartRecording = useCallback(async () => {
+    try {
+      const { Audio } = await import('expo-av');
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert(isAr ? 'لا يوجد إذن' : 'Permission Denied', isAr ? 'يرجى السماح بالوصول للميكروفون' : 'Microphone access required');
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      recordingRef.current = recording;
+      setIsRecording(true);
+      setRecordingDuration(0);
+      recordingTimerRef.current = setInterval(() => setRecordingDuration(d => d + 1), 1000);
+    } catch (e: any) {
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Could not start recording');
+    }
+  }, [isAr, showAlert]);
+
+  const handleStopRecording = useCallback(async (send: boolean) => {
+    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+    setIsRecording(false);
+    setRecordingDuration(0);
+    if (!recordingRef.current) return;
+    try {
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+      if (!send || !uri) return;
+      setImageUploading(true);
+      const fileName = `voice_${Date.now()}.m4a`;
+      const { url, error } = await uploadChatImage(uri, fileName);
+      setImageUploading(false);
+      if (error || !url) { showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? ''); return; }
+      await handleSendMessage('🎤 رسالة صوتية', url);
+    } catch { recordingRef.current = null; setImageUploading(false); }
+  }, [isAr, showAlert]);
+
+  const handlePlayVoice = useCallback(async (msgId: string, voiceUrl: string) => {
+    try {
+      if (playingVoiceId === msgId) {
+        if (soundRef.current) { await soundRef.current.stopAsync(); soundRef.current = null; }
+        setPlayingVoiceId(null); return;
+      }
+      if (soundRef.current) { await soundRef.current.stopAsync(); soundRef.current = null; }
+      const { Audio } = await import('expo-av');
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+      const { sound } = await Audio.Sound.createAsync({ uri: voiceUrl }, { shouldPlay: true });
+      soundRef.current = sound;
+      setPlayingVoiceId(msgId);
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.isLoaded) {
+          const progress = status.durationMillis ? status.positionMillis / status.durationMillis : 0;
+          setVoiceProgress(prev => ({ ...prev, [msgId]: progress }));
+          if (status.didJustFinish) { setPlayingVoiceId(null); soundRef.current = null; }
+        }
+      });
+    } catch { setPlayingVoiceId(null); }
+  }, [playingVoiceId]);
+
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) soundRef.current.stopAsync().catch(() => {});
+      if (recordingRef.current) recordingRef.current.stopAndUnloadAsync().catch(() => {});
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    };
+  }, []);
+
   // ── Search match indices ──────────────────────────────────────────────────
-  // Returns indices in the `messages` array where content matches query
   const searchMatchIds = useMemo<string[]>(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.toLowerCase();
-    return messages
-      .filter(m => m.content?.toLowerCase().includes(q))
-      .map(m => m.id);
+    return messages.filter(m => m.content?.toLowerCase().includes(q)).map(m => m.id);
   }, [messages, searchQuery]);
 
   const totalMatches = searchMatchIds.length;
@@ -224,14 +279,8 @@ export default function ChatScreen() {
   const scrollToMatch = useCallback((idx: number) => {
     const msgId = searchMatchIds[idx];
     if (!msgId || !listRef.current) return;
-    // Must search in withDates (which includes date separator rows), NOT in messages.
-    // withDates is built in render scope so we rebuild a minimal index map here.
-    // We search for the message id among the flat rendered list.
-    // Since withDates changes on each render, we use a small helper that re-walks it.
-    // We post the scroll to avoid calling scrollToIndex before the list settles.
     requestAnimationFrame(() => {
       if (!listRef.current) return;
-      // Rebuild withDates index map (mirrors the render loop below)
       let flatIdx = -1;
       let dateCount = 0;
       let lastDate = '';
@@ -243,7 +292,7 @@ export default function ChatScreen() {
       if (flatIdx < 0) return;
       try {
         listRef.current.scrollToIndex({ index: flatIdx, animated: true, viewPosition: 0.5 });
-      } catch { /* ignore out-of-range */ }
+      } catch { /* ignore */ }
     });
   }, [searchMatchIds, messages]);
 
@@ -261,10 +310,7 @@ export default function ChatScreen() {
     scrollToMatch(prev);
   }, [clampedMatchIdx, totalMatches, scrollToMatch]);
 
-  // Reset match index when query changes
   useEffect(() => { setSearchMatchIndex(0); }, [searchQuery]);
-
-  // Auto-scroll to first match when search activates
   useEffect(() => {
     if (isSearchActive && totalMatches > 0) scrollToMatch(0);
   }, [isSearchActive, totalMatches]);
@@ -272,20 +318,12 @@ export default function ChatScreen() {
   // ── Emoji reaction handler ────────────────────────────────────────────────
   const handleReaction = useCallback(async (msgId: string, emoji: ReactionEmoji) => {
     if (!user) return;
-    // Optimistic update
     setLocalReactions(prev => ({ ...prev, [msgId]: emoji }));
-    // Persist to DB: reactions stored as JSONB { userId: emoji }
     try {
       const supabase = getSupabaseClient();
-      // Use raw SQL-style update via RPC or direct update
-      const { data: current } = await supabase
-        .from('messages')
-        .select('reactions')
-        .eq('id', msgId)
-        .single();
+      const { data: current } = await supabase.from('messages').select('reactions').eq('id', msgId).single();
       const existing: Record<string, string> = (current?.reactions as any) ?? {};
-      const updated = { ...existing, [user.id]: emoji };
-      await supabase.from('messages').update({ reactions: updated }).eq('id', msgId);
+      await supabase.from('messages').update({ reactions: { ...existing, [user.id]: emoji } }).eq('id', msgId);
     } catch { /* optimistic already applied */ }
   }, [user]);
 
@@ -301,9 +339,7 @@ export default function ChatScreen() {
     }
   }, [id, user?.id]);
 
-  // ── Flush offline queue when connection is restored ────────────────────────
-  // Guard: only flush once we know isBuyer (conversation loaded) to avoid
-  // sending before the conversation context is established.
+  // ── Flush offline queue ───────────────────────────────────────────────────
   useEffect(() => {
     if (!isOnline || !id || !user || isBuyer === null) return;
     (async () => {
@@ -321,20 +357,14 @@ export default function ChatScreen() {
   }, [isOnline, id, user?.id, isBuyer]);
 
   const QUICK_REPLIES_AR = [
-    'هل السعر قابل للتفاوض؟',
-    'هل المنتج لا يزال متاحاً؟',
-    'ما هو موقعك؟',
-    'هل يمكن التوصيل؟',
-    'هل يوجد عيوب في المنتج؟',
-    'متى يمكنني الاستلام؟',
+    'هل السعر قابل للتفاوض؟', 'هل المنتج لا يزال متاحاً؟',
+    'ما هو موقعك؟', 'هل يمكن التوصيل؟',
+    'هل يوجد عيوب في المنتج؟', 'متى يمكنني الاستلام؟',
   ];
   const QUICK_REPLIES_EN = [
-    'Is the price negotiable?',
-    'Is this still available?',
-    'Where is your location?',
-    'Can you deliver?',
-    'Any defects or issues?',
-    'When can I pick it up?',
+    'Is the price negotiable?', 'Is this still available?',
+    'Where is your location?', 'Can you deliver?',
+    'Any defects or issues?', 'When can I pick it up?',
   ];
   const quickReplies = isAr ? QUICK_REPLIES_AR : QUICK_REPLIES_EN;
 
@@ -363,6 +393,25 @@ export default function ChatScreen() {
     if (!id || !user) return;
     await markMessagesRead(id, user.id);
     markReadLocally(user.id);
+    // ── Immediately reset app icon badge to true unread count ─────────────
+    try {
+      if (Platform.OS !== 'web') {
+        const Notifications = require('expo-notifications');
+        const supabase = getSupabaseClient();
+        const { data: convRows } = await supabase
+          .from('conversations').select('id')
+          .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
+        const convIds = (convRows ?? []).map((c: any) => c.id);
+        if (convIds.length > 0) {
+          const { count } = await supabase
+            .from('messages').select('id', { count: 'exact', head: true })
+            .is('read_at', null).neq('sender_id', user.id).in('conversation_id', convIds);
+          await Notifications.setBadgeCountAsync(count ?? 0);
+        } else {
+          await Notifications.setBadgeCountAsync(0);
+        }
+      }
+    } catch (_) {}
   }, [id, user?.id, markReadLocally]);
 
   useEffect(() => {
@@ -393,7 +442,7 @@ export default function ChatScreen() {
       id: tempId,
       conversation_id: id,
       sender_id: user?.id ?? '',
-      content: imageUrl ? (content || '\uD83D\uDCF7 صورة') : content,
+      content: imageUrl ? (content || '📷 صورة') : content,
       image_url: imageUrl ?? null,
       message_type: imageUrl ? 'image' : 'text',
       read_at: null,
@@ -406,9 +455,8 @@ export default function ChatScreen() {
     if (error) {
       updateMessage(tempId, { ...tempMsg, _pending: false, _failed: true });
       await addToOfflineQueue({
-        tempId,
-        conversationId: id,
-        content: imageUrl ? (content || '\uD83D\uDCF7 صورة') : content,
+        tempId, conversationId: id,
+        content: imageUrl ? (content || '📷 صورة') : content,
         image_url: imageUrl,
         message_type: imageUrl ? 'image' : 'text',
         created_at: tempMsg.created_at,
@@ -417,7 +465,7 @@ export default function ChatScreen() {
       if (sent) updateMessage(tempId, sent);
       if (recipientId) {
         const senderDisplayName = user?.username || user?.email?.split('@')[0] || 'رسالة جديدة';
-        notifyRecipient(recipientId, senderDisplayName, content || '\uD83D\uDCF7 صورة', id, !isBuyerSending);
+        notifyRecipient(recipientId, senderDisplayName, content || '📷 صورة', id, !isBuyerSending);
       }
     }
   };
@@ -440,32 +488,22 @@ export default function ChatScreen() {
     }
   };
 
-  /** Capture a photo directly from the camera and send it as a chat message */
   const handleCameraCapture = async () => {
     if (!id || imageUploading) return;
     try {
       const ImagePicker = await import('expo-image-picker');
       const perm = await ImagePicker.requestCameraPermissionsAsync();
       if (perm.status !== 'granted') {
-        showAlert(
-          isAr ? 'لا يوجد إذن' : 'Permission Denied',
-          isAr ? 'يرجى السماح للتطبيق بالوصول إلى الكاميرا' : 'Please allow camera access to take photos.',
-        );
+        showAlert(isAr ? 'لا يوجد إذن' : 'Permission Denied', isAr ? 'يرجى السماح بالوصول إلى الكاميرا' : 'Please allow camera access.');
         return;
       }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-        allowsEditing: true,
-        aspect: [4, 3],
-      });
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8, allowsEditing: true, aspect: [4, 3] });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       setImageUploading(true);
-      const fileName = asset.fileName ?? `cam_${Date.now()}.jpg`;
-      const { url, error } = await uploadChatImage(asset.uri, fileName);
+      const { url, error } = await uploadChatImage(asset.uri, asset.fileName ?? `cam_${Date.now()}.jpg`);
       setImageUploading(false);
-      if (error || !url) { showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? 'Unknown error'); return; }
+      if (error || !url) { showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? ''); return; }
       await handleSendMessage('', url);
     } catch (e: any) {
       setImageUploading(false);
@@ -473,32 +511,22 @@ export default function ChatScreen() {
     }
   };
 
-  /** Pick an image from library and send it as a chat message */
   const handleImagePick = async () => {
     if (!id || imageUploading) return;
     try {
       const ImagePicker = await import('expo-image-picker');
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (perm.status !== 'granted') {
-        showAlert(
-          isAr ? 'لا يوجد إذن' : 'Permission Denied',
-          isAr ? 'يرجى السماح للتطبيق بالوصول إلى معرض الصور' : 'Please allow access to your photo library.',
-        );
+        showAlert(isAr ? 'لا يوجد إذن' : 'Permission Denied', isAr ? 'يرجى السماح بالوصول إلى المعرض' : 'Please allow photo library access.');
         return;
       }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.75,
-        allowsEditing: true,
-        aspect: [4, 3],
-      });
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.75, allowsEditing: true, aspect: [4, 3] });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       setImageUploading(true);
-      const fileName = asset.fileName ?? `chat_${Date.now()}.jpg`;
-      const { url, error } = await uploadChatImage(asset.uri, fileName);
+      const { url, error } = await uploadChatImage(asset.uri, asset.fileName ?? `chat_${Date.now()}.jpg`);
       setImageUploading(false);
-      if (error || !url) { showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? 'Unknown error'); return; }
+      if (error || !url) { showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? ''); return; }
       await handleSendMessage('', url);
     } catch (e: any) {
       setImageUploading(false);
@@ -629,10 +657,19 @@ export default function ChatScreen() {
   const otherInitial = otherName.charAt(0).toUpperCase();
   const otherAvatarUrl = (otherUser as any)?.avatar_url ?? null;
 
+  // ── Pagination: show last N messages, load older ones on demand ────────────
+  const PAGE_SIZE = 60;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [id]);
+  const pagedMessages = useMemo(() => messages.slice(Math.max(0, messages.length - visibleCount)), [messages, visibleCount]);
+  const handleLoadMore = useCallback(() => {
+    setVisibleCount(v => Math.min(v + PAGE_SIZE, Math.max(messages.length, PAGE_SIZE)));
+  }, [messages.length]);
+
   type MsgItem = (Message & { _type?: undefined }) | { _type: 'date'; _date: string; id: string };
   const withDates: MsgItem[] = [];
   let lastDate = '';
-  for (const msg of messages) {
+  for (const msg of pagedMessages) {
     const d = new Date(msg.created_at).toDateString();
     if (d !== lastDate) {
       withDates.push({ _type: 'date', _date: msg.created_at, id: `date_${msg.id}` });
@@ -696,7 +733,6 @@ export default function ChatScreen() {
             </View>
           </View>
 
-          {/* Search toggle */}
           <Pressable
             style={[styles.moreBtn, isSearchActive && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
             onPress={() => {
@@ -711,7 +747,6 @@ export default function ChatScreen() {
             <MaterialIcons name={isSearchActive ? 'search-off' : 'search'} size={22} color="#fff" />
           </Pressable>
 
-          {/* More options */}
           <Pressable style={styles.moreBtn} onPress={() => setMenuVisible(true)} hitSlop={8}>
             {actionLoading
               ? <ActivityIndicator size="small" color="#fff" />
@@ -733,16 +768,14 @@ export default function ChatScreen() {
               autoCorrect={false}
             />
             {totalMatches > 0 ? (
-              <Text style={[styles.searchCounter, { color: colors.textMuted }]}>
-                {clampedMatchIdx + 1}/{totalMatches}
-              </Text>
+              <Text style={[styles.searchCounter, { color: colors.textMuted }]}>{clampedMatchIdx + 1}/{totalMatches}</Text>
             ) : searchQuery.trim() ? (
               <Text style={[styles.searchNoResults, { color: colors.textMuted }]} numberOfLines={1}>
-                {isAr ? `لا يوجد نتائج لـ "${searchQuery}"` : `No results for "${searchQuery}"`}
+                {isAr ? `لا نتائج لـ "${searchQuery}"` : `No results for "${searchQuery}"`}
               </Text>
             ) : null}
             <Pressable onPress={handleSearchPrev} disabled={totalMatches === 0} hitSlop={6} style={styles.searchNavBtn}>
-              <MaterialIcons name={isAr ? 'expand-less' : 'expand-less'} size={22} color={totalMatches > 0 ? colors.primary : colors.border} />
+              <MaterialIcons name="expand-less" size={22} color={totalMatches > 0 ? colors.primary : colors.border} />
             </Pressable>
             <Pressable onPress={handleSearchNext} disabled={totalMatches === 0} hitSlop={6} style={styles.searchNavBtn}>
               <MaterialIcons name="expand-more" size={22} color={totalMatches > 0 ? colors.primary : colors.border} />
@@ -833,6 +866,20 @@ export default function ChatScreen() {
               if (!isSearchActive) listRef.current?.scrollToEnd({ animated: false });
             }}
             onScrollToIndexFailed={() => {}}
+            // ── Load older messages button ────────────────────────────────
+            ListHeaderComponent={
+              messages.length > visibleCount ? (
+                <Pressable
+                  style={[styles.loadMoreBtn, { backgroundColor: colors.surfaceTint }]}
+                  onPress={handleLoadMore}
+                >
+                  <MaterialIcons name="expand-less" size={16} color={colors.textMuted} />
+                  <Text style={[styles.loadMoreText, { color: colors.textMuted }]}>
+                    {isAr ? `تحميل رسائل أقدم (${messages.length - visibleCount})` : `Load older (${messages.length - visibleCount})`}
+                  </Text>
+                </Pressable>
+              ) : null
+            }
             renderItem={({ item }) => {
               if (item._type === 'date') {
                 return (
@@ -851,33 +898,30 @@ export default function ChatScreen() {
               const isRead = !!msg.read_at;
               const isPending = !!(msg as any)._pending;
               const isFailed = !!(msg as any)._failed;
-              const isImage = msg.message_type === 'image' && !!msg.image_url;
+              // ── Detect voice vs image ─────────────────────────────────────
+              const isVoice = msg.message_type === 'image' && !!msg.image_url &&
+                (msg.image_url.includes('.m4a') || msg.image_url.includes('.mp3') ||
+                  msg.image_url.includes('.aac') || (msg.content?.includes('🎤') ?? false));
+              const isImage = msg.message_type === 'image' && !!msg.image_url && !isVoice;
 
-              // Determine reaction to display (local optimistic first, then from DB)
               const dbReactions: Record<string, string> = ((msg as any).reactions as any) ?? {};
               const myReaction = localReactions[msg.id] ?? (user?.id ? dbReactions[user.id] : null);
-              // Aggregate all emoji counts
               const allReactions = { ...dbReactions };
               if (localReactions[msg.id]) allReactions[user?.id ?? ''] = localReactions[msg.id];
               const reactionCounts = Object.values(allReactions).reduce<Record<string, number>>((acc, e) => {
-                acc[e] = (acc[e] ?? 0) + 1;
-                return acc;
+                acc[e] = (acc[e] ?? 0) + 1; return acc;
               }, {});
               const reactionEntries = Object.entries(reactionCounts);
 
-              // Search highlight active for this message
               const isActiveMatch = activeMatchId === msg.id;
               const hasSearchMatch = searchQuery.trim() && msg.content?.toLowerCase().includes(searchQuery.toLowerCase());
-
               const isPickerOpen = pickerMsgId === msg.id;
 
               return (
                 <View
                   style={[
                     styles.msgRow,
-                    isMine
-                      ? isAr ? styles.msgRowOther : styles.msgRowMine
-                      : isAr ? styles.msgRowMine : styles.msgRowOther,
+                    isMine ? (isAr ? styles.msgRowOther : styles.msgRowMine) : (isAr ? styles.msgRowMine : styles.msgRowOther),
                     isActiveMatch ? { backgroundColor: colors.primaryGhost + '66', borderRadius: Radius.lg } : null,
                   ]}
                 >
@@ -888,7 +932,6 @@ export default function ChatScreen() {
                   ) : null}
 
                   <View style={styles.bubbleWrap}>
-                    {/* Emoji picker above bubble */}
                     {isPickerOpen ? (
                       <EmojiPicker
                         visible={isPickerOpen}
@@ -898,13 +941,12 @@ export default function ChatScreen() {
                       />
                     ) : null}
 
-                    {/* Message bubble with long-press */}
                     <Pressable
                       onLongPress={() => setPickerMsgId(prev => prev === msg.id ? null : msg.id)}
                       delayLongPress={380}
                       style={({ pressed }) => [
                         styles.bubble,
-                        isImage ? styles.bubbleImage : null,
+                        (isImage || isVoice) ? styles.bubbleImage : null,
                         isMine
                           ? { backgroundColor: isFailed ? '#EF4444' : colors.primary, borderBottomRightRadius: isAr ? Radius.lg : 4, borderBottomLeftRadius: isAr ? 4 : Radius.lg, opacity: pressed ? 0.88 : 1 }
                           : { backgroundColor: colors.surface, borderBottomLeftRadius: isAr ? Radius.lg : 4, borderBottomRightRadius: isAr ? 4 : Radius.lg, ...Shadow.sm, opacity: pressed ? 0.88 : 1 },
@@ -912,10 +954,30 @@ export default function ChatScreen() {
                         isActiveMatch ? { borderWidth: 2, borderColor: colors.primary } : null,
                       ]}
                     >
-                      {isImage ? (
+                      {/* Voice note player */}
+                      {isVoice ? (
+                        <Pressable
+                          style={[styles.voicePlayer, { backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : colors.primaryGhost }]}
+                          onPress={() => handlePlayVoice(msg.id, msg.image_url!)}
+                        >
+                          <MaterialIcons
+                            name={playingVoiceId === msg.id ? 'pause-circle-filled' : 'play-circle-filled'}
+                            size={32} color={isMine ? '#fff' : colors.primary}
+                          />
+                          <View style={styles.voiceTrack}>
+                            <View style={[styles.voiceBar, { backgroundColor: isMine ? 'rgba(255,255,255,0.3)' : colors.border }]}>
+                              <View style={[styles.voiceFill, {
+                                backgroundColor: isMine ? '#fff' : colors.primary,
+                                width: `${((voiceProgress[msg.id] ?? 0) * 100).toFixed(0)}%` as any,
+                              }]} />
+                            </View>
+                            <Text style={{ fontSize: 10, color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted }}>🎤</Text>
+                          </View>
+                        </Pressable>
+                      ) : isImage ? (
                         <Image source={{ uri: msg.image_url! }} style={styles.msgImage} contentFit="cover" transition={200} cachePolicy="memory-disk" />
                       ) : null}
-                      {msg.content && msg.content !== '\uD83D\uDCF7 صورة' ? (
+                      {msg.content && msg.content !== '📷 صورة' && !isVoice ? (
                         isSearchActive && searchQuery.trim() ? (
                           <HighlightedText
                             text={msg.content}
@@ -928,26 +990,22 @@ export default function ChatScreen() {
                             {msg.content}
                           </Text>
                         )
-                      ) : !isImage ? (
+                      ) : (!isImage && !isVoice) ? (
                         <Text style={[styles.msgText, { color: isMine ? '#fff' : colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]}>
                           {msg.content}
                         </Text>
                       ) : null}
                     </Pressable>
 
-                    {/* Reaction badges below bubble */}
                     {reactionEntries.length > 0 ? (
                       <View style={[styles.reactionRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
                         {reactionEntries.map(([emoji, count]) => (
                           <Pressable
                             key={emoji}
-                            style={[
-                              styles.reactionBadge,
-                              {
-                                backgroundColor: myReaction === emoji ? colors.primaryGhost : colors.surface,
-                                borderColor: myReaction === emoji ? colors.primary : colors.border,
-                              },
-                            ]}
+                            style={[styles.reactionBadge, {
+                              backgroundColor: myReaction === emoji ? colors.primaryGhost : colors.surface,
+                              borderColor: myReaction === emoji ? colors.primary : colors.border,
+                            }]}
                             onPress={() => handleReaction(msg.id, emoji as ReactionEmoji)}
                           >
                             <Text style={styles.reactionEmoji}>{emoji}</Text>
@@ -1068,6 +1126,34 @@ export default function ChatScreen() {
           >
             <MaterialIcons name="photo-library" size={20} color={colors.primary} />
           </Pressable>
+
+          {/* ── Voice recording controls ─────────────────────────────────── */}
+          {isRecording ? (
+            <View style={[styles.recordingRow, { backgroundColor: colors.primaryGhost, borderColor: colors.primary }]}>
+              <View style={[styles.recordingDot, { backgroundColor: '#EF4444' }]} />
+              <Text style={[styles.recordingTimer, { color: colors.primary }]}>
+                {String(Math.floor(recordingDuration / 60)).padStart(2, '0')}:{String(recordingDuration % 60).padStart(2, '0')}
+              </Text>
+              <Pressable style={[styles.quickReplyToggleBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => handleStopRecording(false)} hitSlop={4}>
+                <MaterialIcons name="delete" size={18} color="#EF4444" />
+              </Pressable>
+              <Pressable style={[styles.quickReplyToggleBtn, { backgroundColor: colors.primary }]} onPress={() => handleStopRecording(true)} hitSlop={4}>
+                <MaterialIcons name="send" size={18} color="#fff" />
+              </Pressable>
+            </View>
+          ) : (
+            !text.trim() ? (
+              <Pressable
+                style={[styles.quickReplyToggleBtn, { backgroundColor: colors.primaryGhost }]}
+                onPress={handleStartRecording}
+                disabled={imageUploading}
+                hitSlop={4}
+              >
+                <MaterialIcons name="mic" size={20} color={colors.primary} />
+              </Pressable>
+            ) : null
+          )}
+
           <TextInput
             style={[styles.textInput, {
               borderColor: colors.border,
@@ -1115,33 +1201,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center', justifyContent: 'center',
   },
-  soldPill: {
-    backgroundColor: '#EF4444', borderRadius: 99,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
+  soldPill: { backgroundColor: '#EF4444', borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 },
   soldPillText: { color: '#fff', fontSize: 9, fontWeight: '800' },
-
-  // ── Search bar ──
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: Spacing.md, paddingVertical: 8,
     gap: 6, borderBottomWidth: 1,
   },
-  searchInput: {
-    flex: 1, fontSize: FontSize.md, height: 38,
-    paddingHorizontal: 4,
-  },
-  searchCounter: {
-    fontSize: FontSize.xs, fontWeight: '600', minWidth: 38, textAlign: 'center',
-  },
-  searchNoResults: {
-    fontSize: FontSize.xs, fontWeight: '500', maxWidth: 180, flexShrink: 1,
-  },
-  searchNavBtn: {
-    width: 32, height: 32, alignItems: 'center', justifyContent: 'center',
-  },
-
-  // ── Action menu ──
+  searchInput: { flex: 1, fontSize: FontSize.md, height: 38, paddingHorizontal: 4 },
+  searchCounter: { fontSize: FontSize.xs, fontWeight: '600', minWidth: 38, textAlign: 'center' },
+  searchNoResults: { fontSize: FontSize.xs, fontWeight: '500', maxWidth: 180, flexShrink: 1 },
+  searchNavBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   menuSheet: {
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
@@ -1159,8 +1229,6 @@ const styles = StyleSheet.create({
   menuDivider: { height: 1, marginVertical: 6 },
   menuCancelBtn: { borderRadius: Radius.xl, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm },
   menuCancelText: { fontSize: FontSize.md, fontWeight: '700' },
-
-  // ── Header avatar ──
   headerAvatar: {
     width: 42, height: 42, borderRadius: 21,
     alignItems: 'center', justifyContent: 'center',
@@ -1174,8 +1242,6 @@ const styles = StyleSheet.create({
   onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ADE80' },
   onlineText: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.75)' },
   headerAd: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.6)', flex: 1 },
-
-  // ── Messages ──
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, padding: Spacing.xl },
   emptyIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: FontSize.lg, fontWeight: '700' },
@@ -1195,22 +1261,13 @@ const styles = StyleSheet.create({
   msgText: { fontSize: FontSize.md, lineHeight: 22 },
   msgMeta: { alignItems: 'center' },
   msgTime: { fontSize: 10, fontWeight: '500' },
-
-  // ── Reaction badges ──
-  reactionRow: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    gap: 4, marginTop: 3, marginBottom: 1,
-  },
+  reactionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3, marginBottom: 1 },
   reactionBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
-    borderRadius: Radius.full,
-    paddingHorizontal: 7, paddingVertical: 3,
-    borderWidth: 1.5,
+    borderRadius: Radius.full, paddingHorizontal: 7, paddingVertical: 3, borderWidth: 1.5,
   },
   reactionEmoji: { fontSize: 14 },
   reactionCount: { fontSize: 11, fontWeight: '700' },
-
-  // ── Input bar ──
   inputBar: {
     alignItems: 'flex-end',
     gap: Spacing.sm, padding: Spacing.sm, paddingHorizontal: Spacing.md, borderTopWidth: 1,
@@ -1222,17 +1279,25 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md, lineHeight: 20,
   },
   sendBtn: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-
-  // ── Typing ──
   typingDot: { width: 7, height: 7, borderRadius: 3.5 },
   typingRow: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-end', marginTop: Spacing.sm },
   typingBubble: { borderRadius: Radius.lg, borderBottomLeftRadius: 4, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
-
-  // ── Misc ──
   offlineBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: Spacing.md, paddingVertical: 8 },
   offlineBannerText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '600', flex: 1 },
   bubbleImage: { padding: 0, overflow: 'hidden', borderRadius: Radius.lg },
   msgImage: { width: 200, height: 150, borderRadius: Radius.lg },
+  // ── Voice player ──
+  voicePlayer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingVertical: 8, borderRadius: Radius.lg, minWidth: 170 },
+  voiceTrack: { flex: 1, gap: 4 },
+  voiceBar: { height: 3, borderRadius: 2, overflow: 'hidden' },
+  voiceFill: { height: 3, borderRadius: 2 },
+  // ── Recording controls ──
+  recordingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.xl, borderWidth: 1, flex: 1, minWidth: 0 },
+  recordingDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  recordingTimer: { fontSize: FontSize.sm, fontWeight: '700', flex: 1 },
+  // ── Load more ──
+  loadMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginBottom: 8, borderRadius: Radius.lg, marginHorizontal: 32 },
+  loadMoreText: { fontSize: FontSize.xs, fontWeight: '600' },
   failedLabel: { fontSize: 10, fontWeight: '600', marginTop: 2, textAlign: 'center' },
   quickRepliesContent: { paddingHorizontal: Spacing.md, gap: Spacing.sm, alignItems: 'center' },
   quickReplyChip: { borderWidth: 1.5, borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 8, maxWidth: 220 },

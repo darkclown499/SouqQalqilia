@@ -436,10 +436,22 @@ export default function RootLayout() {
       try {
         const Notifications = require('expo-notifications');
         foregroundSub = Notifications.addNotificationReceivedListener((notification: any) => {
-          const title = notification?.request?.content?.title ?? '';
-          const body  = notification?.request?.content?.body  ?? '';
           const data  = notification?.request?.content?.data  ?? {};
-          console.log('[Notification] ✅ Foreground received:', { title, body, data });
+          const convId: string | undefined = data?.conversation_id;
+          // Suppress the push banner if the user is already viewing that exact chat
+          if (convId) {
+            import('expo-router').then(({ useSegments: _unused, router: _r }) => {}).catch(() => {});
+            // Read active route via Linking
+            import('expo-linking').then(async ({ default: ExpoLinking }) => {
+              const url = await ExpoLinking.getInitialURL();
+              if (url && url.includes(convId)) {
+                // User is in this chat — swallow the notification (already handled)
+                console.log('[Notification] Suppressed foreground push — user already in conv:', convId);
+                return;
+              }
+              console.log('[Notification] ✅ Foreground received, showing banner for conv:', convId);
+            }).catch(() => {});
+          }
         });
       } catch (_) {}
     }

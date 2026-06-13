@@ -4,7 +4,7 @@ import { corsHeaders } from '../_shared/cors.ts';
 
 // ── In-memory deduplication ───────────────────────────────────────────────────
 const lastNotified = new Map<string, number>();
-const DEDUP_WINDOW_MS = 8_000;
+const DEDUP_WINDOW_MS = 30_000; // 30s window — groups rapid messages in same conversation
 const ACTIVE_POLL_THRESHOLD_MS = 10_000;
 
 function cleanupDedup() {
