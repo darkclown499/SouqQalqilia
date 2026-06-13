@@ -383,6 +383,17 @@ export function useMessages(
   };
 }
 
+// ─── Global unread refresh bridge ───────────────────────────────────────────────
+// Allows any screen (e.g. chat/[id].tsx) to immediately trigger a fresh unread
+// count in useConversations without prop-drilling or a full Context refactor.
+// Pattern: useConversations registers its refreshUnread fn here on mount;
+//          chat screen calls triggerUnreadRefresh() after markMessagesRead().
+let _globalRefreshUnread: (() => Promise<void>) | null = null;
+
+export function triggerUnreadRefresh(): void {
+  _globalRefreshUnread?.().catch(() => {});
+}
+
 // ─── useConversations ──────────────────────────────────────────────────────────
 
 export function useConversations() {
@@ -475,6 +486,13 @@ export function useConversations() {
       if (showSpinner) setLoading(false);
     }
   }, [setBadge]);
+
+  // Register this instance's refreshUnread as the global bridge target.
+  // On unmount, clear the bridge so stale closures are never called.
+  useEffect(() => {
+    _globalRefreshUnread = refreshUnread;
+    return () => { _globalRefreshUnread = null; };
+  }, [refreshUnread]);
 
   useEffect(() => {
     load(true);

@@ -9,7 +9,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
-import { useMessages } from '@/hooks/useChat';
+import { useMessages, triggerUnreadRefresh } from '@/hooks/useChat';
 import {
   fetchConversationById, sendMessage, markMessagesRead, updateTypingIndicator,
   notifyRecipient, deleteConversation, uploadChatImage,
@@ -393,7 +393,9 @@ export default function ChatScreen() {
     if (!id || !user) return;
     await markMessagesRead(id, user.id);
     markReadLocally(user.id);
-    // ── Immediately reset app icon badge to true unread count ─────────────
+    // ── Immediately sync the in-app tab-bar unread badge ──────────────────
+    triggerUnreadRefresh();
+    // ── Also update the OS app-icon badge ─────────────────────────────────
     try {
       if (Platform.OS !== 'web') {
         const Notifications = require('expo-notifications');
