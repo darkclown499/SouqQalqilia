@@ -330,13 +330,9 @@ export default function LoginScreen() {
         showAlert(isAr ? 'خطأ' : 'Error', error?.message ?? (isAr ? 'تعذّر الاتصال بـ Google' : 'Could not connect to Google'));
         setGoogleLoading(false); return;
       }
-      // ── Detailed diagnostic logging for production debugging ──────────────
-      console.log('[GoogleSignIn] WebBrowser result type:', result?.type);
-      if ((result as any)?.url) console.log('[GoogleSignIn] Redirect URL:', (result as any).url.substring(0, 120));
-
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo) as { type: string; url?: string };
 
-      console.log('[GoogleSignIn] Browser session result:', result.type);
+      console.log('[GoogleSignIn] Browser session result:', result.type, result.type === 'success' ? (result as any).url?.substring(0, 120) : '');
 
       if (result.type === 'success' && result.url) {
         const parsed = new URL(result.url);
