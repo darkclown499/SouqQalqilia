@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
-import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache } from '@/services/adsService';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache, subscribeToCacheInvalidation } from '@/services/adsService';
 
 const PAGE_SIZE = 20;
 
@@ -50,6 +50,22 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     setError(error);
     setLoading(false);
   }, [params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);
+
+  // Re-fetch automatically when another screen invalidates the cache
+  // (e.g. after boosting/editing an ad). Only triggers for the default
+  // no-filter feed so filtered views are not disrupted.
+  useEffect(() => {
+    const unsub = subscribeToCacheInvalidation(() => {
+      const p = params;
+      const isDefault =
+        !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice &&
+        !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
+      if (isDefault) {
+        load();
+      }
+    });
+    return unsub;
+  }, [load]);
 
   const loadMore = useCallback(async (currentParams?: typeof params) => {
     if (loadingMore || !hasMore) return;

@@ -27,8 +27,21 @@ export function setAdsCache(data: Ad[]): void {
   _adsCache = { data, fetchedAt: Date.now() };
 }
 
+// ── Cache invalidation listeners ─────────────────────────────────────────────
+// Any component can subscribe to be notified when the cache is cleared
+// (e.g. after a boost/edit), allowing instant feed refresh without polling.
+type CacheListener = () => void;
+const _cacheListeners = new Set<CacheListener>();
+
+export function subscribeToCacheInvalidation(cb: CacheListener): () => void {
+  _cacheListeners.add(cb);
+  return () => _cacheListeners.delete(cb);
+}
+
 export function clearAdsCache(): void {
   _adsCache = null;
+  // Notify all subscribers immediately
+  _cacheListeners.forEach(cb => { try { cb(); } catch {} });
 }
 
 /**
@@ -97,7 +110,7 @@ export async function preloadAds(): Promise<void> {
   // Kick off recently-viewed hydration in parallel with the API fetch
   // so neither waits for the other unnecessarily.
   const [{ data }, recentUrls] = await Promise.all([
-    fetchAds({ limit: 50, offset: 0, sortBy: 'newest' }),
+    fetchAds({ limit: 50, offset: 0, sortBy: 'boosted' }),
     loadRecentlyViewedUrls(),
   ]);
 
@@ -220,12 +233,14 @@ export async function fetchAds(params?: {
       .order('status', { ascending: true })          // featured before active
       .order('created_at', { ascending: false });    // newest as tiebreaker
   } else {
-    // newest (default) — strict two-column priority chain:
-    //   column 1: status ASC   → 'featured' < 'active' → featured group at top
-    //   column 2: created_at DESC → newest within each group
+    // newest (default) — three-column priority chain:
+    //   column 1: boosted_until DESC nullsFirst=false → active boosts float to top
+    //   column 2: status ASC              → 'featured' < 'active' → featured group next
+    //   column 3: created_at DESC         → newest within each group
     query = query
-      .order('status', { ascending: true })          // PRIMARY: featured floats up
-      .order('created_at', { ascending: false });    // SECONDARY: newest first
+      .order('boosted_until', { ascending: false, nullsFirst: false }) // PRIMARY: active boosts
+      .order('status', { ascending: true })                            // SECONDARY: featured
+      .order('created_at', { ascending: false });                      // TERTIARY: newest
   }
 
   // ── Pagination LAST (after filters + sort) ────────────────────────────────
