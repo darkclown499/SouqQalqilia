@@ -322,12 +322,11 @@ export default function RootLayout() {
   }, [appIsReady]);
 
   useEffect(() => {
-    if (Platform.OS === 'web') return;
-    const key = Platform.OS === 'ios' ? 'min_ios_version' : 'min_android_version';
+    if (Platform.OS !== 'android') return;
     getSupabaseClient()
       .from('app_config')
       .select('value')
-      .eq('key', key)
+      .eq('key', 'min_android_version')
       .maybeSingle()
       .then(({ data }) => {
         const minVersion = data?.value ?? '1.0.0';
