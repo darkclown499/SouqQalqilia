@@ -482,7 +482,7 @@ export default function RootLayout() {
 
   if (forceUpdate?.required) {
     return (
-      <SafeAreaProvider>
+      <SafeAreaProvider onLayout={onLayoutRootView}>
         <ForceUpdateScreen currentVersion={APP_VERSION} minVersion={forceUpdate.minVersion} />
       </SafeAreaProvider>
     );
