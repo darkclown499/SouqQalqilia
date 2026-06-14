@@ -208,11 +208,13 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
             source={{ uri: firstImage.url }}
             style={[styles.image, !imgLoaded && shimmerOverrideStyle]}
             contentFit="cover"
-            transition={200}
+            transition={imgLoaded ? 0 : 180}
             cachePolicy="memory-disk"
             recyclingKey={firstImage.url}
             priority={isFeatured || isBoosted ? 'high' : 'normal'}
             responsivePolicy="live"
+            placeholder={firstImage.blurhash ? { blurhash: firstImage.blurhash } : undefined}
+            placeholderContentFit="cover"
             onLoad={() => setImgLoaded(true)}
             onError={() => { setImgError(true); setImgLoaded(true); }}
           />

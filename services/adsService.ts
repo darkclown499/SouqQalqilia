@@ -127,6 +127,7 @@ export interface AdImage {
   ad_id: string;
   url: string;
   position: number;
+  blurhash?: string | null;
 }
 
 export interface Ad {
@@ -192,7 +193,7 @@ export async function fetchAds(params?: {
     id, user_id, category_id, title, price, location, condition,
     status, views, created_at, boosted_until, serial_number,
     categories(id, name, name_ar, icon, color),
-    ad_images(id, url, position)
+    ad_images(id, url, position, blurhash)
   `;
 
   // ── Helper: apply common filters to a query ───────────────────────────────
@@ -273,7 +274,7 @@ export async function fetchAdById(id: string): Promise<{ data: Ad | null; error:
     .select(`
       *,
       categories(id, name, icon, color),
-      ad_images(id, url, position),
+      ad_images(id, url, position, blurhash),
       user_profiles(username, email, phone, avatar_url)
     `)
     .eq('id', id)
@@ -292,7 +293,7 @@ export async function fetchMyAds(): Promise<{ data: Ad[]; error: string | null }
 
   const { data, error } = await supabase
     .from('ads')
-    .select(`*, categories(id, name, icon, color), ad_images(id, url, position)`)
+    .select(`*, categories(id, name, icon, color), ad_images(id, url, position, blurhash)`)
     .eq('user_id', user.id)
     .neq('status', 'deleted')
     .order('created_at', { ascending: false });
@@ -338,10 +339,16 @@ export async function createAd(
 /** Save image URLs for an ad */
 export async function saveAdImages(
   adId: string,
-  urls: string[]
+  urls: string[],
+  blurhashes?: (string | null)[]
 ): Promise<{ error: string | null }> {
   const supabase = getSupabaseClient();
-  const rows = urls.map((url, position) => ({ ad_id: adId, url, position }));
+  const rows = urls.map((url, position) => ({
+    ad_id: adId,
+    url,
+    position,
+    ...(blurhashes?.[position] ? { blurhash: blurhashes[position] } : {}),
+  }));
   const { error } = await supabase.from('ad_images').insert(rows);
   return { error: error ? error.message : null };
 }

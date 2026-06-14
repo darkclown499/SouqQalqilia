@@ -13,14 +13,14 @@ import { useCategories } from '@/hooks/useCategories';
 import { createAd, saveAdImages } from '@/services/adsService';
 import { getSupabaseClient } from '@/template';
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { pickImage, pickMultipleImages, uploadImage } from '@/services/imageService';
+import { pickImage, pickMultipleImages, uploadImage, generateBlurhash } from '@/services/imageService';
 import { getCategoryName } from '@/services/categoriesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { MAX_AD_IMAGES } from '@/constants/config';
 
-interface ImageItem { uri: string; base64: string }
+interface ImageItem { uri: string; base64: string; blurhash?: string | null }
 
 const PHONE_PREFIXES = ['+970', '+972'];
 
@@ -141,7 +141,13 @@ export default function PostAdScreen() {
     setTimeout(async () => {
       const result = await pickImage('camera');
       if (result) {
-        setImages(prev => [...prev, result]);
+        // Generate blurhash in background — doesn't block UI
+        generateBlurhash(result.uri).then(blurhash => {
+          setImages(prev => prev.map(img =>
+            img.uri === result.uri ? { ...img, blurhash } : img
+          ));
+        }).catch(() => {});
+        setImages(prev => [...prev, { ...result, blurhash: null }]);
       } else {
         showAlert(
           language === 'ar' ? 'لا يوجد إذن' : 'Permission Denied',
@@ -159,7 +165,16 @@ export default function PostAdScreen() {
       if (remaining <= 0) return;
       const results = await pickMultipleImages(Math.min(3, remaining));
       if (results.length > 0) {
-        setImages(prev => [...prev, ...results].slice(0, MAX_AD_IMAGES));
+        const withNullHash = results.map(r => ({ ...r, blurhash: null as string | null }));
+        setImages(prev => [...prev, ...withNullHash].slice(0, MAX_AD_IMAGES));
+        // Generate blurhashes in background for all selected images
+        withNullHash.forEach(img => {
+          generateBlurhash(img.uri).then(blurhash => {
+            setImages(prev => prev.map(p =>
+              p.uri === img.uri ? { ...p, blurhash } : p
+            ));
+          }).catch(() => {});
+        });
       }
     }, 300);
   };
@@ -253,11 +268,15 @@ export default function PostAdScreen() {
       if (adError || !ad) throw new Error(adError ?? 'Failed to create ad');
       if (images.length > 0) {
         const urls: string[] = [];
+        const blurhashes: (string | null)[] = [];
         for (const img of images) {
           const { url } = await uploadImage(img.base64, user.id, ad.id);
-          if (url) urls.push(url);
+          if (url) {
+            urls.push(url);
+            blurhashes.push(img.blurhash ?? null);
+          }
         }
-        if (urls.length > 0) await saveAdImages(ad.id, urls);
+        if (urls.length > 0) await saveAdImages(ad.id, urls, blurhashes);
       }
       setSelectedCity(QALQILYA_CITY);
       resetForm();

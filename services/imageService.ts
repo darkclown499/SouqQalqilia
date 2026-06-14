@@ -2,6 +2,25 @@ import { getSupabaseClient } from '@/template';
 import { STORAGE_BUCKET } from '@/constants/config';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { Image as ExpoImage } from 'expo-image';
+
+/**
+ * Generate a blurhash string from an image URI.
+ * Uses a 32px thumbnail for fast encoding — never blocks the upload pipeline.
+ */
+export async function generateBlurhash(uri: string): Promise<string | null> {
+  try {
+    const thumb = await manipulateAsync(
+      uri,
+      [{ resize: { width: 32 } }],
+      { compress: 0.5, format: SaveFormat.JPEG, base64: false }
+    );
+    const hash = await (ExpoImage as any).generateBlurhashAsync?.(thumb.uri, [4, 3]);
+    return hash ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Pick up to `limit` images from the gallery in a single system-picker session.
@@ -101,7 +120,7 @@ export async function uploadImage(
   base64: string,
   userId: string,
   fileName: string
-): Promise<{ url: string | null; error: string | null }> {
+): Promise<{ url: string | null; blurhash: string | null; error: string | null }> {
   const supabase = getSupabaseClient();
 
   const byteCharacters = atob(base64);
@@ -122,9 +141,9 @@ export async function uploadImage(
   if (error) {
     // Clean up any partial object that was written before the error
     supabase.storage.from(STORAGE_BUCKET).remove([path]).catch(() => {});
-    return { url: null, error: error.message };
+    return { url: null, blurhash: null, error: error.message };
   }
 
   const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-  return { url: data.publicUrl, error: null };
+  return { url: data.publicUrl, blurhash: null, error: null };
 }

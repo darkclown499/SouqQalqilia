@@ -672,10 +672,10 @@ export default function HomeScreen() {
           renderItem={renderRow}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          windowSize={9}
-          maxToRenderPerBatch={6}
-          initialNumToRender={6}
-          updateCellsBatchingPeriod={50}
+          windowSize={11}
+          maxToRenderPerBatch={4}
+          initialNumToRender={4}
+          updateCellsBatchingPeriod={30}
           removeClippedSubviews={Platform.OS === 'android'}
           getItemLayout={(_data, index) => ({
             length: ROW_H,
