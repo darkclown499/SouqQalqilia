@@ -683,7 +683,7 @@ export default function HomeScreen() {
             index,
           })}
           onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
+          onEndReachedThreshold={0.8}
           refreshControl={
             <RefreshControl
               refreshing={loading}

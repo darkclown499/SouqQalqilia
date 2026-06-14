@@ -161,7 +161,13 @@ export interface CreateAdInput {
 }
 
 /** Fetch latest active ads (with category + first image only), boosted ads first.
- *  Selecting only needed columns and limiting to 1 image per ad cuts payload by ~60%.
+ *
+ * Strategy for absolute boosted pinning:
+ *   1. Fetch ALL currently-active boosted ads (no limit) — these always lead the list.
+ *   2. Fetch regular (non-boosted) ads with pagination offset adjusted to exclude boosts.
+ *   3. Merge: boosts first (sorted by furthest expiry), then regular ads.
+ *
+ * This guarantees boosted ads stay at the top regardless of how many new ads are posted.
  */
 export async function fetchAds(params?: {
   categoryId?: string;
@@ -179,100 +185,84 @@ export async function fetchAds(params?: {
   const limit = params?.limit ?? 20;
   const offset = params?.offset ?? 0;
   const sortBy = params?.sortBy ?? 'newest';
+  const now = new Date().toISOString();
 
-  // Select only the columns needed for the card view — no user_profiles join on list
-  let query = supabase
-    .from('ads')
-    .select(`
-      id, user_id, category_id, title, price, location, condition,
-      status, views, created_at, boosted_until, serial_number,
-      categories(id, name, name_ar, icon, color),
-      ad_images(id, url, position)
-    `)
-    .in('status', ['active', 'featured']);
+  // Shared select fragment
+  const SELECT = `
+    id, user_id, category_id, title, price, location, condition,
+    status, views, created_at, boosted_until, serial_number,
+    categories(id, name, name_ar, icon, color),
+    ad_images(id, url, position)
+  `;
 
-  // ── Apply all filters BEFORE pagination ──────────────────────────────────
-  if (params?.categoryId) query = query.eq('category_id', params.categoryId);
-  if (params?.userId) query = query.eq('user_id', params.userId);
-  if (params?.search) query = query.ilike('title', `%${params.search}%`);
-  if (params?.maxPrice !== undefined && params.maxPrice >= 0) query = query.lte('price', params.maxPrice);
-  if (params?.minPrice !== undefined && params.minPrice > 0) query = query.gte('price', params.minPrice);
-  if (params?.condition) query = query.eq('condition', params.condition);
-  if (params?.location) {
-    // Match the city name at start of location string (e.g. 'عزون' matches 'عزون - شارع ...')
-    // For city 'قلقيلية المدينة' we match stored prefix 'قلقيلية'
-    const prefix = params.location === 'قلقيلية المدينة' ? 'قلقيلية' : params.location;
-    query = query.ilike('location', `${prefix}%`);
-  }
-
-  // ── Apply server-side sorting ──────────────────────────────────────────────
-  //
-  // DB sort is intentionally simple (status + created_at) so that pagination
-  // offsets remain stable across pages.  Active-boost prioritisation is applied
-  // CLIENT-SIDE after the fetch (see `applyClientSort` below) so that expired
-  // boosted_until dates never float above fresh regular ads.
-  //
-  if (sortBy === 'price_asc') {
-    query = query
-      .order('status', { ascending: false })        // 'featured' > 'active' → featured first
-      .order('price', { ascending: true });
-  } else if (sortBy === 'price_desc') {
-    query = query
-      .order('status', { ascending: false })        // featured first
-      .order('price', { ascending: false });
-  } else {
-    // newest + boosted: DB puts featured before active; client re-sorts for active boosts
-    query = query
-      .order('status', { ascending: false })        // 'featured' > 'active' → featured first
-      .order('created_at', { ascending: false });   // newest within each group
-  }
-
-  // ── Pagination LAST (after filters + sort) ────────────────────────────────
-  query = query.range(offset, offset + limit - 1);
-
-  const { data, error } = await query;
-  if (error) return { data: [], error: error.message };
-
-  // ── Client-side priority sort ────────────────────────────────────────────
-  // Only applied for the default / boosted views (not price sorts whose
-  // ordering must remain strictly by price).
-  const sorted =
-    sortBy === 'price_asc' || sortBy === 'price_desc'
-      ? (data as Ad[])
-      : applyClientSort(data as Ad[]);
-
-  return { data: sorted, error: null };
-}
-
-/**
- * Re-orders a page of ads so that:
- *   1. Ads with a FUTURE boosted_until appear first (sorted furthest-expiry first)
- *   2. Then featured (status='featured') ads
- *   3. Then the rest in their original DB order (newest first)
- *
- * Expired boosted_until (past date) is treated the same as null — the ad
- * drops into group 3 so it no longer unfairly floats above fresh listings.
- */
-function applyClientSort(ads: Ad[]): Ad[] {
-  const now = Date.now();
-  return [...ads].sort((a, b) => {
-    const aActive = !!a.boosted_until && new Date(a.boosted_until).getTime() > now;
-    const bActive = !!b.boosted_until && new Date(b.boosted_until).getTime() > now;
-
-    // Group 1: active boosts — sort by furthest expiry first
-    if (aActive && bActive) {
-      return new Date(b.boosted_until!).getTime() - new Date(a.boosted_until!).getTime();
+  // ── Helper: apply common filters to a query ───────────────────────────────
+  function applyFilters(q: any) {
+    if (params?.categoryId) q = q.eq('category_id', params.categoryId);
+    if (params?.userId)     q = q.eq('user_id', params.userId);
+    if (params?.search)     q = q.ilike('title', `%${params.search}%`);
+    if (params?.maxPrice !== undefined && params.maxPrice >= 0) q = q.lte('price', params.maxPrice);
+    if (params?.minPrice !== undefined && params.minPrice > 0)  q = q.gte('price', params.minPrice);
+    if (params?.condition)  q = q.eq('condition', params.condition);
+    if (params?.location) {
+      const prefix = params.location === 'قلقيلية المدينة' ? 'قلقيلية' : params.location;
+      q = q.ilike('location', `${prefix}%`);
     }
-    if (aActive) return -1;
-    if (bActive) return 1;
+    return q;
+  }
 
-    // Group 2: featured status (no active boost)
-    if (a.status === 'featured' && b.status !== 'featured') return -1;
-    if (a.status !== 'featured' && b.status === 'featured') return 1;
+  // For price sorts we use the original single-query path (price order takes precedence)
+  if (sortBy === 'price_asc' || sortBy === 'price_desc') {
+    let query = supabase
+      .from('ads')
+      .select(SELECT)
+      .in('status', ['active', 'featured']);
+    query = applyFilters(query);
+    query = query
+      .order('status', { ascending: false })
+      .order('price', { ascending: sortBy === 'price_asc' })
+      .range(offset, offset + limit - 1);
+    const { data, error } = await query;
+    if (error) return { data: [], error: error.message };
+    return { data: data as Ad[], error: null };
+  }
 
-    // Group 3: regular — preserve DB order (newest first)
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+  // ── Two-query approach for default / boosted sort ────────────────────────
+  //
+  // QUERY A: All currently-active boosts (boosted_until > now).
+  //          No pagination — we always show ALL active boosts at the top.
+  let boostQuery = supabase
+    .from('ads')
+    .select(SELECT)
+    .in('status', ['active', 'featured'])
+    .gt('boosted_until', now);
+  boostQuery = applyFilters(boostQuery);
+  boostQuery = boostQuery.order('boosted_until', { ascending: false }); // furthest expiry first
+
+  // QUERY B: Non-boosted ads (no active boost), paginated.
+  //          offset is adjusted so page 2+ skips past the right number of regular ads.
+  let regularQuery = supabase
+    .from('ads')
+    .select(SELECT)
+    .in('status', ['active', 'featured'])
+    .or(`boosted_until.is.null,boosted_until.lte.${now}`);
+  regularQuery = applyFilters(regularQuery);
+  regularQuery = regularQuery
+    .order('status', { ascending: false })      // featured before active
+    .order('created_at', { ascending: false })  // newest first within group
+    .range(offset, offset + limit - 1);
+
+  const [{ data: boosts, error: bErr }, { data: regulars, error: rErr }] =
+    await Promise.all([boostQuery, regularQuery]);
+
+  if (bErr && rErr) return { data: [], error: bErr.message };
+
+  // Merge: boosts (already sorted by expiry) then regular ads
+  const merged = [
+    ...((boosts ?? []) as Ad[]),
+    ...((regulars ?? []) as Ad[]),
+  ];
+
+  return { data: merged, error: rErr?.message ?? null };
 }
 
 /** Fetch a single ad by ID */

@@ -7,7 +7,7 @@ import { AppState, AppStateStatus } from 'react-native';
 let _activeController: AbortController | null = null;
 import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache, subscribeToCacheInvalidation, CACHE_TTL_MS } from '@/services/adsService';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 24; // Load 24 per page (12 rows of 2) — better UX than hard 20 limit
 
 export function useAds(params?: { categoryId?: string; search?: string; maxPrice?: number; minPrice?: number; condition?: 'new' | 'used' | null; location?: string; sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'boosted' }) {
   // Seed from module-level cache on first mount (no-filter only) for instant display
@@ -107,25 +107,33 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
   const loadMore = useCallback(async (currentParams?: typeof params) => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
-    const currentOffset = loadedCountRef.current;
     const p = currentParams ?? params;
+    const sortBy = p?.sortBy ?? 'newest';
+
+    // For the two-query (boosted) path, offset only applies to regular ads.
+    // We pass loadedCountRef.current as the regular-ads offset so boosted
+    // ads are re-fetched fresh on every page (they're few and always pinned).
     const { data } = await fetchAds({
       ...p,
       condition: p?.condition ?? undefined,
-      sortBy: p?.sortBy ?? 'newest',
+      sortBy,
       limit: PAGE_SIZE,
-      offset: currentOffset,
+      offset: loadedCountRef.current,
     });
+
     if (data.length > 0) {
       setAds(prev => {
-        // Use offset-based dedup: only add if id not already present
         const existingIds = new Set(prev.map(a => a.id));
         const newItems = data.filter(a => !existingIds.has(a.id));
-        loadedCountRef.current = currentOffset + newItems.length;
-        return newItems.length > 0 ? [...prev, ...newItems] : prev;
+        if (newItems.length > 0) {
+          loadedCountRef.current = loadedCountRef.current + newItems.length;
+          return [...prev, ...newItems];
+        }
+        return prev;
       });
     }
-    setHasMore(data.length === PAGE_SIZE);
+    // hasMore = false only when regular page returned less than a full page
+    setHasMore(data.length >= PAGE_SIZE);
     setLoadingMore(false);
   }, [loadingMore, hasMore, params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);
 

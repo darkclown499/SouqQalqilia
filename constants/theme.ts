@@ -124,14 +124,14 @@ export const Radius = {
 };
 
 export const FontSize = {
-  xs: 11,
-  sm: 13,
-  md: 15,
-  lg: 17,
-  xl: 20,
-  xxl: 24,
-  xxxl: 30,
-  display: 36,
+  xs: 12,   // was 11 — minimum readable size
+  sm: 14,   // was 13 — body secondary text
+  md: 16,   // was 15 — standard body (WCAG AA baseline)
+  lg: 18,   // was 17 — section headings
+  xl: 21,   // was 20 — page titles
+  xxl: 26,  // was 24 — hero numbers & prices
+  xxxl: 32, // was 30 — large display
+  display: 38, // was 36
 };
 
 export const FontWeight = {
