@@ -19,8 +19,10 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Track the actual count of loaded ads to compute correct offset for next page
-  const loadedCountRef = useRef(0);
+  // Track regular-ads count separately from boosts for correct page offset.
+  // Boosted ads are always re-fetched (no offset), so offset must only count regular ads.
+  const regularCountRef = useRef(0);
+  const boostCountRef = useRef(0);
 
   const load = useCallback(async (overrideParams?: typeof params) => {
     setError(null);
@@ -33,7 +35,8 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     const signal = _activeController.signal;
 
     // Reset pagination state immediately before fetch
-    loadedCountRef.current = 0;
+    regularCountRef.current = 0;
+    boostCountRef.current = 0;
     setHasMore(true);
 
     // Show cached data immediately for default view
@@ -58,8 +61,15 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     if (signal.aborted) return;
     if (isDefault && data.length > 0) setAdsCache(data);
     setAds(data);
-    loadedCountRef.current = data.length;
-    setHasMore(data.length === PAGE_SIZE);
+    // Bug fix: track boosts and regulars separately so loadMore offset is correct.
+    // Boosts are always pinned at top with no offset — only regular ads need paging.
+    const now = Date.now();
+    const boosts = data.filter(a => a.boosted_until && new Date(a.boosted_until).getTime() > now);
+    const regulars = data.filter(a => !a.boosted_until || new Date(a.boosted_until).getTime() <= now);
+    boostCountRef.current = boosts.length;
+    regularCountRef.current = regulars.length;
+    // hasMore is true only when we received a full page of regular ads
+    setHasMore(regulars.length === PAGE_SIZE);
     setError(error);
     setLoading(false);
   }, [params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);
@@ -110,15 +120,14 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     const p = currentParams ?? params;
     const sortBy = p?.sortBy ?? 'newest';
 
-    // For the two-query (boosted) path, offset only applies to regular ads.
-    // We pass loadedCountRef.current as the regular-ads offset so boosted
-    // ads are re-fetched fresh on every page (they're few and always pinned).
+    // Offset applies only to regular ads — boosted ads are always re-fetched
+    // fresh (no offset) so they stay pinned at top regardless of page number.
     const { data } = await fetchAds({
       ...p,
       condition: p?.condition ?? undefined,
       sortBy,
       limit: PAGE_SIZE,
-      offset: loadedCountRef.current,
+      offset: regularCountRef.current,
     });
 
     if (data.length > 0) {
@@ -126,14 +135,23 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
         const existingIds = new Set(prev.map(a => a.id));
         const newItems = data.filter(a => !existingIds.has(a.id));
         if (newItems.length > 0) {
-          loadedCountRef.current = loadedCountRef.current + newItems.length;
+          // Only count new regular ads toward pagination offset
+          const now = Date.now();
+          const newRegulars = newItems.filter(
+            a => !a.boosted_until || new Date(a.boosted_until).getTime() <= now
+          );
+          regularCountRef.current = regularCountRef.current + newRegulars.length;
           return [...prev, ...newItems];
         }
         return prev;
       });
     }
-    // hasMore = false only when regular page returned less than a full page
-    setHasMore(data.length >= PAGE_SIZE);
+    // hasMore = false when the regular ads page was not full
+    const now = Date.now();
+    const returnedRegulars = data.filter(
+      a => !a.boosted_until || new Date(a.boosted_until).getTime() <= now
+    );
+    setHasMore(returnedRegulars.length >= PAGE_SIZE);
     setLoadingMore(false);
   }, [loadingMore, hasMore, params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);
 
