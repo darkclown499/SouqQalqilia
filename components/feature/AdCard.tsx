@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import React, { memo, useCallback, useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Animated } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -118,6 +118,20 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
     [ad.ad_images]
   );
   const firstImage = sortedImages[0];
+
+  // Reset load state when the image URL changes (happens during FlatList recycling)
+  // Without this, a recycled cell with a new ad keeps `imgLoaded=true` from the
+  // previous ad, skipping the shimmer and showing a blank image slot momentarily.
+
+  // Sync reset when the image URL changes — runs before paint so no flicker
+  // Critical for FlatList recycling: recycled cells carry over imgLoaded=true from
+  // the previous ad, causing the new ad's image slot to stay blank until re-render.
+  const firstImageUrl = firstImage?.url;
+  useLayoutEffect(() => {
+    setImgLoaded(false);
+    setImgError(false);
+  }, [firstImageUrl]);
+
   const isFree = ad.price === 0;
   const isBoosted = useMemo(
     () => !!(ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now()),
