@@ -214,16 +214,16 @@ export async function fetchAds(params?: {
   //
   if (sortBy === 'price_asc') {
     query = query
-      .order('status', { ascending: true })         // featured first
+      .order('status', { ascending: false })        // 'featured' > 'active' → featured first
       .order('price', { ascending: true });
   } else if (sortBy === 'price_desc') {
     query = query
-      .order('status', { ascending: true })         // featured first
+      .order('status', { ascending: false })        // featured first
       .order('price', { ascending: false });
   } else {
-    // newest + boosted: DB fetches newest first; client re-sorts for active boosts
+    // newest + boosted: DB puts featured before active; client re-sorts for active boosts
     query = query
-      .order('status', { ascending: true })         // 'featured' < 'active'
+      .order('status', { ascending: false })        // 'featured' > 'active' → featured first
       .order('created_at', { ascending: false });   // newest within each group
   }
 
