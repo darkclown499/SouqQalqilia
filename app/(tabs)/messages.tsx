@@ -21,7 +21,7 @@ export default function MessagesScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const { t, isRTL, language } = useLanguage();
-  const { conversations, loading, reload, unreadCount, refreshUnread } = useConversations();
+  const { conversations, loading, reload, unreadCount } = useConversations();
   const [blockedIds, setBlockedIds] = React.useState<Set<string>>(new Set());
 
   React.useEffect(() => {
@@ -42,11 +42,9 @@ export default function MessagesScreen() {
   const isAr = language === 'ar';
 
   const handleConvPress = useCallback((id: string) => {
-    // Navigate immediately — don't block on the async refresh
+    // Navigate immediately — no badge sync needed here (chat screen handles it)
     router.push(`/chat/${id}`);
-    // Optimistically clear badge then re-query DB in background
-    refreshUnread().catch(() => {});
-  }, [router, refreshUnread]);
+  }, [router]);
 
   const renderConversation = useCallback(({ item }: any) => {
     const otherId = item.buyer_id === user!.id ? item.seller_id : item.buyer_id;

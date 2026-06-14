@@ -102,7 +102,7 @@ const shimStyles = StyleSheet.create({
 // While the shimmer is showing, the <Image> is kept in the tree (so expo-image
 // can silently decode in the background) but made visually invisible via opacity=0.
 // Once onLoad fires, imgLoaded=true and the shimmer unmounts, revealing the image.
-const shimmerOverrideStyle = { opacity: 0, position: 'absolute' as const, zIndex: -1 };
+const shimmerOverrideStyle = { opacity: 0, position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0, zIndex: -1 };
 
 export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited = false, onFavoritePress, onAdPress, isBlocked = false }: AdCardProps) {
   const router = useRouter();

@@ -144,7 +144,6 @@ export default function EditAdScreen() {
     if (!title.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال عنوان' : 'Please enter a title.');
     if (!description.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال وصف' : 'Please enter a description.');
     if (!categoryId) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى اختيار تصنيف' : 'Please select a category.');
-    if (!location.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال الموقع' : 'Please enter location.');
     const parsedPrice = parseFloat(price);
     if (!price.trim() || isNaN(parsedPrice) || parsedPrice < 0) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال سعر صحيح' : 'Please enter a valid price.');
     // Accept 9-digit (e.g. 599123456) OR 10-digit with leading zero (e.g. 0599123456)

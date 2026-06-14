@@ -340,14 +340,14 @@ export async function createAd(
 export async function saveAdImages(
   adId: string,
   urls: string[],
-  blurhashes?: (string | null)[]
+  blurhashes?: (string | null | undefined)[]
 ): Promise<{ error: string | null }> {
   const supabase = getSupabaseClient();
   const rows = urls.map((url, position) => ({
     ad_id: adId,
     url,
     position,
-    ...(blurhashes?.[position] ? { blurhash: blurhashes[position] } : {}),
+    blurhash: blurhashes?.[position] ?? null,
   }));
   const { error } = await supabase.from('ad_images').insert(rows);
   return { error: error ? error.message : null };

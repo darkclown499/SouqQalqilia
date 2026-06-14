@@ -23,8 +23,8 @@ export default function FavoritesScreen() {
 
   if (!user) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <View style={[styles.header, { backgroundColor: colors.primary }]}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { backgroundColor: colors.primary, paddingTop: insets.top + Spacing.sm }]}>
           <Text style={styles.headerTitle}>{isAr ? 'المفضلة' : 'Favorites'}</Text>
         </View>
         <View style={styles.center}>
@@ -40,8 +40,8 @@ export default function FavoritesScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      <View style={[styles.header, { backgroundColor: colors.primary }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.primary, paddingTop: insets.top + Spacing.sm }]}>
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <MaterialIcons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={22} color="#fff" />
         </Pressable>

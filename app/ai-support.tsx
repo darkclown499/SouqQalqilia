@@ -46,11 +46,10 @@ const QUICK_PROMPTS_EN = [
 
 // ── Animated typing dots ──────────────────────────────────────────────────────
 function TypingIndicator({ color }: { color: string }) {
-  const dots = [
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-  ];
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+  const dots = [dot1, dot2, dot3];
   useEffect(() => {
     const anims = dots.map((dot, i) =>
       Animated.loop(Animated.sequence([

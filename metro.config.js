@@ -63,8 +63,8 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   }
   // Intercept VirtualView to avoid `match` parse error
   if (
-    moduleName.includes('VirtualView') &&
-    moduleName.includes('virtualview')
+    moduleName.includes('VirtualView') ||
+    (moduleName.includes('virtualview'))
   ) {
     return { filePath: virtualViewStubPath, type: 'sourceFile' };
   }

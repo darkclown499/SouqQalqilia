@@ -235,31 +235,6 @@ export default function ProfileScreen() {
 
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
 
-  useEffect(() => {
-    if (user) {
-      load();
-      setEditName(user.username || '');
-      checkIsAdmin().then(setIsAdmin);
-      getSupabaseClient()
-        .from('user_profiles')
-        .select('avatar_url, banner_url, phone, is_verified')
-        .eq('id', user.id)
-        .single()
-        .then(({ data }) => {
-          if (data?.avatar_url) setAvatarUrl(data.avatar_url);
-          if (data?.banner_url) setBannerUrl(data.banner_url);
-          if (data?.phone) setEditPhone(data.phone ?? '');
-          setIsVerified(!!data?.is_verified);
-        });
-      loadBlockedUsers();
-    }
-  }, [user]);
-
-  useEffect(() => {
-    const unsub = subscribeToBlockChanges(() => loadBlockedUsers());
-    return unsub;
-  }, [loadBlockedUsers]);
-
   const loadBlockedUsers = useCallback(async () => {
     const ids = await fetchBlockedIds();
     if (ids.length === 0) { setBlockedUsers([]); return; }
@@ -269,6 +244,30 @@ export default function ProfileScreen() {
       .in('id', ids);
     setBlockedUsers((data ?? []) as any);
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    load();
+    setEditName(user.username || '');
+    checkIsAdmin().then(setIsAdmin);
+    getSupabaseClient()
+      .from('user_profiles')
+      .select('avatar_url, banner_url, phone, is_verified')
+      .eq('id', user.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+        if (data?.banner_url) setBannerUrl(data.banner_url);
+        if (data?.phone) setEditPhone(data.phone ?? '');
+        setIsVerified(!!data?.is_verified);
+      });
+    loadBlockedUsers();
+  }, [user?.id, loadBlockedUsers]);
+
+  useEffect(() => {
+    const unsub = subscribeToBlockChanges(loadBlockedUsers);
+    return unsub;
+  }, [loadBlockedUsers]);
 
   const handleUnblock = (userId: string, name: string) => {
     showAlert(

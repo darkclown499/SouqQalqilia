@@ -26,7 +26,7 @@ export default function CategoryScreen() {
 
   const [stores, setStores] = useState<Store[]>([]);
 
-  useEffect(() => { if (categoryId) load({ categoryId }); }, [categoryId]);
+  useEffect(() => { if (categoryId) load({ categoryId }); }, [categoryId, load]);
 
   useEffect(() => {
     if (!categoryId) return;
