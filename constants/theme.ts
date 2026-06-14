@@ -123,16 +123,35 @@ export const Radius = {
   full: 999,
 };
 
-export const FontSize = {
-  xs: 12,   // was 11 — minimum readable size
-  sm: 14,   // was 13 — body secondary text
-  md: 16,   // was 15 — standard body (WCAG AA baseline)
-  lg: 18,   // was 17 — section headings
-  xl: 21,   // was 20 — page titles
-  xxl: 26,  // was 24 — hero numbers & prices
-  xxxl: 32, // was 30 — large display
-  display: 38, // was 36
+/** Base font sizes — never import these directly in components.
+ *  Always use `fontSize` from `useTheme()` so user scaling is respected.
+ *  Only legacy StyleSheet.create() outside components reads these directly.
+ */
+export const BASE_FONT_SIZE = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 18,
+  xl: 21,
+  xxl: 26,
+  xxxl: 32,
+  display: 38,
 };
+
+/**
+ * Live font-size map — mutated by ThemeContext when user changes scale.
+ * StyleSheet.create() values that reference `FontSize.xxx` will pick up
+ * the new values on the next React render cycle since StyleSheet caches
+ * are reset when the component tree re-renders.
+ */
+export const FontSize: Record<keyof typeof BASE_FONT_SIZE, number> = { ...BASE_FONT_SIZE };
+
+/** Called by ThemeContext to apply a new scale multiplier globally. */
+export function applyFontScale(multiplier: number): void {
+  (Object.keys(BASE_FONT_SIZE) as Array<keyof typeof BASE_FONT_SIZE>).forEach(key => {
+    FontSize[key] = Math.round(BASE_FONT_SIZE[key] * multiplier);
+  });
+}
 
 export const FontWeight = {
   regular: '400' as const,

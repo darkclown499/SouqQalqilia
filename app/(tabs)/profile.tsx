@@ -18,6 +18,7 @@ import { checkIsAdmin } from '@/services/adminService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { fetchBlockedIds, unblockUser, subscribeToBlockChanges } from '@/services/blockService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+import type { FontScaleLevel } from '@/contexts/ThemeContext';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_WHATSAPP_MESSAGE, APP_VERSION } from '@/constants/config';
@@ -73,7 +74,95 @@ const switchS = StyleSheet.create({
   iconRight: { position: 'absolute', right: 5, alignItems: 'center', justifyContent: 'center', width: 18, height: 28 },
 });
 
-// ─── Section Header ───────────────────────────────────────────────────────────
+// ─── Font Scale Picker ──────────────────────────────────────────────────────
+const FONT_LEVELS: { level: FontScaleLevel; labelAr: string; labelEn: string; icon: string }[] = [
+  { level: 0, labelAr: 'S',  labelEn: 'S',  icon: 'text-fields' },
+  { level: 1, labelAr: 'M',  labelEn: 'M',  icon: 'text-fields' },
+  { level: 2, labelAr: 'L',  labelEn: 'L',  icon: 'text-fields' },
+  { level: 3, labelAr: 'XL', labelEn: 'XL', icon: 'text-fields' },
+];
+
+function FontScalePicker({ level, onChange, isRTL, colors }: {
+  level: FontScaleLevel;
+  onChange: (l: FontScaleLevel) => void;
+  isRTL: boolean;
+  colors: any;
+}) {
+  const previewSizes = [12, 14, 16, 19];
+  const SCALE_MULT = [0.85, 1.0, 1.15, 1.30];
+  return (
+    <View style={[fpS.wrap, { borderBottomColor: colors.borderLight }]}>
+      <View style={[fpS.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <View style={[fpS.iconBox, { backgroundColor: '#EEF2FF' }]}>
+          <MaterialIcons name="format-size" size={20} color="#4F46E5" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[fpS.label, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
+            {isRTL ? 'حجم الخط' : 'Text Size'}
+          </Text>
+          <Text style={[fpS.sub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+            {isRTL ? 'اختر حجم النص المناسب لك' : 'Choose your preferred text size'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Preview text */}
+      <View style={[fpS.previewBox, { backgroundColor: colors.background, borderColor: colors.borderLight }]}>
+        <Text style={[fpS.previewText, { color: colors.textSecondary, fontSize: Math.round(14 * SCALE_MULT[level]) }]}>
+          {isRTL ? 'مرحباً بك في سوق قلقيلية' : 'Welcome to Souq Qalqilya'}
+        </Text>
+        <Text style={[fpS.previewSub, { color: colors.textMuted, fontSize: Math.round(12 * SCALE_MULT[level]) }]}>
+          {isRTL ? 'اعثر على أفضل العروض' : 'Find the best deals near you'}
+        </Text>
+      </View>
+
+      {/* Segment buttons */}
+      <View style={[fpS.btnRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderColor: colors.border, backgroundColor: colors.background }]}>
+        {FONT_LEVELS.map((fl) => {
+          const isSelected = fl.level === level;
+          return (
+            <Pressable
+              key={fl.level}
+              style={[fpS.btn, isSelected && { backgroundColor: colors.primary }]}
+              onPress={() => onChange(fl.level)}
+            >
+              <Text style={[fpS.btnSample, {
+                fontSize: previewSizes[fl.level],
+                color: isSelected ? '#fff' : colors.textSecondary,
+                fontWeight: isSelected ? '800' : '600',
+              }]}>
+                أ
+              </Text>
+              <Text style={[fpS.btnLabel, {
+                color: isSelected ? '#fff' : colors.textMuted,
+                fontWeight: isSelected ? '700' : '500',
+              }]}>
+                {isRTL ? fl.labelAr : fl.labelEn}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const fpS = StyleSheet.create({
+  wrap: { borderBottomWidth: 1, paddingHorizontal: Spacing.md, paddingTop: 12, paddingBottom: 14, gap: 10 },
+  headerRow: { alignItems: 'center', gap: Spacing.md },
+  iconBox: { width: 40, height: 40, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  label: { fontSize: FontSize.md, fontWeight: '600' },
+  sub: { fontSize: FontSize.xs, marginTop: 1 },
+  previewBox: { borderRadius: Radius.md, paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1, gap: 3 },
+  previewText: { fontWeight: '600', lineHeight: 22 },
+  previewSub: { lineHeight: 18 },
+  btnRow: { flexDirection: 'row', borderRadius: Radius.lg, borderWidth: 1.5, overflow: 'hidden' },
+  btn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 2 },
+  btnSample: { lineHeight: 24 },
+  btnLabel: { fontSize: 10 },
+});
+
+// ─── Section Header ─────────────────────────────────────────────────────────────
 function SectionHeader({ icon, label, color, bg }: { icon: string; label: string; color: string; bg: string }) {
   return (
     <View style={sH.wrap}>
@@ -122,7 +211,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout, refreshSession } = useAuth();
   const { showAlert } = useAlert();
-  const { colors, isDark, toggleTheme } = useTheme();
+  const { colors, isDark, toggleTheme, fontScaleLevel, setFontScaleLevel, fontSize } = useTheme();
   const { t, language, setLanguage, isRTL } = useLanguage();
   const { ads, loading, load } = useMyAds();
 
@@ -662,6 +751,14 @@ export default function ProfileScreen() {
                   sub={isDark ? t.darkModeActive : t.lightModeActive}
                   isRTL={isRTL} colors={colors}
                   right={<AnimatedSwitch value={isDark} onValueChange={toggleTheme} colors={colors} />}
+                />
+
+                {/* ── FONT SIZE PICKER ── */}
+                <FontScalePicker
+                  level={fontScaleLevel}
+                  onChange={setFontScaleLevel}
+                  isRTL={isRTL}
+                  colors={colors}
                 />
 
                 <SettingRow
