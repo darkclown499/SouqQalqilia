@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import { Logger } from '@/utils/errorLogger';
 
 // Module-level AbortController reference — cancels stale fetch when a newer
 // one starts (e.g. rapid filter changes).  One slot per hook instance is
@@ -50,27 +51,56 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
       setLoading(true);
     }
 
-    const { data, error } = await fetchAds({
-      ...p,
-      condition: p?.condition ?? undefined,
-      sortBy: p?.sortBy ?? 'newest',
-      limit: PAGE_SIZE,
-      offset: 0,
-    });
+    // ── Graceful Degradation: wrap fetch in try/catch ──────────────────────
+    // If Supabase is unreachable, show cached stale data rather than
+    // a blank screen. User sees an error banner, not a crash.
+    let fetchedData: Ad[] = [];
+    let fetchError: string | null = null;
+    try {
+      const result = await fetchAds({
+        ...p,
+        condition: p?.condition ?? undefined,
+        sortBy: p?.sortBy ?? 'newest',
+        limit: PAGE_SIZE,
+        offset: 0,
+      });
+      fetchedData = result.data;
+      fetchError = result.error;
+    } catch (e: any) {
+      // Network error / timeout / Supabase down
+      fetchError = e?.message ?? 'حدث خطأ في الاتصال. يتم عرض البيانات المحفوظة.';
+      Logger.error('useAds', 'load() network error', e instanceof Error ? e : new Error(String(e)));
+      // Graceful fallback: show stale cached data so screen is not empty
+      if (isDefault) {
+        const staleCache = getAdsCache();
+        if (staleCache && ads.length === 0) {
+          setAds(staleCache.data);
+        }
+      }
+    }
+
     // Ignore result if this fetch was cancelled by a newer one
     if (signal.aborted) return;
-    if (isDefault && data.length > 0) setAdsCache(data);
-    setAds(data);
+
+    if (!fetchError && fetchedData.length > 0) {
+      if (isDefault) setAdsCache(fetchedData);
+      setAds(fetchedData);
+    } else if (fetchedData.length === 0 && !fetchError) {
+      setAds([]);
+    }
+
     // Bug fix: track boosts and regulars separately so loadMore offset is correct.
     // Boosts are always pinned at top with no offset — only regular ads need paging.
     const now = Date.now();
-    const boosts = data.filter(a => a.boosted_until && new Date(a.boosted_until).getTime() > now);
-    const regulars = data.filter(a => !a.boosted_until || new Date(a.boosted_until).getTime() <= now);
+    const boosts = fetchedData.filter(a => a.boosted_until && new Date(a.boosted_until).getTime() > now);
+    const regulars = fetchedData.filter(a => !a.boosted_until || new Date(a.boosted_until).getTime() <= now);
     boostCountRef.current = boosts.length;
     regularCountRef.current = regulars.length;
     // hasMore is true only when we received a full page of regular ads
     setHasMore(regulars.length === PAGE_SIZE);
-    setError(error);
+
+    if (fetchError) Logger.warn('useAds', 'fetchAds returned error', { error: fetchError });
+    setError(fetchError);
     setLoading(false);
   }, [params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);
 
@@ -122,13 +152,22 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
 
     // Offset applies only to regular ads — boosted ads are always re-fetched
     // fresh (no offset) so they stay pinned at top regardless of page number.
-    const { data } = await fetchAds({
-      ...p,
-      condition: p?.condition ?? undefined,
-      sortBy,
-      limit: PAGE_SIZE,
-      offset: regularCountRef.current,
-    });
+    let data: Ad[] = [];
+    try {
+      const result = await fetchAds({
+        ...p,
+        condition: p?.condition ?? undefined,
+        sortBy,
+        limit: PAGE_SIZE,
+        offset: regularCountRef.current,
+      });
+      data = result.data;
+      if (result.error) Logger.warn('useAds', 'loadMore() fetchAds error', { error: result.error });
+    } catch (e: any) {
+      Logger.error('useAds', 'loadMore() threw', e instanceof Error ? e : new Error(String(e)));
+      setLoadingMore(false);
+      return;
+    }
 
     if (data.length > 0) {
       setAds(prev => {
@@ -165,10 +204,16 @@ export function useMyAds() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await fetchMyAds();
-    setAds(data);
-    setError(error);
-    setLoading(false);
+    try {
+      const { data, error } = await fetchMyAds();
+      setAds(data);
+      setError(error);
+    } catch (e: any) {
+      Logger.error('useMyAds', 'load() threw', e instanceof Error ? e : new Error(String(e)));
+      setError(e?.message ?? 'فشل تحميل إعلاناتك');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   return { ads, loading, error, load };
