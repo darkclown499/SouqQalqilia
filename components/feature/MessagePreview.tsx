@@ -1,4 +1,4 @@
-import React, { memo, useRef, useState, useCallback } from 'react';
+import React, { memo, useRef, useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, PanResponder } from 'react-native';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -241,7 +241,7 @@ export const MessagePreview = memo(function MessagePreview({
 
   // Swipe hint: show when drag crosses 20 px
   const [showHint, setShowHint] = useState(false);
-  React.useEffect(() => {
+  useEffect(() => {
     const id = translateX.addListener(({ value }) => setShowHint(Math.abs(value) > 20));
     return () => translateX.removeListener(id);
   }, [translateX]);
