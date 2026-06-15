@@ -8,7 +8,11 @@ import { Stack, router, useSegments } from 'expo-router';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { AppState, Platform, InteractionManager, Animated, Pressable, View, Text, StyleSheet } from 'react-native';
+import { AppState, Platform, InteractionManager, Pressable, View, Text, StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS,
+} from 'react-native-reanimated';
+import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Image } from 'expo-image';
 import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
 import { APP_VERSION } from '@/constants/config';
@@ -88,34 +92,69 @@ function InAppChatBanner() {
   const { colors, isDark } = useTheme();
   const segments = useSegments();
   const [banner, setBanner] = useState<BannerPayload | null>(null);
-  const slideY = useRef(new Animated.Value(-120)).current;
+
+  // ── Reanimated shared values ─────────────────────────────────────────────
+  // slideY: base position (-120 = off-screen above, 0 = visible)
+  // dragY:  live drag offset while user is panning
+  const slideY = useSharedValue(-120);
+  const dragY = useSharedValue(0);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: slideY.value + dragY.value }],
+  }));
+
   const lastMsgIdRef = useRef<string | null>(null);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const showBanner = useCallback((payload: BannerPayload) => {
-    setBanner(payload);
-    Animated.spring(slideY, {
-      toValue: 0,
-      damping: 18,
-      stiffness: 280,
-      useNativeDriver: true,
-    }).start();
-    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    dismissTimerRef.current = setTimeout(() => dismissBanner(), 4500);
-  }, [slideY]);
-
-  const dismissBanner = useCallback(() => {
-    Animated.timing(slideY, {
-      toValue: -120,
-      duration: 260,
-      useNativeDriver: true,
-    }).start(() => setBanner(null));
+  // JS-thread dismiss — clears timer + state after animation completes
+  const clearBanner = useCallback(() => {
+    setBanner(null);
     if (dismissTimerRef.current) {
       clearTimeout(dismissTimerRef.current);
       dismissTimerRef.current = null;
     }
-  }, [slideY]);
+  }, []);
+
+  const dismissBanner = useCallback(() => {
+    if (dismissTimerRef.current) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
+    dragY.value = withSpring(0, { damping: 20, stiffness: 300 });
+    slideY.value = withTiming(-140, { duration: 260 }, (finished) => {
+      if (finished) runOnJS(setBanner)(null);
+    });
+  }, [slideY, dragY]);
+
+  const showBanner = useCallback((payload: BannerPayload) => {
+    setBanner(payload);
+    dragY.value = 0;
+    slideY.value = -140;
+    slideY.value = withSpring(0, { damping: 18, stiffness: 280 });
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = setTimeout(() => dismissBanner(), 4500);
+  }, [slideY, dragY, dismissBanner]);
+
+  // ── Swipe-up-to-dismiss pan gesture ──────────────────────────────────────
+  // Threshold: -30px upward → dismiss; otherwise spring back
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      // Allow upward drag freely; clamp downward bounce to 16px
+      dragY.value = Math.min(e.translationY, 16);
+    })
+    .onEnd((e) => {
+      if (e.translationY < -30) {
+        // ── Swipe up past threshold → fly off screen ─────────────────────
+        dragY.value = withTiming(0, { duration: 60 });
+        slideY.value = withTiming(-160, { duration: 220 }, (finished) => {
+          if (finished) runOnJS(clearBanner)();
+        });
+      } else {
+        // ── Not enough → elastic spring back to rest ─────────────────────
+        dragY.value = withSpring(0, { damping: 18, stiffness: 300 });
+      }
+    });
 
   useEffect(() => {
     if (!user) return;
@@ -184,64 +223,68 @@ function InAppChatBanner() {
   const closeColor = isDark ? 'rgba(255,255,255,0.45)' : colors.textMuted;
 
   return (
-    <Animated.View
-      style={[
-        bannerStyles.container,
-        { transform: [{ translateY: slideY }] },
-      ]}
-      pointerEvents="box-none"
-    >
-      <Pressable
-        style={[bannerStyles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}
-        onPress={async () => {
-          const convId = banner.conversationId;
-          dismissBanner();
-          // TASK 3: Mark messages as read immediately so tab badge clears at once
-          try {
-            if (user?.id) {
-              const { markMessagesRead } = await import('@/services/chatService');
-              await markMessagesRead(convId, user.id);
-            }
-          } catch { /* non-critical — navigation proceeds regardless */ }
-          router.push(`/chat/${convId}` as any);
-        }}
+    <GestureDetector gesture={panGesture}>
+      <Animated.View
+        style={[bannerStyles.container, animatedStyle]}
+        pointerEvents="box-none"
       >
-        {/* Avatar */}
-        {banner.avatarUrl ? (
-          <Image
-            source={{ uri: banner.avatarUrl }}
-            style={bannerStyles.avatar}
-            contentFit="cover"
-            transition={200}
-          />
-        ) : (
-          <View style={bannerStyles.avatarPlaceholder}>
-            <Text style={bannerStyles.avatarInitial}>
-              {banner.senderName.charAt(0).toUpperCase()}
+        <Pressable
+          style={[bannerStyles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}
+          onPress={async () => {
+            const convId = banner.conversationId;
+            dismissBanner();
+            // Mark messages as read immediately so tab badge clears at once
+            try {
+              if (user?.id) {
+                const { markMessagesRead } = await import('@/services/chatService');
+                await markMessagesRead(convId, user.id);
+              }
+            } catch { /* non-critical — navigation proceeds regardless */ }
+            router.push(`/chat/${convId}` as any);
+          }}
+        >
+          {/* Avatar */}
+          {banner.avatarUrl ? (
+            <Image
+              source={{ uri: banner.avatarUrl }}
+              style={bannerStyles.avatar}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={bannerStyles.avatarPlaceholder}>
+              <Text style={bannerStyles.avatarInitial}>
+                {banner.senderName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+
+          {/* Content */}
+          <View style={bannerStyles.textWrap}>
+            <View style={bannerStyles.topRow}>
+              <Text style={[bannerStyles.appLabel, { color: colors.primary }]}>سوق قلقيلية</Text>
+              <Text style={[bannerStyles.nowLabel, { color: nowColor }]}>now</Text>
+            </View>
+            <Text style={[bannerStyles.senderName, { color: nameColor }]} numberOfLines={1}>
+              {banner.senderName}
+            </Text>
+            <Text style={[bannerStyles.preview, { color: previewColor }]} numberOfLines={1}>
+              {banner.messagePreview}
             </Text>
           </View>
-        )}
 
-        {/* Content */}
-        <View style={bannerStyles.textWrap}>
-          <View style={bannerStyles.topRow}>
-            <Text style={[bannerStyles.appLabel, { color: colors.primary }]}>سوق قلقيلية</Text>
-            <Text style={[bannerStyles.nowLabel, { color: nowColor }]}>now</Text>
+          {/* Swipe-up hint + dismiss button */}
+          <View style={bannerStyles.rightCol}>
+            <View style={bannerStyles.swipeIndicator}>
+              <View style={[bannerStyles.swipePill, { backgroundColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.13)' }]} />
+            </View>
+            <Pressable onPress={dismissBanner} hitSlop={10} style={bannerStyles.closeBtn}>
+              <Text style={[bannerStyles.closeX, { color: closeColor }]}>×</Text>
+            </Pressable>
           </View>
-          <Text style={[bannerStyles.senderName, { color: nameColor }]} numberOfLines={1}>
-            {banner.senderName}
-          </Text>
-          <Text style={[bannerStyles.preview, { color: previewColor }]} numberOfLines={1}>
-            {banner.messagePreview}
-          </Text>
-        </View>
-
-        {/* Dismiss */}
-        <Pressable onPress={dismissBanner} hitSlop={10} style={bannerStyles.closeBtn}>
-          <Text style={[bannerStyles.closeX, { color: closeColor }]}>×</Text>
         </Pressable>
-      </Pressable>
-    </Animated.View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -284,6 +327,9 @@ const bannerStyles = StyleSheet.create({
   nowLabel: { fontSize: 10 },
   senderName: { fontSize: 14, fontWeight: '700' },
   preview: { fontSize: 13, lineHeight: 18 },
+  rightCol: { alignItems: 'center', gap: 4, flexShrink: 0 },
+  swipeIndicator: { alignItems: 'center', paddingBottom: 2 },
+  swipePill: { width: 28, height: 3, borderRadius: 2 },
   closeBtn: { paddingHorizontal: 6, paddingVertical: 4 },
   closeX: { fontSize: 20, fontWeight: '300', lineHeight: 20 },
 });
@@ -495,6 +541,7 @@ export default function RootLayout() {
   return (
     <AlertProvider>
       <SafeAreaProvider onLayout={onLayoutRootView}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
@@ -521,6 +568,7 @@ export default function RootLayout() {
             </AuthProvider>
           </LanguageProvider>
         </ThemeProvider>
+        </GestureHandlerRootView>
       </SafeAreaProvider>
     </AlertProvider>
   );
