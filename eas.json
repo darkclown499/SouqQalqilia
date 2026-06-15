@@ -59,9 +59,9 @@
         "releaseStatus": "draft"
       },
       "ios": {
-        "appleId": "",
-        "ascAppId": "",
-        "appleTeamId": ""
+        "appleId": "FILL_YOUR_APPLE_ID_EMAIL",
+        "ascAppId": "FILL_YOUR_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "FILL_YOUR_APPLE_TEAM_ID"
       }
     }
   }
