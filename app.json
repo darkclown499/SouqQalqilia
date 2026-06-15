@@ -25,7 +25,7 @@
     },
     "android": {
       "googleServicesFile": "./google-services.json",
-      "package": "app.plankton.souq_qalqilya",
+      "package": "app.onspace.souq_qalqilya",
       "versionCode": 11,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/plankton-logo.png",
