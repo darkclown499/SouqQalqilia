@@ -540,8 +540,8 @@ export default function RootLayout() {
 
   return (
     <AlertProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider onLayout={onLayoutRootView}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
@@ -568,8 +568,8 @@ export default function RootLayout() {
             </AuthProvider>
           </LanguageProvider>
         </ThemeProvider>
+        </GestureHandlerRootView>
       </SafeAreaProvider>
-      </GestureHandlerRootView>
     </AlertProvider>
   );
 }
