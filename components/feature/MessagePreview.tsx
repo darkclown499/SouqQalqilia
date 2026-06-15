@@ -7,7 +7,7 @@ import {
   useChatReadStore,
   markConversationRead,
   rollbackConversationRead,
-  isConversationLocallyRead,
+  shouldOverrideServerCount,
 } from '@/stores/chatReadStore';
 import { Radius, FontSize, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
@@ -134,14 +134,16 @@ export const MessagePreview = memo(function MessagePreview({
   const rawAdImages: any[] = (conversation as any).ads?.ad_images ?? [];
   const adThumb = [...rawAdImages].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.url ?? null;
 
-  // ── Derive hasUnread from store + props ────────────────────────────────────
-  // Priority order:
-  //   1. Store says "locally read" → always show as read (even if props say unread)
-  //   2. Props unread_count === 0 → read
-  //   3. Props unread_count > 0 → unread
+  // ── Derive hasUnread via Timestamp Fencing ──────────────────────────────
+  // shouldOverrideServerCount() compares the store's markedAt epoch against
+  // conversation.last_message_at — NOT integer counts. This eliminates the
+  // "8 messages" bug where old+new counts were summed incorrectly.
   const serverUnread: number = (conversation as any).unread_count ?? 0;
-  const locallyRead = isConversationLocallyRead(conversation.id, serverUnread);
-  const hasUnread = serverUnread > 0 && !locallyRead;
+  const lastMsgAt: string | null = (conversation as any).last_message_at ?? null;
+  // override=true means: same messages, still being processed → show as read
+  // override=false means: new message arrived after mark → show real badge
+  const overrideToRead = shouldOverrideServerCount(conversation.id, lastMsgAt);
+  const hasUnread = serverUnread > 0 && !overrideToRead;
   // Display count: always 0 when locally read (prevents badge flicker)
   const displayUnread = hasUnread ? serverUnread : 0;
 
@@ -168,11 +170,11 @@ export const MessagePreview = memo(function MessagePreview({
     if (!hasUnread || marking) { snapBack(); return; }
     setMarking(true);
 
-    // ── STEP 1: Optimistic update — happens synchronously, before any await ──
-    // markConversationRead() writes to the module-level store and calls
-    // _notify(), which triggers useSyncExternalStore re-render in THIS component
-    // AND in the tab bar badge (via useConversations). Zero frames of delay.
-    markConversationRead(conversation.id, serverUnread);
+    // ── STEP 1: Optimistic update — synchronous, before any await ───────────
+    // Pass the CURRENT last_message_at as the fence anchor.
+    // This is the key fix for the swipe-lock bug: using the live prop value
+    // (not a stale closure) ensures the fence is always fresh.
+    markConversationRead(conversation.id, lastMsgAt);
 
     // ── STEP 2: Visual snap animation (purely cosmetic) ────────────────────
     Animated.sequence([
@@ -199,7 +201,7 @@ export const MessagePreview = memo(function MessagePreview({
       // (UI re-renders automatically via store notification)
     }
     setMarking(false);
-  }, [hasUnread, marking, conversation.id, serverUnread, currentUserId, swipeDir, translateX, onMarkedRead, snapBack]);
+  }, [hasUnread, marking, conversation.id, lastMsgAt, currentUserId, swipeDir, translateX, onMarkedRead, snapBack]);
 
   const panResponder = useRef(
     PanResponder.create({

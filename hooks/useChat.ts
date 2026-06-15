@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 import {
@@ -356,7 +357,7 @@ export function useMessages(
       lastCreatedAtRef.current = null;
       pollingRef.current = false;
     };
-  }, [conversationId]);
+  }, [conversationId, currentUserId]); // Added currentUserId to deps
 
   useEffect(() => {
     if (isBuyer === null) return;
@@ -466,20 +467,26 @@ export function useConversations() {
   }, [load]);
 
   // ── Re-compute badge whenever the store version changes ──────────────────
-  // This runs synchronously after markConversationRead() fires in the store,
-  // updating the tab badge in the same render cycle as MessagePreview.
+  // Fires synchronously after markConversationRead() or rollbackConversationRead()
+  // writes to the module-level store, so the tab badge updates in the SAME
+  // render frame as MessagePreview — zero flicker.
+  //
+  // IMPORTANT: we call mergeWithLocalReadState() fresh here so that the new
+  // Timestamp Fencing logic evaluates last_message_at correctly for EACH
+  // conversation in the current list, not a cached count snapshot.
   useEffect(() => {
+    if (conversations.length === 0) return;
     const merged = mergeWithLocalReadState(conversations);
     const newCount = computeUnreadCount(merged);
+    // Always update conversations so row backgrounds / unread bars reflect
+    // the latest fencing result (handles both mark-as-read AND rollback)
+    setConversations(merged);
     if (newCount !== prevUnreadRef.current) {
       setUnreadCount(newCount);
       prevUnreadRef.current = newCount;
       setBadge(newCount);
     }
-    // Also update conversations so the row backgrounds/indicators update
-    setConversations(mergeWithLocalReadState(conversations));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [_storeVersion]);
+  }, [_storeVersion, conversations, setBadge]); // Added conversations, setBadge to dependencies
 
   return {
     conversations,
