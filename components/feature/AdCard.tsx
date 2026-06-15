@@ -250,13 +250,13 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
         {/* Top-right: boosted badge — stacks above featured so both are visible */}
         {isBoosted ? (
           <View style={[styles.topRight, { backgroundColor: colors.accent, zIndex: 10 }]}>
-            <MaterialIcons name="bolt" size={10} color="#fff" />
-            <Text style={styles.badgeText}>{isAr ? 'مميز ⚡' : 'Top ⚡'}</Text>
+            <MaterialIcons name="bolt" size={11} color="#fff" />
+            <Text style={styles.badgeText}>{isAr ? 'مميز' : 'Top'}</Text>
           </View>
         ) : isFeatured ? (
           <View style={[styles.topRight, { backgroundColor: '#7C3AED', zIndex: 10 }]}>
-            <MaterialIcons name="workspace-premium" size={10} color="#fff" />
-            <Text style={styles.badgeText}>{isAr ? 'بارز ★' : 'Featured ★'}</Text>
+            <MaterialIcons name="workspace-premium" size={11} color="#fff" />
+            <Text style={styles.badgeText}>{isAr ? 'بارز' : 'Featured'}</Text>
           </View>
         ) : null}
 
