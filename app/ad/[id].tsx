@@ -68,29 +68,46 @@ export default function AdDetailScreen() {
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
+
+    setLoading(true);
+    setAd(null);
+    setRelatedAds([]);
+    setSellerAds([]);
+
     fetchAdById(id).then(({ data }) => {
+      if (cancelled) return;
       setAd(data);
       setLoading(false);
-      if (data?.user_id) {
+
+      if (!data) return;
+
+      if (data.user_id) {
         getSupabaseClient()
           .from('user_profiles')
           .select('is_verified')
           .eq('id', data.user_id)
           .single()
-          .then(({ data: p }) => setSellerVerified(!!p?.is_verified));
-        isUserBlocked(data.user_id).then(setIsSellerBlocked);
+          .then(({ data: p }) => { if (!cancelled) setSellerVerified(!!p?.is_verified); });
+        isUserBlocked(data.user_id).then(v => { if (!cancelled) setIsSellerBlocked(v); });
       }
-      if (data?.category_id) {
+
+      if (data.category_id) {
         fetchAds({ categoryId: data.category_id, limit: 7 }).then(({ data: related }) => {
-          setRelatedAds((related ?? []).filter(a => a.id !== id).slice(0, 6));
-        });
+          if (!cancelled) setRelatedAds((related ?? []).filter(a => a.id !== id).slice(0, 6));
+        }).catch(() => {});
       }
-      if (data?.user_id) {
+
+      if (data.user_id) {
         fetchAds({ userId: data.user_id, limit: 7 }).then(({ data: sAds }) => {
-          setSellerAds((sAds ?? []).filter(a => a.id !== id).slice(0, 5));
-        });
+          if (!cancelled) setSellerAds((sAds ?? []).filter(a => a.id !== id).slice(0, 5));
+        }).catch(() => {});
       }
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
     });
+
+    return () => { cancelled = true; };
   }, [id]);
 
   const handleBoostAd = async () => {
