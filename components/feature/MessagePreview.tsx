@@ -138,7 +138,14 @@ export const MessagePreview = memo(function MessagePreview({
   const adThumb     = [...rawAdImages].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.url ?? null;
 
   const unreadCount: number = (conversation as any).unread_count ?? 0;
-  const hasUnread   = unreadCount > 0;
+  // ── Local read state: updated instantly on swipe, before server round-trip ──
+  const [localRead, setLocalRead] = useState(false);
+  // Reset localRead whenever the parent passes a fresh unread_count > 0
+  // (i.e. a new unread message arrived after we marked it read)
+  React.useEffect(() => {
+    if (unreadCount > 0) setLocalRead(false);
+  }, [unreadCount]);
+  const hasUnread   = unreadCount > 0 && !localRead;
   const lastMsg     = conversation.last_message ?? '';
 
   // ── Swipe state ────────────────────────────────────────────────────────────
@@ -161,7 +168,9 @@ export const MessagePreview = memo(function MessagePreview({
   const triggerMarkRead = useCallback(async () => {
     if (!hasUnread || marking) { snapBack(); return; }
     setMarking(true);
-    // Snap to confirm position briefly then snap back
+    // ── 1. Update UI instantly — before any async work ────────────────────
+    setLocalRead(true);
+    // ── 2. Animate snap feedback ──────────────────────────────────────────
     Animated.sequence([
       Animated.timing(translateX, {
         toValue: swipeDir === 'right' ? SWIPE_MAX : -SWIPE_MAX,
@@ -174,10 +183,14 @@ export const MessagePreview = memo(function MessagePreview({
     ]).start();
     setSwiping(false);
     isDragging.current = false;
+    // ── 3. Persist to DB and notify parent ────────────────────────────────
     try {
       await markMessagesRead(conversation.id, currentUserId);
       onMarkedRead?.(conversation.id);
-    } catch { /* silent */ }
+    } catch {
+      // Revert optimistic update on failure
+      setLocalRead(false);
+    }
     setMarking(false);
   }, [hasUnread, marking, translateX, swipeDir, conversation.id, currentUserId, onMarkedRead, snapBack]);
 
