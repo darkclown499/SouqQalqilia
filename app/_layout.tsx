@@ -28,13 +28,17 @@ if (Platform.OS !== 'web') {
       }),
     });
     if (Platform.OS === 'android') {
+      // AndroidImportance.MAX ensures heads-up notifications (peeking banners)
+      // on all Android versions including Oreo+ where channels are required.
       Notifications.setNotificationChannelAsync('messages', {
         name: 'الرسائل',
-        importance: Notifications.AndroidImportance.HIGH,
+        importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#0A6E5C',
         sound: 'default',
         showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
       }).catch(() => {});
     }
   } catch (_) {}

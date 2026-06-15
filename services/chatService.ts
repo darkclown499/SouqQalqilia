@@ -428,18 +428,28 @@ export async function markMessagesRead(
   conversationId: string,
   currentUserId: string
 ): Promise<void> {
-  const supabase = getSupabaseClient();
-  await supabase
-    .from('messages')
-    .update({ read_at: new Date().toISOString() })
-    .eq('conversation_id', conversationId)
-    .neq('sender_id', currentUserId)
-    .is('read_at', null);
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('conversation_id', conversationId)
+      .neq('sender_id', currentUserId)
+      .is('read_at', null);
 
-  // Reset app icon badge — fire-and-forget
-  supabase.functions.invoke('push-notify', {
-    body: { action: 'reset_badge', user_id: currentUserId },
-  }).catch(() => {});
+    if (error) {
+      console.warn('[markMessagesRead] DB error:', error.message);
+      throw new Error(error.message);
+    }
+
+    // Reset app icon badge — fire-and-forget, non-critical
+    supabase.functions.invoke('push-notify', {
+      body: { action: 'reset_badge', user_id: currentUserId },
+    }).catch(() => {});
+  } catch (e: any) {
+    // Re-throw so callers (MessagePreview rollback, etc.) know the call failed
+    throw e;
+  }
 }
 
 /** Update typing indicator for the current user in a conversation */

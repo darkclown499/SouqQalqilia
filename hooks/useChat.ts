@@ -466,24 +466,34 @@ export function useConversations() {
     };
   }, [load]);
 
+  // ── Stable ref to latest conversations ──────────────────────────────────────
+  // Allows the store-version effect to read the current list without
+  // adding `conversations` to its deps (which would create an infinite loop).
+  const conversationsRef = useRef<Conversation[]>([]);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
+
   // ── Re-compute badge whenever the store version changes ──────────────────
   // Fires synchronously after markConversationRead() or rollbackConversationRead().
   //
-  // ⚠️  DO NOT call setConversations(merged) here.
-  // MessagePreview reads the store directly via shouldOverrideServerCount(),
-  // so row-level UI (badge, unread bar, background) updates without touching
-  // conversations state. Calling setConversations here creates an infinite loop:
-  //   setConversations(new array) → conversations ref changes → effect re-runs → ∞
+  // ⚠️  DO NOT call setConversations(merged) here and do NOT include
+  //     `conversations` in this effect's deps — both would create an infinite
+  //     loop: setConversations → new array ref → effect re-runs → ∞.
+  //
+  //     MessagePreview reads the store directly via shouldOverrideServerCount(),
+  //     so row-level UI (badge, unread bar) already updates on its own.
+  //     This effect only needs to sync the numeric badge counter.
   useEffect(() => {
-    if (conversations.length === 0) return;
-    const merged = mergeWithLocalReadState(conversations);
+    const current = conversationsRef.current;
+    if (current.length === 0) return;
+    const merged = mergeWithLocalReadState(current);
     const newCount = computeUnreadCount(merged);
     if (newCount !== prevUnreadRef.current) {
       setUnreadCount(newCount);
       prevUnreadRef.current = newCount;
       setBadge(newCount);
     }
-  }, [_storeVersion, conversations, setBadge]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [_storeVersion, setBadge]); // ← intentionally omits `conversations`
 
   return {
     conversations,
