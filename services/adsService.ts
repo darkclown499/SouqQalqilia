@@ -146,7 +146,7 @@ export interface Ad {
   updated_at: string;
   boosted_until?: string | null;
   serial_number?: number | null;
-  categories?: { id: string; name: string; icon: string; color: string };
+  categories?: { id: string; name: string; name_ar?: string; icon: string; color: string };
   ad_images?: AdImage[];
   user_profiles?: { username: string; email: string; phone?: string; avatar_url?: string | null };
 }
@@ -230,15 +230,9 @@ export async function fetchAds(params?: {
   // ── Two-query approach for default / boosted sort ────────────────────────
   //
   // QUERY A: All currently-active boosts (boosted_until > now).
-  //          No pagination — we always show ALL active boosts at the top.
-  let boostQuery = supabase
-    .from('ads')
-    .select(SELECT)
-    .in('status', ['active', 'featured'])
-    .gt('boosted_until', now);
-  boostQuery = applyFilters(boostQuery);
-  boostQuery = boostQuery.order('boosted_until', { ascending: false }); // furthest expiry first
-
+  //          Only fetch on first page (offset === 0) to avoid duplicating boosted
+  //          ads on every subsequent "Load More" page.
+  //          No pagination — we always show ALL active boosts at the top of page 1.
   // QUERY B: Non-boosted ads (no active boost), paginated.
   //          offset is adjusted so page 2+ skips past the right number of regular ads.
   let regularQuery = supabase
@@ -252,18 +246,34 @@ export async function fetchAds(params?: {
     .order('created_at', { ascending: false })  // newest first within group
     .range(offset, offset + limit - 1);
 
-  const [{ data: boosts, error: bErr }, { data: regulars, error: rErr }] =
-    await Promise.all([boostQuery, regularQuery]);
+  // Only fetch boosts on the first page — prevents duplicate boost cards on "Load More"
+  if (offset === 0) {
+    let boostQuery = supabase
+      .from('ads')
+      .select(SELECT)
+      .in('status', ['active', 'featured'])
+      .gt('boosted_until', now);
+    boostQuery = applyFilters(boostQuery);
+    boostQuery = boostQuery.order('boosted_until', { ascending: false }); // furthest expiry first
 
-  if (bErr && rErr) return { data: [], error: bErr.message };
+    const [{ data: boosts, error: bErr }, { data: regulars, error: rErr }] =
+      await Promise.all([boostQuery, regularQuery]);
 
-  // Merge: boosts (already sorted by expiry) then regular ads
-  const merged = [
-    ...((boosts ?? []) as Ad[]),
-    ...((regulars ?? []) as Ad[]),
-  ];
+    if (bErr && rErr) return { data: [], error: bErr.message };
 
-  return { data: merged, error: rErr?.message ?? null };
+    // Merge: boosts (sorted by expiry) then regular ads (deduplicate overlap)
+    const boostIds = new Set((boosts ?? []).map((b: any) => b.id));
+    const merged = [
+      ...((boosts ?? []) as Ad[]),
+      ...((regulars ?? []) as Ad[]).filter(r => !boostIds.has(r.id)),
+    ];
+    return { data: merged, error: rErr?.message ?? null };
+  }
+
+  // Pages 2+ — only regular (non-boosted) ads
+  const { data: regulars, error: rErr } = await regularQuery;
+  if (rErr) return { data: [], error: rErr.message };
+  return { data: (regulars ?? []) as Ad[], error: null };
 }
 
 /** Fetch a single ad by ID */
@@ -294,7 +304,7 @@ export async function fetchMyAds(): Promise<{ data: Ad[]; error: string | null }
 
   const { data, error } = await supabase
     .from('ads')
-    .select(`*, categories(id, name, icon, color), ad_images(id, url, position, blurhash)`)
+    .select(`*, categories(id, name, name_ar, icon, color), ad_images(id, url, position, blurhash)`)
     .eq('user_id', user.id)
     .neq('status', 'deleted')
     .order('created_at', { ascending: false });

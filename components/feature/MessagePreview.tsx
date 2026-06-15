@@ -248,7 +248,7 @@ export const MessagePreview = memo(function MessagePreview({
 
   return (
     <View style={styles.container}>
-      {/* Swipe hint rendered behind the row */}
+      {/* Swipe hint backdrop — only shown when the row has unread messages */}
       <SwipeHint visible={showHint && hasUnread} dir={swipeDir} colors={colors} isAr={isAr} />
 
       <Animated.View

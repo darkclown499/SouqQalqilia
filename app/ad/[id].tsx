@@ -13,6 +13,7 @@ import { fetchAdById, fetchAds, clearAdsCache, Ad, AdImage, updateAdStatus, repo
 import { blockUser, isUserBlocked, unblockUser } from '@/services/blockService';
 import { fetchOrCreateConversation } from '@/services/chatService';
 import { getSupabaseClient } from '@/template';
+import { getCategoryName } from '@/services/categoriesService';
 import { PromotionModal } from '@/components/feature/PromotionModal';
 import { ImageZoomGallery } from '@/components/feature/ImageZoomGallery';
 import { useFavoriteIds } from '@/hooks/useFavorites';
@@ -714,7 +715,9 @@ function AdDetailScrollContent({
               {ad.categories ? (
                 <View style={[styles.catPill, { backgroundColor: ad.categories.color + '18' }]}>
                   <MaterialIcons name={ad.categories.icon as any} size={13} color={ad.categories.color} />
-                  <Text style={[styles.catText, { color: ad.categories.color }]}>{ad.categories.name}</Text>
+                  <Text style={[styles.catText, { color: ad.categories.color }]}>
+                    {getCategoryName(ad.categories as any, language)}
+                  </Text>
                 </View>
               ) : null}
             </View>

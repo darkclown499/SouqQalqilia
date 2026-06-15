@@ -385,7 +385,12 @@ export function useMessages(
 }
 
 // ─── Global unread refresh bridge ─────────────────────────────────────────────
+// Module-level reference — only one instance should own it at a time.
+// _layout.tsx mounts first and registers its refreshUnread. When messages.tsx
+// also mounts (tab activated), it overrides the reference. On unmount, only
+// clear if the current reference still belongs to this instance.
 let _globalRefreshUnread: (() => Promise<void>) | null = null;
+let _globalRefreshInstance = 0; // monotonic counter prevents stale teardown
 
 export function triggerUnreadRefresh(): void {
   _globalRefreshUnread?.().catch(() => {});
@@ -454,8 +459,15 @@ export function useConversations() {
   }, [setBadge]);
 
   useEffect(() => {
+    const myInstance = ++_globalRefreshInstance;
     _globalRefreshUnread = refreshUnread;
-    return () => { _globalRefreshUnread = null; };
+    return () => {
+      // Only clear the reference if this instance is still the active owner.
+      // Prevents _layout.tsx unmounting from nullifying messages.tsx registration.
+      if (_globalRefreshInstance === myInstance) {
+        _globalRefreshUnread = null;
+      }
+    };
   }, [refreshUnread]);
 
   useEffect(() => {

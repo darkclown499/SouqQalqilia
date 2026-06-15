@@ -89,11 +89,12 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
       setAds([]);
     }
 
-    // Bug fix: track boosts and regulars separately so loadMore offset is correct.
-    // Boosts are always pinned at top with no offset — only regular ads need paging.
+    // Track only regular (non-boosted) ads for pagination offset.
+    // Boosted ads are fetched exclusively on page 1 (offset=0) — offset must
+    // count only regular ads so "Load More" never re-fetches them.
     const now = Date.now();
-    const boosts = fetchedData.filter(a => a.boosted_until && new Date(a.boosted_until).getTime() > now);
     const regulars = fetchedData.filter(a => !a.boosted_until || new Date(a.boosted_until).getTime() <= now);
+    const boosts = fetchedData.filter(a => a.boosted_until && new Date(a.boosted_until).getTime() > now);
     boostCountRef.current = boosts.length;
     regularCountRef.current = regulars.length;
     // hasMore is true only when we received a full page of regular ads
