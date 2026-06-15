@@ -143,6 +143,10 @@ function formatTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// ── Bubble corner radii (WhatsApp/iMessage style) ──────────────────────────
+const BUBBLE_RADIUS = 18;
+const BUBBLE_TAIL   = 5;
+
 function formatDateGroup(dateStr: string, isAr: boolean) {
   const d = new Date(dateStr);
   const today = new Date();
@@ -187,6 +191,7 @@ export default function ChatScreen() {
   const { messages, loading, refreshing, otherTyping, isOnline, reload, appendMessage, updateMessage, markReadLocally, markDeliveredLocally, removeMessage } = useMessages(id, isBuyer, user?.id);
 
   const [imageUploading, setImageUploading] = useState(false);
+  const [markingRead, setMarkingRead] = useState(false);
 
   // ── Voice Note state ──────────────────────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
@@ -399,6 +404,43 @@ export default function ChatScreen() {
     };
   }, [id, user?.id, isBuyer]);
 
+  // ── Manual "Mark as Read" handler ──────────────────────────────────────────
+  const handleMarkAsRead = useCallback(async () => {
+    if (!id || !user || markingRead) return;
+    setMarkingRead(true);
+    try {
+      await markMessagesRead(id, user.id);
+      markReadLocally(user.id);
+      markDeliveredLocally(user.id);
+      triggerUnreadRefresh();
+      if (Platform.OS !== 'web') {
+        try {
+          const Notifications = require('expo-notifications');
+          const supabase = getSupabaseClient();
+          const { data: convRows } = await supabase
+            .from('conversations').select('id')
+            .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
+          const convIds = (convRows ?? []).map((c: any) => c.id);
+          if (convIds.length > 0) {
+            const { count } = await supabase
+              .from('messages').select('id', { count: 'exact', head: true })
+              .is('read_at', null).neq('sender_id', user.id).in('conversation_id', convIds);
+            await Notifications.setBadgeCountAsync(count ?? 0);
+          } else {
+            await Notifications.setBadgeCountAsync(0);
+          }
+        } catch (_) {}
+      }
+    } finally {
+      setMarkingRead(false);
+    }
+  }, [id, user?.id, markingRead, markReadLocally, markDeliveredLocally]);
+
+  // ── Unread count in this conversation (drives mark-as-read badge) ──────────
+  const localUnreadCount = messages.filter(
+    m => m.sender_id !== user?.id && !m.read_at
+  ).length;
+
   const markedOnMount = useRef(false);
 
   const doMark = useCallback(async () => {
@@ -558,9 +600,9 @@ export default function ChatScreen() {
     }
   };
 
-  const isSeller = conversation?.seller_id === user?.id;
-  const adStatus = (conversation as any)?.ads?.status as string | undefined;
-  const adId = conversation?.ad_id;
+  const isSeller   = conversation?.seller_id === user?.id;
+  const adStatus   = (conversation as any)?.ads?.status as string | undefined;
+  const adId       = conversation?.ad_id;
 
   if (!id) {
     return (
@@ -757,6 +799,33 @@ export default function ChatScreen() {
             </View>
           </View>
 
+          {/* ── Mark as Read button ── */}
+          <Pressable
+            style={[styles.moreBtn, { position: 'relative' }]}
+            onPress={handleMarkAsRead}
+            disabled={markingRead || localUnreadCount === 0}
+            hitSlop={8}
+          >
+            {markingRead ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <MaterialIcons
+                  name="done-all"
+                  size={22}
+                  color={localUnreadCount > 0 ? '#4ADE80' : 'rgba(255,255,255,0.4)'}
+                />
+                {localUnreadCount > 0 ? (
+                  <View style={styles.markReadBadge}>
+                    <Text style={styles.markReadBadgeText}>
+                      {localUnreadCount > 9 ? '9+' : String(localUnreadCount)}
+                    </Text>
+                  </View>
+                ) : null}
+              </>
+            )}
+          </Pressable>
+
           <Pressable
             style={[styles.moreBtn, isSearchActive && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
             onPress={() => {
@@ -929,6 +998,19 @@ export default function ChatScreen() {
                   msg.image_url.includes('.aac') || (msg.content?.includes('🎤') ?? false));
               const isImage = msg.message_type === 'image' && !!msg.image_url && !isVoice;
 
+              // ── Grouped avatar: only show on first msg of a group ─────────
+              const msgIdx = pagedMessages.findIndex(m => m.id === msg.id);
+              const prevMsg = msgIdx > 0 ? pagedMessages[msgIdx - 1] : null;
+              const nextMsg = msgIdx < pagedMessages.length - 1 ? pagedMessages[msgIdx + 1] : null;
+              const showAvatar = !isMine && (
+                !prevMsg || prevMsg.sender_id === user?.id ||
+                new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime() > 60_000
+              );
+              // Show meta (time + tick) only at end of a group
+              const showMeta = !nextMsg ||
+                nextMsg.sender_id !== msg.sender_id ||
+                new Date(nextMsg.created_at).getTime() - new Date(msg.created_at).getTime() > 180_000;
+
               const dbReactions: Record<string, string> = ((msg as any).reactions as any) ?? {};
               const myReaction = localReactions[msg.id] ?? (user?.id ? dbReactions[user.id] : null);
               const allReactions = { ...dbReactions };
@@ -947,13 +1029,28 @@ export default function ChatScreen() {
                   style={[
                     styles.msgRow,
                     isMine ? (isAr ? styles.msgRowOther : styles.msgRowMine) : (isAr ? styles.msgRowMine : styles.msgRowOther),
-                    isActiveMatch ? { backgroundColor: colors.primaryGhost + '66', borderRadius: Radius.lg } : null,
+                    isActiveMatch ? { backgroundColor: colors.primaryGhost + '55', borderRadius: Radius.lg } : null,
+                    { marginBottom: showMeta ? 6 : 2 },
                   ]}
                 >
+                  {/* Avatar / spacer to maintain column alignment */}
                   {!isMine ? (
-                    <View style={[styles.bubbleAvatar, { backgroundColor: colors.primaryGhost }]}>
-                      <Text style={[styles.bubbleAvatarText, { color: colors.primary }]}>{otherInitial}</Text>
-                    </View>
+                    showAvatar ? (
+                      otherAvatarUrl ? (
+                        <Image
+                          source={{ uri: otherAvatarUrl }}
+                          style={styles.bubbleAvatarImg}
+                          contentFit="cover"
+                          transition={200}
+                        />
+                      ) : (
+                        <View style={[styles.bubbleAvatar, { backgroundColor: colors.primaryGhost }]}>
+                          <Text style={[styles.bubbleAvatarText, { color: colors.primary }]}>{otherInitial}</Text>
+                        </View>
+                      )
+                    ) : (
+                      <View style={styles.bubbleAvatarSpacer} />
+                    )
                   ) : null}
 
                   <View style={styles.bubbleWrap}>
@@ -973,8 +1070,25 @@ export default function ChatScreen() {
                         styles.bubble,
                         (isImage || isVoice) ? styles.bubbleImage : null,
                         isMine
-                          ? { backgroundColor: isFailed ? '#EF4444' : colors.primary, borderBottomRightRadius: isAr ? Radius.lg : 4, borderBottomLeftRadius: isAr ? 4 : Radius.lg, opacity: pressed ? 0.88 : 1 }
-                          : { backgroundColor: colors.surface, borderBottomLeftRadius: isAr ? Radius.lg : 4, borderBottomRightRadius: isAr ? 4 : Radius.lg, ...Shadow.sm, opacity: pressed ? 0.88 : 1 },
+                          ? {
+                              backgroundColor: isFailed ? '#EF4444' : (isDark ? '#0D6E5F' : '#0A6E5C'),
+                              borderRadius: BUBBLE_RADIUS,
+                              borderBottomRightRadius: isAr ? BUBBLE_RADIUS : BUBBLE_TAIL,
+                              borderBottomLeftRadius:  isAr ? BUBBLE_TAIL  : BUBBLE_RADIUS,
+                              opacity: pressed ? 0.86 : (isPending ? 0.7 : 1),
+                              shadowColor: '#0A6E5C',
+                              shadowOffset: { width: 0, height: 2 },
+                              shadowOpacity: isDark ? 0.0 : 0.15,
+                              shadowRadius: 5,
+                              elevation: 2,
+                            }
+                          : {
+                              backgroundColor: isDark ? '#1C2733' : '#F0F4F8',
+                              borderRadius: BUBBLE_RADIUS,
+                              borderBottomLeftRadius:  isAr ? BUBBLE_RADIUS : BUBBLE_TAIL,
+                              borderBottomRightRadius: isAr ? BUBBLE_TAIL  : BUBBLE_RADIUS,
+                              opacity: pressed ? 0.86 : 1,
+                            },
                         hasSearchMatch && !isActiveMatch ? { borderWidth: 1.5, borderColor: colors.primary + '66' } : null,
                         isActiveMatch ? { borderWidth: 2, borderColor: colors.primary } : null,
                       ]}
@@ -1040,29 +1154,31 @@ export default function ChatScreen() {
                       </View>
                     ) : null}
 
-                    <View style={[styles.msgMeta, { flexDirection: isMine ? (isAr ? 'row' : 'row-reverse') : (isAr ? 'row-reverse' : 'row'), gap: 4 }]}>
-                      <Text style={[styles.msgTime, { color: colors.textMuted }]}>{formatTime(msg.created_at)}</Text>
-                      {isMine ? (
-                        isFailed ? (
-                          <Pressable onPress={() => { removeMessage(msg.id); removeFromOfflineQueue(msg.id); }} hitSlop={6}>
-                            <MaterialIcons name="error-outline" size={14} color="#EF4444" />
-                          </Pressable>
-                        ) : isPending ? (
-                          <MaterialIcons name="schedule" size={12} color={colors.textMuted} />
-                        ) : (
-                          isRead ? (
-                            // ✓✓ Green — READ by recipient
+                    {showMeta ? (
+                      <View style={[
+                        styles.msgMeta,
+                        { flexDirection: isMine ? (isAr ? 'row' : 'row-reverse') : (isAr ? 'row-reverse' : 'row'), gap: 4 },
+                      ]}>
+                        <Text style={[styles.msgTime, { color: colors.textMuted }]}>
+                          {formatTime(msg.created_at)}
+                        </Text>
+                        {isMine ? (
+                          isFailed ? (
+                            <Pressable onPress={() => { removeMessage(msg.id); removeFromOfflineQueue(msg.id); }} hitSlop={6}>
+                              <MaterialIcons name="error-outline" size={14} color="#EF4444" />
+                            </Pressable>
+                          ) : isPending ? (
+                            <MaterialIcons name="schedule" size={12} color={colors.textMuted} />
+                          ) : isRead ? (
                             <MaterialIcons name="done-all" size={14} color="#4ADE80" />
                           ) : isDelivered ? (
-                            // ✓✓ Grey — DELIVERED to device
-                            <MaterialIcons name="done-all" size={14} color={colors.textMuted} />
+                            <MaterialIcons name="done-all" size={14} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
                           ) : (
-                            // ✓ Single — sent to server only
-                            <MaterialIcons name="done" size={14} color={colors.textMuted} />
+                            <MaterialIcons name="done" size={14} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
                           )
-                        )
-                      ) : null}
-                    </View>
+                        ) : null}
+                      </View>
+                    ) : null}
                     {isFailed ? (
                       <Text style={[styles.failedLabel, { color: '#EF4444' }]}>
                         {isAr ? 'فشل الإرسال — اضغط ✕ للحذف' : 'Failed to send — tap ✕ to remove'}
@@ -1280,21 +1396,31 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: FontSize.lg, fontWeight: '700' },
   emptySub: { fontSize: FontSize.sm, textAlign: 'center' },
-  msgList: { padding: Spacing.md, gap: Spacing.sm, flexGrow: 1, paddingBottom: Spacing.md },
+  msgList: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: 0, flexGrow: 1, paddingBottom: Spacing.lg },
   dateSep: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginVertical: Spacing.md },
   dateLine: { flex: 1, height: 1 },
   datePill: { borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 4 },
   datePillText: { fontSize: FontSize.xs, fontWeight: '600' },
-  msgRow: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-end', paddingHorizontal: 2 },
+  msgRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end', paddingHorizontal: 2, marginBottom: 2 },
   msgRowMine: { justifyContent: 'flex-end' },
   msgRowOther: { justifyContent: 'flex-start' },
-  bubbleAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  bubbleAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  bubbleAvatarImg: { width: 28, height: 28, borderRadius: 14, flexShrink: 0 },
+  bubbleAvatarSpacer: { width: 28, flexShrink: 0 },
   bubbleAvatarText: { fontSize: FontSize.xs, fontWeight: '700' },
-  bubbleWrap: { maxWidth: '72%', gap: 3 },
-  bubble: { borderRadius: Radius.lg, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  bubbleWrap: { maxWidth: '75%', gap: 2 },
+  bubble: { borderRadius: BUBBLE_RADIUS, paddingHorizontal: 13, paddingVertical: 9 },
   msgText: { fontSize: FontSize.md, lineHeight: 22 },
-  msgMeta: { alignItems: 'center' },
+  msgMeta: { alignItems: 'center', marginTop: 3, marginBottom: 4 },
   msgTime: { fontSize: 10, fontWeight: '500' },
+  markReadBadge: {
+    position: 'absolute', top: -5, right: -5,
+    backgroundColor: '#4ADE80', borderRadius: 99,
+    minWidth: 16, height: 16,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 3, borderWidth: 1.5, borderColor: '#0A6E5C',
+  },
+  markReadBadgeText: { color: '#fff', fontSize: 8, fontWeight: '800', lineHeight: 11 },
   reactionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3, marginBottom: 1 },
   reactionBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
