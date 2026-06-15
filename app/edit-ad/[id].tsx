@@ -193,7 +193,7 @@ export default function EditAdScreen() {
         const startPosition = remaining.length;
         const urls: string[] = [];
         for (const img of newImages) {
-          const { url } = await uploadImage(img.base64, user.id, id);
+          const { url } = await uploadImage(img.base64, user.id, id, img.uri);
           if (url) urls.push(url);
         }
         if (urls.length > 0) {
@@ -322,7 +322,7 @@ export default function EditAdScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imgRow}>
               {activeExisting.map(img => (
                 <View key={img.id} style={styles.imgThumb}>
-                  <Image source={{ uri: img.url }} style={styles.thumbImg} contentFit="cover" />
+                  <Image source={{ uri: img.url }} style={styles.thumbImg} contentFit="cover" cachePolicy="disk" />
                   <Pressable style={styles.removeImg} onPress={() => handleRemoveExisting(img.id)}>
                     <MaterialIcons name="close" size={12} color="#fff" />
                   </Pressable>
@@ -330,7 +330,7 @@ export default function EditAdScreen() {
               ))}
               {newImages.map((img, i) => (
                 <View key={`new_${i}`} style={styles.imgThumb}>
-                  <Image source={{ uri: img.uri }} style={styles.thumbImg} contentFit="cover" />
+                  <Image source={{ uri: img.uri }} style={styles.thumbImg} contentFit="cover" cachePolicy="memory" />
                   <Pressable style={styles.removeImg} onPress={() => handleRemoveNew(i)}>
                     <MaterialIcons name="close" size={12} color="#fff" />
                   </Pressable>

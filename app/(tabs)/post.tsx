@@ -270,7 +270,7 @@ export default function PostAdScreen() {
         const urls: string[] = [];
         const blurhashes: (string | null)[] = [];
         for (const img of images) {
-          const { url } = await uploadImage(img.base64, user.id, ad.id);
+          const { url } = await uploadImage(img.base64, user.id, ad.id, img.uri);
           if (url) {
             urls.push(url);
             blurhashes.push(img.blurhash ?? null);
