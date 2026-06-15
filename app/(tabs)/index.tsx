@@ -83,15 +83,12 @@ const CARD_GAP = SCREEN_W < 375 ? 8 : Spacing.sm;
 const CARD_WIDTH = (SCREEN_W - H_PAD * 2 - CARD_GAP) / 2;
 const CONTENT_W = SCREEN_W - H_PAD * 2;
 const BANNER_H = Math.round(CONTENT_W * (720 / 1280));
-// Estimated header height (banner + recently viewed + categories + search history + listings header)
-// This is an approximation — getItemLayout only affects the scrollable rows, not the header itself.
-// We set it conservatively; Expo/RN handles the header offset automatically via ListHeaderComponent.
-const ESTIMATED_HEADER_H = 0; // RN FlatList getItemLayout index=0 is the first DATA row
+const ESTIMATED_HEADER_H = 0;
 
-// Fixed row height for getItemLayout — image (max 190) + info area (~92) + gap
+// Fixed row height for getItemLayout
 const CLAMP_IMG_H = Math.max(130, Math.min(Math.round(CARD_WIDTH * 0.75), 190));
-const CARD_INFO_H = 92;   // title + price + location + padding
-const ROW_H = CLAMP_IMG_H + CARD_INFO_H + CARD_GAP; // total pair-row height incl. bottom gap
+const CARD_INFO_H = 92;
+const ROW_H = CLAMP_IMG_H + CARD_INFO_H + CARD_GAP;
 let _interstitialsCache: InterstitialAd[] | null = null;
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'boosted';
@@ -144,13 +141,12 @@ export default function HomeScreen() {
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [showSortBar, setShowSortBar] = useState(false);
 
-  // ── Filter state (draft – not applied until user presses apply) ────────────
+  // ── Filter state ─────────────────────────────────────────────────────────
   const [filterVisible, setFilterVisible] = useState(false);
   const [areaPickerVisible, setAreaPickerVisible] = useState(false);
   const [draftArea, setDraftArea] = useState<string | null>(null);
   const [draftMaxPrice, setDraftMaxPrice] = useState('');
   const [draftCondition, setDraftCondition] = useState<Condition>(null);
-  // Applied filters (sent to DB)
   const [appliedArea, setAppliedArea] = useState<string | null>(null);
   const [appliedMaxPrice, setAppliedMaxPrice] = useState<number | undefined>(undefined);
   const [appliedCondition, setAppliedCondition] = useState<Condition>(null);
@@ -167,9 +163,7 @@ export default function HomeScreen() {
   const activeFilterCount = [appliedArea, appliedMaxPrice !== undefined ? '1' : null, appliedCondition].filter(Boolean).length;
   const isAr = language === 'ar';
 
-  // ── Network state listener ────────────────────────────────────────────────
   useEffect(() => {
-    // Seed initial state
     NetInfo.fetch().then(s => setIsOnline(s.isConnected !== false));
     const unsub = NetInfo.addEventListener(s => setIsOnline(s.isConnected !== false));
     return unsub;
@@ -200,7 +194,6 @@ export default function HomeScreen() {
     return unsub;
   }, [user?.id]);
 
-  // ── Load ads from DB with all active filters + sort ────────────────────────
   useEffect(() => {
     load({
       categoryId: selectedCategory ?? undefined,
@@ -249,7 +242,6 @@ export default function HomeScreen() {
   const displayName = user?.username || user?.email?.split('@')[0] || '';
   const appTitle = isAr ? 'سوق قلقيلية' : 'Souq Qalqilya';
 
-  // Server handles sorting & filtering; client only removes blocked users
   const filteredAds = useMemo(() => ads.filter(ad => !blockedIds.has(ad.user_id)), [ads, blockedIds]);
   const feedRows = useMemo(() => buildFeedRows(filteredAds), [filteredAds]);
 
@@ -316,6 +308,13 @@ export default function HomeScreen() {
   const handleRemoveRecent = useCallback((adId: string) => {
     removeFromRecentlyViewed(adId);
     setRecentlyViewed(prev => prev.filter(a => a.id !== adId));
+  }, []);
+
+  const handleClearAllRecent = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(RECENTLY_VIEWED_KEY);
+      setRecentlyViewed([]);
+    } catch { /* ignore */ }
   }, []);
 
   const handleSearchHistoryChipPress = useCallback((query: string) => {
@@ -411,13 +410,23 @@ export default function HomeScreen() {
       {/* ── RECENTLY VIEWED ── */}
       {recentlyViewed.length > 0 ? (
         <View style={styles.recentSection}>
-          <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: H_PAD }]}>
             <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
               <MaterialIcons name="history" size={14} color={colors.primary} />
             </View>
-            <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary }]}>
+            <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>
               {isAr ? 'آخر المشاهدات' : 'Recently Viewed'}
             </Text>
+            <Pressable
+              onPress={handleClearAllRecent}
+              hitSlop={8}
+              style={[styles.clearHistoryBtn, { backgroundColor: colors.surfaceTint }]}
+            >
+              <MaterialIcons name="delete-sweep" size={13} color={colors.error ?? '#EF4444'} />
+              <Text style={[styles.clearHistoryText, { color: colors.error ?? '#EF4444' }]}>
+                {isAr ? 'حذف الجميع' : 'Clear all'}
+              </Text>
+            </Pressable>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.recentList, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             {recentlyViewed.map(ad => {
@@ -439,7 +448,6 @@ export default function HomeScreen() {
                       <Text style={[styles.recentTitle, { color: colors.textSecondary }]} numberOfLines={2}>{ad.title}</Text>
                     </View>
                   </Pressable>
-                  {/* Remove button */}
                   <Pressable
                     style={[styles.recentRemoveBtn, { backgroundColor: colors.error }]}
                     onPress={() => handleRemoveRecent(ad.id)}
@@ -559,7 +567,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, router, setSortBy, filteredAds.length]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, router, setSortBy, filteredAds.length]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -592,18 +600,10 @@ export default function HomeScreen() {
                 </View>
               ) : null}
             </Pressable>
-            <Pressable
-              style={styles.headerIconBtn}
-              onPress={() => router.push('/search')}
-              hitSlop={6}
-            >
+            <Pressable style={styles.headerIconBtn} onPress={() => router.push('/search')} hitSlop={6}>
               <MaterialIcons name="search" size={20} color="#fff" />
             </Pressable>
-            <Pressable
-              style={styles.headerIconBtn}
-              onPress={() => router.push('/ai-support')}
-              hitSlop={6}
-            >
+            <Pressable style={styles.headerIconBtn} onPress={() => router.push('/ai-support')} hitSlop={6}>
               <MaterialIcons name="smart-toy" size={20} color="#fff" />
             </Pressable>
           </View>
@@ -687,8 +687,6 @@ export default function HomeScreen() {
             offset: ROW_H * index,
             index,
           })}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.8}
           refreshControl={
             <RefreshControl
               refreshing={loading}
@@ -700,9 +698,22 @@ export default function HomeScreen() {
           ListHeaderComponent={ListHeader}
           ListFooterComponent={
             hasMore ? (
-              <View style={styles.loadMoreIndicator}>
-                {loadingMore ? <ActivityIndicator color={colors.primary} size="small" /> : null}
-              </View>
+              <Pressable
+                style={[styles.loadMoreBtn, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                onPress={handleLoadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? (
+                  <ActivityIndicator color={colors.primary} size="small" />
+                ) : (
+                  <MaterialIcons name="expand-more" size={20} color={colors.primary} />
+                )}
+                <Text style={[styles.loadMoreBtnText, { color: colors.primary }]}>
+                  {loadingMore
+                    ? (isAr ? 'جاري التحميل...' : 'Loading...')
+                    : (isAr ? 'عرض المزيد' : 'Show More')}
+                </Text>
+              </Pressable>
             ) : ads.length > 0 ? (
               <View style={styles.endOfList}>
                 <MaterialIcons name="check-circle-outline" size={16} color={colors.textMuted} />
@@ -720,7 +731,7 @@ export default function HomeScreen() {
 
       <InterstitialAdOverlay ad={activeInterstitial} visible={interstitialVisible} onClose={() => setInterstitialVisible(false)} />
 
-      {/* ── FILTER BOTTOM SHEET — rendered after FlatList to appear on top ── */}
+      {/* ── FILTER BOTTOM SHEET ── */}
       {filterVisible ? (
         <View style={[StyleSheet.absoluteFillObject, { zIndex: 100 }]} pointerEvents="box-none">
           <Pressable style={fStyles.overlay} onPress={() => setFilterVisible(false)} />
@@ -737,7 +748,6 @@ export default function HomeScreen() {
               </Pressable>
             </View>
 
-            {/* Location / Area */}
             <Text style={[fStyles.sectionLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>
               {isAr ? 'المنطقة أو القرية' : 'Area / Village'}
             </Text>
@@ -760,7 +770,6 @@ export default function HomeScreen() {
               )}
             </Pressable>
 
-            {/* Condition */}
             <Text style={[fStyles.sectionLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>
               {isAr ? 'الحالة' : 'Condition'}
             </Text>
@@ -781,7 +790,6 @@ export default function HomeScreen() {
               })}
             </View>
 
-            {/* Max Price */}
             <Text style={[fStyles.sectionLabel, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]}>
               {isAr ? 'الحد الأقصى للسعر (₪)' : 'Max Price (₪)'}
             </Text>
@@ -802,7 +810,7 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* ── AREA PICKER MODAL — rendered last so it sits above filter sheet ── */}
+      {/* ── AREA PICKER MODAL ── */}
       {areaPickerVisible ? (
         <View style={[StyleSheet.absoluteFillObject, { zIndex: 200 }]} pointerEvents="box-none">
           <Pressable style={fStyles.overlay} onPress={() => setAreaPickerVisible(false)} />
@@ -1128,7 +1136,16 @@ const styles = StyleSheet.create({
   },
   adWrapper: { flex: 1 },
 
-  loadMoreIndicator: { paddingVertical: 20, alignItems: 'center' },
+  // ── Load More button ──
+  loadMoreBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, marginHorizontal: H_PAD, marginBottom: 8, marginTop: 4,
+    paddingVertical: 13, borderRadius: Radius.xl, borderWidth: 1.5,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+  },
+  loadMoreBtnText: { fontSize: FontSize.md, fontWeight: '700' },
+
   endOfList: {
     flexDirection: 'row',
     alignItems: 'center',

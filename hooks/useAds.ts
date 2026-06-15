@@ -8,7 +8,7 @@ import { Logger } from '@/utils/errorLogger';
 let _activeController: AbortController | null = null;
 import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache, subscribeToCacheInvalidation, CACHE_TTL_MS } from '@/services/adsService';
 
-const PAGE_SIZE = 24; // Load 24 per page (12 rows of 2) — better UX than hard 20 limit
+const PAGE_SIZE = 20; // Load 20 per page
 
 export function useAds(params?: { categoryId?: string; search?: string; maxPrice?: number; minPrice?: number; condition?: 'new' | 'used' | null; location?: string; sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'boosted' }) {
   // Seed from module-level cache on first mount (no-filter only) for instant display
