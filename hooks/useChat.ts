@@ -467,26 +467,23 @@ export function useConversations() {
   }, [load]);
 
   // ── Re-compute badge whenever the store version changes ──────────────────
-  // Fires synchronously after markConversationRead() or rollbackConversationRead()
-  // writes to the module-level store, so the tab badge updates in the SAME
-  // render frame as MessagePreview — zero flicker.
+  // Fires synchronously after markConversationRead() or rollbackConversationRead().
   //
-  // IMPORTANT: we call mergeWithLocalReadState() fresh here so that the new
-  // Timestamp Fencing logic evaluates last_message_at correctly for EACH
-  // conversation in the current list, not a cached count snapshot.
+  // ⚠️  DO NOT call setConversations(merged) here.
+  // MessagePreview reads the store directly via shouldOverrideServerCount(),
+  // so row-level UI (badge, unread bar, background) updates without touching
+  // conversations state. Calling setConversations here creates an infinite loop:
+  //   setConversations(new array) → conversations ref changes → effect re-runs → ∞
   useEffect(() => {
     if (conversations.length === 0) return;
     const merged = mergeWithLocalReadState(conversations);
     const newCount = computeUnreadCount(merged);
-    // Always update conversations so row backgrounds / unread bars reflect
-    // the latest fencing result (handles both mark-as-read AND rollback)
-    setConversations(merged);
     if (newCount !== prevUnreadRef.current) {
       setUnreadCount(newCount);
       prevUnreadRef.current = newCount;
       setBadge(newCount);
     }
-  }, [_storeVersion, conversations, setBadge]); // Added conversations, setBadge to dependencies
+  }, [_storeVersion, conversations, setBadge]);
 
   return {
     conversations,

@@ -155,6 +155,9 @@ export const MessagePreview = memo(function MessagePreview({
   const [swipeDir, setSwipeDir] = useState<'left' | 'right'>('right');
   const [marking, setMarking] = useState(false);
   const isDragging = useRef(false);
+  // Stable ref to the latest triggerMarkRead — prevents stale closure inside
+  // PanResponder which is created once via useRef and never re-created.
+  const triggerMarkReadRef = useRef<() => Promise<void>>(async () => {});
 
   const snapBack = useCallback(() => {
     Animated.spring(translateX, {
@@ -203,6 +206,9 @@ export const MessagePreview = memo(function MessagePreview({
     setMarking(false);
   }, [hasUnread, marking, conversation.id, lastMsgAt, currentUserId, swipeDir, translateX, onMarkedRead, snapBack]);
 
+  // Keep ref pointing to the latest triggerMarkRead after every render
+  useEffect(() => { triggerMarkReadRef.current = triggerMarkRead; }, [triggerMarkRead]);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
@@ -224,7 +230,7 @@ export const MessagePreview = memo(function MessagePreview({
       },
       onPanResponderRelease: (_e, gs) => {
         if (Math.abs(gs.dx) >= SWIPE_THRESHOLD) {
-          triggerMarkRead();
+          triggerMarkReadRef.current();
         } else {
           snapBack();
         }
