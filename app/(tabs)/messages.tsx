@@ -21,7 +21,7 @@ export default function MessagesScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const { t, isRTL, language } = useLanguage();
-  const { conversations, loading, reload, unreadCount } = useConversations();
+  const { conversations, loading, reload, unreadCount, markConversationReadLocally } = useConversations();
   const [blockedIds, setBlockedIds] = React.useState<Set<string>>(new Set());
 
   React.useEffect(() => {
@@ -47,11 +47,11 @@ export default function MessagesScreen() {
 
   // Called by MessagePreview after swipe-to-read completes
   const handleMarkedRead = useCallback((conversationId: string) => {
-    // Trigger global unread refresh so the tab badge updates
-    triggerUnreadRefresh();
-    // Reload conversations to reflect the updated unread state
-    reload();
-  }, [reload]);
+    // ── 1. Update badge + conversation list INSTANTLY (no server round-trip) ──
+    markConversationReadLocally(conversationId);
+    // ── 2. Background sync: refresh server count after a short delay ──────────
+    setTimeout(() => triggerUnreadRefresh(), 1500);
+  }, [markConversationReadLocally]);
 
   const renderConversation = useCallback(({ item }: any) => {
     const otherId = item.buyer_id === user!.id ? item.seller_id : item.buyer_id;

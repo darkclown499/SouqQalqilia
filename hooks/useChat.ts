@@ -484,11 +484,35 @@ export function useConversations() {
     };
   }, [load]);
 
+  /**
+   * Instantly decrement unreadCount when a conversation is swiped-to-read.
+   * Updates conversations list + badge WITHOUT waiting for server response.
+   */
+  const markConversationReadLocally = useCallback((conversationId: string) => {
+    setConversations(prev => {
+      const conv = prev.find(c => c.id === conversationId);
+      const convUnread: number = (conv as any)?.unread_count ?? 0;
+      if (convUnread === 0) return prev;
+      // Decrement global counter and badge immediately
+      setUnreadCount(cur => {
+        const next = Math.max(0, cur - convUnread);
+        prevUnreadRef.current = next;
+        setBadge(next);
+        return next;
+      });
+      // Zero out this conversation's local unread_count
+      return prev.map(c =>
+        c.id === conversationId ? ({ ...c, unread_count: 0 } as any) : c
+      );
+    });
+  }, [setBadge]);
+
   return {
     conversations,
     loading,
     reload: () => load(true),
     unreadCount,
     refreshUnread,
+    markConversationReadLocally,
   };
 }
