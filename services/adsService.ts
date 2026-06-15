@@ -281,7 +281,8 @@ export async function fetchAdById(id: string): Promise<{ data: Ad | null; error:
     .single();
   if (error) return { data: null, error: error.message };
   // Increment views
-  await supabase.from('ads').update({ views: (data.views ?? 0) + 1 }).eq('id', id);
+  // Use atomic RPC to avoid race condition when multiple users open the same ad simultaneously
+  supabase.rpc('increment_ad_views', { ad_id: id }).catch(() => {});
   return { data: data as Ad, error: null };
 }
 

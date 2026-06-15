@@ -32,6 +32,8 @@ async function sendExpoPush(payload: object): Promise<{ ok: boolean; result?: an
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         'Accept-Encoding': 'gzip, deflate',
+        // projectId header routes the push through the correct FCM/APNs config
+        'Expo-Platform': 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1',
       },
       body: JSON.stringify(payload),
     });
@@ -80,6 +82,7 @@ async function sendExpoBatch(
       channelId: 'messages',
       data: data ?? {},
       priority: 'high',
+      projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1',
     }));
 
     console.log(
@@ -485,6 +488,7 @@ serve(async (req) => {
       badge: unreadCount,
       'content-available': 1,
       channelId: 'messages',
+      projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1',
       data: {
         type: 'new_message',
         recipient_id,
