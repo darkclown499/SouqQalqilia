@@ -310,6 +310,7 @@ export default function AdDetailScreen() {
             favIds={favoriteIds}
             toggleFav={toggleFav}
             sellerVerified={sellerVerified}
+            language={language}
           />
         </View>
       </ScrollView>
@@ -600,7 +601,7 @@ function AdDetailScrollContent({
   isNew, isBoosted, isFree, hasPhone, isOwner,
   sellerName, seller, t, isAr, colors,
   onPromote, onReport, onReportUser, router, user, showAlert,
-  relatedAds, sellerAds, favIds, toggleFav, sellerVerified,
+  relatedAds, sellerAds, favIds, toggleFav, sellerVerified, language,
 }: any) {
   const carouselRef = React.useRef<FlatList<AdImage>>(null);
 
