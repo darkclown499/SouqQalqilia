@@ -83,6 +83,11 @@ const CARD_GAP = SCREEN_W < 375 ? 8 : Spacing.sm;
 const CARD_WIDTH = (SCREEN_W - H_PAD * 2 - CARD_GAP) / 2;
 const CONTENT_W = SCREEN_W - H_PAD * 2;
 const BANNER_H = Math.round(CONTENT_W * (720 / 1280));
+// Estimated header height (banner + recently viewed + categories + search history + listings header)
+// This is an approximation — getItemLayout only affects the scrollable rows, not the header itself.
+// We set it conservatively; Expo/RN handles the header offset automatically via ListHeaderComponent.
+const ESTIMATED_HEADER_H = 0; // RN FlatList getItemLayout index=0 is the first DATA row
+
 // Fixed row height for getItemLayout — image (max 190) + info area (~92) + gap
 const CLAMP_IMG_H = Math.max(130, Math.min(Math.round(CARD_WIDTH * 0.75), 190));
 const CARD_INFO_H = 92;   // title + price + location + padding

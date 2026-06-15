@@ -73,7 +73,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
       // Graceful fallback: show stale cached data so screen is not empty
       if (isDefault) {
         const staleCache = getAdsCache();
-        if (staleCache && ads.length === 0) {
+        if (staleCache && staleCache.data.length > 0) {
           setAds(staleCache.data);
         }
       }

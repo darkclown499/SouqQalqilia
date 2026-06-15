@@ -273,7 +273,7 @@ export async function fetchAdById(id: string): Promise<{ data: Ad | null; error:
     .from('ads')
     .select(`
       *,
-      categories(id, name, icon, color),
+      categories(id, name, name_ar, icon, color),
       ad_images(id, url, position, blurhash),
       user_profiles(username, email, phone, avatar_url)
     `)

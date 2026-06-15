@@ -85,7 +85,7 @@ export default function PostAdScreen() {
 
   // Auto-fill phone from user profile on first load
   React.useEffect(() => {
-    if (!user || phonePrefilled) return;
+    if (!user?.id || phonePrefilled) return;
     getSupabaseClient()
       .from('user_profiles')
       .select('phone')
@@ -108,7 +108,7 @@ export default function PostAdScreen() {
         }
       })
       .catch(() => {});
-  }, [user]);
+  }, [user?.id]);  // only re-run when the user ID changes (not on every render)
 
   if (!user) {
     return (

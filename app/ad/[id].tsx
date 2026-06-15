@@ -866,7 +866,7 @@ function AdDetailScrollContent({
                     <Pressable
                       key={rel.id}
                       style={[styles.relatedCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                      onPress={() => router.replace(`/ad/${rel.id}`)}
+                      onPress={() => router.push(`/ad/${rel.id}` as any)}
                     >
                       {relThumb ? (
                         <Image source={{ uri: relThumb }} style={styles.relatedImg} contentFit="cover" transition={200} />
@@ -909,7 +909,7 @@ function AdDetailScrollContent({
                     <Pressable
                       key={rel.id}
                       style={[styles.relatedCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                      onPress={() => router.replace(`/ad/${rel.id}`)}
+                      onPress={() => router.push(`/ad/${rel.id}` as any)}
                     >
                       {relThumb ? (
                         <Image source={{ uri: relThumb }} style={styles.relatedImg} contentFit="cover" transition={200} />

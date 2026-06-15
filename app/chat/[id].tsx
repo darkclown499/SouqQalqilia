@@ -182,6 +182,8 @@ export default function ChatScreen() {
   const [searchMatchIndex, setSearchMatchIndex] = useState(0);
   const searchInputRef = useRef<TextInput>(null);
 
+  // isBuyer is derived from conversation — safe to derive once conversation loads,
+  // but we keep a ref so the polling loop always has the current value.
   const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
 
   const { messages, loading, refreshing, otherTyping, isOnline, reload, appendMessage, updateMessage, markReadLocally, markDeliveredLocally, removeMessage } = useMessages(id, isBuyer, user?.id);

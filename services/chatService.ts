@@ -374,10 +374,11 @@ export async function sendMessage(
   if (error) return { data: null, recipientId: null, isBuyerSending: false, error: error.message };
 
   // Update conversation last_message (parallel with recipient lookup)
+  const lastMsgContent = imageUrl ? (content || '📷 صورة') : content;
   const [, convResult] = await Promise.all([
     supabase
       .from('conversations')
-      .update({ last_message: content, last_message_at: new Date().toISOString() })
+      .update({ last_message: lastMsgContent, last_message_at: new Date().toISOString() })
       .eq('id', conversationId),
     supabase
       .from('conversations')

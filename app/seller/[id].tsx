@@ -108,6 +108,7 @@ export default function SellerProfileScreen() {
   const [draftStars, setDraftStars] = useState(5);
   const [draftComment, setDraftComment] = useState('');
   const [submittingRating, setSubmittingRating] = useState(false);
+  const [hasRated, setHasRated] = useState(false);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const headerOpacity = scrollY.interpolate({ inputRange: [COVER_H - 80, COVER_H - 20], outputRange: [0, 1], extrapolate: 'clamp' });
@@ -159,9 +160,6 @@ export default function SellerProfileScreen() {
   const activeAds = ads.filter(a => a.status === 'active' || a.status === 'featured');
 
   // ── Submit rating ─────────────────────────────────────────────────────────
-  // Track whether current user has already rated this seller
-  const [hasRated, setHasRated] = useState(false);
-
   const handleSubmitRating = useCallback(async () => {
     if (!user || !id || submittingRating) return;
     setSubmittingRating(true);
@@ -191,12 +189,10 @@ export default function SellerProfileScreen() {
       // Optimistic recalculation
       setAvgRating(prev => {
         if (isUpdate) {
-          // Replace existing rating in the average
           const oldRating = existing!.rating as number;
           const total = (prev ?? oldRating) * ratingCount - oldRating + draftStars;
           return Math.round((total / ratingCount) * 10) / 10;
         } else {
-          // New rating
           const total = (prev ?? 0) * ratingCount + draftStars;
           return Math.round((total / (ratingCount + 1)) * 10) / 10;
         }
@@ -222,7 +218,7 @@ export default function SellerProfileScreen() {
     } finally {
       setSubmittingRating(false);
     }
-  }, [user, id, draftStars, draftComment, ratingCount, submittingRating, isAr]);
+  }, [user, id, draftStars, draftComment, ratingCount, submittingRating, isAr, showAlert]);
 
   const isOwnProfile = user?.id === id;
 
@@ -398,7 +394,7 @@ export default function SellerProfileScreen() {
     ads.length, activeAds.length, colors, displayName, initials, isAr, isDark,
     seller?.avatar_url, seller?.banner_url, seller?.is_verified, seller?.phone,
     isOwnProfile, handleWhatsApp, coverScale, router,
-    avgRating, ratingCount,
+    avgRating, ratingCount, user,
   ]);
 
   if (pageLoading) {
