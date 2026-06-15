@@ -269,7 +269,6 @@ export async function fetchAds(params?: {
 /** Fetch a single ad by ID */
 export async function fetchAdById(id: string): Promise<{ data: Ad | null; error: string | null }> {
   const supabase = getSupabaseClient();
-  // Use .maybeSingle() — returns null (no error) when 0 rows, avoids PGRST116
   const { data, error } = await supabase
     .from('ads')
     .select(`
@@ -279,10 +278,10 @@ export async function fetchAdById(id: string): Promise<{ data: Ad | null; error:
       user_profiles(username, email, phone, avatar_url)
     `)
     .eq('id', id)
-    .maybeSingle();
+    .single();
   if (error) return { data: null, error: error.message };
-  if (!data) return { data: null, error: null };
-  // Increment views atomically (fire-and-forget)
+  // Increment views
+  // Use atomic RPC to avoid race condition when multiple users open the same ad simultaneously
   supabase.rpc('increment_ad_views', { ad_id: id }).catch(() => {});
   return { data: data as Ad, error: null };
 }

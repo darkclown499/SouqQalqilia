@@ -147,14 +147,6 @@ export const MessagePreview = memo(function MessagePreview({
 
   const lastMsg = conversation.last_message ?? '';
 
-  // ── Online status: user is considered active if they polled within last 2 minutes ──
-  const lastPolledAt: string | null = isBuyer
-    ? (conversation as any).seller_last_polled_at ?? null
-    : (conversation as any).buyer_last_polled_at ?? null;
-  const isOtherOnline = lastPolledAt
-    ? Date.now() - new Date(lastPolledAt).getTime() < 120_000
-    : false;
-
   return (
     <Pressable
       style={({ pressed }) => [
@@ -192,10 +184,6 @@ export const MessagePreview = memo(function MessagePreview({
             <Text style={styles.avatarText}>{otherName.charAt(0).toUpperCase()}</Text>
           </View>
         )}
-        {/* Online status dot */}
-        {isOtherOnline && !isBlocked ? (
-          <View style={styles.onlineDot} />
-        ) : null}
       </View>
 
       {/* Content */}
@@ -284,12 +272,6 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 3,
   },
   avatarWrap: { position: 'relative', flexShrink: 0 },
-  onlineDot: {
-    position: 'absolute', bottom: 1, right: 1,
-    width: 11, height: 11, borderRadius: 6,
-    backgroundColor: '#4ADE80',
-    borderWidth: 2, borderColor: '#fff',
-  },
   avatar: {
     width: 54,
     height: 54,

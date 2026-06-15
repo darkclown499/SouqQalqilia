@@ -4,9 +4,6 @@ import {
   View, Text, StyleSheet, FlatList, TextInput, Pressable, Modal,
   KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl, Animated, ScrollView,
 } from 'react-native';
-import Reanimated, {
-  useSharedValue, useAnimatedStyle, withSpring, withSequence,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -146,10 +143,6 @@ function formatTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// ── Bubble corner radii (WhatsApp/iMessage style) ──────────────────────────
-const BUBBLE_RADIUS = 18;
-const BUBBLE_TAIL   = 5;
-
 function formatDateGroup(dateStr: string, isAr: boolean) {
   const d = new Date(dateStr);
   const today = new Date();
@@ -194,53 +187,6 @@ export default function ChatScreen() {
   const { messages, loading, refreshing, otherTyping, isOnline, reload, appendMessage, updateMessage, markReadLocally, markDeliveredLocally, removeMessage } = useMessages(id, isBuyer, user?.id);
 
   const [imageUploading, setImageUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);   // 0–1 simulated
-  const [uploadDone, setUploadDone] = useState(false);
-  const uploadOpacity = useRef(new Animated.Value(0)).current;
-  const [markingRead, setMarkingRead] = useState(false);
-
-  // ── Send button spring (Reanimated) ──────────────────────────────────────
-  const sendScale = useSharedValue(1);
-  const sendAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: sendScale.value }],
-  }));
-
-  const animateSend = useCallback(() => {
-    sendScale.value = withSequence(
-      withSpring(0.78, { damping: 6, stiffness: 500 }),
-      withSpring(1.12, { damping: 8, stiffness: 350 }),
-      withSpring(1,    { damping: 10, stiffness: 220 }),
-    );
-  }, [sendScale]);
-
-  // ── Show/hide upload progress bar ────────────────────────────────────────
-  const showUploadBar = useCallback(() => {
-    setUploadProgress(0);
-    setUploadDone(false);
-    setImageUploading(true);
-    Animated.timing(uploadOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
-    // Simulate progress from 0→85% while waiting for the actual upload
-    let prog = 0;
-    const timer = setInterval(() => {
-      prog = Math.min(prog + 0.12, 0.85);
-      setUploadProgress(prog);
-      if (prog >= 0.85) clearInterval(timer);
-    }, 200);
-    return timer;
-  }, [uploadOpacity]);
-
-  const finishUploadBar = useCallback((timer: ReturnType<typeof setInterval>) => {
-    clearInterval(timer);
-    setUploadProgress(1);
-    setUploadDone(true);
-    setImageUploading(false);
-    setTimeout(() => {
-      Animated.timing(uploadOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => {
-        setUploadDone(false);
-        setUploadProgress(0);
-      });
-    }, 700);
-  }, [uploadOpacity]);
 
   // ── Voice Note state ──────────────────────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
@@ -281,24 +227,25 @@ export default function ChatScreen() {
       tempUri = recordingRef.current.getURI() ?? null;
       recordingRef.current = null;
       if (!send || !tempUri) return;
-      const timer = showUploadBar();
+      setImageUploading(true);
       const fileName = `voice_${Date.now()}.m4a`;
       const { url, error } = await uploadChatImage(tempUri, fileName);
-      finishUploadBar(timer);
+      setImageUploading(false);
       if (error || !url) { showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? ''); return; }
       await handleSendMessage('🎤 رسالة صوتية', url);
     } catch {
       recordingRef.current = null;
       setImageUploading(false);
     } finally {
+      // ── Fix #3: Always delete the local temp file to prevent storage accumulation ──
       if (tempUri) {
         try {
           const { deleteAsync } = await import('expo-file-system') as any;
           await deleteAsync(tempUri, { idempotent: true });
-        } catch { /* non-critical */ }
+        } catch { /* non-critical — ignore if file already gone */ }
       }
     }
-  }, [isAr, showAlert, showUploadBar, finishUploadBar]);
+  }, [isAr, showAlert]);
 
   const handlePlayVoice = useCallback(async (msgId: string, voiceUrl: string) => {
     try {
@@ -452,43 +399,6 @@ export default function ChatScreen() {
     };
   }, [id, user?.id, isBuyer]);
 
-  // ── Manual "Mark as Read" handler ──────────────────────────────────────────
-  const handleMarkAsRead = useCallback(async () => {
-    if (!id || !user || markingRead) return;
-    setMarkingRead(true);
-    try {
-      await markMessagesRead(id, user.id);
-      markReadLocally(user.id);
-      markDeliveredLocally(user.id);
-      triggerUnreadRefresh();
-      if (Platform.OS !== 'web') {
-        try {
-          const Notifications = require('expo-notifications');
-          const supabase = getSupabaseClient();
-          const { data: convRows } = await supabase
-            .from('conversations').select('id')
-            .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
-          const convIds = (convRows ?? []).map((c: any) => c.id);
-          if (convIds.length > 0) {
-            const { count } = await supabase
-              .from('messages').select('id', { count: 'exact', head: true })
-              .is('read_at', null).neq('sender_id', user.id).in('conversation_id', convIds);
-            await Notifications.setBadgeCountAsync(count ?? 0);
-          } else {
-            await Notifications.setBadgeCountAsync(0);
-          }
-        } catch (_) {}
-      }
-    } finally {
-      setMarkingRead(false);
-    }
-  }, [id, user?.id, markingRead, markReadLocally, markDeliveredLocally]);
-
-  // ── Unread count in this conversation (drives mark-as-read badge) ──────────
-  const localUnreadCount = messages.filter(
-    m => m.sender_id !== user?.id && !m.read_at
-  ).length;
-
   const markedOnMount = useRef(false);
 
   const doMark = useCallback(async () => {
@@ -496,7 +406,9 @@ export default function ChatScreen() {
     await markMessagesRead(id, user.id);
     markReadLocally(user.id);
     markDeliveredLocally(user.id);
+    // ── Immediately sync the in-app tab-bar unread badge ──────────────────
     triggerUnreadRefresh();
+    // ── Also update the OS app-icon badge ─────────────────────────────────
     try {
       if (Platform.OS !== 'web') {
         const Notifications = require('expo-notifications');
@@ -540,6 +452,10 @@ export default function ChatScreen() {
 
   const handleSendMessage = async (content: string, imageUrl?: string) => {
     if (!id) return;
+    // ── Fix #2: Generate client-side UUID before sending ──────────────────────
+    // The same UUID is used as both the optimistic temp ID and the real DB row ID.
+    // If the network drops the response after a successful insert, retrying with
+    // the same UUID hits the upsert's onConflict='id' path — no duplicate row.
     const clientId = (() => {
       return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
         const r = Math.random() * 16 | 0;
@@ -581,7 +497,6 @@ export default function ChatScreen() {
   const handleSend = async () => {
     const content = text.trim();
     if (!content || !id || sending) return;
-    animateSend();
     setSending(true);
     setText('');
     try {
@@ -609,9 +524,9 @@ export default function ChatScreen() {
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8, allowsEditing: true, aspect: [4, 3] });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      const timer = showUploadBar();
+      setImageUploading(true);
       const { url, error } = await uploadChatImage(asset.uri, asset.fileName ?? `cam_${Date.now()}.jpg`);
-      finishUploadBar(timer);
+      setImageUploading(false);
       if (error || !url) { showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? ''); return; }
       await handleSendMessage('', url);
     } catch (e: any) {
@@ -632,9 +547,9 @@ export default function ChatScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.75, allowsEditing: true, aspect: [4, 3] });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      const timer = showUploadBar();
+      setImageUploading(true);
       const { url, error } = await uploadChatImage(asset.uri, asset.fileName ?? `chat_${Date.now()}.jpg`);
-      finishUploadBar(timer);
+      setImageUploading(false);
       if (error || !url) { showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', error ?? ''); return; }
       await handleSendMessage('', url);
     } catch (e: any) {
@@ -643,9 +558,9 @@ export default function ChatScreen() {
     }
   };
 
-  const isSeller   = conversation?.seller_id === user?.id;
-  const adStatus   = (conversation as any)?.ads?.status as string | undefined;
-  const adId       = conversation?.ad_id;
+  const isSeller = conversation?.seller_id === user?.id;
+  const adStatus = (conversation as any)?.ads?.status as string | undefined;
+  const adId = conversation?.ad_id;
 
   if (!id) {
     return (
@@ -842,33 +757,6 @@ export default function ChatScreen() {
             </View>
           </View>
 
-          {/* ── Mark as Read button ── */}
-          <Pressable
-            style={[styles.moreBtn, { position: 'relative' }]}
-            onPress={handleMarkAsRead}
-            disabled={markingRead || localUnreadCount === 0}
-            hitSlop={8}
-          >
-            {markingRead ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <MaterialIcons
-                  name="done-all"
-                  size={22}
-                  color={localUnreadCount > 0 ? '#4ADE80' : 'rgba(255,255,255,0.4)'}
-                />
-                {localUnreadCount > 0 ? (
-                  <View style={styles.markReadBadge}>
-                    <Text style={styles.markReadBadgeText}>
-                      {localUnreadCount > 9 ? '9+' : String(localUnreadCount)}
-                    </Text>
-                  </View>
-                ) : null}
-              </>
-            )}
-          </Pressable>
-
           <Pressable
             style={[styles.moreBtn, isSearchActive && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
             onPress={() => {
@@ -889,29 +777,6 @@ export default function ChatScreen() {
               : <MaterialIcons name="more-vert" size={22} color="#fff" />}
           </Pressable>
         </View>
-
-        {/* ── UPLOAD PROGRESS BAR ── */}
-        <Animated.View
-          style={[styles.uploadProgressWrap, { backgroundColor: colors.surface, borderBottomColor: colors.border, opacity: uploadOpacity }]}
-          pointerEvents="none"
-        >
-          <View style={[styles.uploadProgressTrack, { backgroundColor: colors.border }]}>
-            <View
-              style={[
-                styles.uploadProgressFill,
-                {
-                  backgroundColor: uploadDone ? '#4ADE80' : colors.primary,
-                  width: `${Math.round(Math.max(0, Math.min(1, uploadProgress)) * 100)}%` as any,
-                },
-              ]}
-            />
-          </View>
-          <Text style={[styles.uploadProgressLabel, { color: colors.textMuted }]}>
-            {uploadDone
-              ? (isAr ? 'تم الرفع ✓' : 'Uploaded ✓')
-              : (isAr ? `جارٍ الرفع... ${Math.round(uploadProgress * 100)}%` : `Uploading... ${Math.round(uploadProgress * 100)}%`)}
-          </Text>
-        </Animated.View>
 
         {/* ── SEARCH BAR ── */}
         {isSearchActive ? (
@@ -1025,6 +890,7 @@ export default function ChatScreen() {
               if (!isSearchActive) listRef.current?.scrollToEnd({ animated: false });
             }}
             onScrollToIndexFailed={() => {}}
+            // ── Load older messages button ────────────────────────────────
             ListHeaderComponent={
               messages.length > visibleCount ? (
                 <Pressable
@@ -1057,21 +923,11 @@ export default function ChatScreen() {
               const isDelivered = !!(msg as any).delivered_at;
               const isPending = !!(msg as any)._pending;
               const isFailed = !!(msg as any)._failed;
+              // ── Detect voice vs image ─────────────────────────────────────
               const isVoice = msg.message_type === 'image' && !!msg.image_url &&
                 (msg.image_url.includes('.m4a') || msg.image_url.includes('.mp3') ||
                   msg.image_url.includes('.aac') || (msg.content?.includes('🎤') ?? false));
               const isImage = msg.message_type === 'image' && !!msg.image_url && !isVoice;
-
-              const msgIdx = pagedMessages.findIndex(m => m.id === msg.id);
-              const prevMsg = msgIdx > 0 ? pagedMessages[msgIdx - 1] : null;
-              const nextMsg = msgIdx < pagedMessages.length - 1 ? pagedMessages[msgIdx + 1] : null;
-              const showAvatar = !isMine && (
-                !prevMsg || prevMsg.sender_id === user?.id ||
-                new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime() > 60_000
-              );
-              const showMeta = !nextMsg ||
-                nextMsg.sender_id !== msg.sender_id ||
-                new Date(nextMsg.created_at).getTime() - new Date(msg.created_at).getTime() > 180_000;
 
               const dbReactions: Record<string, string> = ((msg as any).reactions as any) ?? {};
               const myReaction = localReactions[msg.id] ?? (user?.id ? dbReactions[user.id] : null);
@@ -1091,22 +947,13 @@ export default function ChatScreen() {
                   style={[
                     styles.msgRow,
                     isMine ? (isAr ? styles.msgRowOther : styles.msgRowMine) : (isAr ? styles.msgRowMine : styles.msgRowOther),
-                    isActiveMatch ? { backgroundColor: colors.primaryGhost + '55', borderRadius: Radius.lg } : null,
-                    { marginBottom: showMeta ? 6 : 2 },
+                    isActiveMatch ? { backgroundColor: colors.primaryGhost + '66', borderRadius: Radius.lg } : null,
                   ]}
                 >
                   {!isMine ? (
-                    showAvatar ? (
-                      otherAvatarUrl ? (
-                        <Image source={{ uri: otherAvatarUrl }} style={styles.bubbleAvatarImg} contentFit="cover" transition={200} />
-                      ) : (
-                        <View style={[styles.bubbleAvatar, { backgroundColor: colors.primaryGhost }]}>
-                          <Text style={[styles.bubbleAvatarText, { color: colors.primary }]}>{otherInitial}</Text>
-                        </View>
-                      )
-                    ) : (
-                      <View style={styles.bubbleAvatarSpacer} />
-                    )
+                    <View style={[styles.bubbleAvatar, { backgroundColor: colors.primaryGhost }]}>
+                      <Text style={[styles.bubbleAvatarText, { color: colors.primary }]}>{otherInitial}</Text>
+                    </View>
                   ) : null}
 
                   <View style={styles.bubbleWrap}>
@@ -1126,29 +973,13 @@ export default function ChatScreen() {
                         styles.bubble,
                         (isImage || isVoice) ? styles.bubbleImage : null,
                         isMine
-                          ? {
-                              backgroundColor: isFailed ? '#EF4444' : (isDark ? '#0D6E5F' : '#0A6E5C'),
-                              borderRadius: BUBBLE_RADIUS,
-                              borderBottomRightRadius: isAr ? BUBBLE_RADIUS : BUBBLE_TAIL,
-                              borderBottomLeftRadius:  isAr ? BUBBLE_TAIL  : BUBBLE_RADIUS,
-                              opacity: pressed ? 0.86 : (isPending ? 0.7 : 1),
-                              shadowColor: '#0A6E5C',
-                              shadowOffset: { width: 0, height: 2 },
-                              shadowOpacity: isDark ? 0.0 : 0.15,
-                              shadowRadius: 5,
-                              elevation: 2,
-                            }
-                          : {
-                              backgroundColor: isDark ? '#1C2733' : '#F0F4F8',
-                              borderRadius: BUBBLE_RADIUS,
-                              borderBottomLeftRadius:  isAr ? BUBBLE_RADIUS : BUBBLE_TAIL,
-                              borderBottomRightRadius: isAr ? BUBBLE_TAIL  : BUBBLE_RADIUS,
-                              opacity: pressed ? 0.86 : 1,
-                            },
+                          ? { backgroundColor: isFailed ? '#EF4444' : colors.primary, borderBottomRightRadius: isAr ? Radius.lg : 4, borderBottomLeftRadius: isAr ? 4 : Radius.lg, opacity: pressed ? 0.88 : 1 }
+                          : { backgroundColor: colors.surface, borderBottomLeftRadius: isAr ? Radius.lg : 4, borderBottomRightRadius: isAr ? 4 : Radius.lg, ...Shadow.sm, opacity: pressed ? 0.88 : 1 },
                         hasSearchMatch && !isActiveMatch ? { borderWidth: 1.5, borderColor: colors.primary + '66' } : null,
                         isActiveMatch ? { borderWidth: 2, borderColor: colors.primary } : null,
                       ]}
                     >
+                      {/* Voice note player */}
                       {isVoice ? (
                         <Pressable
                           style={[styles.voicePlayer, { backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : colors.primaryGhost }]}
@@ -1209,31 +1040,29 @@ export default function ChatScreen() {
                       </View>
                     ) : null}
 
-                    {showMeta ? (
-                      <View style={[
-                        styles.msgMeta,
-                        { flexDirection: isMine ? (isAr ? 'row' : 'row-reverse') : (isAr ? 'row-reverse' : 'row'), gap: 4 },
-                      ]}>
-                        <Text style={[styles.msgTime, { color: colors.textMuted }]}>
-                          {formatTime(msg.created_at)}
-                        </Text>
-                        {isMine ? (
-                          isFailed ? (
-                            <Pressable onPress={() => { removeMessage(msg.id); removeFromOfflineQueue(msg.id); }} hitSlop={6}>
-                              <MaterialIcons name="error-outline" size={14} color="#EF4444" />
-                            </Pressable>
-                          ) : isPending ? (
-                            <MaterialIcons name="schedule" size={12} color={colors.textMuted} />
-                          ) : isRead ? (
+                    <View style={[styles.msgMeta, { flexDirection: isMine ? (isAr ? 'row' : 'row-reverse') : (isAr ? 'row-reverse' : 'row'), gap: 4 }]}>
+                      <Text style={[styles.msgTime, { color: colors.textMuted }]}>{formatTime(msg.created_at)}</Text>
+                      {isMine ? (
+                        isFailed ? (
+                          <Pressable onPress={() => { removeMessage(msg.id); removeFromOfflineQueue(msg.id); }} hitSlop={6}>
+                            <MaterialIcons name="error-outline" size={14} color="#EF4444" />
+                          </Pressable>
+                        ) : isPending ? (
+                          <MaterialIcons name="schedule" size={12} color={colors.textMuted} />
+                        ) : (
+                          isRead ? (
+                            // ✓✓ Green — READ by recipient
                             <MaterialIcons name="done-all" size={14} color="#4ADE80" />
                           ) : isDelivered ? (
-                            <MaterialIcons name="done-all" size={14} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
+                            // ✓✓ Grey — DELIVERED to device
+                            <MaterialIcons name="done-all" size={14} color={colors.textMuted} />
                           ) : (
-                            <MaterialIcons name="done" size={14} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
+                            // ✓ Single — sent to server only
+                            <MaterialIcons name="done" size={14} color={colors.textMuted} />
                           )
-                        ) : null}
-                      </View>
-                    ) : null}
+                        )
+                      ) : null}
+                    </View>
                     {isFailed ? (
                       <Text style={[styles.failedLabel, { color: '#EF4444' }]}>
                         {isAr ? 'فشل الإرسال — اضغط ✕ للحذف' : 'Failed to send — tap ✕ to remove'}
@@ -1269,6 +1098,7 @@ export default function ChatScreen() {
           />
         )}
 
+        {/* Dismiss emoji picker on tap outside */}
         {pickerMsgId ? (
           <Pressable
             style={StyleSheet.absoluteFillObject}
@@ -1372,20 +1202,16 @@ export default function ChatScreen() {
             multiline
             maxLength={500}
           />
-
-          {/* ── Send button with spring animation ── */}
-          <Reanimated.View style={sendAnimStyle}>
-            <Pressable
-              style={[styles.sendBtn, { backgroundColor: text.trim() && !sending ? colors.primary : colors.border }]}
-              onPress={handleSend}
-              disabled={!text.trim() || sending}
-            >
-              {sending
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <MaterialIcons name="send" size={20} color={text.trim() ? '#fff' : colors.textMuted} style={isAr ? { transform: [{ scaleX: -1 }] } : undefined} />
-              }
-            </Pressable>
-          </Reanimated.View>
+          <Pressable
+            style={[styles.sendBtn, { backgroundColor: text.trim() && !sending ? colors.primary : colors.border }]}
+            onPress={handleSend}
+            disabled={!text.trim() || sending}
+          >
+            {sending
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <MaterialIcons name="send" size={20} color={text.trim() ? '#fff' : colors.textMuted} style={isAr ? { transform: [{ scaleX: -1 }] } : undefined} />
+            }
+          </Pressable>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -1411,19 +1237,6 @@ const styles = StyleSheet.create({
   },
   soldPill: { backgroundColor: '#EF4444', borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 },
   soldPillText: { color: '#fff', fontSize: 9, fontWeight: '800' },
-  uploadProgressWrap: {
-    paddingHorizontal: Spacing.md, paddingVertical: 7,
-    borderBottomWidth: 1, gap: 4,
-  },
-  uploadProgressTrack: {
-    height: 4, borderRadius: 2, overflow: 'hidden', width: '100%',
-  },
-  uploadProgressFill: {
-    height: 4, borderRadius: 2,
-  },
-  uploadProgressLabel: {
-    fontSize: 11, fontWeight: '600', textAlign: 'center',
-  },
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: Spacing.md, paddingVertical: 8,
@@ -1467,31 +1280,21 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: FontSize.lg, fontWeight: '700' },
   emptySub: { fontSize: FontSize.sm, textAlign: 'center' },
-  msgList: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: 0, flexGrow: 1, paddingBottom: Spacing.lg },
+  msgList: { padding: Spacing.md, gap: Spacing.sm, flexGrow: 1, paddingBottom: Spacing.md },
   dateSep: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginVertical: Spacing.md },
   dateLine: { flex: 1, height: 1 },
   datePill: { borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 4 },
   datePillText: { fontSize: FontSize.xs, fontWeight: '600' },
-  msgRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end', paddingHorizontal: 2, marginBottom: 2 },
+  msgRow: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-end', paddingHorizontal: 2 },
   msgRowMine: { justifyContent: 'flex-end' },
   msgRowOther: { justifyContent: 'flex-start' },
-  bubbleAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  bubbleAvatarImg: { width: 28, height: 28, borderRadius: 14, flexShrink: 0 },
-  bubbleAvatarSpacer: { width: 28, flexShrink: 0 },
+  bubbleAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   bubbleAvatarText: { fontSize: FontSize.xs, fontWeight: '700' },
-  bubbleWrap: { maxWidth: '75%', gap: 2 },
-  bubble: { borderRadius: BUBBLE_RADIUS, paddingHorizontal: 13, paddingVertical: 9 },
+  bubbleWrap: { maxWidth: '72%', gap: 3 },
+  bubble: { borderRadius: Radius.lg, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
   msgText: { fontSize: FontSize.md, lineHeight: 22 },
-  msgMeta: { alignItems: 'center', marginTop: 3, marginBottom: 4 },
+  msgMeta: { alignItems: 'center' },
   msgTime: { fontSize: 10, fontWeight: '500' },
-  markReadBadge: {
-    position: 'absolute', top: -5, right: -5,
-    backgroundColor: '#4ADE80', borderRadius: 99,
-    minWidth: 16, height: 16,
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 3, borderWidth: 1.5, borderColor: '#0A6E5C',
-  },
-  markReadBadgeText: { color: '#fff', fontSize: 8, fontWeight: '800', lineHeight: 11 },
   reactionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3, marginBottom: 1 },
   reactionBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
@@ -1517,13 +1320,16 @@ const styles = StyleSheet.create({
   offlineBannerText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '600', flex: 1 },
   bubbleImage: { padding: 0, overflow: 'hidden', borderRadius: Radius.lg },
   msgImage: { width: 200, height: 150, borderRadius: Radius.lg },
+  // ── Voice player ──
   voicePlayer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingVertical: 8, borderRadius: Radius.lg, minWidth: 170 },
   voiceTrack: { flex: 1, gap: 4 },
   voiceBar: { height: 3, borderRadius: 2, overflow: 'hidden' },
   voiceFill: { height: 3, borderRadius: 2 },
+  // ── Recording controls ──
   recordingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.xl, borderWidth: 1, flex: 1, minWidth: 0 },
   recordingDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
   recordingTimer: { fontSize: FontSize.sm, fontWeight: '700', flex: 1 },
+  // ── Load more ──
   loadMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginBottom: 8, borderRadius: Radius.lg, marginHorizontal: 32 },
   loadMoreText: { fontSize: FontSize.xs, fontWeight: '600' },
   failedLabel: { fontSize: 10, fontWeight: '600', marginTop: 2, textAlign: 'center' },
