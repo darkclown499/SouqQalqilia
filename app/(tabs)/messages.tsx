@@ -9,7 +9,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '@/template';
 import { MessagePreview, EmptyState, Button } from '@/components';
 import { MessageListSkeleton } from '@/components/feature/MessagePreview';
-import { useConversations } from '@/hooks/useChat';
+import { useConversations, triggerUnreadRefresh } from '@/hooks/useChat';
 import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
@@ -42,9 +42,16 @@ export default function MessagesScreen() {
   const isAr = language === 'ar';
 
   const handleConvPress = useCallback((id: string) => {
-    // Navigate immediately — no badge sync needed here (chat screen handles it)
     router.push(`/chat/${id}`);
   }, [router]);
+
+  // Called by MessagePreview after swipe-to-read completes
+  const handleMarkedRead = useCallback((conversationId: string) => {
+    // Trigger global unread refresh so the tab badge updates
+    triggerUnreadRefresh();
+    // Reload conversations to reflect the updated unread state
+    reload();
+  }, [reload]);
 
   const renderConversation = useCallback(({ item }: any) => {
     const otherId = item.buyer_id === user!.id ? item.seller_id : item.buyer_id;
@@ -54,9 +61,10 @@ export default function MessagesScreen() {
         currentUserId={user!.id}
         onPress={handleConvPress}
         isBlocked={blockedIds.has(otherId)}
+        onMarkedRead={handleMarkedRead}
       />
     );
-  }, [user, handleConvPress, blockedIds]);
+  }, [user, handleConvPress, blockedIds, handleMarkedRead]);
 
   if (!user) {
     return (
