@@ -331,7 +331,7 @@ export default function ProfileScreen() {
     try {
       const img = await pickImage();
       if (!img) return;
-      const { url, error } = await uploadImage(img.base64, user.id, 'avatar');
+      const { url, error } = await uploadImage(img.base64, user.id, 'avatar', img.uri);
       if (error || !url) throw new Error(error ?? 'Upload failed');
       const supabase = getSupabaseClient();
       await supabase.from('user_profiles').update({ avatar_url: url }).eq('id', user.id);
@@ -349,7 +349,7 @@ export default function ProfileScreen() {
     try {
       const img = await pickImage('gallery');
       if (!img) return;
-      const { url, error } = await uploadImage(img.base64, user.id, 'banner');
+      const { url, error } = await uploadImage(img.base64, user.id, 'banner', img.uri);
       if (error || !url) throw new Error(error ?? 'Upload failed');
       const supabase = getSupabaseClient();
       await supabase.from('user_profiles').update({ banner_url: url }).eq('id', user.id);

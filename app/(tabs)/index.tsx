@@ -684,6 +684,10 @@ export default function HomeScreen() {
           removeClippedSubviews={Platform.OS === 'android'}
           getItemLayout={(_data, index) => ({
             length: ROW_H,
+            // getItemLayout must NOT include ListHeader — FlatList handles header
+            // offset separately from the items. ListHeader is rendered outside
+            // the measured item list so adding its height here causes a double-count
+            // and produces scroll offset errors (items jump when scrolling back to top).
             offset: ROW_H * index,
             index,
           })}
