@@ -50,7 +50,6 @@ export default function AdDetailScreen() {
 
   const [ad, setAd] = useState<Ad | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
   const [reportVisible, setReportVisible] = useState(false);
@@ -73,13 +72,12 @@ export default function AdDetailScreen() {
 
     setLoading(true);
     setAd(null);
-    setFetchError(null);
     setRelatedAds([]);
     setSellerAds([]);
 
     fetchAdById(id).then(({ data, error }) => {
       if (cancelled) return;
-      if (error) setFetchError(error);
+      if (error) console.warn('[AdDetail] fetchAdById error:', error);
       setAd(data);
       setLoading(false);
 
@@ -106,11 +104,8 @@ export default function AdDetailScreen() {
           if (!cancelled) setSellerAds((sAds ?? []).filter(a => a.id !== id).slice(0, 5));
         }).catch(() => {});
       }
-    }).catch((e: any) => {
-      if (!cancelled) {
-        setFetchError(e?.message ?? 'Network error');
-        setLoading(false);
-      }
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
     });
 
     return () => { cancelled = true; };
@@ -269,25 +264,12 @@ export default function AdDetailScreen() {
     );
   }
 
-  if (!loading && !ad) {
+  if (!ad) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <View style={[styles.notFoundIconWrap, { backgroundColor: colors.surfaceTint }]}>
-          <MaterialIcons name={fetchError ? 'wifi-off' : 'search-off'} size={44} color={colors.textMuted} />
-        </View>
-        <Text style={[styles.errorText, { color: colors.textPrimary, fontWeight: '700', marginTop: 12 }]}>
-          {fetchError ? (isAr ? 'خطأ في التحميل' : 'Loading Error') : t.listingNotFound}
-        </Text>
-        {fetchError ? (
-          <Text style={[styles.errorSubText, { color: colors.textSecondary }]} numberOfLines={2}>
-            {fetchError}
-          </Text>
-        ) : (
-          <Text style={[styles.errorSubText, { color: colors.textMuted }]}>
-            {isAr ? 'ربما تم حذف الإعلان أو انتهت صلاحيته' : 'This listing may have been removed or expired'}
-          </Text>
-        )}
-        <Button label={t.goBack} variant="outline" onPress={() => router.back()} style={{ marginTop: 20 }} />
+        <MaterialIcons name="error-outline" size={52} color={colors.textMuted} />
+        <Text style={[styles.errorText, { color: colors.textSecondary }]}>{t.listingNotFound}</Text>
+        <Button label={t.goBack} variant="outline" onPress={() => router.back()} style={{ marginTop: 16 }} />
       </View>
     );
   }
@@ -989,10 +971,7 @@ function AdDetailScrollContent({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl },
-  notFoundIconWrap: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  errorText: { fontSize: FontSize.lg, textAlign: 'center' },
-  errorSubText: { fontSize: FontSize.sm, textAlign: 'center', paddingHorizontal: Spacing.xl, lineHeight: 20 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   // ── Skeleton loading layout ──
   skeletonContainer: { flex: 1 },
@@ -1063,7 +1042,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     width: '40%',
   },
-
+  errorText: { fontSize: FontSize.lg, marginTop: 12 },
   backBtnWrap: { position: 'absolute', zIndex: 20 },
   topRightBtns: { position: 'absolute', zIndex: 20, flexDirection: 'row', gap: 8 },
   iconBtn: {
