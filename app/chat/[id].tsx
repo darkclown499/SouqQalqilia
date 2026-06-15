@@ -523,7 +523,7 @@ export default function ChatScreen() {
         showAlert(isAr ? 'لا يوجد إذن' : 'Permission Denied', isAr ? 'يرجى السماح بالوصول إلى الكاميرا' : 'Please allow camera access.');
         return;
       }
-      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true, aspect: [4, 3] });
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8, allowsEditing: true, aspect: [4, 3] });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       setImageUploading(true);
@@ -546,7 +546,7 @@ export default function ChatScreen() {
         showAlert(isAr ? 'لا يوجد إذن' : 'Permission Denied', isAr ? 'يرجى السماح بالوصول إلى المعرض' : 'Please allow photo library access.');
         return;
       }
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.75, allowsEditing: true, aspect: [4, 3] });
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.75, allowsEditing: true, aspect: [4, 3] });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       setImageUploading(true);
