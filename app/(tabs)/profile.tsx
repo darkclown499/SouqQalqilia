@@ -232,6 +232,9 @@ export default function ProfileScreen() {
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [activeTab, setActiveTab] = useState<'listings' | 'settings'>('listings');
+  const [testPushLoading, setTestPushLoading] = useState(false);
+  const [testPushResult, setTestPushResult] = useState<'idle' | 'success' | 'error' | 'no_token'>('idle');
+  const [currentPushToken, setCurrentPushToken] = useState<string | null>(null);
 
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
 
@@ -252,7 +255,7 @@ export default function ProfileScreen() {
     checkIsAdmin().then(setIsAdmin);
     getSupabaseClient()
       .from('user_profiles')
-      .select('avatar_url, banner_url, phone, is_verified')
+      .select('avatar_url, banner_url, phone, is_verified, push_token')
       .eq('id', user.id)
       .single()
       .then(({ data }) => {
@@ -260,6 +263,7 @@ export default function ProfileScreen() {
         if (data?.banner_url) setBannerUrl(data.banner_url);
         if (data?.phone) setEditPhone(data.phone ?? '');
         setIsVerified(!!data?.is_verified);
+        setCurrentPushToken(data?.push_token ?? null);
       });
     loadBlockedUsers();
   }, [user?.id, loadBlockedUsers]);
@@ -444,6 +448,57 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const handleTestNotification = async () => {
+    if (!user) return;
+    setTestPushLoading(true);
+    setTestPushResult('idle');
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.functions.invoke('push-notify', {
+        body: {
+          recipient_id: user.id,
+          sender_name: isRTL ? 'اختبار الإشعارات' : 'Push Test',
+          message_preview: isRTL
+            ? 'FCM/APNs يعمل بشكل صحيح ✅ — سوق قلقيلية'
+            : 'FCM/APNs working correctly ✅ — Souq Qalqilya',
+        },
+      });
+      if (error) {
+        let errorMsg = error.message;
+        try {
+          const textContent = await (error as any).context?.text?.();
+          if (textContent) {
+            try { const parsed = JSON.parse(textContent); errorMsg = parsed?.error ?? textContent; } catch { errorMsg = textContent; }
+          }
+        } catch { /* ignore */ }
+        setTestPushResult('error');
+        showAlert(isRTL ? 'فشل الإرسال' : 'Send Failed', errorMsg);
+      } else if (data?.skipped === 'no_token' || data?.skipped === 'invalid_token_format') {
+        setTestPushResult('no_token');
+        showAlert(
+          isRTL ? 'لا يوجد رمز إشعارات' : 'No Push Token',
+          isRTL
+            ? 'لم يتم تسجيل رمز الإشعارات لهذا الجهاز. تأكد من منح صلاحية الإشعارات وأعد تشغيل التطبيق.'
+            : 'No push token registered for this device. Please grant notification permission and restart the app.'
+        );
+      } else {
+        setTestPushResult('success');
+        showAlert(
+          isRTL ? 'نجح الإرسال' : 'Notification Sent',
+          isRTL
+            ? 'تم إرسال الإشعار التجريبي. تحقق من شريط الإشعارات أعلى شاشتك.'
+            : 'Test notification sent. Check your notification tray at the top of your screen.'
+        );
+      }
+    } catch (e: any) {
+      setTestPushResult('error');
+      showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to send test notification');
+    } finally {
+      setTestPushLoading(false);
+      setTimeout(() => setTestPushResult('idle'), 6000);
+    }
   };
 
   const handleWhatsApp = () => {
@@ -889,6 +944,80 @@ export default function ProfileScreen() {
                 />
               </View>
 
+              {/* ── PUSH NOTIFICATION TEST ── */}
+              {Platform.OS !== 'web' ? (
+                <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <SectionHeader
+                    icon="notifications-active"
+                    label={isRTL ? 'اختبار الإشعارات' : 'Notification Test'}
+                    color="#D97706"
+                    bg="#FEF3C7"
+                  />
+
+                  {/* Token status row */}
+                  <View style={[ptStyles.tokenRow, { backgroundColor: colors.background, borderColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                    <MaterialIcons
+                      name={currentPushToken ? 'vpn-key' : 'warning'}
+                      size={14}
+                      color={currentPushToken ? colors.primary : '#D97706'}
+                    />
+                    <Text style={[ptStyles.tokenLabel, { color: colors.textMuted }]} numberOfLines={1}>
+                      {currentPushToken
+                        ? `Token: ...${currentPushToken.slice(-16)}`
+                        : (isRTL ? 'لا يوجد رمز — امنح صلاحية الإشعارات' : 'No token — grant notification permission')}
+                    </Text>
+                  </View>
+
+                  {/* Test button */}
+                  <Pressable
+                    style={({ pressed }) => [
+                      ptStyles.testBtn,
+                      {
+                        backgroundColor:
+                          testPushResult === 'success' ? '#16A34A'
+                          : testPushResult === 'error' || testPushResult === 'no_token' ? '#DC2626'
+                          : '#D97706',
+                        opacity: testPushLoading || pressed ? 0.75 : 1,
+                      },
+                    ]}
+                    onPress={handleTestNotification}
+                    disabled={testPushLoading}
+                  >
+                    {testPushLoading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <MaterialIcons
+                        name={
+                          testPushResult === 'success' ? 'check-circle'
+                          : testPushResult === 'error' || testPushResult === 'no_token' ? 'error-outline'
+                          : 'send'
+                        }
+                        size={18}
+                        color="#fff"
+                      />
+                    )}
+                    <Text style={ptStyles.testBtnText}>
+                      {testPushLoading
+                        ? (isRTL ? 'جارٍ الإرسال...' : 'Sending...')
+                        : testPushResult === 'success'
+                        ? (isRTL ? 'نجح الإرسال ✓' : 'Sent Successfully ✓')
+                        : testPushResult === 'error'
+                        ? (isRTL ? 'فشل — اضغط للمحاولة' : 'Failed — Tap to retry')
+                        : testPushResult === 'no_token'
+                        ? (isRTL ? 'لا يوجد رمز إشعارات' : 'No Push Token Registered')
+                        : (isRTL ? 'إرسال إشعار تجريبي' : 'Send Test Notification')}
+                    </Text>
+                  </Pressable>
+
+                  {/* Hint */}
+                  <Text style={[ptStyles.hint, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+                    {isRTL
+                      ? 'يرسل إشعاراً لهذا الجهاز عبر Expo Push API للتحقق من FCM/APNs قبل الرفع للمتاجر'
+                      : 'Sends a push to this device via Expo Push API to verify FCM/APNs before store submission'}
+                  </Text>
+                </View>
+              ) : null}
+
               {/* ── BLOCKED USERS ── */}
               {blockedUsers.length > 0 ? (
                 <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1154,4 +1283,41 @@ const styles = StyleSheet.create({
   deleteCancelText: { fontSize: FontSize.md, fontWeight: '600' },
   deleteConfirmBtn: { flex: 2, height: 48, borderRadius: Radius.lg, backgroundColor: '#DC2626', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, shadowColor: '#DC2626', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6 },
   deleteConfirmText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '800' },
+});
+
+const ptStyles = StyleSheet.create({
+  tokenRow: {
+    marginHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    marginBottom: 2,
+  },
+  tokenLabel: { fontSize: FontSize.xs, fontWeight: '500', flex: 1 },
+  testBtn: {
+    marginHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: Radius.lg,
+    shadowColor: '#D97706',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  testBtnText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
+  hint: {
+    fontSize: FontSize.xs,
+    lineHeight: 17,
+    paddingHorizontal: Spacing.md,
+    paddingTop: 8,
+    paddingBottom: Spacing.md,
+  },
 });
