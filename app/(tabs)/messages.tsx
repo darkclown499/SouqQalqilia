@@ -21,7 +21,7 @@ export default function MessagesScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const { t, isRTL, language } = useLanguage();
-  const { conversations, loading, reload, unreadCount, markConversationReadLocally } = useConversations();
+  const { conversations, loading, reload, unreadCount } = useConversations();
   const [blockedIds, setBlockedIds] = React.useState<Set<string>>(new Set());
 
   React.useEffect(() => {
@@ -45,13 +45,12 @@ export default function MessagesScreen() {
     router.push(`/chat/${id}`);
   }, [router]);
 
-  // Called by MessagePreview after swipe-to-read completes
-  const handleMarkedRead = useCallback((conversationId: string) => {
-    // ── 1. Update badge + conversation list INSTANTLY (no server round-trip) ──
-    markConversationReadLocally(conversationId);
-    // ── 2. Background sync: refresh server count after a short delay ──────────
-    setTimeout(() => triggerUnreadRefresh(), 1500);
-  }, [markConversationReadLocally]);
+  // Called by MessagePreview AFTER the DB write succeeded.
+  // The optimistic update already happened inside MessagePreview via the store.
+  // This just triggers a background server sync to reconcile the badge count.
+  const handleMarkedRead = useCallback((_conversationId: string) => {
+    setTimeout(() => triggerUnreadRefresh(), 2000);
+  }, []);
 
   const renderConversation = useCallback(({ item }: any) => {
     const otherId = item.buyer_id === user!.id ? item.seller_id : item.buyer_id;

@@ -12,6 +12,11 @@ import {
   getOfflineQueue,
   saveOfflineQueue,
 } from '@/services/chatService';
+import {
+  mergeWithLocalReadState,
+  computeUnreadCount,
+  useChatReadStore,
+} from '@/stores/chatReadStore';
 import { getSupabaseClient } from '@/template';
 import { CHAT_POLL_INTERVAL, READ_RECEIPT_INTERVAL } from '@/constants/config';
 
@@ -393,42 +398,26 @@ export function useConversations() {
   const [unreadCount, setUnreadCount] = useState(0);
   const prevUnreadRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Subscribe to the chat read store — re-compute badge when user marks a conv read
+  const _storeVersion = useChatReadStore();
 
   const setBadge = useCallback(async (count: number) => {
     if (!Notifications || Platform.OS === 'web') return;
     try { await Notifications.setBadgeCountAsync(count); } catch (_) {}
   }, []);
 
-  const fetchUnreadCount = useCallback(async (): Promise<number> => {
-    const supabase = getSupabaseClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return 0;
-    const { data: convRows } = await supabase
-      .from('conversations')
-      .select('id')
-      .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
-    const convIds = (convRows ?? []).map((c: any) => c.id);
-    if (convIds.length === 0) return 0;
-    const { count } = await supabase
-      .from('messages')
-      .select('id', { count: 'exact', head: true })
-      .is('read_at', null)
-      .neq('sender_id', user.id)
-      .in('conversation_id', convIds);
-    return count ?? 0;
-  }, []);
-
   const refreshUnread = useCallback(async () => {
-    setUnreadCount(0);
-    prevUnreadRef.current = 0;
-    await setBadge(0);
     try {
-      const real = await fetchUnreadCount();
+      // Re-fetch conversations so mergeWithLocalReadState can protect local marks
+      const convResult = await fetchMyConversations();
+      const merged = mergeWithLocalReadState(convResult.data);
+      setConversations(merged);
+      const real = computeUnreadCount(merged);
       setUnreadCount(real);
       prevUnreadRef.current = real;
       await setBadge(real);
     } catch (_) {}
-  }, [fetchUnreadCount, setBadge]);
+  }, [setBadge]);
 
   const load = useCallback(async (showSpinner = false) => {
     const supabaseCheck = getSupabaseClient();
@@ -444,25 +433,17 @@ export function useConversations() {
 
     try {
       const [convResult] = await Promise.all([fetchMyConversations()]);
-      setConversations(convResult.data);
+
+      // ── Local-First merge: protect optimistic read marks ───────────────
+      // mergeWithLocalReadState() forces unread_count to 0 for any conversation
+      // the user has already swiped-to-read, UNLESS a new message arrived after
+      // the mark (server count grew → the store entry is evicted automatically).
+      const merged = mergeWithLocalReadState(convResult.data);
+      setConversations(merged);
       if (showSpinner) setLoading(false);
 
-      const supabase = getSupabaseClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setUnreadCount(0); return; }
-
-      const convIds = convResult.data.map((c: any) => c.id);
-      let newCount = 0;
-      if (convIds.length > 0) {
-        const { count } = await supabase
-          .from('messages')
-          .select('id', { count: 'exact', head: true })
-          .is('read_at', null)
-          .neq('sender_id', user.id)
-          .in('conversation_id', convIds);
-        newCount = count ?? 0;
-      }
-
+      // Compute badge from the merged list (locally-read convs already have count=0)
+      const newCount = computeUnreadCount(merged);
       setUnreadCount(newCount);
       prevUnreadRef.current = newCount;
       await setBadge(newCount);
@@ -484,28 +465,21 @@ export function useConversations() {
     };
   }, [load]);
 
-  /**
-   * Instantly decrement unreadCount when a conversation is swiped-to-read.
-   * Updates conversations list + badge WITHOUT waiting for server response.
-   */
-  const markConversationReadLocally = useCallback((conversationId: string) => {
-    setConversations(prev => {
-      const conv = prev.find(c => c.id === conversationId);
-      const convUnread: number = (conv as any)?.unread_count ?? 0;
-      if (convUnread === 0) return prev;
-      // Decrement global counter and badge immediately
-      setUnreadCount(cur => {
-        const next = Math.max(0, cur - convUnread);
-        prevUnreadRef.current = next;
-        setBadge(next);
-        return next;
-      });
-      // Zero out this conversation's local unread_count
-      return prev.map(c =>
-        c.id === conversationId ? ({ ...c, unread_count: 0 } as any) : c
-      );
-    });
-  }, [setBadge]);
+  // ── Re-compute badge whenever the store version changes ──────────────────
+  // This runs synchronously after markConversationRead() fires in the store,
+  // updating the tab badge in the same render cycle as MessagePreview.
+  useEffect(() => {
+    const merged = mergeWithLocalReadState(conversations);
+    const newCount = computeUnreadCount(merged);
+    if (newCount !== prevUnreadRef.current) {
+      setUnreadCount(newCount);
+      prevUnreadRef.current = newCount;
+      setBadge(newCount);
+    }
+    // Also update conversations so the row backgrounds/indicators update
+    setConversations(mergeWithLocalReadState(conversations));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [_storeVersion]);
 
   return {
     conversations,
@@ -513,6 +487,7 @@ export function useConversations() {
     reload: () => load(true),
     unreadCount,
     refreshUnread,
-    markConversationReadLocally,
+    // Legacy alias — kept for backward compat with messages.tsx
+    markConversationReadLocally: (_id: string) => { /* now handled via store */ },
   };
 }
