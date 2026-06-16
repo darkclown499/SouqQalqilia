@@ -1,4 +1,5 @@
 import * as SplashScreen from 'expo-splash-screen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AlertProvider, AuthProvider, getSupabaseClient, useAuth } from '@/template';
 import { useTheme } from '@/hooks/useTheme';
 import { preloadAds } from '@/services/adsService';
@@ -78,6 +79,34 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   });
 }
 
+// ── Persistent shown-message-ID store (survives app restarts) ───────────────
+// Stores { msgId: shownAtTimestamp } — entries expire after 2 hours.
+const SHOWN_IDS_KEY = 'banner_shown_msg_ids_v1';
+const SHOWN_IDS_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+async function loadShownIds(): Promise<Map<string, number>> {
+  try {
+    const raw = await AsyncStorage.getItem(SHOWN_IDS_KEY);
+    if (!raw) return new Map();
+    const obj: Record<string, number> = JSON.parse(raw);
+    const now = Date.now();
+    const map = new Map<string, number>();
+    for (const [id, ts] of Object.entries(obj)) {
+      if (now - ts < SHOWN_IDS_TTL_MS) map.set(id, ts); // discard expired
+    }
+    return map;
+  } catch { return new Map(); }
+}
+
+async function persistShownId(id: string, existing: Map<string, number>): Promise<void> {
+  try {
+    existing.set(id, Date.now());
+    const obj: Record<string, number> = {};
+    existing.forEach((ts, k) => { obj[k] = ts; });
+    await AsyncStorage.setItem(SHOWN_IDS_KEY, JSON.stringify(obj));
+  } catch { /* non-critical */ }
+}
+
 // ── In-App Chat Banner ───────────────────────────────────────────────────────
 interface BannerPayload {
   conversationId: string;
@@ -103,9 +132,14 @@ function InAppChatBanner() {
     transform: [{ translateY: slideY.value + dragY.value }],
   }));
 
-  // Set of message IDs we already showed a banner for — prevents re-showing the same
-  // message even if read_at hasn't propagated to the DB yet.
-  const shownMsgIdsRef = useRef<Set<string>>(new Set());
+  // Map of { msgId → shownAt timestamp } — persisted to AsyncStorage so banners
+  // for the same message are suppressed even after the app is closed and reopened.
+  const shownMsgIdsRef = useRef<Map<string, number>>(new Map());
+
+  // Load persisted shown IDs on mount
+  useEffect(() => {
+    loadShownIds().then(map => { shownMsgIdsRef.current = map; });
+  }, []);
   // Per-conversation cooldown map: convId → last banner timestamp
   // Prevents flooding the user with banners for the same conversation.
   const convCooldownRef = useRef<Map<string, number>>(new Map());
@@ -138,7 +172,7 @@ function InAppChatBanner() {
     slideY.value = -140;
     slideY.value = withSpring(0, { damping: 18, stiffness: 280 });
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    dismissTimerRef.current = setTimeout(() => dismissBanner(), 3000);
+    dismissTimerRef.current = setTimeout(() => dismissBanner(), 5000);
   }, [slideY, dragY, dismissBanner]);
 
   // ── Swipe-up-to-dismiss pan gesture ──────────────────────────────────────
@@ -193,13 +227,14 @@ function InAppChatBanner() {
         if (activeChatId && activeChatId === data.conversation_id) return;
         // Suppress while user is on the messages list tab
         if ((segments as string[]).includes('messages')) return;
-        // Never re-show a banner for a message we already showed this session
+        // Never re-show a banner for a message we already showed (persisted across restarts)
         if (shownMsgIdsRef.current.has(data.id)) return;
         // Per-conversation cooldown: max one banner per conversation every 20 seconds
         const lastConvBanner = convCooldownRef.current.get(data.conversation_id) ?? 0;
         if (Date.now() - lastConvBanner < 20000) return;
 
-        shownMsgIdsRef.current.add(data.id);
+        // Persist this ID so it survives app restarts
+        persistShownId(data.id, shownMsgIdsRef.current);
         convCooldownRef.current.set(data.conversation_id, Date.now());
         const senderProfile = (data as any).user_profiles;
         const senderName: string =
