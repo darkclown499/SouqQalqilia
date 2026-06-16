@@ -230,7 +230,7 @@ export default function SearchScreen() {
         maxToRenderPerBatch={8}
         initialNumToRender={8}
         updateCellsBatchingPeriod={40}
-        removeClippedSubviews
+        removeClippedSubviews={false}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.5}
         ListFooterComponent={

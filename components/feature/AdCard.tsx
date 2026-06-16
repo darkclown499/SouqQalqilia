@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import React, { memo, useCallback, useMemo, useState, useRef, FC } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Animated } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -87,6 +87,53 @@ const shimStyles = StyleSheet.create({
   gradient: { flex: 1, width: INIT_W },
 });
 
+// ── AdImage: isolated component so React key-prop causes full remount ─────────
+// When FlatList recycles a cell with a new URL, key={url} forces a fresh
+// mount — imgError resets automatically with no useEffect race conditions.
+interface AdImageProps {
+  url: string;
+  blurhash?: string | null;
+  height: number;
+  priority: 'low' | 'normal' | 'high';
+  isDark: boolean;
+  colors: any;
+  isAr: boolean;
+}
+
+const AdImage: FC<AdImageProps> = ({ url, blurhash, height, priority, isDark, colors, isAr }) => {
+  const [error, setError] = useState(false);
+
+  if (error) {
+    return (
+      <View style={[{ width: '100%', height }, adImgStyles.errorWrap, { backgroundColor: colors.surfaceTint }]}>
+        <MaterialIcons name="broken-image" size={26} color={colors.border} />
+        <Text style={[adImgStyles.errorText, { color: colors.textMuted }]}>
+          {isAr ? 'تعذّر التحميل' : 'Failed to load'}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: url }}
+      style={{ width: '100%', height }}
+      contentFit="cover"
+      transition={200}
+      cachePolicy="disk"
+      priority={priority}
+      placeholder={blurhash ? { blurhash } : (isDark ? '#1e2a24' : '#e8f0ed')}
+      placeholderContentFit="cover"
+      onError={() => setError(true)}
+    />
+  );
+};
+
+const adImgStyles = StyleSheet.create({
+  errorWrap: { alignItems: 'center', justifyContent: 'center' },
+  errorText: { fontSize: 9, fontWeight: '600', marginTop: 4 },
+});
+
 
 
 export const AdCard = memo(function AdCard({
@@ -98,21 +145,12 @@ export const AdCard = memo(function AdCard({
   const { language, isRTL } = useLanguage();
   const { width: screenW, isTablet, isDesktop } = useResponsive();
   const isAr = language === 'ar';
-  const [imgError, setImgError] = useState(false);
-
   // Must be declared before the ref that reads it
   const sortedImages = useMemo(
     () => (ad.ad_images ? [...ad.ad_images].sort((a, b) => a.position - b.position) : []),
     [ad.ad_images]
   );
   const firstImage = sortedImages[0];
-  const firstImageUrl = firstImage?.url;
-
-  // Reset imgError via effect when the image URL changes (cell recycled in FlatList).
-  // Using useEffect avoids render-time state updates that can cause race conditions.
-  useEffect(() => {
-    setImgError(false);
-  }, [firstImageUrl]);
 
   // Reactive image height: scales with live screen width
   const clampImgH = useMemo(
@@ -182,34 +220,18 @@ export const AdCard = memo(function AdCard({
     >
       {/* ── IMAGE ── */}
       <View style={styles.imageWrap}>
-        {imgError ? (
-          /* ── Error state ─────────────────────────────────────────────────── */
-          <View style={[{ width: '100%', height: clampImgH }, styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
-            <MaterialIcons name="broken-image" size={26} color={colors.border} />
-            <Text style={[styles.imgErrorText, { color: colors.textMuted }]}>
-              {isAr ? 'تعذّر التحميل' : 'Failed to load'}
-            </Text>
-          </View>
-        ) : firstImage ? (
-          /* ── Image with native placeholder — always shows something ─────── */
-          /* blurhash when available, otherwise a solid tint color.            */
-          /* expo-image handles the fade-in internally via `transition`.        */
-          /* recyclingKey ensures a fresh decode on cell reuse.                */
-          <Image
-            source={{ uri: firstImage.url }}
-            style={{ width: '100%', height: clampImgH }}
-            contentFit="cover"
-            transition={180}
-            cachePolicy="disk"
-            recyclingKey={firstImage.url}
+        {firstImage ? (
+          /* ── AdImage: key=url forces full remount on cell recycle ─────────── */
+          /* This guarantees error state resets cleanly with zero race conditions */
+          <AdImage
+            key={firstImage.url}
+            url={firstImage.url}
+            blurhash={firstImage.blurhash}
+            height={clampImgH}
             priority={isFeatured || isBoosted ? 'high' : 'normal'}
-            placeholder={
-              firstImage.blurhash
-                ? { blurhash: firstImage.blurhash }
-                : (isDark ? '#1e2a24' : '#e8f0ed')
-            }
-            placeholderContentFit="cover"
-            onError={() => setImgError(true)}
+            isDark={isDark}
+            colors={colors}
+            isAr={isAr}
           />
         ) : (
           /* ── No image at all — show shimmer ─────────────────────────────── */
@@ -393,5 +415,5 @@ const styles = StyleSheet.create({
   catPill: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, flex: 1, maxWidth: '72%' },
   catText: { fontSize: 9, fontWeight: '700', flexShrink: 1 },
   timeText: { fontSize: 9, fontWeight: '500', flexShrink: 0 },
-  imgErrorText: { fontSize: 9, fontWeight: '600', marginTop: 4 },
+  imgErrorText: { fontSize: 9, fontWeight: '600', marginTop: 4 }, // kept for legacy reference
 });

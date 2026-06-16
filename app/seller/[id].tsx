@@ -517,7 +517,7 @@ export default function SellerProfileScreen() {
         columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
         contentContainerStyle={{ paddingBottom: insets.bottom + Spacing.xl, paddingHorizontal: H_PAD }}
         showsVerticalScrollIndicator={false}
-        removeClippedSubviews
+        removeClippedSubviews={false}
         initialNumToRender={6}
         windowSize={7}
         maxToRenderPerBatch={8}

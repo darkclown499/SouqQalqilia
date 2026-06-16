@@ -104,6 +104,7 @@ export default function CategoryScreen() {
         contentContainerStyle={[styles.listContent, { paddingHorizontal: hPad }]}
         columnWrapperStyle={numColumns > 1 ? { gap: cardGap, marginBottom: cardGap } : undefined}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={false}
         refreshing={loading}
         onRefresh={() => categoryId && load({ categoryId })}
         ListHeaderComponent={StoresSection}

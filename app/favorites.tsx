@@ -69,6 +69,7 @@ export default function FavoritesScreen() {
           contentContainerStyle={[styles.list, { padding: hPad }]}
           columnWrapperStyle={numColumns > 1 ? { gap: cardGap, marginBottom: cardGap } : undefined}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews={false}
           refreshing={loading}
           onRefresh={load}
           renderItem={({ item }) => (
