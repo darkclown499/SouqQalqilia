@@ -1,15 +1,17 @@
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '@/template';
 import { MessagePreview, EmptyState, Button } from '@/components';
 import { MessageListSkeleton } from '@/components/feature/MessagePreview';
 import { useConversations, triggerUnreadRefresh } from '@/hooks/useChat';
+import { markMessagesRead } from '@/services/chatService';
+import { markConversationRead } from '@/stores/chatReadStore';
 import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
@@ -23,6 +25,49 @@ export default function MessagesScreen() {
   const { t, isRTL, language } = useLanguage();
   const { conversations, loading, reload, unreadCount } = useConversations();
   const [blockedIds, setBlockedIds] = React.useState<Set<string>>(new Set());
+
+  // ── Auto-mark all unread conversations on tab focus ────────────────────────
+  // Uses two trigger points:
+  //   1. useFocusEffect → fires when tab gains focus (covers pre-loaded conversations)
+  //   2. useEffect([conversations]) → fires when data arrives async on first open
+  const conversationsRef = useRef<typeof conversations>([]);
+  conversationsRef.current = conversations;
+  const isFocusedRef = useRef(false);
+
+  const autoMarkAllUnread = useCallback(() => {
+    if (!user) return;
+    const unreadConvs = conversationsRef.current.filter(
+      (c: any) => (c.unread_count ?? 0) > 0
+    );
+    if (unreadConvs.length === 0) return;
+
+    // Optimistic local update — badge clears instantly
+    unreadConvs.forEach((conv: any) => {
+      markConversationRead(conv.id, conv.last_message_at ?? null);
+    });
+
+    // DB writes — parallel, fire-and-forget, idempotent
+    Promise.all(
+      unreadConvs.map((conv: any) =>
+        markMessagesRead(conv.id, user.id).catch(() => {})
+      )
+    ).then(() => triggerUnreadRefresh()).catch(() => {});
+  }, [user]);
+
+  // Trigger 1: tab gains focus (handles conversations already in memory)
+  useFocusEffect(
+    useCallback(() => {
+      isFocusedRef.current = true;
+      autoMarkAllUnread();
+      return () => { isFocusedRef.current = false; };
+    }, [autoMarkAllUnread])
+  );
+
+  // Trigger 2: conversations load/refresh while tab is focused
+  useEffect(() => {
+    if (isFocusedRef.current && !loading) autoMarkAllUnread();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, loading]);
 
   React.useEffect(() => {
     if (user) {
