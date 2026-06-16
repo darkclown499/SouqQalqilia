@@ -103,7 +103,12 @@ function InAppChatBanner() {
     transform: [{ translateY: slideY.value + dragY.value }],
   }));
 
-  const lastMsgIdRef = useRef<string | null>(null);
+  // Set of message IDs we already showed a banner for — prevents re-showing the same
+  // message even if read_at hasn't propagated to the DB yet.
+  const shownMsgIdsRef = useRef<Set<string>>(new Set());
+  // Per-conversation cooldown map: convId → last banner timestamp
+  // Prevents flooding the user with banners for the same conversation.
+  const convCooldownRef = useRef<Map<string, number>>(new Map());
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -133,7 +138,7 @@ function InAppChatBanner() {
     slideY.value = -140;
     slideY.value = withSpring(0, { damping: 18, stiffness: 280 });
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    dismissTimerRef.current = setTimeout(() => dismissBanner(), 4500);
+    dismissTimerRef.current = setTimeout(() => dismissBanner(), 3000);
   }, [slideY, dragY, dismissBanner]);
 
   // ── Swipe-up-to-dismiss pan gesture ──────────────────────────────────────
@@ -184,10 +189,18 @@ function InAppChatBanner() {
           .single();
 
         if (!data) return;
-        if (data.id === lastMsgIdRef.current) return;
+        // Suppress while user is inside the relevant chat
         if (activeChatId && activeChatId === data.conversation_id) return;
+        // Suppress while user is on the messages list tab
+        if ((segments as string[]).includes('messages')) return;
+        // Never re-show a banner for a message we already showed this session
+        if (shownMsgIdsRef.current.has(data.id)) return;
+        // Per-conversation cooldown: max one banner per conversation every 20 seconds
+        const lastConvBanner = convCooldownRef.current.get(data.conversation_id) ?? 0;
+        if (Date.now() - lastConvBanner < 20000) return;
 
-        lastMsgIdRef.current = data.id;
+        shownMsgIdsRef.current.add(data.id);
+        convCooldownRef.current.set(data.conversation_id, Date.now());
         const senderProfile = (data as any).user_profiles;
         const senderName: string =
           senderProfile?.username || senderProfile?.email?.split('@')[0] || 'مستخدم';
