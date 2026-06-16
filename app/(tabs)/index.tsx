@@ -412,9 +412,9 @@ export default function HomeScreen() {
       {/* ── RECENTLY VIEWED ── */}
       {recentlyViewed.length > 0 ? (
         <View style={styles.recentSection}>
-          <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
+          <View style={[styles.sectionHeaderRow, { flexDirection: isAr ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
             <View style={[styles.sectionAccent, { backgroundColor: colors.primary }]} />
-            <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>
+            <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }]}>
               {isAr ? 'آخر المشاهدات' : 'Recently Viewed'}
             </Text>
             <Pressable
@@ -463,9 +463,9 @@ export default function HomeScreen() {
       ) : null}
 
       {/* ── CATEGORIES ── */}
-      <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
+      <View style={[styles.sectionHeaderRow, { flexDirection: isAr ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
         <View style={[styles.sectionAccent, { backgroundColor: colors.primary }]} />
-        <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>{t.categories}</Text>
+        <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }]}>{t.categories}</Text>
         <Pressable style={[styles.seeAllBtn, { flexDirection: isRTL ? 'row-reverse' : 'row' }]} onPress={() => router.push('/(tabs)/categories')} hitSlop={6}>
           <Text style={[styles.seeAllText, { color: colors.primary }]}>{t.seeAll}</Text>
           <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={15} color={colors.primary} />
@@ -514,9 +514,9 @@ export default function HomeScreen() {
       {/* ── SEARCH HISTORY CHIPS ── */}
       {searchHistory.length > 0 ? (
         <View style={[styles.historySection, { paddingHorizontal: hPad }]}>
-          <View style={[styles.historyHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={[styles.historyHeaderRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
             <View style={[styles.sectionAccent, { backgroundColor: colors.primary }]} />
-            <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>
+            <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }]}>
               {isAr ? 'عمليات البحث السابقة' : 'Recent Searches'}
             </Text>
             <Pressable onPress={handleClearSearchHistory} hitSlop={8} style={[styles.clearHistoryBtn, { backgroundColor: colors.surfaceTint }]}>
@@ -540,9 +540,9 @@ export default function HomeScreen() {
       ) : null}
 
       {/* ── LISTINGS HEADER ── */}
-      <View style={[styles.listingsHeader, { flexDirection: isRTL ? 'row-reverse' : 'row', borderTopColor: colors.borderLight, paddingHorizontal: hPad }]}>
+      <View style={[styles.listingsHeader, { flexDirection: isAr ? 'row-reverse' : 'row', borderTopColor: colors.borderLight, paddingHorizontal: hPad }]}>
         <View style={[styles.sectionAccent, { backgroundColor: colors.accent }]} />
-        <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>{isAr ? 'جميع الإعلانات' : 'All Listings'}</Text>
+        <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }]}>{isAr ? 'جميع الإعلانات' : 'All Listings'}</Text>
         <View style={[styles.countPill, { backgroundColor: colors.primaryGhost }]}>
           <Text style={[styles.countPillText, { color: colors.primary }]}>
             {activeFilterCount > 0 ? filteredAds.length : (totalAdsCount > 0 ? totalAdsCount : filteredAds.length)}
