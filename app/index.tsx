@@ -29,10 +29,9 @@ import {
 } from 'react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withSpring,
-  withSequence, withDelay, Easing, runOnJS,
-  interpolate, Extrapolation,
+  withDelay, Easing, runOnJS,
 } from 'react-native-reanimated';
-import LottieView from 'lottie-react-native';
+import LottiePlayer from '@/components/feature/LottiePlayer';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
@@ -58,8 +57,6 @@ interface SplashProps {
 
 function MarketplaceSplash({ onComplete }: SplashProps) {
   const insets = useSafeAreaInsets();
-  const lottieRef = useRef<LottieView>(null);
-
   // ── Shared animation values ───────────────────────────────────────────────
   const screenOpacity  = useSharedValue(1);
   const logoScale      = useSharedValue(0.78);
@@ -224,14 +221,9 @@ function MarketplaceSplash({ onComplete }: SplashProps) {
       {/* ── Lottie animation ── */}
       <Animated.View style={[styles.lottieWrap, lottieWrapStyle]}>
         <View style={styles.lottieBg}>
-          <LottieView
-            ref={lottieRef}
-            source={require('@/assets/animations/marketplace.json')}
-            autoPlay
-            loop={false}
-            speed={0.9}
+          <LottiePlayer
+            size={W * 0.5}
             onAnimationFinish={onAnimationFinish}
-            style={styles.lottie}
           />
         </View>
         {/* Gold accent ring around Lottie */}
