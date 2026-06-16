@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useMemo, useState, useRef, FC } from 'react';
+import React, { memo, useCallback, useMemo, useState, useRef, useEffect, FC } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Animated } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
