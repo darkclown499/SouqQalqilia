@@ -253,13 +253,40 @@ export default function ProfileScreen() {
     load();
     setEditName(user.username || '');
     checkIsAdmin().then(setIsAdmin);
-    getSupabaseClient()
+
+    const supabase = getSupabaseClient();
+
+    // Load stored profile data
+    supabase
       .from('user_profiles')
       .select('avatar_url, banner_url, phone, is_verified, push_token')
       .eq('id', user.id)
       .single()
-      .then(({ data }) => {
-        if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+      .then(async ({ data }) => {
+        // ── Google profile photo auto-sync ─────────────────────────────────
+        // If user signed in with Google and has no stored avatar yet,
+        // pull the photo from Google's user_metadata and save it to the DB.
+        if (!data?.avatar_url) {
+          try {
+            const { data: { user: freshUser } } = await supabase.auth.getUser();
+            const googlePhoto: string | undefined =
+              freshUser?.user_metadata?.avatar_url ??
+              freshUser?.user_metadata?.picture ??
+              freshUser?.user_metadata?.photo_url;
+            if (googlePhoto) {
+              setAvatarUrl(googlePhoto);
+              // Persist so future loads skip the metadata check
+              supabase
+                .from('user_profiles')
+                .update({ avatar_url: googlePhoto })
+                .eq('id', user.id)
+                .then(() => {})
+                .catch(() => {});
+            }
+          } catch { /* non-critical */ }
+        } else {
+          setAvatarUrl(data.avatar_url);
+        }
         if (data?.banner_url) setBannerUrl(data.banner_url);
         if (data?.phone) setEditPhone(data.phone ?? '');
         setIsVerified(!!data?.is_verified);

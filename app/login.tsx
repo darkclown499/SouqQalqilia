@@ -630,14 +630,23 @@ export default function LoginScreen() {
                     </Animated.View>
                   </View>
 
-                  <SocialButton
-                    icon={<GoogleG />}
-                    label={isAr ? 'متابعة بـ Google' : 'Continue with Google'}
-                    loading={googleLoading}
-                    onPress={handleGoogleSignIn}
-                    style={[s.googleBtnInCard, { borderColor: colors.border }]}
-                    labelStyle={{ color: colors.textPrimary, fontWeight: '700' as const, fontSize: FontSize.md }}
-                  />
+                  {/* Gradient border wrapper */}
+                  <View style={s.googleGradientBorder}>
+                    <LinearGradient
+                      colors={['#4285F4', '#EA4335', '#FBBC05', '#34A853']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <SocialButton
+                      icon={<GoogleG />}
+                      label={isAr ? 'متابعة بـ Google' : 'Continue with Google'}
+                      loading={googleLoading}
+                      onPress={handleGoogleSignIn}
+                      style={[s.googleBtnInCard, { borderWidth: 0, margin: 2 }]}
+                      labelStyle={{ color: colors.textPrimary, fontWeight: '700' as const, fontSize: FontSize.md }}
+                    />
+                  </View>
                 </View>
               ) : null}
             </>
@@ -1059,14 +1068,72 @@ function SocialButton({ icon, label, loading, onPress, style, labelStyle }: any)
   );
 }
 
-// ─── Google G Icon ────────────────────────────────────────────────────────────
+// ─── Google G Icon (official brand colors) ──────────────────────────────────
 function GoogleG() {
   return (
-    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: '#E8EAED' }}>
-      <Text style={{ fontSize: 12, fontWeight: '900', color: '#4285F4', lineHeight: 15, includeFontPadding: false }}>G</Text>
+    <View style={googleGStyles.container}>
+      {/* Outer ring: Google brand gradient approximated as 4-quadrant color segments */}
+      <View style={googleGStyles.ring}>
+        <View style={[googleGStyles.quadrant, googleGStyles.topLeft]} />
+        <View style={[googleGStyles.quadrant, googleGStyles.topRight]} />
+        <View style={[googleGStyles.quadrant, googleGStyles.bottomLeft]} />
+        <View style={[googleGStyles.quadrant, googleGStyles.bottomRight]} />
+      </View>
+      {/* White center with the G letter using official blue */}
+      <View style={googleGStyles.inner}>
+        <Text style={googleGStyles.letter}>G</Text>
+      </View>
     </View>
   );
 }
+
+const googleGStyles = StyleSheet.create({
+  container: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  ring: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  quadrant: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+  },
+  topLeft: { top: 0, left: 0, backgroundColor: '#4285F4' },
+  topRight: { top: 0, right: 0, backgroundColor: '#EA4335' },
+  bottomLeft: { bottom: 0, left: 0, backgroundColor: '#34A853' },
+  bottomRight: { bottom: 0, right: 0, backgroundColor: '#FBBC05' },
+  inner: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  letter: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#4285F4',
+    lineHeight: 14,
+    includeFontPadding: false,
+  },
+});
 
 // ─── EULA Modal ───────────────────────────────────────────────────────────────
 function EulaModal({ visible, onClose, onAccept, colors, t, isAr }: any) {
@@ -1207,12 +1274,19 @@ const s = StyleSheet.create({
   inCardDividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   inCardDivLine: { flex: 1, height: 1 },
   inCardDivText: { fontSize: FontSize.xs, fontWeight: '600' },
+  googleGradientBorder: {
+    borderRadius: Radius.xl + 2,
+    overflow: 'hidden',
+    shadowColor: '#4285F4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 5,
+  },
   googleBtnInCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 10, height: 54, borderRadius: Radius.xl,
-    backgroundColor: '#fff', borderWidth: 1.5,
-    shadowColor: '#4285F4', shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15, shadowRadius: 8, elevation: 3,
+    backgroundColor: '#fff',
   },
 
   // ── Android pulsing badge ─────────────────────────────────────────────────
