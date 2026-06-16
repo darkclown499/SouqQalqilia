@@ -8,13 +8,14 @@ import { Ad } from '@/services/adsService';
 import { Radius, FontSize, Spacing, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useResponsive } from '@/hooks/useResponsive';
 import { getCategoryName } from '@/services/categoriesService';
 import { timeAgo } from '@/utils/timeAgo';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-// Image height scales proportionally: taller on larger phones
-const IMG_H = Math.round(SCREEN_W * 0.265);
-const CLAMP_IMG_H = Math.max(130, Math.min(IMG_H, 190));
+// Initial screen width — used only for static StyleSheet.create() fallbacks.
+// All layout-sensitive values are computed reactively inside the component.
+const { width: INIT_W } = Dimensions.get('window');
+const INIT_CLAMP_IMG_H = Math.max(130, Math.min(Math.round(INIT_W * 0.265), 200));
 
 interface AdCardProps {
   ad: Ad;
@@ -31,10 +32,7 @@ function formatPrice(price: number, isAr: boolean) {
   return `₪${price.toLocaleString()}`;
 }
 
-// ── Shimmer skeleton component ───────────────────────────────────────────────
-// Renders an animated shine-sweep over a rounded rectangle.
-// `isDark` controls the sweep opacity so dark-theme skeletons never flash
-// jarring bright-white gradients; instead they use a muted translucent sweep.
+// ── Shimmer skeleton ──────────────────────────────────────────────────────────
 interface ShimmerBlockProps {
   style: object;
   isDark?: boolean;
@@ -42,9 +40,7 @@ interface ShimmerBlockProps {
 
 export function ShimmerBlock({ style, isDark = false }: ShimmerBlockProps) {
   const shimmer = useRef(new Animated.Value(0)).current;
-
-  // Dark mode: soft white sweep that blends with dark surfaces.
-  // Light mode: standard 42% white sweep that pops against pale backgrounds.
+  const { width: screenW } = useResponsive();
   const sweepColor = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.42)';
 
   useEffect(() => {
@@ -68,7 +64,7 @@ export function ShimmerBlock({ style, isDark = false }: ShimmerBlockProps) {
             transform: [{
               translateX: shimmer.interpolate({
                 inputRange: [0, 1],
-                outputRange: [-SCREEN_W, SCREEN_W],
+                outputRange: [-screenW, screenW],
               }),
             }],
           },
@@ -78,7 +74,7 @@ export function ShimmerBlock({ style, isDark = false }: ShimmerBlockProps) {
           colors={['transparent', sweepColor, 'transparent']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
-          style={shimStyles.gradient}
+          style={[shimStyles.gradient, { width: screenW }]}
         />
       </Animated.View>
     </View>
@@ -86,53 +82,52 @@ export function ShimmerBlock({ style, isDark = false }: ShimmerBlockProps) {
 }
 
 const shimStyles = StyleSheet.create({
-  base: {
-    overflow: 'hidden',
-    backgroundColor: '#E2E8F0',
-  },
-  sweep: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  gradient: {
-    flex: 1,
-    width: SCREEN_W,
-  },
+  base: { overflow: 'hidden', backgroundColor: '#E2E8F0' },
+  sweep: { ...StyleSheet.absoluteFillObject },
+  gradient: { flex: 1, width: INIT_W },
 });
 
-// While the shimmer is showing, the <Image> is kept in the tree (so expo-image
-// can silently decode in the background) but made visually invisible via opacity=0.
-// Once onLoad fires, imgLoaded=true and the shimmer unmounts, revealing the image.
-const shimmerOverrideStyle = { opacity: 0, position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0, zIndex: -1 };
+const shimmerOverrideStyle = {
+  opacity: 0,
+  position: 'absolute' as const,
+  top: 0, left: 0, right: 0, bottom: 0,
+  zIndex: -1,
+};
 
-export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited = false, onFavoritePress, onAdPress, isBlocked = false }: AdCardProps) {
+export const AdCard = memo(function AdCard({
+  ad, width, sponsored, isFavorited = false,
+  onFavoritePress, onAdPress, isBlocked = false,
+}: AdCardProps) {
   const router = useRouter();
   const { colors, isDark } = useTheme();
-  const { t, language, isRTL } = useLanguage();
+  const { language, isRTL } = useLanguage();
+  const { width: screenW, isTablet, isDesktop } = useResponsive();
   const isAr = language === 'ar';
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
 
-  // ── All derived values memoized to prevent recalculation on every render ─
+  // Reactive image height: scales with live screen width
+  const clampImgH = useMemo(
+    () => Math.max(130, Math.min(Math.round(screenW * (isTablet || isDesktop ? 0.20 : 0.265)), 220)),
+    [screenW, isTablet, isDesktop]
+  );
+
+  // Info padding scales with screen size
+  const infoPad = screenW < 375 ? 8 : isTablet ? 12 : 10;
+  const titleSize = screenW < 375 ? FontSize.xs + 1 : isTablet ? FontSize.md : FontSize.sm;
+
   const sortedImages = useMemo(
     () => (ad.ad_images ? [...ad.ad_images].sort((a, b) => a.position - b.position) : []),
     [ad.ad_images]
   );
   const firstImage = sortedImages[0];
 
-  // Reset load state when the image URL changes (happens during FlatList recycling)
-  // Without this, a recycled cell with a new ad keeps `imgLoaded=true` from the
-  // previous ad, skipping the shimmer and showing a blank image slot momentarily.
-
-  // Sync reset when the image URL changes — runs before paint so no flicker
-  // Critical for FlatList recycling: recycled cells carry over imgLoaded=true from
-  // the previous ad, causing the new ad's image slot to stay blank until re-render.
   const firstImageUrl = firstImage?.url;
   useLayoutEffect(() => {
     setImgLoaded(false);
     setImgError(false);
   }, [firstImageUrl]);
 
-  const isFree = ad.price === 0;
   const isBoosted = useMemo(
     () => !!(ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now()),
     [ad.boosted_until]
@@ -140,6 +135,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
   const isFeatured = ad.status === 'featured';
   const isSold = ad.status === 'sold';
   const isNew = ad.condition === 'new';
+  const isFree = ad.price === 0;
 
   const catName = useMemo(
     () => (ad.categories ? getCategoryName(ad.categories as any, language) : null),
@@ -147,7 +143,6 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
   );
   const catColor = ad.categories?.color ?? colors.primary;
 
-  // ── Location display helpers memoized ────────────────────────────────────
   const MAIN_CITY = 'قلقيلية';
   const QALQILYA_LOCATIONS_SET = useMemo(() => new Set(['عزون','كفر قدوم','جيوس','حبلة','كفر ثلث','عزون عتمة','إماتين','كفر لاقف','النبي إلياس','جيت','جينصافوط','حجة','باقة الحطب','الفندق','راس عطية','راس الطيرة','صير','فلامية','مغارة الضبعة','عزبة الطبيب','عزبة سلمان','عزبة الأشقر','واد الرشا','المدور']), []);
   const rawLocation = ad.location ?? '';
@@ -191,14 +186,9 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
     >
       {/* ── IMAGE ── */}
       <View style={styles.imageWrap}>
-        {/* Shimmer skeleton — visible until the image fires onLoad or an error occurs */}
         {!imgLoaded && !imgError ? (
           <ShimmerBlock
-            style={[
-              styles.image,
-              styles.shimmerImage,
-              { backgroundColor: colors.surfaceTint },
-            ]}
+            style={[{ width: '100%', height: clampImgH }, styles.shimmerImage, { backgroundColor: colors.surfaceTint }]}
             isDark={isDark}
           />
         ) : null}
@@ -206,7 +196,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
         {firstImage && !imgError ? (
           <Image
             source={{ uri: firstImage.url }}
-            style={[styles.image, !imgLoaded && shimmerOverrideStyle]}
+            style={[{ width: '100%', height: clampImgH }, !imgLoaded && shimmerOverrideStyle]}
             contentFit="cover"
             transition={imgLoaded ? 0 : 180}
             cachePolicy="disk"
@@ -219,35 +209,25 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
             onError={() => { setImgError(true); setImgLoaded(true); }}
           />
         ) : imgError ? (
-          <View style={[styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
+          <View style={[{ width: '100%', height: clampImgH }, styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
             <MaterialIcons name="broken-image" size={26} color={colors.border} />
             <Text style={[styles.imgErrorText, { color: colors.textMuted }]}>
               {isAr ? 'تعذّر التحميل' : 'Failed to load'}
             </Text>
           </View>
         ) : (
-          /* No image attached — show static placeholder */
-          <View style={[styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
+          <View style={[{ width: '100%', height: clampImgH }, styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
             <MaterialIcons name="camera-alt" size={26} color={colors.border} />
           </View>
         )}
 
-        {/* Top-left: condition */}
-        <View style={[
-          styles.topLeft,
-          { backgroundColor: isNew ? colors.primary : 'rgba(0,0,0,0.48)' },
-        ]}>
-          <MaterialIcons
-            name={isNew ? 'fiber-new' : 'recycling'}
-            size={10}
-            color="#fff"
-          />
-          <Text style={styles.badgeText}>
-            {isNew ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used')}
-          </Text>
+        {/* Condition badge */}
+        <View style={[styles.topLeft, { backgroundColor: isNew ? colors.primary : 'rgba(0,0,0,0.48)' }]}>
+          <MaterialIcons name={isNew ? 'fiber-new' : 'recycling'} size={10} color="#fff" />
+          <Text style={styles.badgeText}>{isNew ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used')}</Text>
         </View>
 
-        {/* Top-right: boosted badge — stacks above featured so both are visible */}
+        {/* Boost / Featured badge */}
         {isBoosted ? (
           <View style={[styles.topRight, { backgroundColor: colors.accent, zIndex: 10 }]}>
             <MaterialIcons name="bolt" size={11} color="#fff" />
@@ -260,8 +240,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
           </View>
         ) : null}
 
-        {/* Favorite button — always at top-right when no boost/featured badge;
-             shifted down slightly when badge occupies that corner */}
+        {/* Favorite button */}
         {onFavoritePress ? (
           <Pressable
             style={[
@@ -271,15 +250,9 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
             onPress={handleFavorite}
             hitSlop={10}
           >
-            <MaterialIcons
-              name={isFavorited ? 'favorite' : 'favorite-border'}
-              size={14}
-              color="#fff"
-            />
+            <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={14} color="#fff" />
           </Pressable>
         ) : null}
-
-
 
         {/* Sold overlay */}
         {isSold ? (
@@ -290,7 +263,7 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
           </View>
         ) : null}
 
-        {/* Blocked user overlay */}
+        {/* Blocked overlay */}
         {isBlocked ? (
           <View style={styles.blockedOverlay}>
             <View style={styles.blockedBanner}>
@@ -304,13 +277,11 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
         {sponsored ? (
           <View style={[styles.sponsoredBadge, { backgroundColor: colors.primaryGhost }]}>
             <MaterialIcons name="campaign" size={9} color={colors.primary} />
-            <Text style={[styles.sponsoredText, { color: colors.primary }]}>
-              {isAr ? 'ممول' : 'Ad'}
-            </Text>
+            <Text style={[styles.sponsoredText, { color: colors.primary }]}>{isAr ? 'ممول' : 'Ad'}</Text>
           </View>
         ) : null}
 
-        {/* Price badge overlaid on bottom of image */}
+        {/* Price badge */}
         <View style={[
           styles.priceBadge,
           { backgroundColor: isFree ? '#22C55E' : colors.primary },
@@ -321,31 +292,19 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
       </View>
 
       {/* ── INFO ── */}
-      <View style={styles.info}>
-        {/* Title — shimmer while image hasn't loaded yet (card is still painting) */}
+      <View style={[styles.info, { padding: infoPad }]}>
         {!imgLoaded && !imgError ? (
-          <ShimmerBlock
-            style={[styles.shimmerTitle, { backgroundColor: colors.surfaceTint }]}
-            isDark={isDark}
-          />
+          <ShimmerBlock style={[styles.shimmerTitle, { backgroundColor: colors.surfaceTint }]} isDark={isDark} />
         ) : (
-          <Text
-            style={[styles.title, { color: colors.textPrimary }]}
-            numberOfLines={2}
-          >
+          <Text style={[styles.title, { color: colors.textPrimary, fontSize: titleSize }]} numberOfLines={2}>
             {ad.title}
           </Text>
         )}
 
-        {/* Location + price shimmer row */}
         {!imgLoaded && !imgError ? (
-          <ShimmerBlock
-            style={[styles.shimmerSubline, { backgroundColor: colors.surfaceTint }]}
-            isDark={isDark}
-          />
+          <ShimmerBlock style={[styles.shimmerSubline, { backgroundColor: colors.surfaceTint }]} isDark={isDark} />
         ) : null}
 
-        {/* Location */}
         {imgLoaded && rawLocation ? (
           <View style={[styles.locationRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <View style={[styles.locationIconWrap, { backgroundColor: locationIconColor + '18' }]}>
@@ -357,20 +316,14 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
           </View>
         ) : null}
 
-        {/* Footer: category + time */}
-        <View style={[styles.footer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              pointerEvents={imgLoaded ? 'auto' : 'none'}>
+        <View style={[styles.footer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]} pointerEvents={imgLoaded ? 'auto' : 'none'}>
           {catName ? (
             <View style={[styles.catPill, { backgroundColor: catColor + '18' }]}>
               <MaterialIcons name={(ad.categories as any)?.icon ?? 'category'} size={9} color={catColor} />
-              <Text style={[styles.catText, { color: catColor }]} numberOfLines={1}>
-                {catName}
-              </Text>
+              <Text style={[styles.catText, { color: catColor }]} numberOfLines={1}>{catName}</Text>
             </View>
           ) : <View style={{ flex: 1 }} />}
-          <Text style={[styles.timeText, { color: colors.textMuted }]}>
-            {timeAgo(ad.created_at)}
-          </Text>
+          <Text style={[styles.timeText, { color: colors.textMuted }]}>{timeAgo(ad.created_at)}</Text>
         </View>
       </View>
     </Pressable>
@@ -378,54 +331,25 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
 });
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: Radius.lg,
-    overflow: 'hidden',
-    flex: 1,
-  },
-  // Featured card gets a premium purple border — applied via inline style in the
-  // Pressable wrapper so it can reference the `isFeatured` runtime value.
+  card: { borderRadius: Radius.lg, overflow: 'hidden', flex: 1 },
   imageWrap: { position: 'relative', zIndex: 0 },
-  image: { width: '100%', height: CLAMP_IMG_H },
-  // While image is loading, keep it in the layout but invisible so the
-  // shimmer block behind it is what the user sees.
-  imagePlaceholder: {
-    width: '100%', height: CLAMP_IMG_H,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  // Shimmer block that fills the image slot
-  shimmerImage: {
-    borderRadius: 0, // card border-radius clips it
-  },
-  // Skeleton lines inside the info section
-  shimmerTitle: {
-    height: 14, borderRadius: 7,
-    width: '80%', alignSelf: 'flex-start',
-    marginBottom: 4,
-  },
-  shimmerSubline: {
-    height: 10, borderRadius: 5,
-    width: '55%', alignSelf: 'flex-start',
-  },
-
-  // Badges — all use zIndex so they always sit above image content
+  shimmerImage: { borderRadius: 0 },
+  imagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  shimmerTitle: { height: 14, borderRadius: 7, width: '80%', alignSelf: 'flex-start', marginBottom: 4 },
+  shimmerSubline: { height: 10, borderRadius: 5, width: '55%', alignSelf: 'flex-start' },
   topLeft: {
     position: 'absolute', top: 7, left: 7,
     flexDirection: 'row', alignItems: 'center', gap: 3,
     borderRadius: Radius.xs, paddingHorizontal: 6, paddingVertical: 3,
-    zIndex: 10,
-    elevation: 5,
+    zIndex: 10, elevation: 5,
   },
   topRight: {
     position: 'absolute', top: 7, right: 7,
     flexDirection: 'row', alignItems: 'center', gap: 2,
     borderRadius: Radius.xs, paddingHorizontal: 6, paddingVertical: 3,
-    zIndex: 10,
-    elevation: 5,
+    zIndex: 10, elevation: 5,
   },
   badgeText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.2 },
-
-  // Heart buttons — zIndex 11 ensures they render above the badge (zIndex 10)
   heartBtn: {
     position: 'absolute', top: 7, right: 7,
     width: 28, height: 28, borderRadius: 14,
@@ -433,23 +357,11 @@ const styles = StyleSheet.create({
     zIndex: 11, elevation: 6,
   },
   heartBtnAlt: {
-    // Offset below the badge row so both are tappable without overlap
     position: 'absolute', top: 36, right: 7,
     width: 26, height: 26, borderRadius: 13,
     alignItems: 'center', justifyContent: 'center',
     zIndex: 11, elevation: 6,
   },
-
-  // Image count
-  imgCount: {
-    position: 'absolute', bottom: 32, right: 7,
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: Radius.xs, paddingHorizontal: 5, paddingVertical: 2,
-  },
-  imgCountText: { color: '#fff', fontSize: 9, fontWeight: '700' },
-
-  // Blocked overlay
   blockedOverlay: {
     position: 'absolute', inset: 0,
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -457,64 +369,38 @@ const styles = StyleSheet.create({
   },
   blockedBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: Radius.sm,
+    backgroundColor: '#EF4444', paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.sm,
   },
   blockedBannerText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
-
-  // Sold overlay
   soldOverlay: {
     position: 'absolute', inset: 0,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center', justifyContent: 'center',
   },
-  soldBanner: {
-    paddingHorizontal: 16, paddingVertical: 6,
-    borderRadius: Radius.sm, transform: [{ rotate: '-12deg' }],
-  },
+  soldBanner: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: Radius.sm, transform: [{ rotate: '-12deg' }] },
   soldBannerText: { color: '#fff', fontSize: FontSize.md, fontWeight: '900', letterSpacing: 3 },
-
-  // Sponsored
   sponsoredBadge: {
     position: 'absolute', bottom: 32, left: 7,
     flexDirection: 'row', alignItems: 'center', gap: 3,
     borderRadius: Radius.xs, paddingHorizontal: 5, paddingVertical: 2,
   },
   sponsoredText: { fontSize: 9, fontWeight: '700' },
-
-  // Serial number badge — bottom-left corner, matches image-count pill style
   serialBadge: {
     position: 'absolute', bottom: 32,
     flexDirection: 'row', alignItems: 'center', gap: 2,
     backgroundColor: 'rgba(0,0,0,0.60)',
-    borderRadius: Radius.xs, paddingHorizontal: 5, paddingVertical: 2,
-    zIndex: 9,
+    borderRadius: Radius.xs, paddingHorizontal: 5, paddingVertical: 2, zIndex: 9,
   },
   serialBadgeText: { color: 'rgba(255,255,255,0.9)', fontSize: 8, fontWeight: '700', letterSpacing: 0.2 },
-
-  // Price badge
-  priceBadge: {
-    position: 'absolute', bottom: 7,
-    borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 4,
-  },
+  priceBadge: { position: 'absolute', bottom: 7, borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 4 },
   priceText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '800' },
-
-  // Info
-  info: { padding: SCREEN_W < 375 ? 8 : 10, gap: 4 },
-  title: { fontSize: SCREEN_W < 375 ? FontSize.xs + 1 : FontSize.sm, fontWeight: '700', lineHeight: 19 },
+  info: { gap: 4 },
+  title: { fontWeight: '700', lineHeight: 19 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   locationIconWrap: { width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   locationText: { fontSize: 10, flex: 1 },
-  footer: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', gap: 4, marginTop: 2,
-  },
-  catPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2,
-    flex: 1, maxWidth: '72%',
-  },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4, marginTop: 2 },
+  catPill: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, flex: 1, maxWidth: '72%' },
   catText: { fontSize: 9, fontWeight: '700', flexShrink: 1 },
   timeText: { fontSize: 9, fontWeight: '500', flexShrink: 0 },
   imgErrorText: { fontSize: 9, fontWeight: '600', marginTop: 4 },

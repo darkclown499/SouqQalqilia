@@ -7,6 +7,7 @@ import { SkeletonCategoriesGrid } from '@/components/feature/SkeletonCard';
 import { useCategories } from '@/hooks/useCategories';
 import { getCategoryName } from '@/services/categoriesService';
 import { Spacing, FontSize, Radius } from '@/constants/theme';
+import { useResponsive } from '@/hooks/useResponsive';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 
@@ -16,6 +17,7 @@ export default function CategoriesScreen() {
   const { colors } = useTheme();
   const { t, language } = useLanguage();
   const { categories, loading } = useCategories();
+  const { numColumns, hPad } = useResponsive();
 
   const handlePress = useCallback((cat: any) => {
     const localizedName = getCategoryName(cat, language);
@@ -46,9 +48,10 @@ export default function CategoriesScreen() {
         <FlatList
           data={categories}
           keyExtractor={item => item.id}
-          numColumns={2}
+          numColumns={numColumns}
+          key={numColumns} /* force re-render when columns change */
           renderItem={renderItem}
-          contentContainerStyle={styles.grid}
+          contentContainerStyle={[styles.grid, { padding: hPad, gap: Spacing.md }]}
           showsVerticalScrollIndicator={false}
           windowSize={5}
           maxToRenderPerBatch={12}

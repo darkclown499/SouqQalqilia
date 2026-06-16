@@ -67,6 +67,7 @@ import { InterstitialAdOverlay } from '@/components/feature/InterstitialAdOverla
 import { useAds } from '@/hooks/useAds';
 import { useCategories } from '@/hooks/useCategories';
 import { useFavoriteIds } from '@/hooks/useFavorites';
+import { useResponsive } from '@/hooks/useResponsive';
 import { fetchActiveBanners, getBannersCache, setBannersCache, Banner } from '@/services/bannersService';
 import { fetchActiveInterstitials, InterstitialAd } from '@/services/interstitialService';
 import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockService';
@@ -77,18 +78,16 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth, getSupabaseClient } from '@/template';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const H_PAD = SCREEN_W < 375 ? 12 : Spacing.lg;
-const CARD_GAP = SCREEN_W < 375 ? 8 : Spacing.sm;
-const CARD_WIDTH = (SCREEN_W - H_PAD * 2 - CARD_GAP) / 2;
-const CONTENT_W = SCREEN_W - H_PAD * 2;
-const BANNER_H = Math.round(CONTENT_W * (720 / 1280));
-const ESTIMATED_HEADER_H = 0;
-
-// Fixed row height for getItemLayout
-const CLAMP_IMG_H = Math.max(130, Math.min(Math.round(CARD_WIDTH * 0.75), 190));
-const CARD_INFO_H = 92;
-const ROW_H = CLAMP_IMG_H + CARD_INFO_H + CARD_GAP;
+// Dimensions are now computed reactively via useResponsive() inside the component.
+// Snapshot used only for getItemLayout estimation (close enough; recalculates on resize).
+import { Dimensions as _RNDims } from 'react-native';
+const _initW = _RNDims.get('window').width;
+const _initHPad = _initW < 375 ? 12 : Spacing.lg;
+const _initCardGap = _initW < 375 ? 8 : 10;
+const _initCardW = (_initW - _initHPad * 2 - _initCardGap) / 2;
+const _initImgH = Math.max(130, Math.min(Math.round(_initCardW * 0.75), 200));
+const _initCardInfoH = 92;
+const _initRowH = _initImgH + _initCardInfoH + _initCardGap;
 let _interstitialsCache: InterstitialAd[] | null = null;
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'boosted';
@@ -109,16 +108,21 @@ const QALQILYA_LOCATIONS = [
   'عزبة الأشقر', 'واد الرشا', 'المدور',
 ];
 
-type FeedRow = { type: 'pair'; left: Ad; right: Ad | null; id: string };
+// Tablet/desktop: 3 or 4 columns → triplet/quad rows
+type FeedRow = {
+  type: 'pair' | 'triple' | 'quad';
+  ads: Ad[];
+  id: string;
+};
 
-function buildFeedRows(ads: Ad[]): FeedRow[] {
+function buildFeedRows(ads: Ad[], numCols: number): FeedRow[] {
   const rows: FeedRow[] = [];
-  let adIndex = 0;
-  while (adIndex < ads.length) {
-    const left = ads[adIndex];
-    const right = ads[adIndex + 1] ?? null;
-    rows.push({ type: 'pair', left, right, id: left.id });
-    adIndex += 2;
+  let i = 0;
+  while (i < ads.length) {
+    const chunk = ads.slice(i, i + numCols);
+    const type = numCols === 4 ? 'quad' : numCols === 3 ? 'triple' : 'pair';
+    rows.push({ type, ads: chunk, id: chunk[0].id });
+    i += numCols;
   }
   return rows;
 }
@@ -131,6 +135,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { categories } = useCategories();
   const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
+  const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
 
   const [isOnline, setIsOnline] = useState(true);
@@ -243,7 +248,7 @@ export default function HomeScreen() {
   const appTitle = isAr ? 'سوق قلقيلية' : 'Souq Qalqilya';
 
   const filteredAds = useMemo(() => ads.filter(ad => !blockedIds.has(ad.user_id)), [ads, blockedIds]);
-  const feedRows = useMemo(() => buildFeedRows(filteredAds), [filteredAds]);
+  const feedRows = useMemo(() => buildFeedRows(filteredAds, numColumns), [filteredAds, numColumns]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
@@ -327,34 +332,31 @@ export default function HomeScreen() {
     setSearchHistory([]);
   }, []);
 
+  // Card width depends on number of columns
+  const activeCardWidth = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
+
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
+    const cols = item.ads.length;
     return (
-      <View style={[styles.pairRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <View style={styles.adWrapper}>
-          <AdCard
-            ad={item.left}
-            width={CARD_WIDTH}
-            isFavorited={favIds.has(item.left.id)}
-            onFavoritePress={user ? toggleFav : undefined}
-            onAdPress={handleAdView}
-          />
-        </View>
-        {item.right ? (
-          <View style={styles.adWrapper}>
+      <View style={[styles.pairRow, { flexDirection: isRTL ? 'row-reverse' : 'row', gap: cardGap, marginBottom: cardGap, paddingHorizontal: hPad }]}>
+        {item.ads.map(ad => (
+          <View key={ad.id} style={styles.adWrapper}>
             <AdCard
-              ad={item.right}
-              width={CARD_WIDTH}
-              isFavorited={favIds.has(item.right.id)}
+              ad={ad}
+              width={activeCardWidth}
+              isFavorited={favIds.has(ad.id)}
               onFavoritePress={user ? toggleFav : undefined}
               onAdPress={handleAdView}
             />
           </View>
-        ) : (
-          <View style={styles.adWrapper} />
-        )}
+        ))}
+        {/* Fill empty cells to maintain grid alignment */}
+        {Array.from({ length: numColumns - cols }).map((_, i) => (
+          <View key={`empty-${i}`} style={styles.adWrapper} />
+        ))}
       </View>
     );
-  }, [isRTL, favIds, user, toggleFav, handleAdView]);
+  }, [isRTL, favIds, user, toggleFav, handleAdView, cardGap, hPad, activeCardWidth, numColumns]);
 
   const currentBanner = banners[featuredIndex] ?? banners[0];
 
@@ -363,7 +365,7 @@ export default function HomeScreen() {
       {/* ── BANNER ── */}
       {currentBanner ? (
         <Pressable
-          style={[styles.bannerWrap, { height: BANNER_H }]}
+          style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad }]}
           onPress={() => {
             if (currentBanner.link_url?.trim()) {
               Linking.openURL(currentBanner.link_url.trim()).catch(() => {});
@@ -410,7 +412,7 @@ export default function HomeScreen() {
       {/* ── RECENTLY VIEWED ── */}
       {recentlyViewed.length > 0 ? (
         <View style={styles.recentSection}>
-          <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: H_PAD }]}>
+          <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
             <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
               <MaterialIcons name="history" size={14} color={colors.primary} />
             </View>
@@ -428,7 +430,7 @@ export default function HomeScreen() {
               </Text>
             </Pressable>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.recentList, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.recentList, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
             {recentlyViewed.map(ad => {
               const thumb = (ad.ad_images ?? []).sort((a: any, b: any) => a.position - b.position)[0]?.url;
               return (
@@ -463,7 +465,7 @@ export default function HomeScreen() {
       ) : null}
 
       {/* ── CATEGORIES ── */}
-      <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: H_PAD }]}>
+      <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
         <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
           <MaterialIcons name="grid-view" size={14} color={colors.primary} />
         </View>
@@ -474,8 +476,8 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.catOuter}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.catContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      <View style={[styles.catOuter, { marginHorizontal: -hPad }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.catContent, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
           <Pressable
             style={[styles.catChip, selectedCategory === null
               ? { backgroundColor: colors.primary, borderColor: colors.primary }
@@ -507,7 +509,7 @@ export default function HomeScreen() {
 
       {/* ── SEARCH HISTORY CHIPS ── */}
       {searchHistory.length > 0 ? (
-        <View style={[styles.historySection, { paddingHorizontal: H_PAD }]}>
+        <View style={[styles.historySection, { paddingHorizontal: hPad }]}>
           <View style={[styles.historyHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
               <MaterialIcons name="history" size={14} color={colors.primary} />
@@ -536,7 +538,7 @@ export default function HomeScreen() {
       ) : null}
 
       {/* ── LISTINGS HEADER ── */}
-      <View style={[styles.listingsHeader, { flexDirection: isRTL ? 'row-reverse' : 'row', borderTopColor: colors.borderLight }]}>
+      <View style={[styles.listingsHeader, { flexDirection: isRTL ? 'row-reverse' : 'row', borderTopColor: colors.borderLight, paddingHorizontal: hPad }]}>
         <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
           <MaterialIcons name="storefront" size={14} color={colors.primary} />
         </View>
@@ -683,8 +685,8 @@ export default function HomeScreen() {
           updateCellsBatchingPeriod={30}
           removeClippedSubviews={Platform.OS === 'android'}
           getItemLayout={(_data, index) => ({
-            length: ROW_H,
-            offset: ROW_H * index,
+            length: _initRowH,
+            offset: _initRowH * index,
             index,
           })}
           refreshControl={
@@ -696,10 +698,11 @@ export default function HomeScreen() {
             />
           }
           ListHeaderComponent={ListHeader}
+          contentContainerStyle={{ paddingBottom: 36 }}
           ListFooterComponent={
             hasMore ? (
               <Pressable
-                style={[styles.loadMoreBtn, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                style={[styles.loadMoreBtn, { backgroundColor: colors.surface, borderColor: colors.primary, marginHorizontal: hPad }]}
                 onPress={handleLoadMore}
                 disabled={loadingMore}
               >
@@ -873,7 +876,7 @@ const styles = StyleSheet.create({
 
   offlineBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#FEF3C7', paddingHorizontal: H_PAD, paddingVertical: 9,
+    backgroundColor: '#FEF3C7', paddingHorizontal: 16, paddingVertical: 9,
     borderBottomWidth: 1, borderBottomColor: '#FDE68A',
   },
   offlineBannerText: {
@@ -967,7 +970,6 @@ const styles = StyleSheet.create({
   sortChipText: { fontSize: FontSize.xs },
 
   bannerWrap: {
-    width: '100%',
     borderRadius: Radius.xl,
     overflow: 'hidden',
     marginBottom: Spacing.lg,
@@ -1021,7 +1023,6 @@ const styles = StyleSheet.create({
 
   recentSection: { marginBottom: Spacing.lg },
   recentList: {
-    paddingHorizontal: H_PAD,
     gap: Spacing.sm,
     alignItems: 'flex-start',
   },
@@ -1085,10 +1086,8 @@ const styles = StyleSheet.create({
 
   catOuter: {
     marginBottom: Spacing.lg,
-    marginHorizontal: -H_PAD,
   },
   catContent: {
-    paddingHorizontal: H_PAD,
     gap: Spacing.sm,
     alignItems: 'center',
   },
@@ -1128,18 +1127,16 @@ const styles = StyleSheet.create({
   },
   activeSortText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
 
-  listContent: { padding: H_PAD, paddingBottom: 36 },
+  listContent: { paddingTop: 0 },
   pairRow: {
     flexDirection: 'row',
-    gap: CARD_GAP,
-    marginBottom: CARD_GAP,
   },
   adWrapper: { flex: 1 },
 
   // ── Load More button ──
   loadMoreBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, marginHorizontal: H_PAD, marginBottom: 8, marginTop: 4,
+    gap: 8, marginBottom: 8, marginTop: 4,
     paddingVertical: 13, borderRadius: Radius.xl, borderWidth: 1.5,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,

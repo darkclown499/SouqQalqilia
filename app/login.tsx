@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, KeyboardAvoidingView,
   Platform, Pressable, ActivityIndicator, Modal, Animated,
-  Dimensions, StatusBar, TextInput,
+  StatusBar, TextInput,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,30 +13,19 @@ import { useRouter } from 'expo-router';
 import { Spacing, FontSize, Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useResponsive } from '@/hooks/useResponsive';
 import { APP_NAME, APP_NAME_AR } from '@/constants/config';
 import type { Language } from '@/constants/i18n';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-// Android: phone tab removed → only email + Google
-// iOS: email + phone tabs, no Google
 type MainTab = 'phone' | 'email';
 type EmailMode = 'login' | 'register' | 'otp' | 'forgot' | 'forgot_sent';
-
-function useDimensions() {
-  const [dims, setDims] = useState(() => Dimensions.get('window'));
-  useEffect(() => {
-    const sub = Dimensions.addEventListener('change', ({ window }) => setDims(window));
-    return () => sub?.remove();
-  }, []);
-  return dims;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const dims = useDimensions();
-  const W = dims.width;
-  const isTablet = W >= 600;
+  const { loginCardMaxWidth: cardMaxW, isTablet } = useResponsive();
+  const isTabletDevice = isTablet;
 
   const { signInWithPassword, sendOTP, verifyOTPAndLogin, operationLoading } = useAuth();
   const { showAlert } = useAlert();
@@ -44,6 +33,8 @@ export default function LoginScreen() {
   const { t, language, setLanguage } = useLanguage();
   const isAr = language === 'ar';
   const router = useRouter();
+
+
 
   // Pre-warm browser for OAuth
   useEffect(() => {
@@ -426,8 +417,6 @@ export default function LoginScreen() {
       setGoogleLoading(false);
     }
   };
-
-  const cardMaxW = isTablet ? 460 : W - 32;
 
   // ── Segment tab widths for iOS only ──────────────────────────────────────
   const segW = (cardMaxW - 32) / 2;

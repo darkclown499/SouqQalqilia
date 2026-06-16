@@ -14,12 +14,12 @@ import { useAds } from '@/hooks/useAds';
 import { useCategories } from '@/hooks/useCategories';
 import { getCategoryName } from '@/services/categoriesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+import { useResponsive } from '@/hooks/useResponsive';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth } from '@/template';
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - Spacing.lg * 2 - Spacing.sm) / 2;
+// Card width is computed reactively in the component via useResponsive().
 const HISTORY_KEY = 'search_history_v1';
 const MAX_HISTORY = 6;
 
@@ -55,6 +55,8 @@ export default function SearchScreen() {
   const { user } = useAuth();
   const { categories } = useCategories();
   const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
+  const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, isTablet, isDesktop } = useResponsive();
+  const activeCardWidth = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
   const isAr = language === 'ar';
 
@@ -140,12 +142,12 @@ export default function SearchScreen() {
     <View style={styles.adWrapper}>
       <AdCard
         ad={item}
-        width={CARD_WIDTH}
+        width={activeCardWidth}
         isFavorited={favIds.has(item.id)}
         onFavoritePress={user ? toggleFav : undefined}
       />
     </View>
-  ), [favIds, user, toggleFav]);
+  ), [favIds, user, toggleFav, activeCardWidth]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -217,12 +219,13 @@ export default function SearchScreen() {
       <FlatList
         data={ads}
         keyExtractor={item => item.id}
-        numColumns={2}
+        numColumns={numColumns}
+        key={numColumns}
         renderItem={renderAd}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { padding: hPad }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        columnWrapperStyle={styles.columnWrapper}
+        columnWrapperStyle={[styles.columnWrapper, { gap: cardGap, marginBottom: cardGap }]}
         windowSize={7}
         maxToRenderPerBatch={8}
         initialNumToRender={8}
