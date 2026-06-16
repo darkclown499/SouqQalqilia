@@ -383,7 +383,7 @@ export default function HomeScreen() {
             priority="high"
           />
           <LinearGradient
-            colors={['transparent', 'transparent', 'rgba(0,0,0,0.38)']}
+            colors={['transparent', 'rgba(0,0,0,0.05)', 'rgba(0,0,0,0.65)']}
             style={StyleSheet.absoluteFill}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
@@ -413,9 +413,7 @@ export default function HomeScreen() {
       {recentlyViewed.length > 0 ? (
         <View style={styles.recentSection}>
           <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
-            <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
-              <MaterialIcons name="history" size={14} color={colors.primary} />
-            </View>
+            <View style={[styles.sectionAccent, { backgroundColor: colors.primary }]} />
             <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>
               {isAr ? 'آخر المشاهدات' : 'Recently Viewed'}
             </Text>
@@ -466,9 +464,7 @@ export default function HomeScreen() {
 
       {/* ── CATEGORIES ── */}
       <View style={[styles.sectionHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
-        <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
-          <MaterialIcons name="grid-view" size={14} color={colors.primary} />
-        </View>
+        <View style={[styles.sectionAccent, { backgroundColor: colors.primary }]} />
         <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>{t.categories}</Text>
         <Pressable style={[styles.seeAllBtn, { flexDirection: isRTL ? 'row-reverse' : 'row' }]} onPress={() => router.push('/(tabs)/categories')} hitSlop={6}>
           <Text style={[styles.seeAllText, { color: colors.primary }]}>{t.seeAll}</Text>
@@ -481,7 +477,7 @@ export default function HomeScreen() {
           <Pressable
             style={[styles.catChip, selectedCategory === null
               ? { backgroundColor: colors.primary, borderColor: colors.primary }
-              : { backgroundColor: colors.surface, borderColor: colors.border }]}
+              : { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}
             onPress={() => handleCategoryPress(null)}
           >
             <MaterialIcons name="apps" size={14} color={selectedCategory === null ? '#fff' : colors.textMuted} />
@@ -494,7 +490,7 @@ export default function HomeScreen() {
                 key={cat.id}
                 style={[styles.catChip, isSelected
                   ? { backgroundColor: cat.color, borderColor: cat.color }
-                  : { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  : { backgroundColor: cat.color + '12', borderColor: cat.color + '45' }]}
                 onPress={() => handleCategoryPress(cat.id === selectedCategory ? null : cat.id)}
               >
                 <MaterialIcons name={cat.icon as any} size={14} color={isSelected ? '#fff' : cat.color} />
@@ -511,9 +507,7 @@ export default function HomeScreen() {
       {searchHistory.length > 0 ? (
         <View style={[styles.historySection, { paddingHorizontal: hPad }]}>
           <View style={[styles.historyHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
-              <MaterialIcons name="history" size={14} color={colors.primary} />
-            </View>
+            <View style={[styles.sectionAccent, { backgroundColor: colors.primary }]} />
             <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>
               {isAr ? 'عمليات البحث السابقة' : 'Recent Searches'}
             </Text>
@@ -539,9 +533,7 @@ export default function HomeScreen() {
 
       {/* ── LISTINGS HEADER ── */}
       <View style={[styles.listingsHeader, { flexDirection: isRTL ? 'row-reverse' : 'row', borderTopColor: colors.borderLight, paddingHorizontal: hPad }]}>
-        <View style={[styles.sectionIconDot, { backgroundColor: colors.primaryGhost }]}>
-          <MaterialIcons name="storefront" size={14} color={colors.primary} />
-        </View>
+        <View style={[styles.sectionAccent, { backgroundColor: colors.accent }]} />
         <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1 }]}>{isAr ? 'جميع الإعلانات' : 'All Listings'}</Text>
         <View style={[styles.countPill, { backgroundColor: colors.primaryGhost }]}>
           <Text style={[styles.countPillText, { color: colors.primary }]}>
@@ -574,19 +566,27 @@ export default function HomeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* ── HEADER ── */}
-      <View style={[styles.header, { backgroundColor: colors.primary }]}>
+      <View style={[styles.header, { backgroundColor: colors.primary, overflow: 'hidden' }]}>
+        {/* Decorative circles */}
+        <View style={styles.headerDeco1} pointerEvents="none" />
+        <View style={styles.headerDeco2} pointerEvents="none" />
+
         <View style={[styles.headerTop, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <View style={styles.headerLeft}>
+            <View style={[styles.appBrand, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              <View style={styles.appBrandDot} />
+              <Text style={styles.appBrandLabel}>{isAr ? 'السوق الرسمي' : 'Official Marketplace'}</Text>
+            </View>
+            <Text style={[styles.appName, { textAlign: isRTL ? 'right' : 'left' }]}>{appTitle}</Text>
             {displayName ? (
               <Text style={[styles.greeting, { textAlign: isRTL ? 'right' : 'left' }]}>
-                {isAr ? `مرحباً بك، ${displayName} 👋` : `Welcome back, ${displayName} 👋`}
+                {isAr ? `أهلاً، ${displayName} 👋` : `Hi, ${displayName} 👋`}
               </Text>
             ) : (
               <Text style={[styles.greeting, { textAlign: isRTL ? 'right' : 'left' }]}>
                 {isAr ? 'اكتشف أفضل العروض 🛍️' : 'Discover great deals 🛍️'}
               </Text>
             )}
-            <Text style={[styles.appName, { textAlign: isRTL ? 'right' : 'left' }]}>{appTitle}</Text>
           </View>
 
           <View style={[styles.headerActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -609,6 +609,30 @@ export default function HomeScreen() {
               <MaterialIcons name="smart-toy" size={20} color="#fff" />
             </Pressable>
           </View>
+        </View>
+
+        {/* Stats chips */}
+        <View style={[styles.headerStatsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          {totalAdsCount > 0 ? (
+            <View style={styles.headerStatChip}>
+              <MaterialIcons name="storefront" size={11} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.headerStatText}>
+                {totalAdsCount.toLocaleString()} {isAr ? 'إعلان نشط' : 'active listings'}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.headerStatChip}>
+            <MaterialIcons name="location-on" size={11} color="rgba(255,255,255,0.85)" />
+            <Text style={styles.headerStatText}>{isAr ? 'قلقيلية والمحيط' : 'Qalqilya Region'}</Text>
+          </View>
+          {activeFilterCount > 0 ? (
+            <View style={[styles.headerStatChip, { backgroundColor: 'rgba(245,158,11,0.3)' }]}>
+              <MaterialIcons name="filter-list" size={11} color="#FDE68A" />
+              <Text style={[styles.headerStatText, { color: '#FDE68A' }]}>
+                {activeFilterCount} {isAr ? 'فلتر نشط' : activeFilterCount === 1 ? 'filter' : 'filters'}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Search bar */}
@@ -905,15 +929,16 @@ const styles = StyleSheet.create({
   headerLeft: { flex: 1, gap: 2 },
   greeting: {
     fontSize: FontSize.xs,
-    color: 'rgba(255,255,255,0.65)',
+    color: 'rgba(255,255,255,0.72)',
     fontWeight: '500',
+    marginTop: 2,
   },
   appName: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '800',
     color: '#fff',
-    letterSpacing: -0.6,
-    lineHeight: 30,
+    letterSpacing: -0.8,
+    lineHeight: 33,
   },
   headerActions: { gap: 8 },
   headerIconBtn: {
@@ -975,7 +1000,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     position: 'relative',
     backgroundColor: '#0A6E5C',
-    ...Shadow.md,
+    ...Shadow.lg,
   },
   bannerContent: {
     position: 'absolute',
@@ -1096,7 +1121,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: Spacing.md,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: Radius.full,
     borderWidth: 1.5,
   },
@@ -1167,6 +1192,27 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full, borderWidth: 1.5,
   },
   historyChipText: { fontSize: FontSize.xs, fontWeight: '600', maxWidth: 130 },
+
+  // ── Header enhancements ─────────────────────────────────────────────────────
+  headerDeco1: {
+    position: 'absolute', width: 220, height: 220, borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.07)', top: -85, right: -55,
+  },
+  headerDeco2: {
+    position: 'absolute', width: 130, height: 130, borderRadius: 65,
+    backgroundColor: 'rgba(255,255,255,0.04)', bottom: 12, left: -28,
+  },
+  appBrand: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  appBrandDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#F59E0B' },
+  appBrandLabel: { fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: '600', letterSpacing: 0.5 },
+  headerStatsRow: { flexDirection: 'row', gap: 7, marginBottom: Spacing.md, flexWrap: 'wrap' },
+  headerStatChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: Radius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  headerStatText: { fontSize: 11, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
+  sectionAccent: { width: 4, height: 20, borderRadius: 2 },
 });
 
 // ── Filter Sheet Styles ────────────────────────────────────────────────────────
