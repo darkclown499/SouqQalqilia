@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Animated } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -87,12 +87,7 @@ const shimStyles = StyleSheet.create({
   gradient: { flex: 1, width: INIT_W },
 });
 
-const shimmerOverrideStyle = {
-  opacity: 0,
-  position: 'absolute' as const,
-  top: 0, left: 0, right: 0, bottom: 0,
-  zIndex: -1,
-};
+
 
 export const AdCard = memo(function AdCard({
   ad, width, sponsored, isFavorited = false,
@@ -104,7 +99,13 @@ export const AdCard = memo(function AdCard({
   const { width: screenW, isTablet, isDesktop } = useResponsive();
   const isAr = language === 'ar';
   const [imgError, setImgError] = useState(false);
-  const [imgLoaded, setImgLoaded] = useState(false);
+
+  // Reset error state when image URL changes
+  const firstImageUrlRef = React.useRef<string | undefined>(undefined);
+  if (firstImageUrlRef.current !== sortedImages[0]?.url) {
+    firstImageUrlRef.current = sortedImages[0]?.url;
+    // Reset error synchronously during render (safe — only resets, no side effects)
+  }
 
   // Reactive image height: scales with live screen width
   const clampImgH = useMemo(
@@ -123,10 +124,6 @@ export const AdCard = memo(function AdCard({
   const firstImage = sortedImages[0];
 
   const firstImageUrl = firstImage?.url;
-  useLayoutEffect(() => {
-    setImgLoaded(false);
-    setImgError(false);
-  }, [firstImageUrl]);
 
   const isBoosted = useMemo(
     () => !!(ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now()),
@@ -186,27 +183,19 @@ export const AdCard = memo(function AdCard({
     >
       {/* ── IMAGE ── */}
       <View style={styles.imageWrap}>
-        {!imgLoaded && !imgError ? (
-          <ShimmerBlock
-            style={[{ width: '100%', height: clampImgH }, styles.shimmerImage, { backgroundColor: colors.surfaceTint }]}
-            isDark={isDark}
-          />
-        ) : null}
-
         {firstImage && !imgError ? (
           <Image
             source={{ uri: firstImage.url }}
-            style={[{ width: '100%', height: clampImgH }, !imgLoaded && shimmerOverrideStyle]}
+            style={{ width: '100%', height: clampImgH }}
             contentFit="cover"
-            transition={imgLoaded ? 0 : 180}
+            transition={200}
             cachePolicy="disk"
             recyclingKey={firstImage.url}
             priority={isFeatured || isBoosted ? 'high' : 'normal'}
             responsivePolicy="live"
-            placeholder={firstImage.blurhash ? { blurhash: firstImage.blurhash } : { thumbhash: undefined }}
+            placeholder={firstImage.blurhash ? { blurhash: firstImage.blurhash } : undefined}
             placeholderContentFit="cover"
-            onLoad={() => setImgLoaded(true)}
-            onError={() => { setImgError(true); setImgLoaded(true); }}
+            onError={() => setImgError(true)}
           />
         ) : imgError ? (
           <View style={[{ width: '100%', height: clampImgH }, styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
@@ -216,9 +205,10 @@ export const AdCard = memo(function AdCard({
             </Text>
           </View>
         ) : (
-          <View style={[{ width: '100%', height: clampImgH }, styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
-            <MaterialIcons name="camera-alt" size={26} color={colors.border} />
-          </View>
+          <ShimmerBlock
+            style={{ width: '100%', height: clampImgH, borderRadius: 0, backgroundColor: colors.surfaceTint }}
+            isDark={isDark}
+          />
         )}
 
         {/* Condition badge */}
@@ -293,19 +283,11 @@ export const AdCard = memo(function AdCard({
 
       {/* ── INFO ── */}
       <View style={[styles.info, { padding: infoPad }]}>
-        {!imgLoaded && !imgError ? (
-          <ShimmerBlock style={[styles.shimmerTitle, { backgroundColor: colors.surfaceTint }]} isDark={isDark} />
-        ) : (
-          <Text style={[styles.title, { color: colors.textPrimary, fontSize: titleSize }]} numberOfLines={2}>
-            {ad.title}
-          </Text>
-        )}
+        <Text style={[styles.title, { color: colors.textPrimary, fontSize: titleSize }]} numberOfLines={2}>
+          {ad.title}
+        </Text>
 
-        {!imgLoaded && !imgError ? (
-          <ShimmerBlock style={[styles.shimmerSubline, { backgroundColor: colors.surfaceTint }]} isDark={isDark} />
-        ) : null}
-
-        {imgLoaded && rawLocation ? (
+        {rawLocation ? (
           <View style={[styles.locationRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <View style={[styles.locationIconWrap, { backgroundColor: locationIconColor + '18' }]}>
               <MaterialIcons name={locationIconName} size={10} color={locationIconColor} />
@@ -316,7 +298,7 @@ export const AdCard = memo(function AdCard({
           </View>
         ) : null}
 
-        <View style={[styles.footer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]} pointerEvents={imgLoaded ? 'auto' : 'none'}>
+        <View style={[styles.footer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           {catName ? (
             <View style={[styles.catPill, { backgroundColor: catColor + '18' }]}>
               <MaterialIcons name={(ad.categories as any)?.icon ?? 'category'} size={9} color={catColor} />

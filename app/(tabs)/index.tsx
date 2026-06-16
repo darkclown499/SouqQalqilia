@@ -716,7 +716,7 @@ export default function HomeScreen() {
           initialNumToRender={4}
           updateCellsBatchingPeriod={30}
           key={numColumns}
-          removeClippedSubviews={Platform.OS === 'android'}
+          removeClippedSubviews={false}
           getItemLayout={(_data, index) => ({
             length: _initRowH,
             offset: _initRowH * index,
