@@ -53,8 +53,9 @@ export default function LoginScreen() {
   }, []);
 
   // ── Tab state ──────────────────────────────────────────────────────────────
-  const showPhoneTab = Platform.OS === 'ios';
-  const [activeTab, setActiveTab] = useState<MainTab>(Platform.OS === 'ios' ? 'phone' : 'email');
+  // Show phone tab on both Android and iOS — SMS avoids spam issues
+  const showPhoneTab = Platform.OS !== 'web';
+  const [activeTab, setActiveTab] = useState<MainTab>(Platform.OS !== 'web' ? 'phone' : 'email');
   const tabIndicator = useRef(new Animated.Value(0)).current;
 
   const switchTab = useCallback((tab: MainTab) => {
@@ -562,7 +563,7 @@ export default function LoginScreen() {
           ) : null}
         </Animated.View>
 
-        {Platform.OS === 'android' && (emailMode === 'login' || emailMode === 'register') ? (
+        {Platform.OS !== 'web' && activeTab === 'email' && (emailMode === 'login' || emailMode === 'register') ? (
           <View style={[s.socialSection, { alignSelf: 'center', maxWidth: cardMaxW, width: '100%' }]}>
             <View style={s.dividerRow}>
               <View style={s.divLine} />
@@ -793,6 +794,10 @@ const LoginPanel = React.memo(function LoginPanel({ email, setEmail, password, s
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{t.welcomeBack}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{t.signInAccount}</Text>
       </View>
+      <View style={[s.spamWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+        <MaterialIcons name="warning" size={14} color="#D97706" />
+        <Text style={s.spamWarningText}>{isAr ? 'قد يصل رمز التحقق لمجلد السبام. يُنصح باستخدام تبويب الهاتف بدلاً.' : 'OTP may go to Spam folder. Using Phone tab is recommended.'}</Text>
+      </View>
       <PremiumInput label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
       <PremiumInput
         label={t.password} placeholder={t.passwordPlaceholder}
@@ -820,6 +825,10 @@ const RegisterPanel = React.memo(function RegisterPanel({ email, setEmail, passw
       <View style={s.panelHeader}>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{t.createAccount}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{t.joinToBuySell}</Text>
+      </View>
+      <View style={[s.spamWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+        <MaterialIcons name="warning" size={14} color="#D97706" />
+        <Text style={s.spamWarningText}>{isAr ? 'قد يصل رمز التحقق لمجلد السبام. يُنصح باستخدام تبويب الهاتف بدلاً.' : 'OTP may go to Spam folder. Using Phone tab is recommended.'}</Text>
       </View>
       <PremiumInput label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
       <PremiumInput label={t.password} placeholder={t.minPassword} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} iconName="lock" rightElement={<Pressable onPress={togglePassword} hitSlop={8}><MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} /></Pressable>} colors={colors} />
@@ -1104,4 +1113,6 @@ const s = StyleSheet.create({
   eulaBodyText: { fontSize: FontSize.sm, lineHeight: 24 },
   eulaAcceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, margin: Spacing.lg, marginTop: Spacing.sm, paddingVertical: 14, borderRadius: Radius.xl },
   eulaAcceptLabel: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+  spamWarning: { flexDirection: 'row', alignItems: 'flex-start', gap: 7, padding: 10, borderRadius: Radius.md, borderWidth: 1, marginTop: -4, marginBottom: -4 },
+  spamWarningText: { flex: 1, fontSize: FontSize.xs, lineHeight: 17, fontWeight: '500', color: '#92400E' },
 });
