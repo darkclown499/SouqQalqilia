@@ -677,12 +677,13 @@ export default function HomeScreen() {
           data={feedRows}
           keyExtractor={item => item.id}
           renderItem={renderRow}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 36 }]}
           showsVerticalScrollIndicator={false}
           windowSize={11}
           maxToRenderPerBatch={4}
           initialNumToRender={4}
           updateCellsBatchingPeriod={30}
+          key={numColumns}
           removeClippedSubviews={Platform.OS === 'android'}
           getItemLayout={(_data, index) => ({
             length: _initRowH,
@@ -698,7 +699,6 @@ export default function HomeScreen() {
             />
           }
           ListHeaderComponent={ListHeader}
-          contentContainerStyle={{ paddingBottom: 36 }}
           ListFooterComponent={
             hasMore ? (
               <Pressable

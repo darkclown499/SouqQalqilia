@@ -10,10 +10,7 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth } from '@/template';
-import { Dimensions } from 'react-native';
-
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - Spacing.lg * 2 - Spacing.sm) / 2;
+import { useResponsive } from '@/hooks/useResponsive';
 
 export default function CategoryScreen() {
   const { categoryId, name } = useLocalSearchParams<{ categoryId: string; name: string }>();
@@ -22,6 +19,7 @@ export default function CategoryScreen() {
   const { t, language, isRTL } = useLanguage();
   const { user } = useAuth();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
+  const { numColumns, hPad, cardGap, cardWidth: CARD_WIDTH } = useResponsive();
   const isAr = language === 'ar';
 
   const [stores, setStores] = useState<Store[]>([]);
@@ -33,8 +31,8 @@ export default function CategoryScreen() {
     fetchStoresByCategory(categoryId).then(({ data }) => setStores(data));
   }, [categoryId]);
 
-  const renderAd = useCallback(({ item, index }: any) => (
-    <View style={[styles.adWrapper, index % 2 === 0 ? { marginRight: Spacing.sm / 2 } : { marginLeft: Spacing.sm / 2 }]}>
+  const renderAd = useCallback(({ item }: any) => (
+    <View style={styles.adWrapper}>
       <AdCard
         ad={item}
         width={CARD_WIDTH}
@@ -42,7 +40,7 @@ export default function CategoryScreen() {
         onFavoritePress={user ? toggleFav : undefined}
       />
     </View>
-  ), [favIds, user, toggleFav]);
+  ), [favIds, user, toggleFav, CARD_WIDTH]);
 
   const StoresSection = stores.length > 0 ? (
     <View style={[styles.storesSection, { backgroundColor: colors.surface }]}>
@@ -100,9 +98,11 @@ export default function CategoryScreen() {
       <FlatList
         data={ads}
         keyExtractor={item => item.id}
-        numColumns={2}
+        numColumns={numColumns}
+        key={numColumns}
         renderItem={renderAd}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingHorizontal: hPad }]}
+        columnWrapperStyle={numColumns > 1 ? { gap: cardGap, marginBottom: cardGap } : undefined}
         showsVerticalScrollIndicator={false}
         refreshing={loading}
         onRefresh={() => categoryId && load({ categoryId })}
@@ -123,8 +123,8 @@ export default function CategoryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  listContent: { padding: Spacing.lg, paddingBottom: 24 },
-  adWrapper: { flex: 1, marginBottom: Spacing.sm },
+  listContent: { paddingVertical: Spacing.lg, paddingBottom: 24 },
+  adWrapper: { flex: 1 },
 
   // Stores section
   storesSection: { marginBottom: Spacing.md, paddingVertical: Spacing.md },

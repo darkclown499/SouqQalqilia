@@ -23,7 +23,7 @@ import { ShimmerBlock } from '@/components/feature/AdCard';
 import { useLanguage } from '@/hooks/useLanguage';
 import { timeAgoLong } from '@/utils/timeAgo';
 
-const { width } = Dimensions.get('window');
+// carousel width is computed reactively inside AdDetailScrollContent
 
 function formatPrice(price: number) {
   return price === 0 ? 'Free' : `₪${price.toLocaleString()}`;
@@ -604,11 +604,12 @@ function AdDetailScrollContent({
   relatedAds, sellerAds, favIds, toggleFav, sellerVerified, language,
 }: any) {
   const carouselRef = React.useRef<FlatList<AdImage>>(null);
+  const [carouselWidth, setCarouselWidth] = useState(Dimensions.get('window').width);
 
   return (
     <View>
       {/* ── IMAGE CAROUSEL — FlatList horizontal for native swipe ── */}
-      <View style={[styles.carouselWrap, { backgroundColor: colors.surfaceTint }]}>
+      <View style={[styles.carouselWrap, { backgroundColor: colors.surfaceTint }]} onLayout={(e) => setCarouselWidth(e.nativeEvent.layout.width)}>
         {images.length > 0 ? (
           <>
             <FlatList<AdImage>
@@ -619,9 +620,9 @@ function AdDetailScrollContent({
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               initialScrollIndex={0}
-              getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
+              getItemLayout={(_, index) => ({ length: carouselWidth, offset: carouselWidth * index, index })}
               onMomentumScrollEnd={(e) => {
-                const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+                const idx = Math.round(e.nativeEvent.contentOffset.x / carouselWidth);
                 setActiveImage(idx);
               }}
               renderItem={({ item, index }) => (
@@ -630,7 +631,7 @@ function AdDetailScrollContent({
                   style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
                   android_ripple={null}
                 >
-                  <Image source={{ uri: item.url }} style={[styles.carouselImg, { width }]} contentFit="cover" transition={150} cachePolicy="disk" priority="high" recyclingKey={item.url} />
+                  <Image source={{ uri: item.url }} style={[styles.carouselImg, { width: carouselWidth }]} contentFit="cover" transition={150} cachePolicy="disk" priority="high" recyclingKey={item.url} />
                 </Pressable>
               )}
             />

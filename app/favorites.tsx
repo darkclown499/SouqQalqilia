@@ -10,6 +10,7 @@ import { useFavoriteAds, useFavoriteIds } from '@/hooks/useFavorites';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useResponsive } from '@/hooks/useResponsive';
 
 export default function FavoritesScreen() {
   const insets = useSafeAreaInsets();
@@ -19,6 +20,7 @@ export default function FavoritesScreen() {
   const { t, language, isRTL } = useLanguage();
   const { ads, loading, load } = useFavoriteAds();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
+  const { numColumns, hPad, cardGap } = useResponsive();
   const isAr = language === 'ar';
 
   if (!user) {
@@ -62,13 +64,15 @@ export default function FavoritesScreen() {
         <FlatList
           data={ads}
           keyExtractor={item => item.id}
-          numColumns={2}
-          contentContainerStyle={styles.list}
+          numColumns={numColumns}
+          key={numColumns}
+          contentContainerStyle={[styles.list, { padding: hPad }]}
+          columnWrapperStyle={numColumns > 1 ? { gap: cardGap, marginBottom: cardGap } : undefined}
           showsVerticalScrollIndicator={false}
           refreshing={loading}
           onRefresh={load}
-          renderItem={({ item, index }) => (
-            <View style={[styles.adWrapper, index % 2 === 0 ? { marginRight: Spacing.sm / 2 } : { marginLeft: Spacing.sm / 2 }]}>
+          renderItem={({ item }) => (
+            <View style={styles.adWrapper}>
               <AdCard
                 ad={item}
                 isFavorited={favIds.has(item.id)}
@@ -110,7 +114,7 @@ const styles = StyleSheet.create({
     marginBottom: 2, marginLeft: 'auto',
   },
   countText: { color: '#fff', fontWeight: '700', fontSize: FontSize.md },
-  list: { padding: Spacing.lg, paddingBottom: 36 },
-  adWrapper: { flex: 1, marginBottom: Spacing.sm },
+  list: { paddingBottom: 36 },
+  adWrapper: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', gap: Spacing.md, paddingTop: Spacing.xl },
 });

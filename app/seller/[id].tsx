@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, Modal,
-  RefreshControl, Dimensions, Animated, Platform, Linking, TextInput,
+  RefreshControl, Animated, Platform, Linking, TextInput,
   KeyboardAvoidingView, ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -16,11 +16,10 @@ import { useFavoriteIds } from '@/hooks/useFavorites';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useResponsive } from '@/hooks/useResponsive';
 
-const { width: SCREEN_W } = Dimensions.get('window');
 const H_PAD = 16;
 const COLUMN_GAP = 10;
-const CARD_W = (SCREEN_W - H_PAD * 2 - COLUMN_GAP) / 2;
 const COVER_H = 220;
 const AVATAR_SIZE = 96;
 
@@ -28,9 +27,10 @@ const AVATAR_SIZE = 96;
 function SellerSkeleton({ colors, isDark }: { colors: any; isDark: boolean }) {
   const base = colors.surfaceTint;
   const dark = colors.border;
+  const { cardWidth } = useResponsive();
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ShimmerBlock style={{ width: SCREEN_W, height: COVER_H, borderRadius: 0, backgroundColor: dark }} isDark={isDark} />
+      <ShimmerBlock style={{ width: '100%', height: COVER_H, borderRadius: 0, backgroundColor: dark } as any} isDark={isDark} />
       <View style={{ alignItems: 'center', marginTop: -(AVATAR_SIZE / 2) - 4, marginBottom: 20, gap: 12 }}>
         <ShimmerBlock style={{ width: AVATAR_SIZE + 8, height: AVATAR_SIZE + 8, borderRadius: (AVATAR_SIZE + 8) / 2, backgroundColor: dark }} isDark={isDark} />
         <ShimmerBlock style={{ width: 160, height: 20, borderRadius: 10, backgroundColor: base }} isDark={isDark} />
@@ -43,7 +43,7 @@ function SellerSkeleton({ colors, isDark }: { colors: any; isDark: boolean }) {
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: H_PAD, gap: COLUMN_GAP }}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <ShimmerBlock key={i} style={{ width: CARD_W, height: 200, borderRadius: 14, backgroundColor: base, marginBottom: COLUMN_GAP }} isDark={isDark} />
+          <ShimmerBlock key={i} style={{ width: cardWidth, height: 200, borderRadius: 14, backgroundColor: base, marginBottom: COLUMN_GAP }} isDark={isDark} />
         ))}
       </View>
     </View>
@@ -91,6 +91,7 @@ export default function SellerProfileScreen() {
   const { colors, isDark } = useTheme();
   const { language } = useLanguage();
   const { user } = useAuth();
+  const { cardWidth: CARD_W, numColumns } = useResponsive();
   const { showAlert } = useAlert();
   const isAr = language === 'ar';
 
@@ -236,7 +237,7 @@ export default function SellerProfileScreen() {
       isFavorited={favoriteIds.has(item.id)}
       onFavoritePress={toggleFav}
     />
-  ), [favoriteIds, toggleFav]);
+  ), [favoriteIds, toggleFav, CARD_W]);
 
   const keyExtractor = useCallback((item: Ad) => item.id, []);
 
@@ -512,8 +513,9 @@ export default function SellerProfileScreen() {
         data={activeAds}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        numColumns={2}
-        columnWrapperStyle={styles.row}
+        numColumns={numColumns}
+        key={numColumns}
+        columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
         contentContainerStyle={{ paddingBottom: insets.bottom + Spacing.xl, paddingHorizontal: H_PAD }}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews
