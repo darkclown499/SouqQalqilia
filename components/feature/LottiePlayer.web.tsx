@@ -75,13 +75,13 @@ export default function LottiePlayer({ onAnimationFinish, size }: Props) {
       <Animated.Text style={[styles.star, styles.starLeft,  { opacity: star1, fontSize: size * 0.13 }]}>✦</Animated.Text>
       <Animated.Text style={[styles.star, styles.starRight, { opacity: star2, fontSize: size * 0.11 }]}>✦</Animated.Text>
 
-      {/* Shopping bag */}
+      {/* Shopping cart emoji */}
       <Animated.View style={{ transform: [{ translateY: bounce }, { scaleX: scale }, { scaleY: scale }] }}>
-        <Text style={{ fontSize: iconSize, lineHeight: iconSize * 1.2 }}>🛍️</Text>
+        <Text style={{ fontSize: iconSize, lineHeight: iconSize * 1.2 }}>🛒</Text>
       </Animated.View>
 
-      {/* Price tag swinging */}
-      <Animated.Text style={[styles.tag, { transform: [{ rotate: rotDeg }], fontSize: size * 0.16 }]}>🏷️</Animated.Text>
+      {/* Sparkle */}
+      <Animated.Text style={[styles.tag, { transform: [{ rotate: rotDeg }], fontSize: size * 0.14 }]}>✨</Animated.Text>
     </View>
   );
 }

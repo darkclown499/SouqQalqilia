@@ -222,7 +222,7 @@ function MarketplaceSplash({ onComplete }: SplashProps) {
       <Animated.View style={[styles.lottieWrap, lottieWrapStyle]}>
         <View style={styles.lottieBg}>
           <LottiePlayer
-            size={W * 0.5}
+            size={W * 0.42}
             onAnimationFinish={onAnimationFinish}
           />
         </View>
@@ -363,36 +363,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoImg: {
-    width: W * 0.22,
-    height: W * 0.22,
-    marginTop: 48,
+    width: W * 0.19,
+    height: W * 0.19,
+    marginTop: 36,
   },
 
   // ── Lottie ──
   lottieWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
-    marginTop: -H * 0.04,
+    marginBottom: 4,
+    marginTop: 0,
   },
   lottieBg: {
-    width: W * 0.58,
-    height: W * 0.58,
-    borderRadius: W * 0.29,
+    width: W * 0.50,
+    height: W * 0.50,
+    borderRadius: W * 0.25,
     backgroundColor: GOLD_SOFT,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   lottie: {
-    width: W * 0.5,
-    height: W * 0.5,
+    width: W * 0.42,
+    height: W * 0.42,
   },
   lottieRing: {
     position: 'absolute',
-    width: W * 0.62,
-    height: W * 0.62,
-    borderRadius: W * 0.31,
+    width: W * 0.54,
+    height: W * 0.54,
+    borderRadius: W * 0.27,
     borderWidth: 1.5,
     borderColor: GOLD,
     opacity: 0.32,
@@ -400,13 +400,13 @@ const styles = StyleSheet.create({
 
   // ── Text ──
   headline: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '800',
     color: '#FFFFFF',
     textAlign: 'center',
     letterSpacing: 0.3,
-    lineHeight: 30,
-    marginTop: 24,
+    lineHeight: 28,
+    marginTop: 16,
     paddingHorizontal: 28,
     textShadowColor: 'rgba(0,0,0,0.25)',
     textShadowOffset: { width: 0, height: 1 },
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
     color: GOLD,
     textAlign: 'center',
     letterSpacing: 0.4,
-    marginTop: 10,
+    marginTop: 6,
     opacity: 0.9,
   },
 
