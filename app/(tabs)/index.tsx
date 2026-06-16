@@ -365,7 +365,7 @@ export default function HomeScreen() {
       {/* ── BANNER ── */}
       {currentBanner ? (
         <Pressable
-          style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad }]}
+          style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md }]}
           onPress={() => {
             if (currentBanner.link_url?.trim()) {
               Linking.openURL(currentBanner.link_url.trim()).catch(() => {});
@@ -473,31 +473,39 @@ export default function HomeScreen() {
       </View>
 
       <View style={[styles.catOuter, { marginHorizontal: -hPad }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.catContent, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
-          <Pressable
-            style={[styles.catChip, selectedCategory === null
-              ? { backgroundColor: colors.primary, borderColor: colors.primary }
-              : { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}
-            onPress={() => handleCategoryPress(null)}
-          >
-            <MaterialIcons name="apps" size={14} color={selectedCategory === null ? '#fff' : colors.textMuted} />
-            <Text style={[styles.catChipText, { color: selectedCategory === null ? '#fff' : colors.textSecondary, fontWeight: selectedCategory === null ? '700' : '500' }]}>{t.all}</Text>
-          </Pressable>
-          {categories.map(cat => {
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+          contentContainerStyle={[styles.catContent, { flexDirection: 'row', paddingHorizontal: hPad }]}
+        >
+          <View style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}>
+            <Pressable
+              style={[styles.catChip, selectedCategory === null
+                ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                : { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}
+              onPress={() => handleCategoryPress(null)}
+            >
+              <MaterialIcons name="apps" size={14} color={selectedCategory === null ? '#fff' : colors.textMuted} />
+              <Text style={[styles.catChipText, { color: selectedCategory === null ? '#fff' : colors.textSecondary, fontWeight: selectedCategory === null ? '700' : '500' }]}>{t.all}</Text>
+            </Pressable>
+          </View>
+          {(isRTL ? [...categories].reverse() : categories).map(cat => {
             const isSelected = selectedCategory === cat.id;
             return (
-              <Pressable
-                key={cat.id}
-                style={[styles.catChip, isSelected
-                  ? { backgroundColor: cat.color, borderColor: cat.color }
-                  : { backgroundColor: cat.color + '12', borderColor: cat.color + '45' }]}
-                onPress={() => handleCategoryPress(cat.id === selectedCategory ? null : cat.id)}
-              >
-                <MaterialIcons name={cat.icon as any} size={14} color={isSelected ? '#fff' : cat.color} />
-                <Text style={[styles.catChipText, { color: isSelected ? '#fff' : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>
-                  {getCategoryName(cat, language)}
-                </Text>
-              </Pressable>
+              <View key={cat.id} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}>
+                <Pressable
+                  style={[styles.catChip, isSelected
+                    ? { backgroundColor: cat.color, borderColor: cat.color }
+                    : { backgroundColor: cat.color + '12', borderColor: cat.color + '45' }]}
+                  onPress={() => handleCategoryPress(cat.id === selectedCategory ? null : cat.id)}
+                >
+                  <MaterialIcons name={cat.icon as any} size={14} color={isSelected ? '#fff' : cat.color} />
+                  <Text style={[styles.catChipText, { color: isSelected ? '#fff' : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>
+                    {getCategoryName(cat, language)}
+                  </Text>
+                </Pressable>
+              </View>
             );
           })}
         </ScrollView>
