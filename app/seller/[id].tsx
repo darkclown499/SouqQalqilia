@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
   deco1: { position: 'absolute', width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(255,255,255,0.07)', top: -90, right: -60 },
   deco2: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.05)', bottom: -70, left: -40 },
   deco3: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.06)', top: 40, left: '38%' },
-  avatarOuter: { position: 'absolute', bottom: -(AVATAR_SIZE / 2 + 10), width: AVATAR_SIZE + 8, height: AVATAR_SIZE + 8, borderRadius: (AVATAR_SIZE + 8) / 2, borderWidth: 4, overflow: 'hidden', zIndex: 10 },
+  avatarOuter: { position: 'absolute', bottom: -(AVATAR_SIZE / 2 + 10), width: AVATAR_SIZE + 8, height: AVATAR_SIZE + 8, borderRadius: (AVATAR_SIZE + 8) / 2, borderWidth: 4, zIndex: 10 },
   avatarImg: { width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2, alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { fontSize: 32, fontWeight: '800', color: '#fff' },
   verifiedDot: { position: 'absolute', bottom: 2, right: 2, width: 26, height: 26, borderRadius: 13, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, zIndex: 15 },
