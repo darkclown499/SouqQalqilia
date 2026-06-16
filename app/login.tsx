@@ -4,7 +4,6 @@ import {
   Platform, Pressable, ActivityIndicator, Modal, Animated,
   Dimensions, StatusBar, TextInput,
 } from 'react-native';
-// Apple Authentication removed — not used on any platform
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -18,6 +17,8 @@ import { APP_NAME, APP_NAME_AR } from '@/constants/config';
 import type { Language } from '@/constants/i18n';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+// Android: phone tab removed → only email + Google
+// iOS: email + phone tabs, no Google
 type MainTab = 'phone' | 'email';
 type EmailMode = 'login' | 'register' | 'otp' | 'forgot' | 'forgot_sent';
 
@@ -52,11 +53,17 @@ export default function LoginScreen() {
     }
   }, []);
 
+  // ── Platform logic ─────────────────────────────────────────────────────────
+  // iOS: show phone + email tabs, default = phone
+  // Android: show only email (Google is the "fast" option)
+  // Web: email only
+  const showPhoneTab = Platform.OS === 'ios';
+  const showGoogleBtn = Platform.OS !== 'web'; // Android only renders it, iOS skips the block
+  const defaultTab: MainTab = Platform.OS === 'ios' ? 'phone' : 'email';
+
   // ── Tab state ──────────────────────────────────────────────────────────────
-  // Show phone tab on both Android and iOS — SMS avoids spam issues
-  const showPhoneTab = Platform.OS !== 'web';
-  const [activeTab, setActiveTab] = useState<MainTab>(Platform.OS !== 'web' ? 'phone' : 'email');
-  const tabIndicator = useRef(new Animated.Value(0)).current;
+  const [activeTab, setActiveTab] = useState<MainTab>(defaultTab);
+  const tabIndicator = useRef(new Animated.Value(defaultTab === 'phone' ? 0 : 1)).current;
 
   const switchTab = useCallback((tab: MainTab) => {
     setActiveTab(tab);
@@ -97,6 +104,45 @@ export default function LoginScreen() {
 
   // ── Social ─────────────────────────────────────────────────────────────────
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  // ── Pulsing badge animation (Android Google button badge) ─────────────────
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseOpacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.spring(pulseAnim, {
+            toValue: 1.08,
+            useNativeDriver: true,
+            speed: 4,
+            bounciness: 10,
+          }),
+          Animated.timing(pulseOpacity, {
+            toValue: 0.82,
+            duration: 650,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.spring(pulseAnim, {
+            toValue: 1,
+            useNativeDriver: true,
+            speed: 4,
+            bounciness: 6,
+          }),
+          Animated.timing(pulseOpacity, {
+            toValue: 1,
+            duration: 650,
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulseAnim, pulseOpacity]);
 
   const isSubmittingRef = useRef(false);
 
@@ -333,8 +379,6 @@ export default function LoginScreen() {
       }
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo) as { type: string; url?: string };
 
-      console.log('[GoogleSignIn] Browser session result:', result.type, result.type === 'success' ? (result as any).url?.substring(0, 120) : '');
-
       if (result.type === 'success' && result.url) {
         const parsed = new URL(result.url);
         const params = new URLSearchParams(parsed.searchParams);
@@ -343,37 +387,25 @@ export default function LoginScreen() {
         const errorParam = params.get('error');
         const errorDesc = params.get('error_description');
 
-        // Log the actual OAuth error returned in the redirect URL
         if (errorParam) {
-          console.error('[GoogleSignIn] OAuth error in redirect:', errorParam, '|', errorDesc);
-          subscription.unsubscribe();
-          authResolved = true;
+          subscription.unsubscribe(); authResolved = true;
           showAlert(isAr ? 'خطأ Google' : 'Google Error', `${errorParam}: ${errorDesc ?? ''}`);
-          setGoogleLoading(false);
-          return;
+          setGoogleLoading(false); return;
         }
 
         if (code) {
-          console.log('[GoogleSignIn] Exchanging auth code for session...');
           const { error: exchErr } = await supabase.auth.exchangeCodeForSession(code);
-          console.log('[GoogleSignIn] exchangeCodeForSession result:', exchErr ? exchErr.message : 'success');
           if (!exchErr && !authResolved) { authResolved = true; subscription.unsubscribe(); setGoogleLoading(false); router.replace('/(tabs)'); return; }
           if (exchErr && !authResolved) { subscription.unsubscribe(); authResolved = true; showAlert(isAr ? 'خطأ' : 'Error', exchErr.message); setGoogleLoading(false); return; }
         } else {
           const at = params.get('access_token'), rt = params.get('refresh_token');
-          console.log('[GoogleSignIn] Token path — access_token present:', !!at, 'refresh_token present:', !!rt);
           if (at && rt && !authResolved) {
             const { error: sessErr } = await supabase.auth.setSession({ access_token: at, refresh_token: rt });
-            console.log('[GoogleSignIn] setSession result:', sessErr ? sessErr.message : 'success');
             if (sessErr && !authResolved) { subscription.unsubscribe(); authResolved = true; showAlert(isAr ? 'خطأ' : 'Error', sessErr.message); setGoogleLoading(false); return; }
           }
         }
         return;
       }
-
-      // Browser was dismissed or returned non-success type
-      console.warn('[GoogleSignIn] Browser did not return success. Type:', result.type,
-        '— Common causes: SHA-1 mismatch, wrong redirect URI, or user cancelled.');
 
       if (!authResolved) {
         let attempts = 0;
@@ -397,6 +429,9 @@ export default function LoginScreen() {
 
   const cardMaxW = isTablet ? 460 : W - 32;
 
+  // ── Segment tab widths for iOS only ──────────────────────────────────────
+  const segW = (cardMaxW - 32) / 2;
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0A0F0D' : '#0A6E5C'} />
@@ -416,6 +451,7 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Language switcher ── */}
         <View style={[s.topBar, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
           <View style={[s.langRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
             {(['ar', 'en'] as Language[]).map(lang => (
@@ -432,6 +468,7 @@ export default function LoginScreen() {
           </View>
         </View>
 
+        {/* ── Hero / Logo ── */}
         <View style={[s.hero, { alignSelf: 'center', maxWidth: cardMaxW, width: '100%' }]}>
           <View style={s.logoOuter}>
             <Image source={require('@/assets/images/app-logo-bg.png')} style={s.logoImg} contentFit="cover" transition={200} />
@@ -441,6 +478,7 @@ export default function LoginScreen() {
           <Text style={s.heroSub}>{isAr ? 'اشتري وبيع في قلقيلية' : 'Buy & Sell in Qalqilya'}</Text>
         </View>
 
+        {/* ── Main Card ── */}
         <Animated.View
           style={[
             s.card,
@@ -448,39 +486,62 @@ export default function LoginScreen() {
             { transform: [{ translateY: cardY }], opacity: cardOpacity },
           ]}
         >
+
+          {/* ══════════════════════════════════════════════════════
+              iOS-ONLY: Segmented control — Phone / Email
+          ══════════════════════════════════════════════════════ */}
           {showPhoneTab ? (
-            <View style={[s.tabContainer, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
-              <View style={s.tabTrack}>
-                <Animated.View
-                  style={[
-                    s.tabIndicator,
-                    { backgroundColor: colors.primary },
-                    {
-                      transform: [{
-                        translateX: tabIndicator.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0, (cardMaxW - 32) / 2],
-                        }),
-                      }],
-                      width: (cardMaxW - 32) / 2,
-                    },
-                  ]}
+            <View style={[s.segmentWrap, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
+              {/* Sliding pill indicator */}
+              <Animated.View
+                style={[
+                  s.segmentPill,
+                  { backgroundColor: colors.primary, width: segW },
+                  {
+                    transform: [{
+                      translateX: tabIndicator.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, segW],
+                      }),
+                    }],
+                  },
+                ]}
+              />
+              {/* Phone button */}
+              <Pressable
+                style={[s.segmentBtn, { width: segW }]}
+                onPress={() => { switchTab('phone'); setPhoneStep('input'); }}
+              >
+                <MaterialIcons
+                  name="smartphone"
+                  size={15}
+                  color={activeTab === 'phone' ? '#fff' : colors.textMuted}
                 />
-              </View>
-              <View style={s.tabBtns}>
-                <Pressable style={s.tabBtn} onPress={() => { switchTab('phone'); setPhoneStep('input'); }}>
-                  <MaterialIcons name="smartphone" size={15} color={activeTab === 'phone' ? '#fff' : colors.textMuted} />
-                  <Text style={[s.tabBtnText, { color: activeTab === 'phone' ? '#fff' : colors.textMuted }]}>{isAr ? 'الهاتف' : 'Phone'}</Text>
-                </Pressable>
-                <Pressable style={s.tabBtn} onPress={() => { switchTab('email'); setEmailMode('login'); }}>
-                  <MaterialIcons name="email" size={15} color={activeTab === 'email' ? '#fff' : colors.textMuted} />
-                  <Text style={[s.tabBtnText, { color: activeTab === 'email' ? '#fff' : colors.textMuted }]}>{isAr ? 'البريد الإلكتروني' : 'Email'}</Text>
-                </Pressable>
-              </View>
+                <Text style={[s.segmentBtnText, { color: activeTab === 'phone' ? '#fff' : colors.textMuted }]}>
+                  {isAr ? 'رقم الهاتف' : 'Phone'}
+                </Text>
+              </Pressable>
+              {/* Email button */}
+              <Pressable
+                style={[s.segmentBtn, { width: segW }]}
+                onPress={() => { switchTab('email'); setEmailMode('login'); }}
+              >
+                <MaterialIcons
+                  name="email"
+                  size={15}
+                  color={activeTab === 'email' ? '#fff' : colors.textMuted}
+                />
+                <Text style={[s.segmentBtnText, { color: activeTab === 'email' ? '#fff' : colors.textMuted }]}>
+                  {isAr ? 'البريد الإلكتروني' : 'Email'}
+                </Text>
+              </Pressable>
             </View>
           ) : null}
 
-          {activeTab === 'phone' && showPhoneTab ? (
+          {/* ══════════════════════════════════════════════════════
+              iOS Phone panel
+          ══════════════════════════════════════════════════════ */}
+          {showPhoneTab && activeTab === 'phone' ? (
             phoneStep === 'input' ? (
               <PhoneInputPanel
                 phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber}
@@ -503,6 +564,9 @@ export default function LoginScreen() {
             )
           ) : null}
 
+          {/* ══════════════════════════════════════════════════════
+              Email panel (both Android + iOS, switchable on iOS)
+          ══════════════════════════════════════════════════════ */}
           {activeTab === 'email' ? (
             <>
               {emailMode === 'login' ? (
@@ -563,29 +627,72 @@ export default function LoginScreen() {
           ) : null}
         </Animated.View>
 
-        {Platform.OS !== 'web' && activeTab === 'email' && (emailMode === 'login' || emailMode === 'register') ? (
+        {/* ══════════════════════════════════════════════════════
+            ANDROID-ONLY: Google button with pulsing badge
+        ══════════════════════════════════════════════════════ */}
+        {Platform.OS === 'android' && activeTab === 'email' && (emailMode === 'login' || emailMode === 'register') ? (
           <View style={[s.socialSection, { alignSelf: 'center', maxWidth: cardMaxW, width: '100%' }]}>
             <View style={s.dividerRow}>
               <View style={s.divLine} />
               <Text style={s.divText}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
               <View style={s.divLine} />
             </View>
+
+            {/* Pulsing "faster" badge above button */}
+            <View style={s.googleBadgeWrap} pointerEvents="none">
+              <Animated.View
+                style={[
+                  s.googleBadge,
+                  {
+                    transform: [{ scale: pulseAnim }],
+                    opacity: pulseOpacity,
+                  },
+                ]}
+              >
+                <Text style={s.googleBadgeText}>
+                  {isAr ? 'سجل الدخول من هنا أسرع ⚡' : 'Fastest sign-in option ⚡'}
+                </Text>
+                {/* Triangle pointer */}
+                <View style={s.badgeArrow} />
+              </Animated.View>
+            </View>
+
             <SocialButton
               icon={<GoogleG />}
-              label="Google"
+              label={isAr ? 'متابعة بـ Google' : 'Continue with Google'}
               loading={googleLoading}
               onPress={handleGoogleSignIn}
               style={[s.googleBtn, { borderColor: isDark ? colors.border : '#DADCE0' }]}
-              labelStyle={{ color: isDark ? colors.textPrimary : '#3C4043', fontWeight: '600' }}
+              labelStyle={{ color: isDark ? colors.textPrimary : '#3C4043', fontWeight: '600' as const }}
             />
           </View>
         ) : null}
+
+        {/* iOS: still show Google if they're on email tab (optional, but not the focus) */}
+        {Platform.OS === 'ios' && activeTab === 'email' && (emailMode === 'login' || emailMode === 'register') ? (
+          <View style={[s.socialSection, { alignSelf: 'center', maxWidth: cardMaxW, width: '100%' }]}>
+            <View style={s.dividerRow}>
+              <View style={s.divLine} />
+              <Text style={s.divText}>{isAr ? 'أو' : 'or'}</Text>
+              <View style={s.divLine} />
+            </View>
+            <SocialButton
+              icon={<GoogleG />}
+              label={isAr ? 'متابعة بـ Google' : 'Continue with Google'}
+              loading={googleLoading}
+              onPress={handleGoogleSignIn}
+              style={[s.googleBtn, { borderColor: isDark ? colors.border : '#DADCE0' }]}
+              labelStyle={{ color: isDark ? colors.textPrimary : '#3C4043', fontWeight: '600' as const }}
+            />
+          </View>
+        ) : null}
+
       </ScrollView>
 
       <EulaModal
         visible={eulaModalVisible}
         onClose={() => setEulaModalVisible(false)}
-        onAccept={() => { setEulaAccepted(true); setEulaModalVisible(false); }}
+        onAccept={() => { setEulaAccepted(true); setPhoneEulaAccepted(true); setEulaModalVisible(false); }}
         colors={colors} t={t} isAr={isAr}
       />
     </KeyboardAvoidingView>
@@ -599,7 +706,6 @@ const COUNTRY_CODES = [
 ];
 
 // ─── Phone Input Panel ────────────────────────────────────────────────────────
-// React.memo prevents re-creation on every parent render → TextInput keeps focus
 const PhoneInputPanel = React.memo(function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryCode, loading, eulaAccepted, setEulaAccepted, onOpenEula, onSend, colors, isAr, router }: any) {
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode) ?? COUNTRY_CODES[0];
@@ -608,7 +714,7 @@ const PhoneInputPanel = React.memo(function PhoneInputPanel({ phoneNumber, setPh
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
         <View style={[s.panelIconWrap, { backgroundColor: '#E8F0FE' }]}>
-          <MaterialIcons name="phone-android" size={28} color="#1A73E8" />
+          <MaterialIcons name="phone-iphone" size={28} color="#1A73E8" />
         </View>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{isAr ? 'الدخول عبر رقم الهاتف' : 'Sign in via Phone'}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{isAr ? 'سيصلك رمز تحقق مكون من 6 أرقام عبر SMS' : 'You will receive a 6-digit code via SMS'}</Text>
@@ -794,10 +900,17 @@ const LoginPanel = React.memo(function LoginPanel({ email, setEmail, password, s
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{t.welcomeBack}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{t.signInAccount}</Text>
       </View>
-      <View style={[s.spamWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
-        <MaterialIcons name="warning" size={14} color="#D97706" />
-        <Text style={s.spamWarningText}>{isAr ? 'قد يصل رمز التحقق لمجلد السبام. يُنصح باستخدام تبويب الهاتف بدلاً.' : 'OTP may go to Spam folder. Using Phone tab is recommended.'}</Text>
-      </View>
+      {/* Spam warning on Android only */}
+      {Platform.OS === 'android' ? (
+        <View style={[s.spamWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+          <MaterialIcons name="warning" size={14} color="#D97706" />
+          <Text style={s.spamWarningText}>
+            {isAr
+              ? 'قد يصل رمز التحقق لمجلد السبام. يُنصح باستخدام Google بدلاً.'
+              : 'OTP may go to Spam. Using Google Sign-In is recommended.'}
+          </Text>
+        </View>
+      ) : null}
       <PremiumInput label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
       <PremiumInput
         label={t.password} placeholder={t.passwordPlaceholder}
@@ -826,10 +939,16 @@ const RegisterPanel = React.memo(function RegisterPanel({ email, setEmail, passw
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{t.createAccount}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{t.joinToBuySell}</Text>
       </View>
-      <View style={[s.spamWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
-        <MaterialIcons name="warning" size={14} color="#D97706" />
-        <Text style={s.spamWarningText}>{isAr ? 'قد يصل رمز التحقق لمجلد السبام. يُنصح باستخدام تبويب الهاتف بدلاً.' : 'OTP may go to Spam folder. Using Phone tab is recommended.'}</Text>
-      </View>
+      {Platform.OS === 'android' ? (
+        <View style={[s.spamWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+          <MaterialIcons name="warning" size={14} color="#D97706" />
+          <Text style={s.spamWarningText}>
+            {isAr
+              ? 'قد يصل رمز التحقق لمجلد السبام. يُنصح باستخدام Google بدلاً.'
+              : 'OTP may go to Spam. Using Google Sign-In is recommended.'}
+          </Text>
+        </View>
+      ) : null}
       <PremiumInput label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
       <PremiumInput label={t.password} placeholder={t.minPassword} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} iconName="lock" rightElement={<Pressable onPress={togglePassword} hitSlop={8}><MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} /></Pressable>} colors={colors} />
       <PremiumInput label={t.confirmPassword} placeholder={t.repeatPassword} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showConfirmPassword} iconName="lock-outline" rightElement={<Pressable onPress={toggleConfirmPassword} hitSlop={8}><MaterialIcons name={showConfirmPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} /></Pressable>} colors={colors} />
@@ -942,7 +1061,6 @@ const ForgotSentPanel = React.memo(function ForgotSentPanel({ email, onBack, col
 });
 
 // ─── Premium Input ────────────────────────────────────────────────────────────
-// React.memo prevents re-creation → TextInput retains focus during typing
 const PremiumInput = React.memo(function PremiumInput({ label, placeholder, value, onChangeText, keyboardType, autoCapitalize, autoCorrect, secureTextEntry, iconName, rightElement, colors, maxLength, inputStyle, onSubmitEditing }: any) {
   const [focused, setFocused] = useState(false);
   return (
@@ -1042,12 +1160,42 @@ const s = StyleSheet.create({
   heroTitle: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5, marginBottom: 4, textShadowColor: 'rgba(0,0,0,0.2)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   heroSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.6)', fontWeight: '500' },
   card: { borderRadius: 28, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.22, shadowRadius: 28, elevation: 16 },
-  tabContainer: { margin: 16, marginBottom: 0, borderRadius: Radius.md, padding: 4, position: 'relative', overflow: 'hidden', height: 48 },
-  tabTrack: { position: 'absolute', top: 4, left: 4, right: 4, bottom: 4 },
-  tabIndicator: { position: 'absolute', top: 0, bottom: 0, borderRadius: Radius.sm - 2, shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
-  tabBtns: { flexDirection: 'row', height: '100%', position: 'absolute', top: 0, left: 0, right: 0 },
-  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, zIndex: 1 },
-  tabBtnText: { fontSize: FontSize.sm, fontWeight: '700' },
+
+  // ── iOS Segmented Control ─────────────────────────────────────────────────
+  segmentWrap: {
+    margin: 16,
+    marginBottom: 0,
+    borderRadius: Radius.lg,
+    height: 50,
+    position: 'relative',
+    overflow: 'hidden',
+    flexDirection: 'row',
+    padding: 4,
+  },
+  segmentPill: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    left: 4,
+    borderRadius: Radius.md,
+    shadowColor: '#0A6E5C',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  segmentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    zIndex: 1,
+  },
+  segmentBtnText: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+  },
+
   panelBody: { padding: Spacing.lg, gap: Spacing.md },
   panelHeader: { alignItems: 'center', gap: 6, marginBottom: 4 },
   panelIconWrap: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
@@ -1092,6 +1240,8 @@ const s = StyleSheet.create({
   switcherRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 14, borderTopWidth: 1, marginTop: -4 },
   switcherText: { fontSize: FontSize.sm },
   switcherLink: { fontSize: FontSize.sm, fontWeight: '700' },
+
+  // ── Social / Google section ────────────────────────────────────────────────
   socialSection: { marginTop: Spacing.xl },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.md },
   divLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.18)' },
@@ -1100,6 +1250,48 @@ const s = StyleSheet.create({
   socialBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: Radius.xl },
   socialLabel: { fontSize: FontSize.sm, fontWeight: '700' },
   googleBtn: { backgroundColor: '#fff', borderWidth: 1 },
+
+  // ── Android pulsing badge ─────────────────────────────────────────────────
+  googleBadgeWrap: {
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  googleBadge: {
+    backgroundColor: '#0A6E5C',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    shadowColor: '#0A6E5C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 8,
+    // Small downward-pointing triangle made with a separate View below
+    position: 'relative',
+    marginBottom: 8,
+  },
+  googleBadgeText: {
+    color: '#fff',
+    fontSize: FontSize.sm,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  badgeArrow: {
+    position: 'absolute',
+    bottom: -6,
+    alignSelf: 'center',
+    width: 0,
+    height: 0,
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderTopWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#0A6E5C',
+  },
+
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   overlayBox: { borderRadius: 20, padding: 28, alignItems: 'center', gap: 12, minWidth: 140, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 14, elevation: 8 },
   overlayText: { fontSize: FontSize.md, fontWeight: '600' },
