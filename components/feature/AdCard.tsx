@@ -100,11 +100,19 @@ export const AdCard = memo(function AdCard({
   const isAr = language === 'ar';
   const [imgError, setImgError] = useState(false);
 
-  // Reset error state when image URL changes
+  // Must be declared before the ref that reads it
+  const sortedImages = useMemo(
+    () => (ad.ad_images ? [...ad.ad_images].sort((a, b) => a.position - b.position) : []),
+    [ad.ad_images]
+  );
+  const firstImage = sortedImages[0];
+  const firstImageUrl = firstImage?.url;
+
+  // Reset imgError whenever the image URL changes (e.g. FlatList cell recycled)
   const firstImageUrlRef = React.useRef<string | undefined>(undefined);
-  if (firstImageUrlRef.current !== sortedImages[0]?.url) {
-    firstImageUrlRef.current = sortedImages[0]?.url;
-    // Reset error synchronously during render (safe — only resets, no side effects)
+  if (firstImageUrlRef.current !== firstImageUrl) {
+    firstImageUrlRef.current = firstImageUrl;
+    if (imgError) setImgError(false); // safe synchronous reset during render
   }
 
   // Reactive image height: scales with live screen width
@@ -116,14 +124,6 @@ export const AdCard = memo(function AdCard({
   // Info padding scales with screen size
   const infoPad = screenW < 375 ? 8 : isTablet ? 12 : 10;
   const titleSize = screenW < 375 ? FontSize.xs + 1 : isTablet ? FontSize.md : FontSize.sm;
-
-  const sortedImages = useMemo(
-    () => (ad.ad_images ? [...ad.ad_images].sort((a, b) => a.position - b.position) : []),
-    [ad.ad_images]
-  );
-  const firstImage = sortedImages[0];
-
-  const firstImageUrl = firstImage?.url;
 
   const isBoosted = useMemo(
     () => !!(ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now()),
