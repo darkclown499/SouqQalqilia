@@ -612,50 +612,39 @@ export default function LoginScreen() {
                   </Pressable>
                 </View>
               ) : null}
+
+              {/* ── Android-only Google button — inside card, below switcher ── */}
+              {Platform.OS === 'android' && (emailMode === 'login' || emailMode === 'register') ? (
+                <View style={[s.inCardGoogle, { borderTopColor: colors.borderLight }]}>
+                  <View style={s.inCardDividerRow}>
+                    <View style={[s.inCardDivLine, { backgroundColor: colors.borderLight }]} />
+                    <Text style={[s.inCardDivText, { color: colors.textMuted }]}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
+                    <View style={[s.inCardDivLine, { backgroundColor: colors.borderLight }]} />
+                  </View>
+
+                  {/* Pulsing badge */}
+                  <View style={s.googleBadgeWrap} pointerEvents="none">
+                    <Animated.View style={[s.googleBadge, { transform: [{ scale: pulseAnim }], opacity: pulseOpacity }]}>
+                      <Text style={s.googleBadgeText}>{isAr ? 'سجل الدخول من هنا أسرع ⚡' : 'Fastest sign-in option ⚡'}</Text>
+                      <View style={s.badgeArrow} />
+                    </Animated.View>
+                  </View>
+
+                  <SocialButton
+                    icon={<GoogleG />}
+                    label={isAr ? 'متابعة بـ Google' : 'Continue with Google'}
+                    loading={googleLoading}
+                    onPress={handleGoogleSignIn}
+                    style={[s.googleBtnInCard, { borderColor: colors.border }]}
+                    labelStyle={{ color: colors.textPrimary, fontWeight: '700' as const, fontSize: FontSize.md }}
+                  />
+                </View>
+              ) : null}
             </>
           ) : null}
         </Animated.View>
 
-        {/* ══════════════════════════════════════════════════════
-            ANDROID-ONLY: Google button with pulsing badge
-        ══════════════════════════════════════════════════════ */}
-        {Platform.OS === 'android' && activeTab === 'email' && (emailMode === 'login' || emailMode === 'register') ? (
-          <View style={[s.socialSection, { alignSelf: 'center', maxWidth: cardMaxW, width: '100%' }]}>
-            <View style={s.dividerRow}>
-              <View style={s.divLine} />
-              <Text style={s.divText}>{isAr ? 'أو تابع بـ' : 'or continue with'}</Text>
-              <View style={s.divLine} />
-            </View>
 
-            {/* Pulsing "faster" badge above button */}
-            <View style={s.googleBadgeWrap} pointerEvents="none">
-              <Animated.View
-                style={[
-                  s.googleBadge,
-                  {
-                    transform: [{ scale: pulseAnim }],
-                    opacity: pulseOpacity,
-                  },
-                ]}
-              >
-                <Text style={s.googleBadgeText}>
-                  {isAr ? 'سجل الدخول من هنا أسرع ⚡' : 'Fastest sign-in option ⚡'}
-                </Text>
-                {/* Triangle pointer */}
-                <View style={s.badgeArrow} />
-              </Animated.View>
-            </View>
-
-            <SocialButton
-              icon={<GoogleG />}
-              label={isAr ? 'متابعة بـ Google' : 'Continue with Google'}
-              loading={googleLoading}
-              onPress={handleGoogleSignIn}
-              style={[s.googleBtn, { borderColor: isDark ? colors.border : '#DADCE0' }]}
-              labelStyle={{ color: isDark ? colors.textPrimary : '#3C4043', fontWeight: '600' as const }}
-            />
-          </View>
-        ) : null}
 
 
 
@@ -872,17 +861,6 @@ const LoginPanel = React.memo(function LoginPanel({ email, setEmail, password, s
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{t.welcomeBack}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{t.signInAccount}</Text>
       </View>
-      {/* Spam warning on Android only */}
-      {Platform.OS === 'android' ? (
-        <View style={[s.spamWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
-          <MaterialIcons name="warning" size={14} color="#D97706" />
-          <Text style={s.spamWarningText}>
-            {isAr
-              ? 'قد يصل رمز التحقق لمجلد السبام. يُنصح باستخدام Google بدلاً.'
-              : 'OTP may go to Spam. Using Google Sign-In is recommended.'}
-          </Text>
-        </View>
-      ) : null}
       <PremiumInput label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
       <PremiumInput
         label={t.password} placeholder={t.passwordPlaceholder}
@@ -911,6 +889,7 @@ const RegisterPanel = React.memo(function RegisterPanel({ email, setEmail, passw
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{t.createAccount}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{t.joinToBuySell}</Text>
       </View>
+      {/* Spam warning — shown only during registration on Android */}
       {Platform.OS === 'android' ? (
         <View style={[s.spamWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
           <MaterialIcons name="warning" size={14} color="#D97706" />
@@ -1222,6 +1201,19 @@ const s = StyleSheet.create({
   socialBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: Radius.xl },
   socialLabel: { fontSize: FontSize.sm, fontWeight: '700' },
   googleBtn: { backgroundColor: '#fff', borderWidth: 1 },
+
+  // ── In-card Google section (Android) ─────────────────────────────────────
+  inCardGoogle: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.sm },
+  inCardDividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  inCardDivLine: { flex: 1, height: 1 },
+  inCardDivText: { fontSize: FontSize.xs, fontWeight: '600' },
+  googleBtnInCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, height: 54, borderRadius: Radius.xl,
+    backgroundColor: '#fff', borderWidth: 1.5,
+    shadowColor: '#4285F4', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15, shadowRadius: 8, elevation: 3,
+  },
 
   // ── Android pulsing badge ─────────────────────────────────────────────────
   googleBadgeWrap: {
