@@ -668,24 +668,7 @@ export default function LoginScreen() {
           </View>
         ) : null}
 
-        {/* iOS: still show Google if they're on email tab (optional, but not the focus) */}
-        {Platform.OS === 'ios' && activeTab === 'email' && (emailMode === 'login' || emailMode === 'register') ? (
-          <View style={[s.socialSection, { alignSelf: 'center', maxWidth: cardMaxW, width: '100%' }]}>
-            <View style={s.dividerRow}>
-              <View style={s.divLine} />
-              <Text style={s.divText}>{isAr ? 'أو' : 'or'}</Text>
-              <View style={s.divLine} />
-            </View>
-            <SocialButton
-              icon={<GoogleG />}
-              label={isAr ? 'متابعة بـ Google' : 'Continue with Google'}
-              loading={googleLoading}
-              onPress={handleGoogleSignIn}
-              style={[s.googleBtn, { borderColor: isDark ? colors.border : '#DADCE0' }]}
-              labelStyle={{ color: isDark ? colors.textPrimary : '#3C4043', fontWeight: '600' as const }}
-            />
-          </View>
-        ) : null}
+
 
       </ScrollView>
 
