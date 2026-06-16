@@ -17,7 +17,9 @@ import { Image } from 'expo-image';
 import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
 import { APP_VERSION } from '@/constants/config';
 
-// ── Lock the splash screen immediately at module evaluation time ──────────────
+// ── Lock the native splash while React mounts ──────────────────────────────
+// NOTE: hideAsync() is called by app/index.tsx (MarketplaceSplash) after both
+// data-ready AND animation-finished gates are open. Do NOT call it here.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // ── Configure notification handler SYNCHRONOUSLY at module level ─────────────
@@ -367,9 +369,9 @@ export default function RootLayout() {
     return () => { cancelled = true; };
   }, []);
 
-  const onLayoutRootView = useCallback(async () => {
-    if (appIsReady) await SplashScreen.hideAsync().catch(() => {});
-  }, [appIsReady]);
+  // SplashScreen.hideAsync() is called by MarketplaceSplash in app/index.tsx.
+  // This layout callback is kept for onLayout wiring only.
+  const onLayoutRootView = useCallback(async () => {}, [appIsReady]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;

@@ -23,176 +23,261 @@ async function trackVisit() {
 }
 
 import { Redirect } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, Dimensions, Animated, Easing,
+  View, Text, StyleSheet, Dimensions,
 } from 'react-native';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withTiming, withSpring,
+  withSequence, withDelay, Easing, runOnJS,
+  interpolate, Extrapolation,
+} from 'react-native-reanimated';
+import LottieView from 'lottie-react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: W, height: H } = Dimensions.get('window');
 
-const BG = '#0A6E5C';
-const GOLD = '#E8C060';
-const WHITE_DIM = 'rgba(255,255,255,0.65)';
+const BG_START  = '#054035';
+const BG_END    = '#0A6E5C';
+const GOLD      = '#E8C060';
+const GOLD_SOFT = 'rgba(232,192,96,0.18)';
 
-const LOADING_MESSAGES = [
-  'جاري تحميل خيرات قلقيلية...',
-  'ثوانٍ وتصبح أسواق المدينة بين يديك...',
-  'نجلب لك أفضل العروض...',
-  'سوق قلقيلية في انتظارك...',
-];
+// ─── Custom Splash Screen ────────────────────────────────────────────────────
+/**
+ * Two-gate approach:
+ *  Gate 1 — dataReady: auth session + preload complete
+ *  Gate 2 — animDone: Lottie finished at least one loop
+ * Navigation fires only when BOTH gates are open.
+ */
+interface SplashProps {
+  onComplete: () => void;
+}
 
-// ─── Phase 1: Launch Screen ──────────────────────────────────────────────────
-function LaunchPhase({ onDone }: { onDone: () => void }) {
+function MarketplaceSplash({ onComplete }: SplashProps) {
   const insets = useSafeAreaInsets();
-  const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoScale   = useRef(new Animated.Value(0.82)).current;
-  const sloganOpacity = useRef(new Animated.Value(0)).current;
-  const sloganY     = useRef(new Animated.Value(14)).current;
-  const screenOpacity = useRef(new Animated.Value(1)).current;
+  const lottieRef = useRef<LottieView>(null);
 
+  // ── Shared animation values ───────────────────────────────────────────────
+  const screenOpacity  = useSharedValue(1);
+  const logoScale      = useSharedValue(0.78);
+  const logoOpacity    = useSharedValue(0);
+  const lottieOpacity  = useSharedValue(0);
+  const lottieScale    = useSharedValue(0.85);
+  const textOpacity    = useSharedValue(0);
+  const textY          = useSharedValue(18);
+  const subtextOpacity = useSharedValue(0);
+  const ring1Scale     = useSharedValue(0.6);
+  const ring1Opacity   = useSharedValue(0);
+  const ring2Scale     = useSharedValue(0.5);
+  const ring2Opacity   = useSharedValue(0);
+  const dotsOpacity    = useSharedValue(0);
+  const shimmerX       = useSharedValue(-120);
+
+  // ── Gate tracking ─────────────────────────────────────────────────────────
+  const dataReadyRef = useRef(false);
+  const animDoneRef  = useRef(false);
+  const completedRef = useRef(false);
+
+  const tryComplete = useCallback(() => {
+    if (dataReadyRef.current && animDoneRef.current && !completedRef.current) {
+      completedRef.current = true;
+      // Smooth fade-out → then notify parent
+      screenOpacity.value = withTiming(0, { duration: 380, easing: Easing.out(Easing.quad) }, (finished) => {
+        if (finished) runOnJS(onComplete)();
+      });
+    }
+  }, [onComplete, screenOpacity]);
+
+  // ── Data / auth preloading ────────────────────────────────────────────────
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(logoOpacity, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.spring(logoScale, { toValue: 1, damping: 14, stiffness: 100, useNativeDriver: true }),
-    ]).start();
+    let cancelled = false;
+    const MINIMUM_DISPLAY_MS = 2800; // ensure splash shows for at least 2.8 s
+    const startTime = Date.now();
 
-    setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(sloganOpacity, { toValue: 1, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(sloganY, { toValue: 0, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      ]).start();
-    }, 500);
+    async function load() {
+      try {
+        const { getSupabaseClient } = require('@/template');
+        const supabase = getSupabaseClient();
+        await Promise.all([
+          supabase.auth.getSession(),
+          preloadAds(),
+          preloadBanners(),
+        ]);
+      } catch { /* non-blocking */ }
 
-    const t = setTimeout(() => {
-      Animated.timing(screenOpacity, { toValue: 0, duration: 350, useNativeDriver: true }).start(() => onDone());
-    }, 1750);
+      if (cancelled) return;
 
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, MINIMUM_DISPLAY_MS - elapsed);
+      setTimeout(() => {
+        if (!cancelled) {
+          dataReadyRef.current = true;
+          tryComplete();
+        }
+      }, remaining);
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [tryComplete]);
+
+  // ── Lottie animation-finished callback ────────────────────────────────────
+  const onAnimationFinish = useCallback(() => {
+    animDoneRef.current = true;
+    tryComplete();
+  }, [tryComplete]);
+
+  // ── Entrance choreography ─────────────────────────────────────────────────
+  useEffect(() => {
+    // Step 1 (0ms): rings pulse in
+    ring1Opacity.value = withTiming(1, { duration: 500 });
+    ring1Scale.value   = withSpring(1, { damping: 12, stiffness: 80 });
+    ring2Opacity.value = withDelay(120, withTiming(1, { duration: 500 }));
+    ring2Scale.value   = withDelay(120, withSpring(1, { damping: 14, stiffness: 70 }));
+
+    // Step 2 (180ms): logo slides in
+    logoOpacity.value = withDelay(180, withTiming(1, { duration: 500 }));
+    logoScale.value   = withDelay(180, withSpring(1, { damping: 12, stiffness: 100 }));
+
+    // Step 3 (420ms): Lottie fades in and scales up
+    lottieOpacity.value = withDelay(420, withTiming(1, { duration: 480 }));
+    lottieScale.value   = withDelay(420, withSpring(1, { damping: 14, stiffness: 90 }));
+
+    // Step 4 (720ms): headline text rises in
+    textOpacity.value = withDelay(720, withTiming(1, { duration: 500 }));
+    textY.value       = withDelay(720, withSpring(0, { damping: 18, stiffness: 120 }));
+
+    // Step 5 (980ms): subtitle + dots
+    subtextOpacity.value = withDelay(980, withTiming(1, { duration: 450 }));
+    dotsOpacity.value    = withDelay(1100, withTiming(1, { duration: 380 }));
+
+    // Shimmer loop on progress bar
+    const loopShimmer = () => {
+      shimmerX.value = -120;
+      shimmerX.value = withTiming(W * 0.72 + 120, {
+        duration: 1400,
+        easing: Easing.linear,
+      }, (done) => { if (done) runOnJS(loopShimmer)(); });
+    };
+    const t = setTimeout(loopShimmer, 1300);
     return () => clearTimeout(t);
   }, []);
 
-  return (
-    <Animated.View style={[styles.fullScreen, { backgroundColor: BG, opacity: screenOpacity }]}>
-      <View style={styles.glow} />
-      <Animated.View style={[styles.logoCenter, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}>
-        <Image source={require('@/assets/images/app-logo-transparent.png')} style={styles.logoImgMain} contentFit="contain" transition={0} />
-      </Animated.View>
-      <Animated.View style={[styles.sloganWrap, { opacity: sloganOpacity, transform: [{ translateY: sloganY }], bottom: insets.bottom + 64 }]}>
-        <View style={styles.sloganLine} />
-        <Text style={styles.sloganText}>سوق قلقيلية.. خيرات بلادنا بين يديك</Text>
-        <View style={styles.sloganLine} />
-      </Animated.View>
-    </Animated.View>
-  );
-}
-
-// ─── Phase 2: Loading Screen ─────────────────────────────────────────────────
-function LoadingPhase({ onDone }: { onDone: () => void }) {
-  const insets = useSafeAreaInsets();
-  const screenOpacity = useRef(new Animated.Value(0)).current;
-  const logoY         = useRef(new Animated.Value(20)).current;
-  const logoOpacity   = useRef(new Animated.Value(0)).current;
-  const barWidth      = useRef(new Animated.Value(0)).current;
-  const shimmerX      = useRef(new Animated.Value(-200)).current;
-  const contentOpacity = useRef(new Animated.Value(0)).current;
-  const [msgIndex, setMsgIndex] = useState(0);
-  const msgOpacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(screenOpacity, { toValue: 1, duration: 280, useNativeDriver: true }).start(() => {
-      Animated.parallel([
-        Animated.timing(logoOpacity, { toValue: 1, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(logoY, { toValue: 0, duration: 450, easing: Easing.out(Easing.back(1.1)), useNativeDriver: true }),
-      ]).start(() => {
-        Animated.parallel([
-          Animated.timing(contentOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
-          Animated.timing(barWidth, { toValue: W * 0.68, duration: 2200, easing: Easing.bezier(0.25, 0.46, 0.45, 0.94), useNativeDriver: false }),
-        ]).start();
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(shimmerX, { toValue: W * 0.75, duration: 1000, easing: Easing.linear, useNativeDriver: true }),
-            Animated.timing(shimmerX, { toValue: -200, duration: 0, useNativeDriver: true }),
-            Animated.delay(400),
-          ])
-        ).start();
-      });
-    });
-
-    Animated.timing(msgOpacity, { toValue: 1, duration: 380, useNativeDriver: true }).start();
-    const cycle = setInterval(() => {
-      Animated.timing(msgOpacity, { toValue: 0, duration: 280, useNativeDriver: true }).start(() => {
-        setMsgIndex(i => (i + 1) % LOADING_MESSAGES.length);
-        Animated.timing(msgOpacity, { toValue: 1, duration: 380, useNativeDriver: true }).start();
-      });
-    }, 1600);
-
-    const t = setTimeout(() => {
-      clearInterval(cycle);
-      Animated.timing(screenOpacity, { toValue: 0, duration: 350, useNativeDriver: true }).start(() => onDone());
-    }, 2800);
-
-    return () => { clearTimeout(t); clearInterval(cycle); };
-  }, []);
+  // ── Animated styles ───────────────────────────────────────────────────────
+  const containerStyle = useAnimatedStyle(() => ({ opacity: screenOpacity.value }));
+  const logoStyle      = useAnimatedStyle(() => ({
+    opacity: logoOpacity.value,
+    transform: [{ scale: logoScale.value }],
+  }));
+  const lottieWrapStyle = useAnimatedStyle(() => ({
+    opacity: lottieOpacity.value,
+    transform: [{ scale: lottieScale.value }],
+  }));
+  const textStyle = useAnimatedStyle(() => ({
+    opacity: textOpacity.value,
+    transform: [{ translateY: textY.value }],
+  }));
+  const subtextStyle    = useAnimatedStyle(() => ({ opacity: subtextOpacity.value }));
+  const ring1Style      = useAnimatedStyle(() => ({
+    opacity: ring1Opacity.value,
+    transform: [{ scale: ring1Scale.value }],
+  }));
+  const ring2Style      = useAnimatedStyle(() => ({
+    opacity: ring2Opacity.value,
+    transform: [{ scale: ring2Scale.value }],
+  }));
+  const dotsStyle = useAnimatedStyle(() => ({ opacity: dotsOpacity.value }));
+  const shimmerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shimmerX.value }],
+  }));
 
   return (
-    <Animated.View style={[styles.fullScreen, { backgroundColor: BG, opacity: screenOpacity }]}>
-      <View style={styles.glow} />
-      <Animated.View style={[styles.logoAboveCenter, { opacity: logoOpacity, transform: [{ translateY: logoY }] }]}>
-        <Image source={require('@/assets/images/app-logo-transparent.png')} style={styles.logoImgLoading} contentFit="contain" transition={0} />
-        <Text style={styles.appTitleLoading}>سوق قلقيلية</Text>
+    <Animated.View style={[styles.fullScreen, containerStyle]}>
+      <LinearGradient
+        colors={[BG_START, BG_END, '#0D9176']}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.85, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Decorative blurred orbs */}
+      <View style={[styles.orb, styles.orbTop]}    pointerEvents="none" />
+      <View style={[styles.orb, styles.orbBottom]} pointerEvents="none" />
+
+      {/* Pulsing rings */}
+      <Animated.View style={[styles.ring, styles.ring1, ring1Style]} pointerEvents="none" />
+      <Animated.View style={[styles.ring, styles.ring2, ring2Style]} pointerEvents="none" />
+
+      {/* ── Logo (top) ── */}
+      <Animated.View style={[styles.logoWrap, logoStyle, { marginTop: insets.top + 20 }]}>
+        <Image
+          source={require('@/assets/images/app-logo-transparent.png')}
+          style={styles.logoImg}
+          contentFit="contain"
+          transition={0}
+        />
       </Animated.View>
-      <Animated.View style={[styles.bottomContent, { opacity: contentOpacity, paddingBottom: insets.bottom + 80 }]}>
-        <Animated.Text style={[styles.loadingMsg, { opacity: msgOpacity }]}>{LOADING_MESSAGES[msgIndex]}</Animated.Text>
-        <View style={styles.progressTrack}>
-          <Animated.View style={[styles.progressFill, { width: barWidth }]}>
-            <Animated.View style={[styles.progressShimmer, { transform: [{ translateX: shimmerX }] }]} />
-          </Animated.View>
+
+      {/* ── Lottie animation ── */}
+      <Animated.View style={[styles.lottieWrap, lottieWrapStyle]}>
+        <View style={styles.lottieBg}>
+          <LottieView
+            ref={lottieRef}
+            source={require('@/assets/animations/marketplace.json')}
+            autoPlay
+            loop={false}
+            speed={0.9}
+            onAnimationFinish={onAnimationFinish}
+            style={styles.lottie}
+          />
         </View>
-        <LoadingDots />
+        {/* Gold accent ring around Lottie */}
+        <View style={styles.lottieRing} pointerEvents="none" />
+      </Animated.View>
+
+      {/* ── Main headline ── */}
+      <Animated.Text style={[styles.headline, textStyle]}>
+        سوقك في جيبك... جاري التجهيز 🚀
+      </Animated.Text>
+
+      {/* ── Subtitle ── */}
+      <Animated.Text style={[styles.subtitle, subtextStyle]}>
+        اشتري وبيع في قلقيلية بكل سهولة
+      </Animated.Text>
+
+      {/* ── Bottom area ── */}
+      <Animated.View style={[styles.bottomWrap, dotsStyle, { paddingBottom: insets.bottom + 32 }]}>
+        {/* Progress bar */}
+        <View style={styles.progressTrack}>
+          <View style={styles.progressFillFull} />
+          <Animated.View style={[styles.progressShimmer, shimmerStyle]} />
+        </View>
+
+        {/* App brand */}
+        <Text style={styles.brandLabel}>سوق قلقيلية · Souq Qalqilya</Text>
       </Animated.View>
     </Animated.View>
-  );
-}
-
-function LoadingDots() {
-  const dots = [
-    useRef(new Animated.Value(0.4)).current,
-    useRef(new Animated.Value(0.4)).current,
-    useRef(new Animated.Value(0.4)).current,
-  ];
-  useEffect(() => {
-    dots.forEach((dot, i) => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 200),
-          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
-          Animated.timing(dot, { toValue: 0.4, duration: 400, useNativeDriver: true }),
-          Animated.delay((dots.length - i - 1) * 200),
-        ])
-      ).start();
-    });
-  }, []);
-  return (
-    <View style={styles.dotsWrap}>
-      {dots.map((d, i) => (
-        <Animated.View key={i} style={[styles.loadingDot, { opacity: d, backgroundColor: i === 1 ? GOLD : 'rgba(255,255,255,0.8)' }]} />
-      ))}
-    </View>
   );
 }
 
 // ─── Root ────────────────────────────────────────────────────────────────────
 export default function RootScreen() {
-  const [phase, setPhase] = useState<'launch' | 'loading' | 'done'>('launch');
+  const [splashDone, setSplashDone] = useState(false);
 
-  // Track visit once after splash — safe inside useEffect (AsyncStorage ready)
-  useEffect(() => {
-    if (phase === 'done') trackVisit();
-  }, [phase]);
+  const handleSplashComplete = useCallback(() => {
+    // Hide native splash exactly once here
+    SplashScreen.hideAsync().catch(() => {});
+    trackVisit();
+    setSplashDone(true);
+  }, []);
 
-  if (phase === 'launch') return <LaunchPhase onDone={() => setPhase('loading')} />;
-  if (phase === 'loading') return <LoadingPhase onDone={() => setPhase('done')} />;
+  if (!splashDone) {
+    return <MarketplaceSplash onComplete={handleSplashComplete} />;
+  }
+
   return <AuthGate />;
 }
 
@@ -235,34 +320,152 @@ function AuthGate() {
   return <Redirect href={target as any} />;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   fullScreen: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // ── Decorative orbs ──
+  orb: {
+    position: 'absolute',
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  orbTop: {
+    width: W * 0.9,
+    height: W * 0.9,
+    top: -W * 0.3,
+    right: -W * 0.25,
+  },
+  orbBottom: {
+    width: W * 0.75,
+    height: W * 0.75,
+    bottom: -W * 0.35,
+    left: -W * 0.22,
+  },
+
+  // ── Pulsing rings ──
+  ring: {
+    position: 'absolute',
+    borderRadius: 9999,
+    borderWidth: 1,
+  },
+  ring1: {
+    width: W * 0.88,
+    height: W * 0.88,
+    borderColor: 'rgba(255,255,255,0.07)',
+  },
+  ring2: {
+    width: W * 0.66,
+    height: W * 0.66,
+    borderColor: 'rgba(232,192,96,0.14)',
+  },
+
+  // ── Logo ──
+  logoWrap: {
+    position: 'absolute',
+    top: 0,
+    alignItems: 'center',
+  },
+  logoImg: {
+    width: W * 0.22,
+    height: W * 0.22,
+    marginTop: 48,
+  },
+
+  // ── Lottie ──
+  lottieWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    marginTop: -H * 0.04,
+  },
+  lottieBg: {
+    width: W * 0.58,
+    height: W * 0.58,
+    borderRadius: W * 0.29,
+    backgroundColor: GOLD_SOFT,
+    alignItems: 'center',
+    justifyContent: 'center',
     overflow: 'hidden',
   },
-  glow: {
-    position: 'absolute',
-    width: W * 1.2, height: W * 1.2,
-    borderRadius: W * 0.6,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    top: H * 0.5 - W * 0.6,
-    left: -W * 0.1,
+  lottie: {
+    width: W * 0.5,
+    height: W * 0.5,
   },
-  logoCenter: { alignItems: 'center', justifyContent: 'center' },
-  logoImgMain: { width: W * 0.46, height: W * 0.46 },
-  sloganWrap: { position: 'absolute', left: 24, right: 24, alignItems: 'center', gap: 10 },
-  sloganLine: { width: 48, height: 1.5, backgroundColor: GOLD, opacity: 0.7, borderRadius: 99 },
-  sloganText: { color: GOLD, fontSize: 17, fontWeight: '700', textAlign: 'center', letterSpacing: 0.4, lineHeight: 26 },
-  logoAboveCenter: { alignItems: 'center', marginTop: -H * 0.1, gap: 14 },
-  logoImgLoading: { width: W * 0.36, height: W * 0.36 },
-  appTitleLoading: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', letterSpacing: 0.3, textAlign: 'center', opacity: 0.95 },
-  bottomContent: { position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', gap: 14, paddingHorizontal: 32 },
-  loadingMsg: { color: WHITE_DIM, fontSize: 13.5, fontWeight: '500', textAlign: 'center', letterSpacing: 0.2, lineHeight: 20 },
-  progressTrack: { width: W * 0.68, height: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 99, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: GOLD, borderRadius: 99, overflow: 'hidden' },
-  progressShimmer: { position: 'absolute', top: 0, width: 80, height: '100%', backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 99 },
-  dotsWrap: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 2 },
-  loadingDot: { width: 7, height: 7, borderRadius: 3.5 },
+  lottieRing: {
+    position: 'absolute',
+    width: W * 0.62,
+    height: W * 0.62,
+    borderRadius: W * 0.31,
+    borderWidth: 1.5,
+    borderColor: GOLD,
+    opacity: 0.32,
+  },
+
+  // ── Text ──
+  headline: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 0.3,
+    lineHeight: 30,
+    marginTop: 24,
+    paddingHorizontal: 28,
+    textShadowColor: 'rgba(0,0,0,0.25)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  subtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: GOLD,
+    textAlign: 'center',
+    letterSpacing: 0.4,
+    marginTop: 10,
+    opacity: 0.9,
+  },
+
+  // ── Bottom ──
+  bottomWrap: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 40,
+  },
+  progressTrack: {
+    width: W * 0.6,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 99,
+    overflow: 'hidden',
+  },
+  progressFillFull: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: GOLD,
+    borderRadius: 99,
+    opacity: 0.75,
+  },
+  progressShimmer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 80,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderRadius: 99,
+  },
+  brandLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.4)',
+    letterSpacing: 0.8,
+    textAlign: 'center',
+  },
 });
