@@ -108,12 +108,11 @@ export const AdCard = memo(function AdCard({
   const firstImage = sortedImages[0];
   const firstImageUrl = firstImage?.url;
 
-  // Reset imgError whenever the image URL changes (e.g. FlatList cell recycled)
-  const firstImageUrlRef = React.useRef<string | undefined>(undefined);
-  if (firstImageUrlRef.current !== firstImageUrl) {
-    firstImageUrlRef.current = firstImageUrl;
-    if (imgError) setImgError(false); // safe synchronous reset during render
-  }
+  // Reset imgError via effect when the image URL changes (cell recycled in FlatList).
+  // Using useEffect avoids render-time state updates that can cause race conditions.
+  useEffect(() => {
+    setImgError(false);
+  }, [firstImageUrl]);
 
   // Reactive image height: scales with live screen width
   const clampImgH = useMemo(
@@ -183,28 +182,37 @@ export const AdCard = memo(function AdCard({
     >
       {/* ── IMAGE ── */}
       <View style={styles.imageWrap}>
-        {firstImage && !imgError ? (
-          <Image
-            source={{ uri: firstImage.url }}
-            style={{ width: '100%', height: clampImgH }}
-            contentFit="cover"
-            transition={200}
-            cachePolicy="disk"
-            recyclingKey={firstImage.url}
-            priority={isFeatured || isBoosted ? 'high' : 'normal'}
-            responsivePolicy="live"
-            placeholder={firstImage.blurhash ? { blurhash: firstImage.blurhash } : undefined}
-            placeholderContentFit="cover"
-            onError={() => setImgError(true)}
-          />
-        ) : imgError ? (
+        {imgError ? (
+          /* ── Error state ─────────────────────────────────────────────────── */
           <View style={[{ width: '100%', height: clampImgH }, styles.imagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
             <MaterialIcons name="broken-image" size={26} color={colors.border} />
             <Text style={[styles.imgErrorText, { color: colors.textMuted }]}>
               {isAr ? 'تعذّر التحميل' : 'Failed to load'}
             </Text>
           </View>
+        ) : firstImage ? (
+          /* ── Image with native placeholder — always shows something ─────── */
+          /* blurhash when available, otherwise a solid tint color.            */
+          /* expo-image handles the fade-in internally via `transition`.        */
+          /* recyclingKey ensures a fresh decode on cell reuse.                */
+          <Image
+            source={{ uri: firstImage.url }}
+            style={{ width: '100%', height: clampImgH }}
+            contentFit="cover"
+            transition={180}
+            cachePolicy="disk"
+            recyclingKey={firstImage.url}
+            priority={isFeatured || isBoosted ? 'high' : 'normal'}
+            placeholder={
+              firstImage.blurhash
+                ? { blurhash: firstImage.blurhash }
+                : (isDark ? '#1e2a24' : '#e8f0ed')
+            }
+            placeholderContentFit="cover"
+            onError={() => setImgError(true)}
+          />
         ) : (
+          /* ── No image at all — show shimmer ─────────────────────────────── */
           <ShimmerBlock
             style={{ width: '100%', height: clampImgH, borderRadius: 0, backgroundColor: colors.surfaceTint }}
             isDark={isDark}
