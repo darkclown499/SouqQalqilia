@@ -377,7 +377,7 @@ export default function HomeScreen() {
             style={StyleSheet.absoluteFill}
             contentFit="cover"
             transition={300}
-            cachePolicy="memory-disk"
+            cachePolicy="disk"
             priority="high"
           />
           <LinearGradient
@@ -438,7 +438,7 @@ export default function HomeScreen() {
                     onPress={() => handleRecentAdPress(ad)}
                   >
                     {thumb ? (
-                      <Image source={{ uri: thumb }} style={styles.recentImg} contentFit="cover" transition={200} cachePolicy="memory-disk" />
+                      <Image source={{ uri: thumb }} style={styles.recentImg} contentFit="cover" transition={200} cachePolicy="disk" />
                     ) : (
                       <View style={[styles.recentImgPh, { backgroundColor: colors.surfaceTint }]}>
                         <MaterialIcons name="image" size={22} color={colors.textMuted} />

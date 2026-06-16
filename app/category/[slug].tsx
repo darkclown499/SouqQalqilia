@@ -70,7 +70,7 @@ export default function CategoryScreen() {
             }}
           >
             {store.logo_url ? (
-              <Image source={{ uri: store.logo_url }} style={styles.storeLogo} contentFit="cover" transition={200} />
+              <Image source={{ uri: store.logo_url }} style={styles.storeLogo} contentFit="cover" transition={200} cachePolicy="disk" />
             ) : (
               <View style={[styles.storeLogoPlaceholder, { backgroundColor: colors.primaryGhost }]}>
                 <Text style={styles.storeLogoEmoji}>🏪</Text>

@@ -209,11 +209,11 @@ export const AdCard = memo(function AdCard({ ad, width, sponsored, isFavorited =
             style={[styles.image, !imgLoaded && shimmerOverrideStyle]}
             contentFit="cover"
             transition={imgLoaded ? 0 : 180}
-            cachePolicy="memory-disk"
+            cachePolicy="disk"
             recyclingKey={firstImage.url}
             priority={isFeatured || isBoosted ? 'high' : 'normal'}
             responsivePolicy="live"
-            placeholder={firstImage.blurhash ? { blurhash: firstImage.blurhash } : undefined}
+            placeholder={firstImage.blurhash ? { blurhash: firstImage.blurhash } : { thumbhash: undefined }}
             placeholderContentFit="cover"
             onLoad={() => setImgLoaded(true)}
             onError={() => { setImgError(true); setImgLoaded(true); }}

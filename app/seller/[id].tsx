@@ -246,7 +246,7 @@ export default function SellerProfileScreen() {
       <View style={styles.coverContainer}>
         <Animated.View style={[styles.coverInner, { transform: [{ scale: coverScale }] }]}>
           {seller?.banner_url ? (
-            <Image source={{ uri: seller.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={400} />
+            <Image source={{ uri: seller.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={400} cachePolicy="disk" recyclingKey={seller.banner_url} />
           ) : null}
           <LinearGradient
             colors={
@@ -270,7 +270,7 @@ export default function SellerProfileScreen() {
         {/* Avatar ring */}
         <View style={[styles.avatarOuter, { borderColor: colors.background, ...Shadow.lg }]}>
           {seller?.avatar_url ? (
-            <Image source={{ uri: seller.avatar_url }} style={styles.avatarImg} contentFit="cover" transition={300} />
+            <Image source={{ uri: seller.avatar_url }} style={styles.avatarImg} contentFit="cover" transition={300} cachePolicy="disk" recyclingKey={seller.avatar_url} />
           ) : (
             <LinearGradient colors={['#0A6E5C', '#0eb896']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarImg}>
               <Text style={styles.avatarInitials}>{initials}</Text>
@@ -419,7 +419,7 @@ export default function SellerProfileScreen() {
       >
         <View style={styles.stickyContent}>
           {seller?.avatar_url ? (
-            <Image source={{ uri: seller.avatar_url }} style={styles.stickyAvatar} contentFit="cover" />
+            <Image source={{ uri: seller.avatar_url }} style={styles.stickyAvatar} contentFit="cover" cachePolicy="disk" />
           ) : (
             <View style={[styles.stickyAvatarPh, { backgroundColor: (colors as any).primaryDark ?? colors.primary }]}>
               <Text style={styles.stickyAvatarText}>{initials.charAt(0)}</Text>

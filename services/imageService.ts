@@ -9,9 +9,9 @@ import { Image as ExpoImage } from 'expo-image';
 // 4000–8000px wide and 5–15 MB each. Resizing to 1024px at 75% JPEG quality
 // keeps them under ~200 KB — a ~95% reduction that survives all network conditions
 // and eliminates White-Screen / OOM crashes from large in-memory bitmaps.
-const COMPRESS_WIDTH = 1024;
-const COMPRESS_QUALITY = 0.75;
-const COMPRESS_FALLBACK_QUALITY = 0.6; // used when resize fails (low-memory devices)
+const COMPRESS_WIDTH = 1080;
+const COMPRESS_QUALITY = 0.78;
+const COMPRESS_FALLBACK_QUALITY = 0.62; // used when resize fails (low-memory devices)
 
 /**
  * Compress a raw image URI to ≤1024px wide, 75% JPEG quality.

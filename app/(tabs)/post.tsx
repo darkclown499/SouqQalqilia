@@ -454,7 +454,7 @@ export default function PostAdScreen() {
                       <Text style={styles.mainLabelText}>{language === 'ar' ? 'رئيسية' : 'Main'}</Text>
                     </View>
                   ) : null}
-                  <Image source={{ uri: img.uri }} style={styles.thumbImg} contentFit="cover" />
+                  <Image source={{ uri: img.uri }} style={styles.thumbImg} contentFit="cover" cachePolicy="memory" />
                   <Pressable style={styles.removeImg} onPress={() => handleRemoveImage(i)}>
                     <MaterialIcons name="close" size={12} color="#fff" />
                   </Pressable>

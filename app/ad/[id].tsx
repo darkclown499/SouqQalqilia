@@ -630,7 +630,7 @@ function AdDetailScrollContent({
                   style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
                   android_ripple={null}
                 >
-                  <Image source={{ uri: item.url }} style={[styles.carouselImg, { width }]} contentFit="cover" transition={150} cachePolicy="disk" priority="high" />
+                  <Image source={{ uri: item.url }} style={[styles.carouselImg, { width }]} contentFit="cover" transition={150} cachePolicy="disk" priority="high" recyclingKey={item.url} />
                 </Pressable>
               )}
             />
@@ -772,7 +772,7 @@ function AdDetailScrollContent({
               {/* Avatar */}
               <View style={styles.sellerAvatarWrap}>
                 {seller?.avatar_url ? (
-                  <Image source={{ uri: seller.avatar_url }} style={styles.sellerAvatarImg} contentFit="cover" transition={200} cachePolicy="disk" />
+                  <Image source={{ uri: seller.avatar_url }} style={styles.sellerAvatarImg} contentFit="cover" transition={200} cachePolicy="disk" recyclingKey={seller.avatar_url} />
                 ) : (
                   <View style={[styles.sellerAvatar, { backgroundColor: colors.primary }]}>
                     <Text style={styles.sellerAvatarText}>{sellerName.charAt(0).toUpperCase()}</Text>
@@ -873,7 +873,7 @@ function AdDetailScrollContent({
                       onPress={() => router.push(`/ad/${rel.id}` as any)}
                     >
                       {relThumb ? (
-                        <Image source={{ uri: relThumb }} style={styles.relatedImg} contentFit="cover" transition={200} cachePolicy="disk" />
+                        <Image source={{ uri: relThumb }} style={styles.relatedImg} contentFit="cover" transition={200} cachePolicy="disk" recyclingKey={relThumb} />
                       ) : (
                         <View style={[styles.relatedImgPlaceholder, { backgroundColor: colors.surfaceTint }]}>
                           <MaterialIcons name="image" size={28} color={colors.textMuted} />
@@ -916,7 +916,7 @@ function AdDetailScrollContent({
                       onPress={() => router.push(`/ad/${rel.id}` as any)}
                     >
                       {relThumb ? (
-                        <Image source={{ uri: relThumb }} style={styles.relatedImg} contentFit="cover" transition={200} cachePolicy="disk" />
+                        <Image source={{ uri: relThumb }} style={styles.relatedImg} contentFit="cover" transition={200} cachePolicy="disk" recyclingKey={relThumb} />
                       ) : (
                         <View style={[styles.relatedImgPlaceholder, { backgroundColor: colors.surfaceTint }]}>
                           <MaterialIcons name="image" size={28} color={colors.textMuted} />
