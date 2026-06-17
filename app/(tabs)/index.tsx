@@ -382,28 +382,16 @@ export default function HomeScreen() {
             cachePolicy="disk"
             priority="high"
           />
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.05)', 'rgba(0,0,0,0.65)']}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            pointerEvents="none"
-          />
-          <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-            <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
-              {currentBanner.title}
-            </Text>
-            {currentBanner.subtitle ? (
-              <Text style={[styles.bannerSubtitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
-                {currentBanner.subtitle}
+          {(currentBanner.title || currentBanner.subtitle) ? (
+            <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+              <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
+                {currentBanner.title}
               </Text>
-            ) : null}
-          </View>
-          {banners.length > 1 ? (
-            <View style={styles.bannerDots}>
-              {banners.map((_, i) => (
-                <View key={i} style={[styles.bannerDot, i === featuredIndex && styles.bannerDotActive]} />
-              ))}
+              {currentBanner.subtitle ? (
+                <Text style={[styles.bannerSubtitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+                  {currentBanner.subtitle}
+                </Text>
+              ) : null}
             </View>
           ) : null}
         </Pressable>
