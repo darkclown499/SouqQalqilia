@@ -48,9 +48,7 @@
       },
       "env": {
         "APP_VARIANT": "production",
-        "EXPO_NO_CAPABILITY_SYNC": "1",
-        "EXPO_PUBLIC_SUPABASE_URL": "$EXPO_PUBLIC_SUPABASE_URL",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "$EXPO_PUBLIC_SUPABASE_ANON_KEY"
+        "EXPO_NO_CAPABILITY_SYNC": "1"
       }
     }
   },
