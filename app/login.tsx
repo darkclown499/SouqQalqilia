@@ -654,9 +654,12 @@ export default function LoginScreen() {
           ) : null}
         </Animated.View>
 
-
-
-
+        {/* ── Apple Sign-In — hidden (code kept for future use, iOS only) ── */}
+        {Platform.OS === 'ios' ? (
+          <View style={{ display: 'none' }}>
+            {/* Apple Sign-In button placeholder — hidden intentionally */}
+          </View>
+        ) : null}
 
       </ScrollView>
 
