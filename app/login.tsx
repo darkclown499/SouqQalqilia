@@ -654,10 +654,17 @@ export default function LoginScreen() {
           ) : null}
         </Animated.View>
 
-        {/* ── Apple Sign-In — hidden (code kept for future use, iOS only) ── */}
+        {/* ── iOS-only: Apple Sign-In + Google — both hidden (code kept, buttons not shown) ── */}
         {Platform.OS === 'ios' ? (
           <View style={{ display: 'none' }}>
-            {/* Apple Sign-In button placeholder — hidden intentionally */}
+            {/* Apple Sign-In button — hidden, capability enabled in app.json for build compatibility */}
+            {/* Google Sign-In button — hidden on iOS, shown on Android */}
+            <SocialButton
+              icon={<GoogleG />}
+              label={isAr ? 'متابعة بـ Google' : 'Continue with Google'}
+              loading={googleLoading}
+              onPress={handleGoogleSignIn}
+            />
           </View>
         ) : null}
 
