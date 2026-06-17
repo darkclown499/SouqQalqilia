@@ -36,16 +36,17 @@
     },
     "production": {
       "autoIncrement": true,
+      "resourceClass": "medium",
       "android": {
         "buildType": "app-bundle",
         "credentialsSource": "remote",
         "gradleCommand": ":app:bundleRelease"
       },
       "ios": {
-        "credentialsSource": "remote"
+        "credentialsSource": "remote",
+        "image": "latest"
       },
       "env": {
-        "EXPO_NO_CAPABILITY_SYNC": "1",
         "APP_VARIANT": "production",
         "EXPO_PUBLIC_SUPABASE_URL": "$EXPO_PUBLIC_SUPABASE_URL",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "$EXPO_PUBLIC_SUPABASE_ANON_KEY"
