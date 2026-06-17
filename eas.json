@@ -37,7 +37,6 @@
     "production": {
       "autoIncrement": true,
       "resourceClass": "medium",
-      "prebuildCommand": "export EXPO_NO_CAPABILITY_SYNC=1",
       "android": {
         "buildType": "app-bundle",
         "credentialsSource": "remote",
@@ -48,9 +47,7 @@
         "image": "latest"
       },
       "env": {
-        "APP_VARIANT": "production",
-        "EXPO_NO_CAPABILITY_SYNC": "1",
-        "EAS_NO_CAPABILITY_SYNC": "1"
+        "APP_VARIANT": "production"
       }
     }
   },
