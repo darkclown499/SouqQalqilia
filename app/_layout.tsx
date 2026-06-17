@@ -415,13 +415,8 @@ export default function RootLayout() {
     return () => { cancelled = true; };
   }, []);
 
-  // Hide splash screen immediately when app is ready — do NOT rely on onLayout
-  // because SafeAreaProvider's onLayout is not guaranteed to fire in all cases
-  // (e.g. ForceUpdateScreen path, web, or rapid re-renders).
-  useEffect(() => {
-    if (appIsReady) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
+  const onLayoutRootView = useCallback(async () => {
+    if (appIsReady) await SplashScreen.hideAsync().catch(() => {});
   }, [appIsReady]);
 
   useEffect(() => {
@@ -593,7 +588,7 @@ export default function RootLayout() {
 
   return (
     <AlertProvider>
-      <SafeAreaProvider>
+      <SafeAreaProvider onLayout={onLayoutRootView}>
         <GestureHandlerRootView style={{ flex: 1 }}>
         <ThemeProvider>
           <LanguageProvider>
