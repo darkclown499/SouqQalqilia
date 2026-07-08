@@ -301,6 +301,14 @@ export default function PostAdScreen() {
     }
 
     const rawPhone = phoneLocal.trim();
+    if (mode === 'product_request' && !rawPhone) {
+      return showAlert(
+        isAr ? 'رقم الهاتف مطلوب' : 'Phone Required',
+        isAr
+          ? 'يجب إدخال رقم هاتف للتواصل معك في طلبات المنتجات.'
+          : 'A phone number is required so sellers can contact you for requests.'
+      );
+    }
     if (rawPhone) {
       const digits = rawPhone.replace(/\D/g, '');
       if (digits.length !== 9 && digits.length !== 10) {
@@ -706,10 +714,20 @@ export default function PostAdScreen() {
           {/* ── Phone & Contact ── */}
           <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
             <View style={[styles.sectionHeader, rtl]}>
-              <MaterialIcons name="phone" size={18} color={accentColor} />
+              <MaterialIcons name="phone" size={18} color={mode === 'product_request' ? '#EF4444' : accentColor} />
               <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>
-                {isAr ? 'رقم الهاتف (اختياري)' : 'Phone Number (Optional)'}
+                {mode === 'product_request'
+                  ? (isAr ? 'رقم الهاتف (إجباري) *' : 'Phone Number (Required) *')
+                  : (isAr ? 'رقم الهاتف (اختياري)' : 'Phone Number (Optional)')}
               </Text>
+              {mode === 'product_request' ? (
+                <View style={[styles.requiredBadge, { backgroundColor: '#FEE2E2' }]}>
+                  <MaterialIcons name="priority-high" size={11} color="#EF4444" />
+                  <Text style={[styles.requiredBadgeText, { color: '#EF4444' }]}>
+                    {isAr ? 'إجباري' : 'Required'}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <View style={[styles.phoneRow, rtl]}>
               <View style={[styles.prefixWrap, { borderColor: colors.border, backgroundColor: colors.background }]}>
@@ -1001,6 +1019,12 @@ const styles = StyleSheet.create({
   aiBtnText: { fontSize: 13, fontWeight: '700' },
 
   submitBtn: { marginTop: 4 },
+
+  requiredBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    borderRadius: Radius.full, paddingHorizontal: 7, paddingVertical: 3,
+  },
+  requiredBadgeText: { fontSize: FontSize.xs, fontWeight: '700' },
 
   guestContainer: { flex: 1 },
   guestHeader: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl },

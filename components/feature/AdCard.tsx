@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Dimensions, Animated } from 'react-n
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Ad } from '@/services/adsService';
 import { Radius, FontSize, Spacing, Shadow } from '@/constants/theme';
@@ -138,6 +139,122 @@ const adImgStyles = StyleSheet.create({
   errorText: { fontSize: 9, fontWeight: '600', marginTop: 4 },
 });
 
+// ── Category-specific styles for product request placeholders ─────────────────
+interface RequestStyle {
+  icon: string;
+  iconFamily: 'material' | 'community';
+  gradientColors: [string, string];
+  iconColor: string;
+}
+
+const REQUEST_CATEGORY_STYLES: Record<string, RequestStyle> = {
+  'سيارات ومركبات': { icon: 'directions-car', iconFamily: 'material', gradientColors: ['#E3F2FD', '#BBDEFB'], iconColor: '#1E88E5' },
+  'سيارات':         { icon: 'directions-car', iconFamily: 'material', gradientColors: ['#E3F2FD', '#BBDEFB'], iconColor: '#1E88E5' },
+  'عقارات':         { icon: 'home', iconFamily: 'material', gradientColors: ['#FFE0B2', '#FFCC80'], iconColor: '#FB8C00' },
+  'إلكترونيات':     { icon: 'laptop', iconFamily: 'material', gradientColors: ['#E0F2F1', '#B2DFDB'], iconColor: '#00897B' },
+  'هواتف':          { icon: 'smartphone', iconFamily: 'material', gradientColors: ['#E0F2F1', '#B2DFDB'], iconColor: '#00897B' },
+  'وظائف':          { icon: 'work', iconFamily: 'material', gradientColors: ['#F3E5F5', '#E1BEE7'], iconColor: '#8E24AA' },
+  'موضة':           { icon: 'checkroom', iconFamily: 'material', gradientColors: ['#FCE4EC', '#F8BBD0'], iconColor: '#D81B60' },
+  'ملابس':          { icon: 'checkroom', iconFamily: 'material', gradientColors: ['#FCE4EC', '#F8BBD0'], iconColor: '#D81B60' },
+  'مأكولات وحلويات':{ icon: 'restaurant', iconFamily: 'material', gradientColors: ['#FFF3E0', '#FFE0B2'], iconColor: '#F4511E' },
+  'طعام':           { icon: 'restaurant', iconFamily: 'material', gradientColors: ['#FFF3E0', '#FFE0B2'], iconColor: '#F4511E' },
+  'حيوانات':        { icon: 'pets', iconFamily: 'material', gradientColors: ['#E8F5E9', '#C8E6C9'], iconColor: '#43A047' },
+  'زينة وهدايا':    { icon: 'card-giftcard', iconFamily: 'material', gradientColors: ['#FFFDE7', '#FFF9C4'], iconColor: '#FDD835' },
+  'هدايا':          { icon: 'card-giftcard', iconFamily: 'material', gradientColors: ['#FFFDE7', '#FFF9C4'], iconColor: '#FDD835' },
+  'أثاث':           { icon: 'chair', iconFamily: 'material', gradientColors: ['#FBE9E7', '#FFCCBC'], iconColor: '#E64A19' },
+  'رياضة':          { icon: 'sports-soccer', iconFamily: 'material', gradientColors: ['#E8F5E9', '#C8E6C9'], iconColor: '#2E7D32' },
+  'كتب':            { icon: 'menu-book', iconFamily: 'material', gradientColors: ['#EDE7F6', '#D1C4E9'], iconColor: '#5E35B1' },
+  'أطفال':          { icon: 'child-care', iconFamily: 'material', gradientColors: ['#FCE4EC', '#F8BBD0'], iconColor: '#E91E63' },
+  'مجوهرات':        { icon: 'diamond', iconFamily: 'material', gradientColors: ['#FFF8E1', '#FFECB3'], iconColor: '#FFB300' },
+  'أدوات':          { icon: 'build', iconFamily: 'material', gradientColors: ['#EFEBE9', '#D7CCC8'], iconColor: '#6D4C41' },
+  'خدمات':          { icon: 'miscellaneous-services', iconFamily: 'material', gradientColors: ['#E1F5FE', '#B3E5FC'], iconColor: '#0288D1' },
+  'بيت وحديقة':     { icon: 'yard', iconFamily: 'material', gradientColors: ['#E8F5E9', '#DCEDC8'], iconColor: '#558B2F' },
+};
+
+const DEFAULT_REQUEST_STYLE: RequestStyle = {
+  icon: 'search', iconFamily: 'material',
+  gradientColors: ['#ECEFF1', '#CFD8DC'], iconColor: '#546E7A',
+};
+
+function getRequestStyle(categoryName: string | null | undefined): RequestStyle {
+  if (!categoryName) return DEFAULT_REQUEST_STYLE;
+  const direct = REQUEST_CATEGORY_STYLES[categoryName.trim()];
+  if (direct) return direct;
+  // Partial match
+  for (const key of Object.keys(REQUEST_CATEGORY_STYLES)) {
+    if (categoryName.includes(key) || key.includes(categoryName)) {
+      return REQUEST_CATEGORY_STYLES[key];
+    }
+  }
+  return DEFAULT_REQUEST_STYLE;
+}
+
+// ── Native Arabic request placeholder ────────────────────────────────────────
+interface RequestPlaceholderProps {
+  height: number;
+  categoryName: string | null;
+  isAr: boolean;
+}
+
+const RequestPlaceholder: FC<RequestPlaceholderProps> = ({ height, categoryName, isAr }) => {
+  const style = getRequestStyle(categoryName);
+  const label = categoryName ? `${isAr ? 'مطلوب' : 'Wanted'}\n${categoryName}` : (isAr ? 'مطلوب' : 'Wanted');
+
+  return (
+    <LinearGradient
+      colors={style.gradientColors}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[reqPh.container, { height }]}
+    >
+      {/* Background icon — large, translucent */}
+      <View style={reqPh.bgIconWrap}>
+        <MaterialIcons
+          name={style.icon as any}
+          size={72}
+          color={style.iconColor}
+          style={{ opacity: 0.18 }}
+        />
+      </View>
+      {/* Foreground icon */}
+      <MaterialIcons
+        name={style.icon as any}
+        size={32}
+        color={style.iconColor}
+        style={{ opacity: 0.9 }}
+      />
+      {/* "مطلوب" pill */}
+      <View style={[reqPh.pill, { backgroundColor: style.iconColor }]}>
+        <Text style={reqPh.pillText}>{isAr ? 'مطلوب' : 'Wanted'}</Text>
+      </View>
+      {/* Category name */}
+      {categoryName ? (
+        <Text style={[reqPh.catText, { color: style.iconColor }]} numberOfLines={2}>
+          {categoryName}
+        </Text>
+      ) : null}
+    </LinearGradient>
+  );
+};
+
+const reqPh = StyleSheet.create({
+  container: {
+    width: '100%', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingHorizontal: 12, paddingVertical: 10,
+    position: 'relative', overflow: 'hidden',
+  },
+  bgIconWrap: {
+    position: 'absolute', top: '50%', left: '50%',
+    transform: [{ translateX: -36 }, { translateY: -36 }],
+  },
+  pill: {
+    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3,
+    marginTop: 2,
+  },
+  pillText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  catText: { fontSize: 11, fontWeight: '700', textAlign: 'center', lineHeight: 15 },
+});
+
 
 
 export const AdCard = memo(function AdCard({
@@ -238,6 +355,13 @@ export const AdCard = memo(function AdCard({
             colors={colors}
             isAr={isAr}
           />
+        ) : isRequest ? (
+          /* ── Request with no image — show native Arabic gradient placeholder ── */
+          <RequestPlaceholder
+            height={clampImgH}
+            categoryName={catName}
+            isAr={isAr}
+          />
         ) : (
           /* ── No image at all — show shimmer ─────────────────────────────── */
           <ShimmerBlock
@@ -311,14 +435,14 @@ export const AdCard = memo(function AdCard({
           styles.priceBadge,
           {
             backgroundColor: isRequest
-              ? '#F59E0B'
+              ? getRequestStyle(catName).iconColor
               : isFree ? '#22C55E' : colors.primary,
           },
           isRTL ? { right: 8, left: undefined } : { left: 8 },
         ]}>
           {isRequest ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-              <Text style={styles.priceText}>🛒</Text>
+              <MaterialIcons name={getRequestStyle(catName).icon as any} size={10} color="#fff" />
               <Text style={styles.priceText}>{isAr ? 'مطلوب' : 'Wanted'}</Text>
             </View>
           ) : (
