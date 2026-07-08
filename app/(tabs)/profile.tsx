@@ -215,6 +215,7 @@ export default function ProfileScreen() {
   const { t, language, setLanguage, isRTL } = useLanguage();
   const { ads, loading, load } = useMyAds();
 
+  const [ownerStore, setOwnerStore] = useState<{ id: string; name: string; name_ar: string; is_approved: boolean } | null | undefined>(undefined);
   const [editMode, setEditMode] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -253,6 +254,15 @@ export default function ProfileScreen() {
     load();
     setEditName(user.username || '');
     checkIsAdmin().then(setIsAdmin);
+
+    // Fetch owner store
+    getSupabaseClient()
+      .from('stores')
+      .select('id, name, name_ar, is_approved')
+      .eq('owner_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => setOwnerStore(data as any))
+      .catch(() => setOwnerStore(null));
 
     const supabase = getSupabaseClient();
 
@@ -626,6 +636,71 @@ export default function ProfileScreen() {
               ))}
             </View>
           </View>
+
+          {/* ── OWNER STORE CARD ── */}
+          {ownerStore !== undefined && (
+            ownerStore === null ? (
+              // No store yet — CTA
+              <Pressable
+                style={[styles.storeCtaCard, { backgroundColor: colors.primaryGhost, borderColor: colors.primary + '44' }]}
+                onPress={() => router.push('/register-store' as any)}
+              >
+                <View style={[styles.storeCtaIcon, { backgroundColor: colors.primary }]}>
+                  <MaterialIcons name="store" size={22} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.storeCtaTitle, { color: colors.primary, textAlign: isRTL ? 'right' : 'left' }]}>
+                    {isRTL ? 'سجّل متجرك معنا 🛒' : 'Register Your Store 🛒'}
+                  </Text>
+                  <Text style={[styles.storeCtaSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+                    {isRTL ? 'ابدأ البيع عبر التطبيق اليوم' : 'Start selling through the app today'}
+                  </Text>
+                </View>
+                <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.primary} />
+              </Pressable>
+            ) : ownerStore.is_approved ? (
+              // Approved store — management button
+              <Pressable
+                style={[styles.storeCtaCard, { backgroundColor: colors.primaryGhost, borderColor: colors.primary }]}
+                onPress={() => router.push('/store-dashboard' as any)}
+              >
+                <View style={[styles.storeCtaIcon, { backgroundColor: colors.primary }]}>
+                  <MaterialIcons name="settings" size={22} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.storeCtaTitle, { color: colors.primary, textAlign: isRTL ? 'right' : 'left' }]}>
+                    {isRTL ? '⚙️ إعدادات وإدارة متجري' : '⚙️ Manage My Store'}
+                  </Text>
+                  <Text style={[styles.storeCtaSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+                    {isRTL ? (ownerStore.name_ar || ownerStore.name) : ownerStore.name}
+                  </Text>
+                </View>
+                <View style={[styles.approvedBadge, { backgroundColor: '#D1FAE5' }]}>
+                  <MaterialIcons name="check-circle" size={14} color="#16a34a" />
+                  <Text style={styles.approvedText}>{isRTL ? 'مفعّل' : 'Active'}</Text>
+                </View>
+              </Pressable>
+            ) : (
+              // Pending store — info card
+              <Pressable
+                style={[styles.storeCtaCard, { backgroundColor: '#FFFBEB', borderColor: '#F59E0B' }]}
+                onPress={() => router.push('/store-dashboard' as any)}
+              >
+                <View style={[styles.storeCtaIcon, { backgroundColor: '#F59E0B' }]}>
+                  <MaterialIcons name="access-time" size={22} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.storeCtaTitle, { color: '#D97706', textAlign: isRTL ? 'right' : 'left' }]}>
+                    {isRTL ? `متجرك ${ownerStore.name_ar || ownerStore.name} قيد المراجعة ⏳` : `Store "${ownerStore.name}" Under Review ⏳`}
+                  </Text>
+                  <Text style={[styles.storeCtaSub, { color: '#92400E', textAlign: isRTL ? 'right' : 'left' }]}>
+                    {isRTL ? 'سيتم تفعيله خلال 24 ساعة' : 'Will be activated within 24 hours'}
+                  </Text>
+                </View>
+                <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color="#D97706" />
+              </Pressable>
+            )
+          )}
 
           {/* ── QUICK ACTIONS ── */}
           <View style={[styles.actionsRow, { backgroundColor: colors.surface }]}>
@@ -1166,6 +1241,18 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
+  storeCtaCard: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    borderRadius: Radius.xl, borderWidth: 1.5, padding: Spacing.md,
+    marginHorizontal: Spacing.lg, marginTop: Spacing.md,
+    ...Shadow.xs,
+  },
+  storeCtaIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  storeCtaTitle: { fontSize: FontSize.sm, fontWeight: '700', marginBottom: 2 },
+  storeCtaSub: { fontSize: FontSize.xs, lineHeight: 16 },
+  approvedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 4 },
+  approvedText: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
 
   // ── Guest
   guestHero: { paddingTop: 60, paddingBottom: 48, alignItems: 'center', gap: 12 },

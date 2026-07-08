@@ -617,6 +617,8 @@ export default function RootLayout() {
                 <Stack.Screen name="seller/[id]" options={{ headerShown: false }} />
                 <Stack.Screen name="ai-support" options={{ headerShown: false }} />
                 <Stack.Screen name="store/[id]" options={{ headerShown: false }} />
+                <Stack.Screen name="register-store" options={{ headerShown: false }} />
+                <Stack.Screen name="store-dashboard" options={{ headerShown: false }} />
               </Stack>
             </AuthProvider>
           </LanguageProvider>

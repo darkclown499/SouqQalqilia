@@ -1,0 +1,695 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, Pressable, TextInput,
+  FlatList, Modal, ActivityIndicator, KeyboardAvoidingView, Platform,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { useAuth, useAlert, getSupabaseClient } from '@/template';
+import { useTheme } from '@/hooks/useTheme';
+import { useLanguage } from '@/hooks/useLanguage';
+import { fetchStoreProducts, StoreProduct, submitStoreRating } from '@/services/productsService';
+import { pickImage, uploadImage } from '@/services/imageService';
+import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+
+// ── Add/Edit Product Modal ────────────────────────────────────────────────────
+interface ProductForm {
+  name: string;
+  name_ar: string;
+  description: string;
+  description_ar: string;
+  price: string;
+  category_label: string;
+  category_label_ar: string;
+  image_url: string;
+  is_available: boolean;
+  position: string;
+}
+
+const EMPTY_FORM: ProductForm = {
+  name: '', name_ar: '', description: '', description_ar: '',
+  price: '', category_label: '', category_label_ar: '',
+  image_url: '', is_available: true, position: '0',
+};
+
+function ProductModal({
+  visible, onClose, onSave, storeId, editProduct, isAr, isRTL, colors,
+}: {
+  visible: boolean; onClose: () => void;
+  onSave: (product: StoreProduct) => void;
+  storeId: string;
+  editProduct: StoreProduct | null;
+  isAr: boolean; isRTL: boolean; colors: any;
+}) {
+  const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
+  const [imgUri, setImgUri] = useState<string | null>(null);
+  const [imgBase64, setImgBase64] = useState<string | null>(null);
+  const [imgLoading, setImgLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (editProduct) {
+      setForm({
+        name: editProduct.name,
+        name_ar: editProduct.name_ar,
+        description: editProduct.description,
+        description_ar: editProduct.description_ar,
+        price: String(editProduct.price),
+        category_label: editProduct.category_label,
+        category_label_ar: editProduct.category_label_ar,
+        image_url: editProduct.image_url,
+        is_available: editProduct.is_available,
+        position: String(editProduct.position),
+      });
+      setImgUri(editProduct.image_url || null);
+    } else {
+      setForm(EMPTY_FORM);
+      setImgUri(null);
+      setImgBase64(null);
+    }
+  }, [editProduct, visible]);
+
+  const handlePickImage = async () => {
+    setImgLoading(true);
+    try {
+      const img = await pickImage('gallery');
+      if (img && user) {
+        const { url } = await uploadImage(img.base64, user.id, 'store-product');
+        if (url) {
+          setImgUri(url);
+          setForm(f => ({ ...f, image_url: url }));
+        }
+      }
+    } finally { setImgLoading(false); }
+  };
+
+  const handleSave = async () => {
+    if (!form.name_ar.trim() && !form.name.trim()) return;
+    setSaving(true);
+    try {
+      const supabase = getSupabaseClient();
+      const payload = {
+        store_id: storeId,
+        name: form.name.trim() || form.name_ar.trim(),
+        name_ar: form.name_ar.trim() || form.name.trim(),
+        description: form.description.trim(),
+        description_ar: form.description_ar.trim(),
+        price: parseFloat(form.price) || 0,
+        category_label: form.category_label.trim(),
+        category_label_ar: form.category_label_ar.trim(),
+        image_url: form.image_url,
+        is_available: form.is_available,
+        position: parseInt(form.position) || 0,
+      };
+
+      let result;
+      if (editProduct) {
+        const { data, error } = await supabase
+          .from('store_products')
+          .update(payload)
+          .eq('id', editProduct.id)
+          .select()
+          .single();
+        if (error) throw error;
+        result = data;
+      } else {
+        const { data, error } = await supabase
+          .from('store_products')
+          .insert(payload)
+          .select()
+          .single();
+        if (error) throw error;
+        result = data;
+      }
+      onSave(result as StoreProduct);
+      onClose();
+    } catch (e: any) {
+      // silent — UI already has field
+    } finally { setSaving(false); }
+  };
+
+  const textAlign = isRTL ? 'right' as const : 'left' as const;
+  const rtl = isRTL ? 'row-reverse' as const : 'row' as const;
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={pm.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+          <View style={[pm.sheet, { backgroundColor: colors.surface }]}>
+            <View style={[pm.handle, { backgroundColor: colors.border }]} />
+            <View style={[pm.titleRow, { flexDirection: rtl, borderBottomColor: colors.borderLight }]}>
+              <MaterialIcons name={editProduct ? 'edit' : 'add-box'} size={22} color={colors.primary} />
+              <Text style={[pm.titleText, { color: colors.textPrimary, flex: 1, textAlign }]}>
+                {editProduct
+                  ? (isAr ? 'تعديل المنتج' : 'Edit Product')
+                  : (isAr ? 'إضافة منتج جديد' : 'Add New Product')}
+              </Text>
+              <Pressable onPress={onClose} hitSlop={10}>
+                <MaterialIcons name="close" size={22} color={colors.textMuted} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={pm.content}>
+              {/* Product image */}
+              <Pressable
+                style={[pm.imgArea, { borderColor: imgUri ? colors.primary : colors.border, backgroundColor: colors.background }]}
+                onPress={handlePickImage}
+                disabled={imgLoading}
+              >
+                {imgUri ? (
+                  <>
+                    <Image source={{ uri: imgUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+                    <View style={pm.imgOverlay} />
+                    <MaterialIcons name="edit" size={22} color="#fff" />
+                  </>
+                ) : imgLoading ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <>
+                    <MaterialIcons name="add-photo-alternate" size={32} color={colors.primary} />
+                    <Text style={[pm.imgHint, { color: colors.textMuted }]}>{isAr ? 'صورة المنتج (اختياري)' : 'Product photo (optional)'}</Text>
+                  </>
+                )}
+              </Pressable>
+
+              {/* Fields */}
+              {[
+                { label: isAr ? 'اسم المنتج بالعربية *' : 'Product Name (Arabic) *', key: 'name_ar', textAlignOverride: 'right' as const },
+                { label: isAr ? 'اسم المنتج بالإنجليزية' : 'Product Name (English)', key: 'name', textAlignOverride: 'left' as const },
+                { label: isAr ? 'وصف بالعربية' : 'Description (Arabic)', key: 'description_ar', multiline: true, textAlignOverride: 'right' as const },
+                { label: isAr ? 'وصف بالإنجليزية' : 'Description (English)', key: 'description', multiline: true, textAlignOverride: 'left' as const },
+                { label: isAr ? 'تصنيف المنتج (عربي)' : 'Product Category (Arabic)', key: 'category_label_ar', textAlignOverride: 'right' as const },
+                { label: isAr ? 'تصنيف المنتج (إنجليزي)' : 'Product Category (English)', key: 'category_label', textAlignOverride: 'left' as const },
+              ].map(f => (
+                <View key={f.key} style={pm.field}>
+                  <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>{f.label}</Text>
+                  <TextInput
+                    style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: f.textAlignOverride }]}
+                    placeholder=""
+                    placeholderTextColor={colors.textMuted}
+                    value={(form as any)[f.key]}
+                    onChangeText={v => setForm(fv => ({ ...fv, [f.key]: v }))}
+                    multiline={f.multiline}
+                    numberOfLines={f.multiline ? 3 : 1}
+                  />
+                </View>
+              ))}
+
+              <View style={pm.field}>
+                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>{isAr ? 'السعر (₪)' : 'Price (₪)'}</Text>
+                <TextInput
+                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign }]}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textMuted}
+                  value={form.price}
+                  onChangeText={v => setForm(fv => ({ ...fv, price: v }))}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              {/* Available toggle */}
+              <Pressable
+                style={[pm.toggleRow, { flexDirection: rtl, borderColor: form.is_available ? colors.primary : colors.border, backgroundColor: form.is_available ? colors.primaryGhost : colors.background }]}
+                onPress={() => setForm(f => ({ ...f, is_available: !f.is_available }))}
+              >
+                <MaterialIcons
+                  name={form.is_available ? 'check-circle' : 'cancel'}
+                  size={22}
+                  color={form.is_available ? colors.primary : colors.textMuted}
+                />
+                <Text style={[pm.toggleLabel, { color: form.is_available ? colors.primary : colors.textSecondary, fontWeight: form.is_available ? '700' : '500' }]}>
+                  {form.is_available
+                    ? (isAr ? 'متاح للطلب' : 'Available')
+                    : (isAr ? 'غير متاح حالياً' : 'Currently Unavailable')}
+                </Text>
+              </Pressable>
+            </ScrollView>
+
+            <Pressable
+              style={[pm.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? <ActivityIndicator color="#fff" size="small" /> : <MaterialIcons name="check" size={20} color="#fff" />}
+              <Text style={pm.saveBtnText}>{saving ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'حفظ المنتج' : 'Save Product')}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const pm = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.52)', justifyContent: 'flex-end' },
+  sheet: {
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingTop: 12, paddingBottom: 36, maxHeight: '92%',
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
+  titleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md,
+    borderBottomWidth: 1, marginBottom: 4,
+  },
+  titleText: { fontSize: FontSize.lg, fontWeight: '700' },
+  content: { paddingHorizontal: Spacing.lg, paddingBottom: 16, gap: 12 },
+  imgArea: {
+    height: 130, borderWidth: 1.5, borderStyle: 'dashed',
+    borderRadius: Radius.xl, alignItems: 'center', justifyContent: 'center',
+    gap: 8, overflow: 'hidden',
+  },
+  imgOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.32)' },
+  imgHint: { fontSize: FontSize.xs },
+  field: { gap: 4 },
+  fieldLabel: { fontSize: FontSize.sm, fontWeight: '600' },
+  input: {
+    borderWidth: 1.5, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md, paddingVertical: 10,
+    fontSize: FontSize.sm, minHeight: 46,
+  },
+  toggleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1.5, borderRadius: Radius.lg, padding: Spacing.md,
+  },
+  toggleLabel: { fontSize: FontSize.md },
+  saveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, marginHorizontal: Spacing.lg, marginTop: Spacing.md,
+    height: 52, borderRadius: Radius.full,
+    ...Shadow.colored,
+  },
+  saveBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+});
+
+// ── Product card for dashboard ────────────────────────────────────────────────
+function DashboardProductCard({
+  product, onEdit, onDelete, isAr, isRTL, colors,
+}: {
+  product: StoreProduct; onEdit: () => void; onDelete: () => void;
+  isAr: boolean; isRTL: boolean; colors: any;
+}) {
+  const name = isAr ? (product.name_ar || product.name) : product.name;
+  return (
+    <View style={[dpc.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      {product.image_url ? (
+        <Image source={{ uri: product.image_url }} style={dpc.img} contentFit="cover" transition={200} cachePolicy="disk" />
+      ) : (
+        <View style={[dpc.imgPh, { backgroundColor: colors.surfaceTint }]}>
+          <MaterialIcons name="fastfood" size={22} color={colors.textMuted} />
+        </View>
+      )}
+      <View style={[dpc.info, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+        <Text style={[dpc.name, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{name}</Text>
+        <Text style={[dpc.price, { color: colors.primary }]}>
+          {product.price > 0 ? `${product.price}₪` : (isAr ? 'مجاني' : 'Free')}
+        </Text>
+        <View style={[dpc.badge, { backgroundColor: product.is_available ? '#D1FAE5' : '#FEE2E2' }]}>
+          <View style={[dpc.dot, { backgroundColor: product.is_available ? '#16a34a' : '#EF4444' }]} />
+          <Text style={[dpc.badgeText, { color: product.is_available ? '#15803d' : '#B91C1C' }]}>
+            {product.is_available ? (isAr ? 'متاح' : 'Available') : (isAr ? 'غير متاح' : 'Unavailable')}
+          </Text>
+        </View>
+      </View>
+      <View style={[dpc.actions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <Pressable style={[dpc.btn, { backgroundColor: colors.primaryGhost, borderColor: colors.primary }]} onPress={onEdit} hitSlop={4}>
+          <MaterialIcons name="edit" size={14} color={colors.primary} />
+        </Pressable>
+        <Pressable style={[dpc.btn, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]} onPress={onDelete} hitSlop={4}>
+          <MaterialIcons name="delete-outline" size={14} color="#EF4444" />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const dpc = StyleSheet.create({
+  card: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    borderRadius: Radius.xl, borderWidth: 1, padding: 12,
+    ...Shadow.xs,
+  },
+  img: { width: 64, height: 64, borderRadius: Radius.md, flexShrink: 0 },
+  imgPh: {
+    width: 64, height: 64, borderRadius: Radius.md,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  info: { flex: 1, gap: 4 },
+  name: { fontSize: FontSize.sm, fontWeight: '700', lineHeight: 18 },
+  price: { fontSize: FontSize.md, fontWeight: '800' },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  actions: { gap: 8, flexShrink: 0 },
+  btn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5 },
+});
+
+// ── Main dashboard screen ─────────────────────────────────────────────────────
+export default function StoreDashboardScreen() {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { user } = useAuth();
+  const { showAlert } = useAlert();
+  const { colors } = useTheme();
+  const { language, isRTL } = useLanguage();
+  const isAr = language === 'ar';
+
+  const [store, setStore] = useState<any>(null);
+  const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [productModalVisible, setProductModalVisible] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<StoreProduct | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'products'>('overview');
+
+  const textAlign = isRTL ? 'right' as const : 'left' as const;
+  const rtl = isRTL ? 'row-reverse' as const : 'row' as const;
+
+  const loadData = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const { data: storeData } = await getSupabaseClient()
+        .from('stores')
+        .select('*')
+        .eq('owner_id', user.id)
+        .maybeSingle();
+      setStore(storeData);
+      if (storeData) {
+        const { data: prods } = await fetchStoreProducts(storeData.id);
+        setProducts(prods);
+      }
+    } finally { setLoading(false); }
+  }, [user]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleDeleteProduct = useCallback((product: StoreProduct) => {
+    showAlert(
+      isAr ? 'حذف المنتج' : 'Delete Product',
+      isAr ? `هل تريد حذف "${product.name_ar || product.name}"؟` : `Delete "${product.name}"?`,
+      [
+        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isAr ? 'حذف' : 'Delete', style: 'destructive',
+          onPress: async () => {
+            const { error } = await getSupabaseClient()
+              .from('store_products')
+              .delete()
+              .eq('id', product.id);
+            if (!error) setProducts(prev => prev.filter(p => p.id !== product.id));
+          },
+        },
+      ]
+    );
+  }, [isAr, showAlert]);
+
+  const handleSaveProduct = useCallback((saved: StoreProduct) => {
+    setProducts(prev => {
+      const idx = prev.findIndex(p => p.id === saved.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = saved;
+        return copy;
+      }
+      return [saved, ...prev];
+    });
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={[s.loadingScreen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <ActivityIndicator color={colors.primary} size="large" />
+      </View>
+    );
+  }
+
+  if (!store) {
+    return (
+      <View style={[s.loadingScreen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <MaterialIcons name="store" size={48} color={colors.textMuted} />
+        <Text style={[s.noStoreText, { color: colors.textMuted }]}>
+          {isAr ? 'لا يوجد متجر مرتبط بحسابك' : 'No store linked to your account'}
+        </Text>
+        <Pressable style={[s.registerBtn, { backgroundColor: colors.primary }]} onPress={() => router.push('/register-store' as any)}>
+          <Text style={s.registerBtnText}>{isAr ? 'تسجيل متجر' : 'Register Store'}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const storeName = isAr ? (store.name_ar || store.name) : store.name;
+  const availableCount = products.filter(p => p.is_available).length;
+
+  return (
+    <View style={[s.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+
+      {/* ── Header ── */}
+      <View style={[s.header, { backgroundColor: colors.primary }]}>
+        <View style={s.headerDeco} pointerEvents="none" />
+        <Pressable style={s.backBtn} onPress={() => router.back()} hitSlop={8}>
+          <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#fff" />
+        </Pressable>
+        <View style={[s.headerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+          <Text style={[s.headerSub, { textAlign }]}>{isAr ? 'لوحة تحكم' : 'Store Dashboard'}</Text>
+          <Text style={[s.headerTitle, { textAlign }]} numberOfLines={1}>{storeName}</Text>
+          {/* Approval status */}
+          <View style={[s.statusBadge, { backgroundColor: store.is_approved ? '#D1FAE5' : '#FEF3C7', flexDirection: rtl }]}>
+            <MaterialIcons
+              name={store.is_approved ? 'check-circle' : 'access-time'}
+              size={13}
+              color={store.is_approved ? '#15803d' : '#D97706'}
+            />
+            <Text style={[s.statusText, { color: store.is_approved ? '#15803d' : '#D97706' }]}>
+              {store.is_approved ? (isAr ? 'مفعّل' : 'Active') : (isAr ? 'قيد المراجعة' : 'Under Review')}
+            </Text>
+          </View>
+        </View>
+        {store.logo_url ? (
+          <Image source={{ uri: store.logo_url }} style={s.storeLogo} contentFit="cover" />
+        ) : (
+          <View style={[s.storeLogo, { backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }]}>
+            <MaterialIcons name="storefront" size={28} color="#fff" />
+          </View>
+        )}
+      </View>
+
+      {/* ── Stats row ── */}
+      <View style={[s.statsRow, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
+        {[
+          { icon: 'inventory-2', num: products.length, label: isAr ? 'منتجات' : 'Products', color: colors.primary },
+          { icon: 'check-circle-outline', num: availableCount, label: isAr ? 'متاح' : 'Available', color: '#16a34a' },
+          { icon: 'visibility', num: store.views_count ?? 0, label: isAr ? 'مشاهدة' : 'Views', color: '#7C3AED' },
+          { icon: 'chat', num: store.whatsapp_clicks_count ?? 0, label: isAr ? 'طلب واتساب' : 'WA Orders', color: '#25D366' },
+        ].map((st, i) => (
+          <View key={i} style={s.statItem}>
+            <MaterialIcons name={st.icon as any} size={18} color={st.color} />
+            <Text style={[s.statNum, { color: colors.textPrimary }]}>{st.num}</Text>
+            <Text style={[s.statLabel, { color: colors.textMuted }]}>{st.label}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* ── Tab bar ── */}
+      <View style={[s.tabBar, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
+        {([
+          { key: 'overview', icon: 'dashboard', labelAr: 'نظرة عامة', labelEn: 'Overview' },
+          { key: 'products', icon: 'inventory-2', labelAr: 'المنتجات', labelEn: 'Products' },
+        ] as const).map(tab => {
+          const isActive = activeTab === tab.key;
+          return (
+            <Pressable
+              key={tab.key}
+              style={[s.tabBtn, isActive && { borderBottomColor: colors.primary, borderBottomWidth: 2.5 }]}
+              onPress={() => setActiveTab(tab.key)}
+            >
+              <MaterialIcons name={tab.icon as any} size={18} color={isActive ? colors.primary : colors.textMuted} />
+              <Text style={[s.tabBtnText, { color: isActive ? colors.primary : colors.textMuted, fontWeight: isActive ? '700' : '500' }]}>
+                {isAr ? tab.labelAr : tab.labelEn}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* ── Overview tab ── */}
+      {activeTab === 'overview' ? (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.tabContent}>
+          {/* Store info card */}
+          <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[s.infoRow, { flexDirection: rtl }]}>
+              <MaterialIcons name="location-on" size={16} color={colors.primary} />
+              <Text style={[s.infoText, { color: colors.textPrimary, flex: 1, textAlign }]}>{store.address || (isAr ? 'لا يوجد عنوان' : 'No address')}</Text>
+            </View>
+            <View style={[s.infoRow, { flexDirection: rtl }]}>
+              <MaterialIcons name="schedule" size={16} color={colors.primary} />
+              <Text style={[s.infoText, { color: colors.textPrimary, textAlign }]}>
+                {store.opening_time} – {store.closing_time}
+              </Text>
+            </View>
+            <View style={[s.infoRow, { flexDirection: rtl }]}>
+              <MaterialIcons name="chat" size={16} color="#25D366" />
+              <Text style={[s.infoText, { color: colors.textPrimary, textAlign }]}>{store.owner_whatsapp || store.whatsapp || (isAr ? 'لم يُضَف' : 'Not added')}</Text>
+            </View>
+          </View>
+
+          {/* Approval message when pending */}
+          {!store.is_approved ? (
+            <View style={[s.pendingCard, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+              <MaterialIcons name="access-time" size={22} color="#D97706" />
+              <View style={{ flex: 1 }}>
+                <Text style={[s.pendingTitle, { textAlign }]}>{isAr ? 'طلبك قيد المراجعة ⏳' : 'Your request is under review ⏳'}</Text>
+                <Text style={[s.pendingSub, { textAlign }]}>{isAr ? 'سيتم تفعيل متجرك خلال 24 ساعة بعد مراجعة الإدارة.' : 'Your store will be activated within 24 hours after admin review.'}</Text>
+              </View>
+            </View>
+          ) : (
+            <View style={[s.pendingCard, { backgroundColor: '#D1FAE5', borderColor: '#6EE7B7' }]}>
+              <MaterialIcons name="verified" size={22} color="#16a34a" />
+              <View style={{ flex: 1 }}>
+                <Text style={[s.pendingTitle, { textAlign, color: '#15803d' }]}>{isAr ? 'متجرك مفعّل ✓' : 'Your store is live ✓'}</Text>
+                <Text style={[s.pendingSub, { textAlign, color: '#166534' }]}>{isAr ? 'متجرك يظهر الآن للمتسوقين في التطبيق.' : 'Your store is now visible to shoppers in the app.'}</Text>
+              </View>
+            </View>
+          )}
+
+          <View style={{ height: 32 }} />
+        </ScrollView>
+      ) : null}
+
+      {/* ── Products tab ── */}
+      {activeTab === 'products' ? (
+        <FlatList
+          data={products}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => (
+            <DashboardProductCard
+              product={item}
+              onEdit={() => { setEditingProduct(item); setProductModalVisible(true); }}
+              onDelete={() => handleDeleteProduct(item)}
+              isAr={isAr}
+              isRTL={isRTL}
+              colors={colors}
+            />
+          )}
+          contentContainerStyle={[s.tabContent, { gap: Spacing.sm }]}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={s.emptyWrap}>
+              <MaterialIcons name="inventory-2" size={44} color={colors.textMuted} />
+              <Text style={[s.emptyText, { color: colors.textMuted }]}>
+                {isAr ? 'لا توجد منتجات بعد. أضف منتجك الأول!' : 'No products yet. Add your first!'}
+              </Text>
+            </View>
+          }
+        />
+      ) : null}
+
+      {/* ── FAB: Add product ── */}
+      {activeTab === 'products' ? (
+        <Pressable
+          style={[s.fab, { backgroundColor: colors.primary }]}
+          onPress={() => { setEditingProduct(null); setProductModalVisible(true); }}
+        >
+          <MaterialIcons name="add" size={26} color="#fff" />
+          <Text style={s.fabText}>{isAr ? 'إضافة منتج' : 'Add Product'}</Text>
+        </Pressable>
+      ) : null}
+
+      {/* Product modal */}
+      {store ? (
+        <ProductModal
+          visible={productModalVisible}
+          onClose={() => { setProductModalVisible(false); setEditingProduct(null); }}
+          onSave={handleSaveProduct}
+          storeId={store.id}
+          editProduct={editingProduct}
+          isAr={isAr}
+          isRTL={isRTL}
+          colors={colors}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  container: { flex: 1 },
+  loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  noStoreText: { fontSize: FontSize.md, fontWeight: '600', textAlign: 'center' },
+  registerBtn: {
+    paddingHorizontal: 24, paddingVertical: 12, borderRadius: Radius.full,
+    marginTop: 8,
+  },
+  registerBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+
+  header: {
+    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl, paddingTop: Spacing.sm,
+    flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.md, overflow: 'hidden',
+  },
+  headerDeco: {
+    position: 'absolute', width: 200, height: 200, borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.07)', top: -80, right: -40,
+  },
+  backBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4, flexShrink: 0,
+  },
+  headerContent: { flex: 1, gap: 4 },
+  headerSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)', fontWeight: '500' },
+  headerTitle: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  statusBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
+  statusText: { fontSize: FontSize.xs, fontWeight: '700' },
+  storeLogo: { width: 52, height: 52, borderRadius: 26, borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.4)', flexShrink: 0, marginBottom: 4 },
+
+  statsRow: {
+    flexDirection: 'row', borderBottomWidth: 1,
+    paddingVertical: 12,
+  },
+  statItem: { flex: 1, alignItems: 'center', gap: 3 },
+  statNum: { fontSize: FontSize.lg, fontWeight: '800' },
+  statLabel: { fontSize: 10, fontWeight: '600' },
+
+  tabBar: {
+    flexDirection: 'row', borderBottomWidth: 1,
+  },
+  tabBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 14, borderBottomWidth: 2.5, borderBottomColor: 'transparent',
+  },
+  tabBtnText: { fontSize: FontSize.sm },
+
+  tabContent: { padding: Spacing.lg, paddingBottom: 100 },
+
+  infoCard: {
+    borderRadius: Radius.xl, borderWidth: 1, padding: Spacing.md, gap: 10, ...Shadow.xs,
+  },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  infoText: { fontSize: FontSize.sm, fontWeight: '500', lineHeight: 20 },
+
+  pendingCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    borderRadius: Radius.xl, borderWidth: 1.5, padding: Spacing.md, marginTop: Spacing.md,
+  },
+  pendingTitle: { fontSize: FontSize.md, fontWeight: '700', color: '#92400E', marginBottom: 3 },
+  pendingSub: { fontSize: FontSize.sm, color: '#78350F', lineHeight: 19 },
+
+  emptyWrap: { alignItems: 'center', paddingTop: 60, gap: 14 },
+  emptyText: { fontSize: FontSize.md, fontWeight: '600', textAlign: 'center', lineHeight: 22 },
+
+  fab: {
+    position: 'absolute', bottom: 24, left: Spacing.lg, right: Spacing.lg,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    height: 54, borderRadius: Radius.full,
+    ...Shadow.colored,
+  },
+  fabText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+});

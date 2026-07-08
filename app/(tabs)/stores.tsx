@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
   ActivityIndicator, Modal, TextInput,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -92,6 +93,95 @@ function StoreCard({
   );
 }
 
+// ── Register CTA Banner ──────────────────────────────────────────────────────
+function RegisterStoreCTA({ isAr, isRTL, colors, onPress }: {
+  isAr: boolean; isRTL: boolean; colors: any; onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [cta.wrap, { opacity: pressed ? 0.9 : 1 }]}
+      onPress={onPress}
+    >
+      <LinearGradient
+        colors={['#0A6E5C', '#065f46', '#064e3b']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={cta.gradient}
+      >
+        {/* Decorative circles */}
+        <View style={cta.deco1} />
+        <View style={cta.deco2} />
+
+        <View style={[cta.content, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={cta.leftCol}>
+            <View style={cta.iconWrap}>
+              <MaterialIcons name="store" size={32} color="#fff" />
+            </View>
+          </View>
+          <View style={[cta.textCol, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+            <View style={cta.badge}>
+              <MaterialIcons name="star" size={11} color="#F59E0B" />
+              <Text style={cta.badgeText}>{isAr ? 'فرصة تجارية' : 'Business Opportunity'}</Text>
+            </View>
+            <Text style={[cta.title, { textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'سجّل متجرك معنا 🛒' : 'Register Your Store 🛒'}
+            </Text>
+            <Text style={[cta.sub, { textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr
+                ? 'انضم لمئات التجار وابدأ البيع عبر التطبيق اليوم'
+                : 'Join hundreds of merchants and start selling through the app today'}
+            </Text>
+          </View>
+          <View style={cta.arrowWrap}>
+            <MaterialIcons
+              name={isRTL ? 'chevron-left' : 'chevron-right'}
+              size={22} color="rgba(255,255,255,0.8)"
+            />
+          </View>
+        </View>
+
+        {/* Step pills */}
+        <View style={[cta.steps, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          {[
+            { icon: 'assignment', label: isAr ? 'أرسل الطلب' : 'Submit Request' },
+            { icon: 'verified', label: isAr ? 'نراجعه خلال 24 ساعة' : 'Review in 24h' },
+            { icon: 'rocket-launch', label: isAr ? 'ابدأ البيع!' : 'Start Selling!' },
+          ].map((step, i) => (
+            <View key={i} style={[cta.stepItem, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              {i > 0 ? <View style={cta.stepArrow}><MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={12} color="rgba(255,255,255,0.35)" /></View> : null}
+              <View style={cta.stepPill}>
+                <MaterialIcons name={step.icon as any} size={12} color="#F59E0B" />
+                <Text style={cta.stepText}>{step.label}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </LinearGradient>
+    </Pressable>
+  );
+}
+
+const cta = StyleSheet.create({
+  wrap: { marginHorizontal: Spacing.lg, marginBottom: Spacing.md, borderRadius: Radius.xl, overflow: 'hidden', ...Shadow.lg },
+  gradient: { borderRadius: Radius.xl, overflow: 'hidden', padding: Spacing.lg, gap: 14 },
+  deco1: { position: 'absolute', width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.06)', top: -60, right: -40 },
+  deco2: { position: 'absolute', width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -20, left: 60 },
+  content: { alignItems: 'center', gap: Spacing.md },
+  leftCol: { flexShrink: 0 },
+  iconWrap: { width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)' },
+  textCol: { flex: 1, gap: 5 },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(245,158,11,0.25)', borderRadius: Radius.full, paddingHorizontal: 9, paddingVertical: 4, alignSelf: 'flex-start' },
+  badgeText: { fontSize: 10, fontWeight: '700', color: '#FDE68A' },
+  title: { fontSize: FontSize.lg, fontWeight: '800', color: '#fff', letterSpacing: -0.3, lineHeight: 24 },
+  sub: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.75)', lineHeight: 17 },
+  arrowWrap: { flexShrink: 0 },
+  steps: { gap: 6, flexWrap: 'wrap' },
+  stepItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  stepArrow: { marginHorizontal: 2 },
+  stepPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: Radius.full, paddingHorizontal: 9, paddingVertical: 5 },
+  stepText: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.9)' },
+});
+
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function StoresScreen() {
   const insets = useSafeAreaInsets();
@@ -105,6 +195,7 @@ export default function StoresScreen() {
   const [stores, setStores] = useState<Store[]>([]);
   const [ratings, setRatings] = useState<Record<string, { avg: number; count: number }>>({});
   const [loading, setLoading] = useState(false);
+  const [ownerStore, setOwnerStore] = useState<Store | null | undefined>(undefined); // undefined = not yet loaded
 
   // ── Gatekeeper ──────────────────────────────────────────────────────────────
   const [nameGateVisible, setNameGateVisible] = useState(false);
@@ -115,10 +206,11 @@ export default function StoresScreen() {
 
   const isAr = language === 'ar';
 
-  // Check name on every tab focus
+  // Check name on every tab focus + fetch owner store
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
+      // Name check
       getSupabaseClient()
         .from('user_profiles')
         .select('username')
@@ -132,6 +224,14 @@ export default function StoresScreen() {
           }
         })
         .catch(() => {});
+      // Owner store check
+      getSupabaseClient()
+        .from('stores')
+        .select('*')
+        .eq('owner_id', user.id)
+        .maybeSingle()
+        .then(({ data }) => setOwnerStore(data as Store | null))
+        .catch(() => setOwnerStore(null));
     }, [user?.id])
   );
 
@@ -181,6 +281,45 @@ export default function StoresScreen() {
   }, [selectedCategoryId]);
 
   const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+
+  // Owner store card/section shown at top of list
+  const OwnerStoreSection = ownerStore !== undefined && ownerStore !== null ? (
+    <Pressable
+      style={[oss.card, {
+        backgroundColor: ownerStore.is_approved ? colors.surface : '#FFFBEB',
+        borderColor: ownerStore.is_approved ? colors.primary : '#F59E0B',
+      }]}
+      onPress={() => router.push('/store-dashboard' as any)}
+    >
+      <View style={[oss.iconWrap, { backgroundColor: ownerStore.is_approved ? colors.primaryGhost : '#FEF3C7' }]}>
+        <MaterialIcons name="storefront" size={24} color={ownerStore.is_approved ? colors.primary : '#D97706'} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[oss.label, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+          {isAr ? 'متجري' : 'My Store'}
+        </Text>
+        <Text style={[oss.name, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+          {isAr ? (ownerStore.name_ar || ownerStore.name) : ownerStore.name}
+        </Text>
+        <View style={[oss.badge, {
+          backgroundColor: ownerStore.is_approved ? '#D1FAE5' : '#FEF3C7',
+          flexDirection: isRTL ? 'row-reverse' : 'row',
+        }]}>
+          <MaterialIcons
+            name={ownerStore.is_approved ? 'check-circle' : 'access-time'}
+            size={12}
+            color={ownerStore.is_approved ? '#16a34a' : '#D97706'}
+          />
+          <Text style={[oss.badgeText, { color: ownerStore.is_approved ? '#16a34a' : '#D97706' }]}>
+            {ownerStore.is_approved
+              ? (isAr ? 'متجرك مفعّل ✓' : 'Store Active ✓')
+              : (isAr ? 'قيد المراجعة ⏳' : 'Under Review ⏳')}
+          </Text>
+        </View>
+      </View>
+      <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.primary} />
+    </Pressable>
+  ) : null;
 
   const renderStore = useCallback(({ item }: { item: Store }) => (
     <StoreCard
@@ -255,6 +394,26 @@ export default function StoresScreen() {
         </View>
       ) : null}
 
+      {/* Register CTA — shown when user has no store yet */}
+      {ownerStore === null && user ? (
+        <RegisterStoreCTA
+          isAr={isAr}
+          isRTL={isRTL}
+          colors={colors}
+          onPress={() => router.push('/register-store' as any)}
+        />
+      ) : null}
+
+      {/* Owner store card */}
+      {OwnerStoreSection ? (
+        <View style={{ paddingHorizontal: Spacing.lg, marginBottom: Spacing.sm }}>
+          <Text style={[s.ownerSectionLabel, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+            {isAr ? 'متجرك' : 'Your Store'}
+          </Text>
+          {OwnerStoreSection}
+        </View>
+      ) : null}
+
       {/* Store list */}
       {loading ? (
         <View style={s.loadingWrap}>
@@ -279,6 +438,16 @@ export default function StoresScreen() {
               <Text style={[s.emptySub, { color: colors.textMuted }]}>
                 {isAr ? 'لا توجد متاجر في هذا التصنيف حالياً' : 'No stores in this category yet'}
               </Text>
+              {/* CTA inside empty state too */}
+              {ownerStore === null && user ? (
+                <Pressable
+                  style={[s.emptyCtaBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => router.push('/register-store' as any)}
+                >
+                  <MaterialIcons name="store" size={16} color="#fff" />
+                  <Text style={s.emptyCtaBtnText}>{isAr ? 'سجّل متجرك الآن' : 'Register Your Store'}</Text>
+                </Pressable>
+              ) : null}
             </View>
           }
         />
@@ -346,6 +515,20 @@ export default function StoresScreen() {
     </View>
   );
 }
+
+// ── Owner store section styles ───────────────────────────────────────────────
+const oss = StyleSheet.create({
+  card: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    borderRadius: Radius.xl, borderWidth: 1.5, padding: Spacing.md,
+    ...Shadow.sm,
+  },
+  iconWrap: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  label: { fontSize: FontSize.xs, fontWeight: '600', marginBottom: 2 },
+  name: { fontSize: FontSize.md, fontWeight: '700', lineHeight: 20 },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3, marginTop: 4, alignSelf: 'flex-start' },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+});
 
 // ── Store card styles ─────────────────────────────────────────────────────────
 const sc = StyleSheet.create({
@@ -425,6 +608,13 @@ const s = StyleSheet.create({
   sectionCount: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3 },
   sectionCountText: { fontSize: FontSize.xs, fontWeight: '700' },
 
+  ownerSectionLabel: { fontSize: FontSize.xs, fontWeight: '700', marginBottom: 6, letterSpacing: 0.5 },
+  emptyCtaBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 20, paddingVertical: 12, borderRadius: Radius.full,
+    marginTop: 8, ...Shadow.colored,
+  },
+  emptyCtaBtnText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
   listContent: { paddingTop: Spacing.md },
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
