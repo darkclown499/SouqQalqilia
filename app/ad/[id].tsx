@@ -257,7 +257,16 @@ export default function AdDetailScreen() {
     );
   }
 
-  const images = (ad.ad_images ?? []).sort((a, b) => a.position - b.position);
+  const images = (ad.ad_images ?? [])
+    .sort((a, b) => a.position - b.position)
+    .filter(img => {
+      // Strip out old placehold.co / WANTED placeholder URLs for requests
+      if (isRequest) {
+        const url = img.url ?? '';
+        return !url.includes('placehold.co') && !url.toUpperCase().includes('WANTED');
+      }
+      return true;
+    });
   const seller = ad.user_profiles;
   const isPhoneUser = (seller?.email ?? '').includes('@sms.souqqalqilya.local');
   const sellerName = seller?.username ||
@@ -714,10 +723,26 @@ function AdDetailScrollContent({
             ) : null}
           </>
         ) : (
+          /* No real image: for requests render native Arabic placeholder, for sale show generic empty state */
+          isRequest ? (
+            <View style={[styles.noImage, { backgroundColor: '#E0F2F1' }]}>
+              <MaterialIcons name="shopping-cart" size={52} color="#00695C" />
+              <Text style={{ color: '#fff', fontSize: 28, fontWeight: '900', textAlign: 'center', marginTop: 8,
+                textShadowColor: 'rgba(0,0,0,0.15)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }}>
+                مطلوب
+              </Text>
+              {ad.categories ? (
+                <Text style={{ color: '#004D40', fontSize: 16, fontWeight: '700', textAlign: 'center', marginTop: 4 }}>
+                  {getCategoryName(ad.categories as any, language)}
+                </Text>
+              ) : null}
+            </View>
+          ) : (
           <Pressable style={styles.noImage} onPress={() => openGallery(0)}>
             <MaterialIcons name="image-not-supported" size={52} color={colors.textMuted} />
             <Text style={[styles.noImageText, { color: colors.textMuted }]}>{t.noPhotos}</Text>
           </Pressable>
+          )
         )}
         {ad.status === 'sold' ? (
           <View style={styles.soldOverlay}>
@@ -730,9 +755,16 @@ function AdDetailScrollContent({
 
       <View style={styles.scrollContent}>
         <View style={styles.content}>
-          <View style={styles.topRow}>
-            <View style={[styles.priceBadge, { backgroundColor: isFree ? colors.success : colors.primary }]}>
-              <Text style={styles.priceText}>{isFree ? t.free : `₪${ad.price.toLocaleString()}`}</Text>
+          <View style={[styles.topRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+            {/* Price / Request badge */}
+            <View style={[styles.priceBadge, {
+              backgroundColor: isRequest ? '#F57C00' : (isFree ? colors.success : colors.primary),
+            }]}>
+              {isRequest ? (
+                <Text style={[styles.priceText, { fontSize: FontSize.xl, letterSpacing: 0.5 }]}>مطلوب</Text>
+              ) : (
+                <Text style={styles.priceText}>{isFree ? t.free : `₪${ad.price.toLocaleString()}`}</Text>
+              )}
             </View>
             <View style={styles.badgesRow}>
               <View style={[styles.conditionBadge, {

@@ -198,61 +198,59 @@ interface RequestPlaceholderProps {
 
 const RequestPlaceholder: FC<RequestPlaceholderProps> = ({ height, categoryName, isAr }) => {
   const style = getRequestStyle(categoryName);
-  const label = categoryName ? `${isAr ? 'مطلوب' : 'Wanted'}\n${categoryName}` : (isAr ? 'مطلوب' : 'Wanted');
 
   return (
-    <LinearGradient
-      colors={style.gradientColors}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[reqPh.container, { height }]}
-    >
-      {/* Background icon — large, translucent */}
-      <View style={reqPh.bgIconWrap}>
+    <View style={[reqPh.container, { height, backgroundColor: style.gradientColors[0] }]}>
+      {/* Large background icon — translucent watermark */}
+      <View style={reqPh.bgIconWrap} pointerEvents="none">
         <MaterialIcons
           name={style.icon as any}
-          size={72}
+          size={96}
           color={style.iconColor}
-          style={{ opacity: 0.18 }}
+          style={{ opacity: 0.12 }}
         />
       </View>
       {/* Foreground icon */}
       <MaterialIcons
         name={style.icon as any}
-        size={32}
+        size={38}
         color={style.iconColor}
         style={{ opacity: 0.9 }}
       />
-      {/* "مطلوب" pill */}
-      <View style={[reqPh.pill, { backgroundColor: style.iconColor }]}>
-        <Text style={reqPh.pillText}>{isAr ? 'مطلوب' : 'Wanted'}</Text>
-      </View>
+      {/* Solid "\u0645\u0637\u0644\u0648\u0628" text */}
+      <Text style={[reqPh.wantedText, { color: '#fff' }]}>مطلوب</Text>
       {/* Category name */}
       {categoryName ? (
         <Text style={[reqPh.catText, { color: style.iconColor }]} numberOfLines={2}>
           {categoryName}
         </Text>
       ) : null}
-    </LinearGradient>
+    </View>
   );
 };
 
 const reqPh = StyleSheet.create({
   container: {
     width: '100%', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingHorizontal: 12, paddingVertical: 10,
+    gap: 8, paddingHorizontal: 16, paddingVertical: 12,
     position: 'relative', overflow: 'hidden',
   },
   bgIconWrap: {
-    position: 'absolute', top: '50%', left: '50%',
-    transform: [{ translateX: -36 }, { translateY: -36 }],
+    position: 'absolute',
+    top: '50%', left: '50%',
+    transform: [{ translateX: -48 }, { translateY: -48 }],
+  },
+  wantedText: {
+    fontSize: 26, fontWeight: '900', textAlign: 'center',
+    letterSpacing: 1,
+    textShadowColor: 'rgba(0,0,0,0.18)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
   },
   pill: {
     borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3,
     marginTop: 2,
   },
   pillText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  catText: { fontSize: 11, fontWeight: '700', textAlign: 'center', lineHeight: 15 },
+  catText: { fontSize: 12, fontWeight: '700', textAlign: 'center', lineHeight: 16 },
 });
 
 
@@ -271,7 +269,11 @@ export const AdCard = memo(function AdCard({
     () => (ad.ad_images ? [...ad.ad_images].sort((a, b) => a.position - b.position) : []),
     [ad.ad_images]
   );
-  const firstImage = sortedImages[0];
+  const rawFirstImage = sortedImages[0];
+  // For product requests, skip external placeholder URLs (placehold.co / WANTED) — render native UI instead
+  const isPlaceholderUrl = (url?: string) =>
+    !url || url.includes('placehold.co') || url.toUpperCase().includes('WANTED');
+  const firstImage = (isRequest && isPlaceholderUrl(rawFirstImage?.url)) ? undefined : rawFirstImage;
 
   // Reactive image height: scales with live screen width
   const clampImgH = useMemo(
@@ -435,16 +437,13 @@ export const AdCard = memo(function AdCard({
           styles.priceBadge,
           {
             backgroundColor: isRequest
-              ? getRequestStyle(catName).iconColor
+              ? '#F57C00'
               : isFree ? '#22C55E' : colors.primary,
           },
           isRTL ? { right: 8, left: undefined } : { left: 8 },
         ]}>
           {isRequest ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-              <MaterialIcons name={getRequestStyle(catName).icon as any} size={10} color="#fff" />
-              <Text style={styles.priceText}>{isAr ? 'مطلوب' : 'Wanted'}</Text>
-            </View>
+            <Text style={[styles.priceText, { fontWeight: '900' }]}>{'مطلوب'}</Text>
           ) : (
             <Text style={styles.priceText}>{formatPrice(ad.price, isAr)}</Text>
           )}

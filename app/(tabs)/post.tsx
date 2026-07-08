@@ -38,22 +38,9 @@ const QALQILYA_LOCATIONS = [
 ];
 
 // ── Auto-image banner for product requests ───────────────────────────────────
-// Generates a "Wanted" styled graphic banner using placehold.co.
-// We use English-only text in the URL since placehold.co may not render Arabic
-// characters properly in all environments. The card badge "مطلوب" already
-// communicates the request nature to Arabic users via the AdCard component.
-function getRequestBannerForCategory(categoryNameAr: string): string {
-  // Map common Arabic category names to short English slugs for the banner
-  const categoryMap: Record<string, string> = {
-    'إلكترونيات': 'Electronics', 'هواتف': 'Phones', 'سيارات': 'Cars',
-    'أثاث': 'Furniture', 'ملابس': 'Clothing', 'كتب': 'Books',
-    'رياضة': 'Sports', 'بيت وحديقة': 'Home', 'أطفال': 'Kids',
-    'حيوانات': 'Pets', 'عقارات': 'Real Estate', 'أدوات': 'Tools',
-    'مجوهرات': 'Jewelry', 'طعام': 'Food', 'خدمات': 'Services',
-  };
-  const englishLabel = categoryMap[categoryNameAr?.trim()] || 'Item';
-  return `https://placehold.co/800x800/0A6E5C/FFFFFF/png?text=WANTED%0A${encodeURIComponent(englishLabel)}`;
-}
+// Requests use a native React Native placeholder rendered in AdCard.
+// No external URL is generated — we simply don't attach any image to request ads.
+const REQUEST_NO_IMAGE = null; // explicit null; AdCard renders native Arabic gradient UI
 
 // ── Mode toggle button ────────────────────────────────────────────────────────
 function ModeToggle({
@@ -367,10 +354,8 @@ export default function PostAdScreen() {
         }
         if (urls.length > 0) await saveAdImages(ad.id, urls, blurhashes);
       } else if (mode === 'product_request') {
-        // Auto-image: generate a "مطلوب [Category]" graphic banner
-        const catNameAr = selectedCategory?.name_ar || selectedCategory?.name || title.trim();
-        const bannerUrl = getRequestBannerForCategory(catNameAr);
-        await saveAdImages(ad.id, [bannerUrl], [null]);
+        // Requests have no image attached — AdCard renders a native Arabic gradient placeholder
+        // Do NOT call saveAdImages here so no URL is stored in the DB for requests
       }
 
       setSelectedCity(QALQILYA_CITY);
