@@ -137,9 +137,12 @@ export default function StoreDetailScreen() {
     });
   }, [products, selectedTab, isAr]);
 
-  // ── Load data ───────────────────────────────────────────────────────────────
+  // ── Load data + track view ────────────────────────────────────────────────
   useEffect(() => {
     if (!id) return;
+    // Fire view increment asynchronously — never blocks UI
+    getSupabaseClient().rpc('increment_store_views', { store_id: id }).catch(() => {});
+
     Promise.all([
       getSupabaseClient().from('stores').select('*').eq('id', id).single(),
       fetchStoreProducts(id),
@@ -193,6 +196,8 @@ export default function StoreDetailScreen() {
   // ── WhatsApp checkout ───────────────────────────────────────────────────────
   const handleConfirmOrder = useCallback(() => {
     if (!store || !isOpen) return;
+    // Track WhatsApp click asynchronously
+    getSupabaseClient().rpc('increment_store_whatsapp_clicks', { store_id: store.id }).catch(() => {});
     const userName = user?.username || user?.email?.split('@')[0] || 'عميل';
     const orderTypeLabel = isAr ? ORDER_LABELS[orderType].ar : ORDER_LABELS[orderType].en;
     const storeName = isAr ? (store.name_ar || store.name) : store.name;

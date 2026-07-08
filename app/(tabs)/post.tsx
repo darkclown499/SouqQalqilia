@@ -1,7 +1,7 @@
-
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, KeyboardAvoidingView, Platform, Modal, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, Pressable, KeyboardAvoidingView,
+  Platform, Modal, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -20,41 +20,129 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { MAX_AD_IMAGES } from '@/constants/config';
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface ImageItem { uri: string; base64: string; blurhash?: string | null }
+type PostMode = 'product_ad' | 'product_request';
+type Condition = 'new' | 'used';
 
 const PHONE_PREFIXES = ['+970', '+972'];
 
 // ── Qalqilya locations ────────────────────────────────────────────────────────
 const QALQILYA_CITY = 'قلقيلية المدينة';
 const QALQILYA_LOCATIONS = [
-  'قلقيلية المدينة',
-  'عزون',
-  'كفر قدوم',
-  'جيوس',
-  'حبلة',
-  'كفر ثلث',
-  'عزون عتمة',
-  'إماتين',
-  'كفر لاقف',
-  'النبي إلياس',
-  'جيت',
-  'جينصافوط',
-  'حجة',
-  'باقة الحطب',
-  'الفندق',
-  'راس عطية',
-  'راس الطيرة',
-  'صير',
-  'فلامية',
-  'مغارة الضبعة',
-  'عزبة الطبيب',
-  'عزبة سلمان',
-  'عزبة الأشقر',
-  'واد الرشا',
-  'المدور',
+  'قلقيلية المدينة', 'عزون', 'كفر قدوم', 'جيوس', 'حبلة', 'كفر ثلث',
+  'عزون عتمة', 'إماتين', 'كفر لاقف', 'النبي إلياس', 'جيت', 'جينصافوط',
+  'حجة', 'باقة الحطب', 'الفندق', 'راس عطية', 'راس الطيرة', 'صير',
+  'فلامية', 'مغارة الضبعة', 'عزبة الطبيب', 'عزبة سلمان',
+  'عزبة الأشقر', 'واد الرشا', 'المدور',
 ];
-type Condition = 'new' | 'used';
 
+// ── Auto-image stock library: one professional Unsplash URL per category slug ─
+// Used when user posts a product request without uploading a custom image.
+const CATEGORY_STOCK_IMAGES: Record<string, string> = {
+  // Cars / Vehicles
+  cars:        'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=800&q=80',
+  vehicles:    'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=800&q=80',
+  // Electronics
+  electronics: 'https://images.unsplash.com/photo-1468495244123-6c6c332eeece?w=800&q=80',
+  // Jobs / Employment
+  jobs:        'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=800&q=80',
+  work:        'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=800&q=80',
+  // Real Estate / Housing
+  realestate:  'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&q=80',
+  housing:     'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&q=80',
+  // Clothes / Fashion
+  clothes:     'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&q=80',
+  fashion:     'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&q=80',
+  // Furniture / Home
+  furniture:   'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80',
+  home:        'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80',
+  // Animals / Pets
+  animals:     'https://images.unsplash.com/photo-1517849845537-4d257902454a?w=800&q=80',
+  pets:        'https://images.unsplash.com/photo-1517849845537-4d257902454a?w=800&q=80',
+  // Services
+  services:    'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&q=80',
+  // Sports
+  sports:      'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800&q=80',
+  // Books / Education
+  books:       'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=800&q=80',
+  // Food
+  food:        'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800&q=80',
+  // Default fallback
+  default:     'https://images.unsplash.com/photo-1605792657660-596af9009e82?w=800&q=80',
+};
+
+/** Pick the best stock image URL for a given category slug/name */
+function getStockImageForCategory(categorySlug: string, categoryName: string): string {
+  const slug = (categorySlug || '').toLowerCase();
+  const name = (categoryName || '').toLowerCase();
+  // Direct slug match
+  if (CATEGORY_STOCK_IMAGES[slug]) return CATEGORY_STOCK_IMAGES[slug];
+  // Fuzzy name match
+  for (const key of Object.keys(CATEGORY_STOCK_IMAGES)) {
+    if (slug.includes(key) || name.includes(key) || key.includes(slug)) {
+      return CATEGORY_STOCK_IMAGES[key];
+    }
+  }
+  // Arabic keyword matching
+  if (name.includes('سيار') || name.includes('مركب')) return CATEGORY_STOCK_IMAGES.cars;
+  if (name.includes('الكترون') || name.includes('هاتف') || name.includes('جوال')) return CATEGORY_STOCK_IMAGES.electronics;
+  if (name.includes('عقار') || name.includes('شقة') || name.includes('منزل')) return CATEGORY_STOCK_IMAGES.realestate;
+  if (name.includes('ملابس') || name.includes('موضة')) return CATEGORY_STOCK_IMAGES.clothes;
+  if (name.includes('أثاث') || name.includes('منزل')) return CATEGORY_STOCK_IMAGES.furniture;
+  if (name.includes('حيوان') || name.includes('حيوانات')) return CATEGORY_STOCK_IMAGES.animals;
+  if (name.includes('عمل') || name.includes('وظيف')) return CATEGORY_STOCK_IMAGES.jobs;
+  if (name.includes('رياضة')) return CATEGORY_STOCK_IMAGES.sports;
+  if (name.includes('خدم')) return CATEGORY_STOCK_IMAGES.services;
+  if (name.includes('كتاب') || name.includes('تعليم')) return CATEGORY_STOCK_IMAGES.books;
+  if (name.includes('طعام') || name.includes('أكل')) return CATEGORY_STOCK_IMAGES.food;
+  return CATEGORY_STOCK_IMAGES.default;
+}
+
+// ── Mode toggle button ────────────────────────────────────────────────────────
+function ModeToggle({
+  mode, onChange, colors, isRTL, isAr,
+}: {
+  mode: PostMode; onChange: (m: PostMode) => void;
+  colors: any; isRTL: boolean; isAr: boolean;
+}) {
+  return (
+    <View style={[mt.wrap, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
+      <Pressable
+        style={[mt.btn, mode === 'product_ad' && { backgroundColor: colors.primary, ...Shadow.sm }]}
+        onPress={() => onChange('product_ad')}
+      >
+        <MaterialIcons name="sell" size={16} color={mode === 'product_ad' ? '#fff' : colors.textMuted} />
+        <Text style={[mt.label, { color: mode === 'product_ad' ? '#fff' : colors.textSecondary, fontWeight: mode === 'product_ad' ? '700' : '500' }]}>
+          {isAr ? 'إعلان عن منتج' : 'Sell Product'}
+        </Text>
+      </Pressable>
+      <Pressable
+        style={[mt.btn, mode === 'product_request' && { backgroundColor: colors.accent ?? '#F59E0B', ...Shadow.sm }]}
+        onPress={() => onChange('product_request')}
+      >
+        <MaterialIcons name="shopping-cart" size={16} color={mode === 'product_request' ? '#fff' : colors.textMuted} />
+        <Text style={[mt.label, { color: mode === 'product_request' ? '#fff' : colors.textSecondary, fontWeight: mode === 'product_request' ? '700' : '500' }]}>
+          {isAr ? 'طلب منتج' : 'Request Product'}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const mt = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row', borderRadius: Radius.xl, borderWidth: 1,
+    padding: 4, gap: 4,
+  },
+  btn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 11, borderRadius: Radius.lg,
+  },
+  label: { fontSize: FontSize.sm },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 export default function PostAdScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -64,22 +152,33 @@ export default function PostAdScreen() {
   const { t, language, isRTL } = useLanguage();
   const { categories, loading: catLoading } = useCategories();
 
+  // ── Mode ──────────────────────────────────────────────────────────────────
+  const [mode, setMode] = useState<PostMode>('product_ad');
+
+  // ── Shared fields ─────────────────────────────────────────────────────────
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [price, setPrice] = useState('');
-  const [location, setLocation] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [phonePrefix, setPhonePrefix] = useState('+970');
   const [phoneLocal, setPhoneLocal] = useState('');
   const [phonePrefilled, setPhonePrefilled] = useState(false);
-  const [condition, setCondition] = useState<Condition>('used');
+  const [contactViaWhatsapp, setContactViaWhatsapp] = useState(false);
   const [selectedCity, setSelectedCity] = useState(QALQILYA_CITY);
   const [cityModalVisible, setCityModalVisible] = useState(false);
-  const [images, setImages] = useState<ImageItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
 
+  // ── Product Ad only ───────────────────────────────────────────────────────
+  const [price, setPrice] = useState('');
+  const [location, setLocation] = useState('');
+  const [condition, setCondition] = useState<Condition>('used');
+  const [images, setImages] = useState<ImageItem[]>([]);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+
+  // ── Product Request only ──────────────────────────────────────────────────
+  const [requestStatus, setRequestStatus] = useState<'open' | 'urgent'>('open');
+
+  const isAr = language === 'ar';
   const rtl = { flexDirection: isRTL ? ('row-reverse' as const) : ('row' as const) };
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
 
@@ -94,22 +193,20 @@ export default function PostAdScreen() {
       .then(({ data }) => {
         if (data?.phone) {
           const raw = data.phone as string;
-          // Match +972 or +970 prefix
           const match = raw.match(/^(\+97[02])(\d+)$/);
           if (match) {
             setPhonePrefix(match[1] as '+970' | '+972');
-            // Strip leading zero just in case
             setPhoneLocal(match[2].replace(/^0/, ''));
           } else {
-            // No prefix — just store as-is (up to 9 digits)
             setPhoneLocal(raw.replace(/[^0-9]/g, '').slice(0, 9));
           }
           setPhonePrefilled(true);
         }
       })
       .catch(() => {});
-  }, [user?.id]);  // only re-run when the user ID changes (not on every render)
+  }, [user?.id]);
 
+  // ── Guest guard ───────────────────────────────────────────────────────────
   if (!user) {
     return (
       <View style={[styles.guestContainer, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -128,30 +225,27 @@ export default function PostAdScreen() {
     );
   }
 
+  // ── Photo handlers ────────────────────────────────────────────────────────
   const handleAddImage = () => {
     if (images.length >= MAX_AD_IMAGES) {
-      return showAlert(t.photos, language === 'ar' ? `الحد الأقصى ${MAX_AD_IMAGES} صور.` : `Max ${MAX_AD_IMAGES} photos allowed.`);
+      return showAlert(t.photos, isAr ? `الحد الأقصى ${MAX_AD_IMAGES} صور.` : `Max ${MAX_AD_IMAGES} photos allowed.`);
     }
     setPhotoModalVisible(true);
   };
 
   const handlePickCamera = async () => {
     setPhotoModalVisible(false);
-    // Small delay so modal closes before camera opens
     setTimeout(async () => {
       const result = await pickImage('camera');
       if (result) {
-        // Generate blurhash in background — doesn't block UI
         generateBlurhash(result.uri).then(blurhash => {
-          setImages(prev => prev.map(img =>
-            img.uri === result.uri ? { ...img, blurhash } : img
-          ));
+          setImages(prev => prev.map(img => img.uri === result.uri ? { ...img, blurhash } : img));
         }).catch(() => {});
         setImages(prev => [...prev, { ...result, blurhash: null }]);
       } else {
         showAlert(
-          language === 'ar' ? 'لا يوجد إذن' : 'Permission Denied',
-          language === 'ar' ? 'يرجى السماح بالوصول إلى الكاميرا من إعدادات الجهاز.' : 'Please allow camera access in your device settings.'
+          isAr ? 'لا يوجد إذن' : 'Permission Denied',
+          isAr ? 'يرجى السماح بالوصول إلى الكاميرا من إعدادات الجهاز.' : 'Please allow camera access in your device settings.'
         );
       }
     }, 300);
@@ -160,19 +254,15 @@ export default function PostAdScreen() {
   const handlePickGallery = async () => {
     setPhotoModalVisible(false);
     setTimeout(async () => {
-      // Batch-select up to 3 images in a single gallery session
       const remaining = MAX_AD_IMAGES - images.length;
       if (remaining <= 0) return;
       const results = await pickMultipleImages(Math.min(3, remaining));
       if (results.length > 0) {
         const withNullHash = results.map(r => ({ ...r, blurhash: null as string | null }));
         setImages(prev => [...prev, ...withNullHash].slice(0, MAX_AD_IMAGES));
-        // Generate blurhashes in background for all selected images
         withNullHash.forEach(img => {
           generateBlurhash(img.uri).then(blurhash => {
-            setImages(prev => prev.map(p =>
-              p.uri === img.uri ? { ...p, blurhash } : p
-            ));
+            setImages(prev => prev.map(p => p.uri === img.uri ? { ...p, blurhash } : p));
           }).catch(() => {});
         });
       }
@@ -181,7 +271,7 @@ export default function PostAdScreen() {
 
   const handleRemoveImage = (index: number) => setImages(prev => prev.filter((_, i) => i !== index));
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setTitle('');
     setDescription('');
     setPrice('');
@@ -192,13 +282,16 @@ export default function PostAdScreen() {
     setCondition('used');
     setPhonePrefix('+970');
     setPhonePrefilled(false);
-  };
+    setRequestStatus('open');
+    setContactViaWhatsapp(false);
+  }, []);
 
+  // ── AI enhancement ────────────────────────────────────────────────────────
   const handleAiImprove = async () => {
     if (!title.trim() && !description.trim()) {
       return showAlert(
-        language === 'ar' ? 'مطلوب' : 'Required',
-        language === 'ar' ? 'أدخل العنوان أو الوصف أولاً' : 'Please enter a title or description first.'
+        isAr ? 'مطلوب' : 'Required',
+        isAr ? 'أدخل العنوان أو الوصف أولاً' : 'Please enter a title or description first.'
       );
     }
     if (aiLoading) return;
@@ -206,226 +299,146 @@ export default function PostAdScreen() {
     try {
       const supabase = getSupabaseClient();
       const { data, error } = await supabase.functions.invoke('ai-copywrite', {
-        body: { title: title.trim(), description: description.trim(), language },
+        body: {
+          title: title.trim(),
+          description: description.trim(),
+          language,
+          mode, // pass mode so AI knows it's a request vs ad
+        },
       });
       if (error) {
         let errMsg = error.message;
         if (error instanceof FunctionsHttpError) {
-          try { errMsg = await error.context?.text() ?? errMsg; } catch { /* Ignore error during context access */ }
+          try { errMsg = await error.context?.text() ?? errMsg; } catch { /* ignore */ }
         }
-        return showAlert(language === 'ar' ? 'خطأ في الذكاء الاصطناعي' : 'AI Error', errMsg);
+        return showAlert(isAr ? 'خطأ في الذكاء الاصطناعي' : 'AI Error', errMsg);
       }
       if (data?.title) setTitle(data.title);
       if (data?.description) setDescription(data.description);
       showAlert(
-        language === 'ar' ? 'تم التحسين!' : 'Improved!',
-        language === 'ar' ? 'تم تحسين العنوان والوصف بالذكاء الاصطناعي.' : 'Title and description enhanced by AI.'
+        isAr ? 'تم التحسين!' : 'Improved!',
+        isAr ? 'تم تحسين العنوان والوصف بالذكاء الاصطناعي.' : 'Title and description enhanced by AI.'
       );
     } catch (e: any) {
-      showAlert(language === 'ar' ? 'خطأ' : 'Error', e.message ?? 'AI failed.');
+      showAlert(isAr ? 'خطأ' : 'Error', e.message ?? 'AI failed.');
     } finally {
       setAiLoading(false);
     }
   };
 
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (images.length === 0) return showAlert(
-      language === 'ar' ? 'صورة مطلوبة' : 'Photo Required',
-      language === 'ar' ? 'يجب إضافة صورة واحدة على الأقل للإعلان.' : 'At least one photo is required for your listing.'
-    );
-    if (!title.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال عنوان' : 'Please enter a title.');
-    if (!description.trim()) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال وصف' : 'Please enter a description.');
-    if (!categoryId) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى اختيار تصنيف' : 'Please select a category.');
-    // neighbourhood is optional — no validation needed
-    const parsedPrice = parseFloat(price);
-    if (!price.trim() || isNaN(parsedPrice) || parsedPrice <= 0) return showAlert(language === 'ar' ? 'مطلوب' : 'Required', language === 'ar' ? 'يرجى إدخال سعر صحيح (أكبر من 0)' : 'Please enter a valid price (greater than 0).');
-    // phone is optional — accept 9-digit (e.g. 599123456) OR 10-digit with leading zero (e.g. 0599123456)
+    if (!title.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال عنوان' : 'Please enter a title.');
+    if (!description.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال وصف' : 'Please enter a description.');
+    if (!categoryId) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى اختيار تصنيف' : 'Please select a category.');
+
+    if (mode === 'product_ad') {
+      if (images.length === 0) return showAlert(
+        isAr ? 'صورة مطلوبة' : 'Photo Required',
+        isAr ? 'يجب إضافة صورة واحدة على الأقل للإعلان.' : 'At least one photo is required for your listing.'
+      );
+      const parsedPrice = parseFloat(price);
+      if (!price.trim() || isNaN(parsedPrice) || parsedPrice <= 0) return showAlert(
+        isAr ? 'مطلوب' : 'Required',
+        isAr ? 'يرجى إدخال سعر صحيح (أكبر من 0)' : 'Please enter a valid price (greater than 0).'
+      );
+    }
+
     const rawPhone = phoneLocal.trim();
     if (rawPhone) {
       const digits = rawPhone.replace(/\D/g, '');
       if (digits.length !== 9 && digits.length !== 10) {
         return showAlert(
-          language === 'ar' ? 'رقم هاتف غير صحيح' : 'Invalid Phone',
-          language === 'ar'
+          isAr ? 'رقم هاتف غير صحيح' : 'Invalid Phone',
+          isAr
             ? 'أدخل 9 أرقام (مثال: 599123456) أو 10 مع الصفر (مثال: 0599123456)'
-            : 'Enter 9 digits (e.g. 599123456) or 10 with leading zero (e.g. 0599123456).'
+            : 'Enter 9 digits (e.g. 599123456) or 10 with leading zero.'
         );
       }
     }
 
     setLoading(true);
     try {
-      // Strip leading zero before prepending country prefix
       const rawPhoneLocal = phoneLocal.trim().replace(/^0/, '');
       const fullPhone = rawPhoneLocal ? `${phonePrefix}${rawPhoneLocal}` : '';
       const isCity = selectedCity === QALQILYA_CITY;
-      const locationStr = `${isCity ? 'قلقيلية' : selectedCity}${location.trim() ? ` - ${location.trim()}` : ''}`;
+      const locationStr = mode === 'product_ad'
+        ? `${isCity ? 'قلقيلية' : selectedCity}${location.trim() ? ` - ${location.trim()}` : ''}`
+        : selectedCity;
+
+      const selectedCategory = categories.find(c => c.id === categoryId);
+
       const { data: ad, error: adError } = await createAd({
-        title: title.trim(), description: description.trim(),
-        price: parsedPrice, location: locationStr,
-        category_id: categoryId, phone_number: fullPhone, condition,
+        title: title.trim(),
+        description: description.trim(),
+        price: mode === 'product_ad' ? parseFloat(price) : 0,
+        location: locationStr,
+        category_id: categoryId,
+        phone_number: fullPhone,
+        condition: mode === 'product_ad' ? condition : 'used',
+        // Extra fields stored in DB via extra columns
+        ...(mode === 'product_request' ? {
+          status: 'active',
+        } : {}),
       });
       if (adError || !ad) throw new Error(adError ?? 'Failed to create ad');
-      if (images.length > 0) {
+
+      // Update ad_type and contact_whatsapp columns
+      await getSupabaseClient()
+        .from('ads')
+        .update({
+          ad_type: mode,
+          contact_whatsapp: contactViaWhatsapp,
+        })
+        .eq('id', ad.id)
+        .then(() => {});
+
+      if (mode === 'product_ad' && images.length > 0) {
+        // Upload actual images for product ads
         const urls: string[] = [];
         const blurhashes: (string | null)[] = [];
         for (const img of images) {
           const { url } = await uploadImage(img.base64, user.id, ad.id, img.uri);
-          if (url) {
-            urls.push(url);
-            blurhashes.push(img.blurhash ?? null);
-          }
+          if (url) { urls.push(url); blurhashes.push(img.blurhash ?? null); }
         }
         if (urls.length > 0) await saveAdImages(ad.id, urls, blurhashes);
+      } else if (mode === 'product_request') {
+        // Auto-image: use stock URL for the category
+        const stockUrl = getStockImageForCategory(
+          selectedCategory?.slug ?? '',
+          getCategoryName(selectedCategory ?? { id: '', name: '', name_ar: '', icon: '', slug: '', color: '', created_at: '' } as any, language)
+        );
+        await saveAdImages(ad.id, [stockUrl], [null]);
       }
+
       setSelectedCity(QALQILYA_CITY);
       resetForm();
       showAlert(
-        language === 'ar' ? 'تم نشر الإعلان!' : 'Ad Posted!',
-        language === 'ar' ? 'إعلانك الآن متاح للعرض.' : 'Your listing is now live.',
+        mode === 'product_ad'
+          ? (isAr ? 'تم نشر الإعلان!' : 'Ad Posted!')
+          : (isAr ? 'تم نشر طلبك!' : 'Request Posted!'),
+        mode === 'product_ad'
+          ? (isAr ? 'إعلانك الآن متاح للعرض.' : 'Your listing is now live.')
+          : (isAr ? 'طلبك الآن متاح ويمكن للبائعين التواصل معك.' : 'Your request is live and sellers can contact you.'),
         [
-          { text: language === 'ar' ? 'عرض الإعلان' : 'View Listing', onPress: () => router.push(`/ad/${ad.id}`) },
-          { text: language === 'ar' ? 'نشر آخر' : 'Post Another', style: 'cancel' },
+          { text: isAr ? 'عرض' : 'View', onPress: () => router.push(`/ad/${ad.id}`) },
+          { text: isAr ? 'نشر آخر' : 'Post Another', style: 'cancel' },
         ]
       );
     } catch (e: any) {
-      showAlert(language === 'ar' ? 'خطأ' : 'Error', e.message ?? 'Something went wrong.');
+      showAlert(isAr ? 'خطأ' : 'Error', e.message ?? 'Something went wrong.');
     } finally {
       setLoading(false);
     }
   };
 
+  const accentColor = mode === 'product_request' ? (colors.accent ?? '#F59E0B') : colors.primary;
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
 
-        {/* ── City Picker Modal ── */}
-        <Modal
-          visible={cityModalVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setCityModalVisible(false)}
-          statusBarTranslucent
-        >
-          <Pressable style={cityS.overlay} onPress={() => setCityModalVisible(false)}>
-            <View style={[cityS.sheet, { backgroundColor: colors.surface }]}>
-              <View style={[cityS.handle, { backgroundColor: colors.border }]} />
-              <View style={[cityS.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <MaterialIcons name="location-on" size={20} color={colors.primary} />
-                <Text style={[cityS.titleText, { color: colors.textPrimary }]}>
-                  {language === 'ar' ? 'اختر المنطقة' : 'Select Area'}
-                </Text>
-              </View>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={cityS.listContent}>
-                {QALQILYA_LOCATIONS.map(loc => {
-                  const isSelected = selectedCity === loc;
-                  const isMainCity = loc === QALQILYA_CITY;
-                  return (
-                    <Pressable
-                      key={loc}
-                      style={({ pressed }) => [
-                        cityS.item,
-                        { borderColor: isSelected ? colors.primary : colors.borderLight, backgroundColor: isSelected ? colors.primaryGhost : (pressed ? colors.surfaceTint : colors.background) },
-                      ]}
-                      onPress={() => { setSelectedCity(loc); setCityModalVisible(false); }}
-                    >
-                      <View style={[cityS.itemIcon, { backgroundColor: isSelected ? colors.primary : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
-                        <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSelected ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
-                      </View>
-                      <Text style={[cityS.itemText, { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>
-                        {loc}
-                      </Text>
-                      {isMainCity && !isSelected ? (
-                        <View style={[cityS.defaultBadge, { backgroundColor: colors.primaryGhost }]}>
-                          <Text style={[cityS.defaultText, { color: colors.primary }]}>{language === 'ar' ? 'افتراضي' : 'Default'}</Text>
-                        </View>
-                      ) : null}
-                      {isSelected ? <MaterialIcons name="check-circle" size={18} color={colors.primary} /> : null}
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          </Pressable>
-        </Modal>
-
-        {/* ── Photo Source Bottom Sheet ── */}
-        <Modal
-          visible={photoModalVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setPhotoModalVisible(false)}
-          statusBarTranslucent
-        >
-          <Pressable style={photoStyles.overlay} onPress={() => setPhotoModalVisible(false)}>
-            <View style={[photoStyles.sheet, { backgroundColor: colors.surface }]}>
-              <View style={[photoStyles.handle, { backgroundColor: colors.border }]} />
-              <Text style={[photoStyles.sheetTitle, { color: colors.textPrimary }]}>
-                {language === 'ar' ? 'إضافة صورة' : 'Add Photo'}
-              </Text>
-              <Text style={[photoStyles.sheetSub, { color: colors.textMuted }]}>
-                {language === 'ar' ? 'اختر طريقة الإضافة' : 'Choose how to add a photo'}
-              </Text>
-
-              {/* Camera option */}
-              <Pressable
-                style={({ pressed }) => [
-                  photoStyles.option,
-                  { backgroundColor: pressed ? colors.primaryGhost : colors.background, borderColor: colors.border },
-                ]}
-                onPress={handlePickCamera}
-              >
-                <View style={[photoStyles.optionIcon, { backgroundColor: colors.primary + '18' }]}>
-                  <Text style={photoStyles.optionEmoji}>📷</Text>
-                </View>
-                <View style={photoStyles.optionText}>
-                  <Text style={[photoStyles.optionTitle, { color: colors.textPrimary }]}>
-                    {language === 'ar' ? 'التقط صورة' : 'Take Photo'}
-                  </Text>
-                  <Text style={[photoStyles.optionSub, { color: colors.textMuted }]}>
-                    {language === 'ar' ? 'استخدم كاميرا الجهاز' : 'Use device camera'}
-                  </Text>
-                </View>
-                <View style={[photoStyles.optionArrow]}>
-                  <Text style={{ color: colors.textMuted, fontSize: 18 }}>›</Text>
-                </View>
-              </Pressable>
-
-              {/* Gallery option */}
-              <Pressable
-                style={({ pressed }) => [
-                  photoStyles.option,
-                  { backgroundColor: pressed ? colors.primaryGhost : colors.background, borderColor: colors.border },
-                ]}
-                onPress={handlePickGallery}
-              >
-                <View style={[photoStyles.optionIcon, { backgroundColor: '#F59E0B18' }]}>
-                  <Text style={photoStyles.optionEmoji}>🖼️</Text>
-                </View>
-                <View style={photoStyles.optionText}>
-                  <Text style={[photoStyles.optionTitle, { color: colors.textPrimary }]}>
-                    {language === 'ar' ? 'من المعرض' : 'Choose from Gallery'}
-                  </Text>
-                  <Text style={[photoStyles.optionSub, { color: colors.textMuted }]}>
-                    {language === 'ar' ? 'اختر من صور الجهاز' : 'Select from your photos'}
-                  </Text>
-                </View>
-                <View style={[photoStyles.optionArrow]}>
-                  <Text style={{ color: colors.textMuted, fontSize: 18 }}>›</Text>
-                </View>
-              </Pressable>
-
-              <Pressable
-                style={[photoStyles.cancelBtn, { backgroundColor: colors.background }]}
-                onPress={() => setPhotoModalVisible(false)}
-              >
-                <Text style={[photoStyles.cancelText, { color: colors.textPrimary }]}>
-                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
-                </Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Modal>
+        {/* ── Header ── */}
         <View style={[styles.header, { backgroundColor: colors.primary }]}>
           <View>
             <Text style={[styles.headerSub, textAlign]}>{t.create}</Text>
@@ -437,245 +450,110 @@ export default function PostAdScreen() {
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-          {/* Photos */}
-          <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
-            <View style={[styles.sectionHeader, rtl]}>
-              <MaterialIcons name="photo-camera" size={18} color={colors.primary} />
-              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.photos}</Text>
-              <View style={[styles.sectionBadge, { backgroundColor: colors.primaryGhost }]}>
-                <Text style={[styles.sectionBadgeText, { color: colors.primary }]}>{images.length}/{MAX_AD_IMAGES}</Text>
-              </View>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imgContent}>
-              {images.map((img, i) => (
-                <View key={i} style={styles.imgThumb}>
-                  {i === 0 ? (
-                    <View style={[styles.mainLabel, { backgroundColor: colors.primary }]}>
-                      <Text style={styles.mainLabelText}>{language === 'ar' ? 'رئيسية' : 'Main'}</Text>
-                    </View>
-                  ) : null}
-                  <Image source={{ uri: img.uri }} style={styles.thumbImg} contentFit="cover" cachePolicy="memory" />
-                  <Pressable style={styles.removeImg} onPress={() => handleRemoveImage(i)}>
-                    <MaterialIcons name="close" size={12} color="#fff" />
-                  </Pressable>
+
+          {/* ── Mode Toggle ── */}
+          <ModeToggle mode={mode} onChange={setMode} colors={colors} isRTL={isRTL} isAr={isAr} />
+
+          {/* ── Mode Info Banner ── */}
+          <View style={[styles.modeBanner, {
+            backgroundColor: mode === 'product_request' ? '#FEF3C7' : colors.primaryGhost,
+            borderColor: mode === 'product_request' ? '#F59E0B' : colors.primary + '44',
+          }]}>
+            <MaterialIcons
+              name={mode === 'product_request' ? 'shopping-cart' : 'sell'}
+              size={16}
+              color={mode === 'product_request' ? '#D97706' : colors.primary}
+            />
+            <Text style={[styles.modeBannerText, {
+              color: mode === 'product_request' ? '#92400E' : colors.primary,
+            }]}>
+              {mode === 'product_request'
+                ? (isAr ? 'أنت تنشر طلب شراء — سيتواصل معك البائعون المهتمون.' : 'You are posting a buy request — interested sellers will contact you.')
+                : (isAr ? 'أنت تنشر إعلاناً لبيع منتج.' : 'You are posting a product listing for sale.')}
+            </Text>
+          </View>
+
+          {/* ── Photos (product_ad only) ── */}
+          {mode === 'product_ad' ? (
+            <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
+              <View style={[styles.sectionHeader, rtl]}>
+                <MaterialIcons name="photo-camera" size={18} color={colors.primary} />
+                <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.photos}</Text>
+                <View style={[styles.sectionBadge, { backgroundColor: colors.primaryGhost }]}>
+                  <Text style={[styles.sectionBadgeText, { color: colors.primary }]}>{images.length}/{MAX_AD_IMAGES}</Text>
                 </View>
-              ))}
-              {images.length < MAX_AD_IMAGES ? (
-                <Pressable
-                  style={[styles.addImg, { borderColor: colors.border, backgroundColor: colors.surfaceTint }]}
-                  onPress={handleAddImage}
-                >
-                  <View style={[styles.addImgIcon, { backgroundColor: colors.primaryGhost }]}>
-                    <MaterialIcons name="add-photo-alternate" size={26} color={colors.primary} />
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imgContent}>
+                {images.map((img, i) => (
+                  <View key={i} style={styles.imgThumb}>
+                    {i === 0 ? (
+                      <View style={[styles.mainLabel, { backgroundColor: colors.primary }]}>
+                        <Text style={styles.mainLabelText}>{isAr ? 'رئيسية' : 'Main'}</Text>
+                      </View>
+                    ) : null}
+                    <Image source={{ uri: img.uri }} style={styles.thumbImg} contentFit="cover" cachePolicy="memory" />
+                    <Pressable style={styles.removeImg} onPress={() => handleRemoveImage(i)}>
+                      <MaterialIcons name="close" size={12} color="#fff" />
+                    </Pressable>
                   </View>
-                  <Text style={[styles.addImgText, { color: colors.textMuted }]}>{t.addPhoto}</Text>
-                </Pressable>
-              ) : null}
-            </ScrollView>
-          </View>
-
-          {/* Details */}
-          <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
-            <View style={[styles.sectionHeader, rtl]}>
-              <MaterialIcons name="edit" size={18} color={colors.primary} />
-              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.details}</Text>
-            </View>
-            <Input label={t.title} placeholder={t.titlePlaceholder} value={title} onChangeText={setTitle} maxLength={80} />
-            <Input label={t.description} placeholder={t.descriptionPlaceholder} value={description} onChangeText={setDescription} multiline numberOfLines={4} />
-            {/* AI Improve button */}
-            <Pressable
-              style={[styles.aiBtn, { backgroundColor: colors.primaryGhost, borderColor: colors.primary, opacity: aiLoading ? 0.7 : 1 }]}
-              onPress={handleAiImprove}
-              disabled={aiLoading}
-            >
-              {aiLoading
-                ? <ActivityIndicator size="small" color={colors.primary} />
-                : <MaterialIcons name="auto-awesome" size={16} color={colors.primary} />}
-              <Text style={[styles.aiBtnText, { color: colors.primary }]}>
-                {aiLoading
-                  ? (language === 'ar' ? 'جاري التحسين...' : 'Improving...')
-                  : (language === 'ar' ? 'تحسين النص بالذكاء الاصطناعي' : 'Improve with AI')}
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* Condition */}
-          <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
-            <View style={[styles.sectionHeader, rtl]}>
-              <MaterialIcons name="new-releases" size={18} color={colors.primary} />
-              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.condition}</Text>
-            </View>
-            <View style={[styles.conditionRow, rtl]}>
-              {(['new', 'used'] as Condition[]).map(c => {
-                const isSelected = condition === c;
-                const condLabel = c === 'new' ? t.conditionNew : t.conditionUsed;
-                const condIcon = c === 'new' ? 'fiber-new' : 'recycling';
-                return (
-                  <Pressable
-                    key={c}
-                    style={[
-                      styles.conditionBtn,
-                      {
-                        backgroundColor: isSelected ? colors.primary : colors.background,
-                        borderColor: isSelected ? colors.primary : colors.border,
-                      },
-                    ]}
-                    onPress={() => setCondition(c)}
-                  >
-                    <MaterialIcons name={condIcon as any} size={18} color={isSelected ? '#fff' : colors.textMuted} />
-                    <Text style={[styles.conditionText, { color: isSelected ? '#fff' : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>
-                      {condLabel}
-                    </Text>
-                    {isSelected ? <MaterialIcons name="check-circle" size={16} color="#fff" style={{ marginLeft: 'auto' }} /> : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Pricing & Location */}
-          <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
-            <View style={[styles.sectionHeader, rtl]}>
-              <Text style={[styles.shekelIcon, { color: colors.primary }]}>₪</Text>
-              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.priceLocation}</Text>
-            </View>
-            <Input label={language === 'ar' ? 'السعر (₪) *' : 'Price (₪) *'} placeholder={language === 'ar' ? 'أدخل السعر بالشيكل' : 'Enter price in ILS'} value={price} onChangeText={setPrice} keyboardType="numeric" />
-            <View style={[styles.priceWarningBox, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
-              <MaterialIcons name="warning-amber" size={15} color="#D97706" />
-              <Text style={styles.priceWarningText}>
-                {language === 'ar'
-                  ? 'تحذير: إدخال سعر غير منطقي أو مضلل سيؤدي إلى حذف الإعلان فوراً دون إشعار مسبق.'
-                  : 'Warning: Listing with an unrealistic or misleading price will be removed immediately without prior notice.'}
-              </Text>
-            </View>
-            <Text style={[styles.locationLabel, { color: colors.textSecondary }, textAlign]}>
-              {language === 'ar' ? 'الموقع' : 'Location'}
-            </Text>
-            {/* City selector button */}
-            <Pressable
-              style={({ pressed }) => [styles.citySelector, { borderColor: colors.primary, backgroundColor: pressed ? colors.primaryGhost : colors.primaryGhost + 'BB', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onPress={() => setCityModalVisible(true)}
-            >
-              <View style={[styles.citySelectorIcon, { backgroundColor: colors.primary }]}>
-                <MaterialIcons name={selectedCity === QALQILYA_CITY ? 'location-city' : 'location-on'} size={14} color="#fff" />
-              </View>
-              <Text style={[styles.citySelectorText, { color: colors.primary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
-                {selectedCity}
-              </Text>
-              <MaterialIcons name="keyboard-arrow-down" size={18} color={colors.primary} />
-            </Pressable>
-            {/* Optional neighbourhood input */}
-            <View style={[styles.locationFieldRow, { borderColor: colors.border, backgroundColor: colors.background, flexDirection: isRTL ? 'row-reverse' : 'row', marginTop: 8 }]}>
-              <View style={[styles.locationCity, { backgroundColor: colors.surfaceTint, borderColor: colors.surfaceTint }]}>
-                <MaterialIcons name="signpost" size={13} color={colors.textMuted} />
-              </View>
-              <View style={[styles.locationDivider, { backgroundColor: colors.border }]} />
-              <Input
-                placeholder={language === 'ar' ? 'الحي أو الشارع (اختياري)' : 'Street / Neighbourhood (optional)'}
-                value={location}
-                onChangeText={setLocation}
-                containerStyle={styles.locationInputContainer}
-              />
-            </View>
-          </View>
-
-          {/* Phone Number - Optional */}
-          <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
-            <View style={[styles.sectionHeader, rtl]}>
-              <MaterialIcons name="phone" size={18} color={colors.primary} />
-              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>
-                {language === 'ar' ? 'رقم الهاتف (اختياري)' : 'Phone Number (Optional)'}
-              </Text>
-              {/* No star required — optional field */}
-            </View>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }, textAlign]}>
-              {language === 'ar' ? 'رقم الهاتف' : 'Phone Number'}
-            </Text>
-            <View style={[styles.phoneRow, rtl]}>
-              <View style={[styles.prefixWrap, { borderColor: colors.border, backgroundColor: colors.background }]}>
-                {PHONE_PREFIXES.map(prefix => (
-                  <Pressable
-                    key={prefix}
-                    style={[
-                      styles.prefixBtn,
-                      phonePrefix === prefix && { backgroundColor: colors.primary },
-                    ]}
-                    onPress={() => setPhonePrefix(prefix)}
-                  >
-                    <Text style={[styles.prefixText, { color: phonePrefix === prefix ? '#fff' : colors.textSecondary }]}>
-                      {prefix}
-                    </Text>
-                  </Pressable>
                 ))}
-              </View>
-              <View style={styles.phoneInputWrap}>
-                <Input
-                  placeholder={language === 'ar' ? '0XX-XXX-XXXX' : '0XX-XXX-XXXX'}
-                  value={phoneLocal}
-                  onChangeText={(val) => {
-                    // Numbers only, max 10 digits (allows leading 0)
-                    const digits = val.replace(/[^0-9]/g, '').slice(0, 10);
-                    setPhoneLocal(digits);
-                  }}
-                  keyboardType="number-pad"
-                  containerStyle={styles.phoneInputContainer}
-                  maxLength={10}
-                />
-              </View>
+                {images.length < MAX_AD_IMAGES ? (
+                  <Pressable
+                    style={[styles.addImg, { borderColor: colors.border, backgroundColor: colors.surfaceTint }]}
+                    onPress={handleAddImage}
+                  >
+                    <View style={[styles.addImgIcon, { backgroundColor: colors.primaryGhost }]}>
+                      <MaterialIcons name="add-photo-alternate" size={26} color={colors.primary} />
+                    </View>
+                    <Text style={[styles.addImgText, { color: colors.textMuted }]}>{t.addPhoto}</Text>
+                  </Pressable>
+                ) : null}
+              </ScrollView>
             </View>
-            {/* 9-digit hint */}
-            <View style={[styles.phoneHintBox, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
-              <MaterialIcons name="info-outline" size={14} color={colors.primary} />
-              <Text style={[styles.phoneHintText, { color: colors.textSecondary }]}>
-                {language === 'ar'
-                  ? 'أدخل الرقم مع أو بدون الصفر في البداية (مثال: 599123456 أو 0599123456)'
-                  : 'Enter with or without leading zero (e.g. 599123456 or 0599123456)'}
+          ) : (
+            /* Auto-image notice for product_request */
+            <View style={[styles.autoImgNote, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
+              <MaterialIcons name="auto-awesome" size={16} color={colors.primary} />
+              <Text style={[styles.autoImgText, { color: colors.textSecondary }]}>
+                {isAr
+                  ? 'سيتم إضافة صورة تلقائية بناءً على التصنيف الذي تختاره.'
+                  : 'A stock image will be automatically assigned based on the selected category.'}
               </Text>
             </View>
-            <Text style={[styles.phoneHint, { color: colors.textMuted }, textAlign]}>
-              {language === 'ar'
-                ? 'سيتمكن المشترون من التواصل عبر الواتساب إذا أدخلت رقمك'
-                : 'Buyers can contact you via WhatsApp if you provide a number'}
-            </Text>
-          </View>
+          )}
 
-          {/* Category */}
+          {/* ── Category ── */}
           <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
             <View style={[styles.sectionHeader, rtl]}>
-              <MaterialIcons name="category" size={18} color={colors.primary} />
+              <MaterialIcons name="category" size={18} color={accentColor} />
               <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.category} *</Text>
             </View>
             {catLoading ? (
               <Text style={[styles.loadingCat, { color: colors.textMuted }]}>
-                {language === 'ar' ? 'جاري تحميل التصنيفات...' : 'Loading categories...'}
+                {isAr ? 'جاري تحميل التصنيفات...' : 'Loading categories...'}
               </Text>
             ) : (
               <View style={styles.catGrid}>
                 {categories.map(cat => {
                   const catName = getCategoryName(cat, language);
+                  const isSelected = categoryId === cat.id;
                   return (
                     <Pressable
                       key={cat.id}
                       style={[
                         styles.catOption,
-                        { backgroundColor: colors.background, borderColor: categoryId === cat.id ? cat.color : colors.border },
-                        categoryId === cat.id && { backgroundColor: cat.color + '15' },
+                        { backgroundColor: colors.background, borderColor: isSelected ? cat.color : colors.border },
+                        isSelected && { backgroundColor: cat.color + '15' },
                       ]}
                       onPress={() => setCategoryId(cat.id)}
                     >
-                      <View style={[styles.catOptionIcon, { backgroundColor: categoryId === cat.id ? cat.color + '20' : colors.surfaceTint }]}>
-                        <MaterialIcons name={cat.icon as any} size={18} color={categoryId === cat.id ? cat.color : colors.textMuted} />
+                      <View style={[styles.catOptionIcon, { backgroundColor: isSelected ? cat.color + '20' : colors.surfaceTint }]}>
+                        <MaterialIcons name={cat.icon as any} size={18} color={isSelected ? cat.color : colors.textMuted} />
                       </View>
-                      <Text
-                        style={[styles.catOptionText, {
-                          color: categoryId === cat.id ? cat.color : colors.textSecondary,
-                          fontWeight: categoryId === cat.id ? '700' : '500',
-                        }]}
-                        numberOfLines={1}
-                      >
+                      <Text style={[styles.catOptionText, { color: isSelected ? cat.color : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]} numberOfLines={1}>
                         {catName}
                       </Text>
-                      {categoryId === cat.id ? (
+                      {isSelected ? (
                         <View style={[styles.catCheckWrap, { backgroundColor: cat.color }]}>
                           <MaterialIcons name="check" size={12} color="#fff" />
                         </View>
@@ -687,17 +565,345 @@ export default function PostAdScreen() {
             )}
           </View>
 
-          <Button label={t.publishListing} onPress={handleSubmit} loading={loading} style={styles.submitBtn} size="lg" />
+          {/* ── Details (title + description + AI) ── */}
+          <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
+            <View style={[styles.sectionHeader, rtl]}>
+              <MaterialIcons name="edit" size={18} color={accentColor} />
+              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.details}</Text>
+            </View>
+            <Input
+              label={t.title}
+              placeholder={mode === 'product_request'
+                ? (isAr ? 'مثال: أبحث عن آيفون 14 بحالة جيدة' : 'e.g. Looking for iPhone 14 in good condition')
+                : t.titlePlaceholder}
+              value={title}
+              onChangeText={setTitle}
+              maxLength={80}
+            />
+            <Input
+              label={t.description}
+              placeholder={mode === 'product_request'
+                ? (isAr ? 'اذكر المواصفات المطلوبة، الميزانية، وأي تفاصيل مهمة...' : 'Mention required specs, budget, and any important details...')
+                : t.descriptionPlaceholder}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              numberOfLines={4}
+            />
+            {/* AI Improve button */}
+            <Pressable
+              style={[styles.aiBtn, { backgroundColor: accentColor + '18', borderColor: accentColor, opacity: aiLoading ? 0.7 : 1 }]}
+              onPress={handleAiImprove}
+              disabled={aiLoading}
+            >
+              {aiLoading
+                ? <ActivityIndicator size="small" color={accentColor} />
+                : <MaterialIcons name="auto-awesome" size={16} color={accentColor} />}
+              <Text style={[styles.aiBtnText, { color: accentColor }]}>
+                {aiLoading
+                  ? (isAr ? 'جاري التحسين...' : 'Improving...')
+                  : (isAr ? 'تحسين النص بالذكاء الاصطناعي' : 'Improve with AI')}
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* ── Condition (product_ad only) ── */}
+          {mode === 'product_ad' ? (
+            <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
+              <View style={[styles.sectionHeader, rtl]}>
+                <MaterialIcons name="new-releases" size={18} color={colors.primary} />
+                <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.condition}</Text>
+              </View>
+              <View style={[styles.conditionRow, rtl]}>
+                {(['new', 'used'] as Condition[]).map(c => {
+                  const isSelected = condition === c;
+                  const condLabel = c === 'new' ? t.conditionNew : t.conditionUsed;
+                  const condIcon = c === 'new' ? 'fiber-new' : 'recycling';
+                  return (
+                    <Pressable
+                      key={c}
+                      style={[styles.conditionBtn, { backgroundColor: isSelected ? colors.primary : colors.background, borderColor: isSelected ? colors.primary : colors.border }]}
+                      onPress={() => setCondition(c)}
+                    >
+                      <MaterialIcons name={condIcon as any} size={18} color={isSelected ? '#fff' : colors.textMuted} />
+                      <Text style={[styles.conditionText, { color: isSelected ? '#fff' : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>
+                        {condLabel}
+                      </Text>
+                      {isSelected ? <MaterialIcons name="check-circle" size={16} color="#fff" style={{ marginLeft: 'auto' }} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+
+          {/* ── Request Status (product_request only) ── */}
+          {mode === 'product_request' ? (
+            <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
+              <View style={[styles.sectionHeader, rtl]}>
+                <MaterialIcons name="flag" size={18} color={accentColor} />
+                <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>
+                  {isAr ? 'حالة الطلب' : 'Request Status'}
+                </Text>
+              </View>
+              <View style={[styles.conditionRow, rtl]}>
+                {([
+                  { key: 'open', icon: 'check-circle-outline', labelAr: 'طلب عادي', labelEn: 'Normal Request' },
+                  { key: 'urgent', icon: 'priority-high', labelAr: 'طلب عاجل 🔥', labelEn: 'Urgent 🔥' },
+                ] as const).map(opt => {
+                  const isSelected = requestStatus === opt.key;
+                  const urgentColor = '#EF4444';
+                  const btnColor = isSelected ? (opt.key === 'urgent' ? urgentColor : accentColor) : colors.background;
+                  return (
+                    <Pressable
+                      key={opt.key}
+                      style={[styles.conditionBtn, {
+                        backgroundColor: btnColor,
+                        borderColor: isSelected ? (opt.key === 'urgent' ? urgentColor : accentColor) : colors.border,
+                      }]}
+                      onPress={() => setRequestStatus(opt.key)}
+                    >
+                      <MaterialIcons name={opt.icon as any} size={18} color={isSelected ? '#fff' : colors.textMuted} />
+                      <Text style={[styles.conditionText, { color: isSelected ? '#fff' : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>
+                        {isAr ? opt.labelAr : opt.labelEn}
+                      </Text>
+                      {isSelected ? <MaterialIcons name="check-circle" size={16} color="#fff" style={{ marginLeft: 'auto' }} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+
+          {/* ── Pricing & Location (product_ad only) ── */}
+          {mode === 'product_ad' ? (
+            <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
+              <View style={[styles.sectionHeader, rtl]}>
+                <Text style={[styles.shekelIcon, { color: colors.primary }]}>₪</Text>
+                <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.priceLocation}</Text>
+              </View>
+              <Input
+                label={isAr ? 'السعر (₪) *' : 'Price (₪) *'}
+                placeholder={isAr ? 'أدخل السعر بالشيكل' : 'Enter price in ILS'}
+                value={price}
+                onChangeText={setPrice}
+                keyboardType="numeric"
+              />
+              <View style={[styles.priceWarningBox, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+                <MaterialIcons name="warning-amber" size={15} color="#D97706" />
+                <Text style={styles.priceWarningText}>
+                  {isAr
+                    ? 'تحذير: إدخال سعر غير منطقي أو مضلل سيؤدي إلى حذف الإعلان فوراً دون إشعار مسبق.'
+                    : 'Warning: Unrealistic or misleading price will result in immediate removal.'}
+                </Text>
+              </View>
+              <Text style={[styles.locationLabel, { color: colors.textSecondary }, textAlign]}>
+                {isAr ? 'الموقع' : 'Location'}
+              </Text>
+              <Pressable
+                style={({ pressed }) => [styles.citySelector, { borderColor: colors.primary, backgroundColor: pressed ? colors.primaryGhost : colors.primaryGhost + 'BB', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                onPress={() => setCityModalVisible(true)}
+              >
+                <View style={[styles.citySelectorIcon, { backgroundColor: colors.primary }]}>
+                  <MaterialIcons name={selectedCity === QALQILYA_CITY ? 'location-city' : 'location-on'} size={14} color="#fff" />
+                </View>
+                <Text style={[styles.citySelectorText, { color: colors.primary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+                  {selectedCity}
+                </Text>
+                <MaterialIcons name="keyboard-arrow-down" size={18} color={colors.primary} />
+              </Pressable>
+              <View style={[styles.locationFieldRow, { borderColor: colors.border, backgroundColor: colors.background, flexDirection: isRTL ? 'row-reverse' : 'row', marginTop: 8 }]}>
+                <View style={[styles.locationCity, { backgroundColor: colors.surfaceTint, borderColor: colors.surfaceTint }]}>
+                  <MaterialIcons name="signpost" size={13} color={colors.textMuted} />
+                </View>
+                <View style={[styles.locationDivider, { backgroundColor: colors.border }]} />
+                <Input
+                  placeholder={isAr ? 'الحي أو الشارع (اختياري)' : 'Street / Neighbourhood (optional)'}
+                  value={location}
+                  onChangeText={setLocation}
+                  containerStyle={styles.locationInputContainer}
+                />
+              </View>
+            </View>
+          ) : (
+            /* Location for product_request (city only) */
+            <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
+              <View style={[styles.sectionHeader, rtl]}>
+                <MaterialIcons name="location-on" size={18} color={accentColor} />
+                <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{isAr ? 'موقعك' : 'Your Location'}</Text>
+              </View>
+              <Pressable
+                style={({ pressed }) => [styles.citySelector, { borderColor: accentColor, backgroundColor: pressed ? accentColor + '15' : accentColor + '10', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                onPress={() => setCityModalVisible(true)}
+              >
+                <View style={[styles.citySelectorIcon, { backgroundColor: accentColor }]}>
+                  <MaterialIcons name={selectedCity === QALQILYA_CITY ? 'location-city' : 'location-on'} size={14} color="#fff" />
+                </View>
+                <Text style={[styles.citySelectorText, { color: accentColor, flex: 1, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+                  {selectedCity}
+                </Text>
+                <MaterialIcons name="keyboard-arrow-down" size={18} color={accentColor} />
+              </Pressable>
+            </View>
+          )}
+
+          {/* ── Phone & Contact ── */}
+          <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
+            <View style={[styles.sectionHeader, rtl]}>
+              <MaterialIcons name="phone" size={18} color={accentColor} />
+              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>
+                {isAr ? 'رقم الهاتف (اختياري)' : 'Phone Number (Optional)'}
+              </Text>
+            </View>
+            <View style={[styles.phoneRow, rtl]}>
+              <View style={[styles.prefixWrap, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                {PHONE_PREFIXES.map(prefix => (
+                  <Pressable
+                    key={prefix}
+                    style={[styles.prefixBtn, phonePrefix === prefix && { backgroundColor: accentColor }]}
+                    onPress={() => setPhonePrefix(prefix)}
+                  >
+                    <Text style={[styles.prefixText, { color: phonePrefix === prefix ? '#fff' : colors.textSecondary }]}>
+                      {prefix}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <View style={styles.phoneInputWrap}>
+                <Input
+                  placeholder="0XX-XXX-XXXX"
+                  value={phoneLocal}
+                  onChangeText={(val) => setPhoneLocal(val.replace(/[^0-9]/g, '').slice(0, 10))}
+                  keyboardType="number-pad"
+                  containerStyle={styles.phoneInputContainer}
+                  maxLength={10}
+                />
+              </View>
+            </View>
+
+            {/* WhatsApp toggle */}
+            <Pressable
+              style={[styles.whatsappRow, { borderColor: contactViaWhatsapp ? '#25D366' : colors.border, backgroundColor: contactViaWhatsapp ? '#25D36618' : colors.background }]}
+              onPress={() => setContactViaWhatsapp(v => !v)}
+            >
+              <View style={[styles.whatsappIcon, { backgroundColor: contactViaWhatsapp ? '#25D366' : colors.surfaceTint }]}>
+                <MaterialIcons name="chat" size={18} color={contactViaWhatsapp ? '#fff' : colors.textMuted} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.whatsappLabel, { color: contactViaWhatsapp ? '#15803D' : colors.textPrimary }]}>
+                  {isAr ? 'التواصل عبر واتساب' : 'Contact via WhatsApp'}
+                </Text>
+                <Text style={[styles.whatsappSub, { color: colors.textMuted }]}>
+                  {isAr ? 'يتيح للمهتمين التواصل معك مباشرة عبر واتساب' : 'Lets interested buyers contact you directly via WhatsApp'}
+                </Text>
+              </View>
+              <View style={[styles.toggleTrack, { backgroundColor: contactViaWhatsapp ? '#25D366' : colors.border }]}>
+                <View style={[styles.toggleThumb, { left: contactViaWhatsapp ? 18 : 2 }]} />
+              </View>
+            </Pressable>
+          </View>
+
+          {/* ── Submit ── */}
+          <Button
+            label={mode === 'product_request'
+              ? (isAr ? 'نشر الطلب' : 'Post Request')
+              : t.publishListing}
+            onPress={handleSubmit}
+            loading={loading}
+            style={[styles.submitBtn, mode === 'product_request' ? { backgroundColor: accentColor } : {}]}
+            size="lg"
+          />
         </ScrollView>
+
+        {/* ── City Picker Modal ── */}
+        <Modal visible={cityModalVisible} transparent animationType="slide" onRequestClose={() => setCityModalVisible(false)} statusBarTranslucent>
+          <Pressable style={cityS.overlay} onPress={() => setCityModalVisible(false)}>
+            <View style={[cityS.sheet, { backgroundColor: colors.surface }]}>
+              <View style={[cityS.handle, { backgroundColor: colors.border }]} />
+              <View style={[cityS.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                <MaterialIcons name="location-on" size={20} color={accentColor} />
+                <Text style={[cityS.titleText, { color: colors.textPrimary }]}>
+                  {isAr ? 'اختر المنطقة' : 'Select Area'}
+                </Text>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={cityS.listContent}>
+                {QALQILYA_LOCATIONS.map(loc => {
+                  const isSelected = selectedCity === loc;
+                  const isMainCity = loc === QALQILYA_CITY;
+                  return (
+                    <Pressable
+                      key={loc}
+                      style={({ pressed }) => [cityS.item, { borderColor: isSelected ? accentColor : colors.borderLight, backgroundColor: isSelected ? accentColor + '18' : (pressed ? colors.surfaceTint : colors.background) }]}
+                      onPress={() => { setSelectedCity(loc); setCityModalVisible(false); }}
+                    >
+                      <View style={[cityS.itemIcon, { backgroundColor: isSelected ? accentColor : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
+                        <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSelected ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
+                      </View>
+                      <Text style={[cityS.itemText, { color: isSelected ? accentColor : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>
+                        {loc}
+                      </Text>
+                      {isMainCity && !isSelected ? (
+                        <View style={[cityS.defaultBadge, { backgroundColor: colors.primaryGhost }]}>
+                          <Text style={[cityS.defaultText, { color: colors.primary }]}>{isAr ? 'افتراضي' : 'Default'}</Text>
+                        </View>
+                      ) : null}
+                      {isSelected ? <MaterialIcons name="check-circle" size={18} color={accentColor} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* ── Photo Source Modal ── */}
+        <Modal visible={photoModalVisible} transparent animationType="slide" onRequestClose={() => setPhotoModalVisible(false)} statusBarTranslucent>
+          <Pressable style={photoStyles.overlay} onPress={() => setPhotoModalVisible(false)}>
+            <View style={[photoStyles.sheet, { backgroundColor: colors.surface }]}>
+              <View style={[photoStyles.handle, { backgroundColor: colors.border }]} />
+              <Text style={[photoStyles.sheetTitle, { color: colors.textPrimary }]}>
+                {isAr ? 'إضافة صورة' : 'Add Photo'}
+              </Text>
+              <Text style={[photoStyles.sheetSub, { color: colors.textMuted }]}>
+                {isAr ? 'اختر طريقة الإضافة' : 'Choose how to add a photo'}
+              </Text>
+              <Pressable style={({ pressed }) => [photoStyles.option, { backgroundColor: pressed ? colors.primaryGhost : colors.background, borderColor: colors.border }]} onPress={handlePickCamera}>
+                <View style={[photoStyles.optionIcon, { backgroundColor: colors.primary + '18' }]}>
+                  <Text style={photoStyles.optionEmoji}>📷</Text>
+                </View>
+                <View style={photoStyles.optionText}>
+                  <Text style={[photoStyles.optionTitle, { color: colors.textPrimary }]}>{isAr ? 'التقط صورة' : 'Take Photo'}</Text>
+                  <Text style={[photoStyles.optionSub, { color: colors.textMuted }]}>{isAr ? 'استخدم كاميرا الجهاز' : 'Use device camera'}</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 18 }}>›</Text>
+              </Pressable>
+              <Pressable style={({ pressed }) => [photoStyles.option, { backgroundColor: pressed ? colors.primaryGhost : colors.background, borderColor: colors.border }]} onPress={handlePickGallery}>
+                <View style={[photoStyles.optionIcon, { backgroundColor: '#F59E0B18' }]}>
+                  <Text style={photoStyles.optionEmoji}>🖼️</Text>
+                </View>
+                <View style={photoStyles.optionText}>
+                  <Text style={[photoStyles.optionTitle, { color: colors.textPrimary }]}>{isAr ? 'من المعرض' : 'Choose from Gallery'}</Text>
+                  <Text style={[photoStyles.optionSub, { color: colors.textMuted }]}>{isAr ? 'اختر من صور الجهاز' : 'Select from your photos'}</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 18 }}>›</Text>
+              </Pressable>
+              <Pressable style={[photoStyles.cancelBtn, { backgroundColor: colors.background }]} onPress={() => setPhotoModalVisible(false)}>
+                <Text style={[photoStyles.cancelText, { color: colors.textPrimary }]}>{isAr ? 'إلغاء' : 'Cancel'}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl,
+    paddingTop: Spacing.sm,
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
   },
   headerSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)', marginBottom: 2 },
@@ -707,13 +913,29 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center', justifyContent: 'center',
   },
-  content: { padding: Spacing.lg, paddingBottom: 48, gap: Spacing.md },
+  content: { padding: Spacing.lg, paddingBottom: 56, gap: Spacing.md },
+
+  modeBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: Radius.md, borderWidth: 1.5,
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
+  modeBannerText: { flex: 1, fontSize: FontSize.sm, fontWeight: '600', lineHeight: 18 },
+
+  autoImgNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: Radius.md, borderWidth: 1,
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
+  autoImgText: { flex: 1, fontSize: FontSize.sm, lineHeight: 18 },
+
   sectionCard: { borderRadius: Radius.lg, padding: Spacing.md },
   sectionHeader: { alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.md },
   sectionLabel: { fontSize: FontSize.md, fontWeight: '700', flex: 1 },
   sectionBadge: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2 },
   sectionBadgeText: { fontSize: FontSize.xs, fontWeight: '700' },
   shekelIcon: { fontSize: 18, fontWeight: '800', width: 18, textAlign: 'center' },
+
   imgContent: { flexDirection: 'row', gap: Spacing.sm, paddingBottom: 4 },
   imgThumb: { width: 88, height: 88, borderRadius: Radius.md, overflow: 'hidden', position: 'relative' },
   thumbImg: { width: 88, height: 88 },
@@ -722,21 +944,12 @@ const styles = StyleSheet.create({
   removeImg: {
     position: 'absolute', top: 5, right: 5,
     width: 20, height: 20, borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center',
   },
   addImg: {
     width: 88, height: 88, borderRadius: Radius.md,
     borderWidth: 1.5, borderStyle: 'dashed',
     alignItems: 'center', justifyContent: 'center', gap: 4,
-  },
-  priceWarningBox: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 7,
-    borderRadius: Radius.md, borderWidth: 1.5,
-    paddingHorizontal: 10, paddingVertical: 9, marginTop: 2,
-  },
-  priceWarningText: {
-    fontSize: FontSize.xs, color: '#92400E', flex: 1, lineHeight: 17, fontWeight: '600',
   },
   addImgIcon: { width: 46, height: 46, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
   addImgText: { fontSize: FontSize.xs, fontWeight: '500' },
@@ -749,40 +962,55 @@ const styles = StyleSheet.create({
   },
   conditionText: { fontSize: FontSize.md },
 
-  fieldLabel: { fontSize: FontSize.sm, fontWeight: '600', marginBottom: 6, letterSpacing: 0.1 },
-  locationLabel: { fontSize: FontSize.sm, fontWeight: '600', marginBottom: 6, letterSpacing: 0.1 },
+  priceWarningBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 7,
+    borderRadius: Radius.md, borderWidth: 1.5,
+    paddingHorizontal: 10, paddingVertical: 9, marginTop: 2,
+  },
+  priceWarningText: { fontSize: FontSize.xs, color: '#92400E', flex: 1, lineHeight: 17, fontWeight: '600' },
+
+  locationLabel: { fontSize: FontSize.sm, fontWeight: '600', marginBottom: 6 },
   locationFieldRow: {
     flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1.5, borderRadius: Radius.md, overflow: 'hidden', marginBottom: Spacing.sm,
+    borderWidth: 1.5, borderRadius: Radius.md, overflow: 'hidden',
   },
   locationCity: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 12, paddingVertical: 14,
   },
-  locationCityText: { fontSize: FontSize.sm, fontWeight: '700' },
   locationDivider: { width: 1, height: 50 },
   locationInputContainer: { flex: 1, marginBottom: 0 },
-  citySelector: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderRadius: Radius.lg, paddingVertical: 11, paddingHorizontal: 12 },
+  citySelector: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1.5, borderRadius: Radius.lg, paddingVertical: 11, paddingHorizontal: 12,
+    marginBottom: Spacing.sm,
+  },
   citySelectorIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   citySelectorText: { fontSize: FontSize.md, fontWeight: '700' },
+
   phoneRow: { gap: Spacing.sm, alignItems: 'flex-start', marginBottom: 4 },
-  prefixWrap: {
-    borderWidth: 1.5, borderRadius: Radius.md,
-    flexDirection: 'row', overflow: 'hidden', height: 50,
-  },
+  prefixWrap: { borderWidth: 1.5, borderRadius: Radius.md, flexDirection: 'row', overflow: 'hidden', height: 50 },
   prefixBtn: { paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center', height: '100%' },
   prefixText: { fontSize: FontSize.sm, fontWeight: '700' },
   phoneInputWrap: { flex: 1 },
   phoneInputContainer: { marginBottom: 0 },
-  phoneHintBox: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 6,
-    borderRadius: Radius.md, borderWidth: 1,
-    paddingHorizontal: 10, paddingVertical: 8, marginTop: 6,
-  },
-  phoneHintText: { fontSize: FontSize.xs, flex: 1, lineHeight: 17 },
-  phoneHint: { fontSize: FontSize.xs, marginTop: 4, fontStyle: 'italic' },
-  loadingCat: { fontSize: FontSize.sm, textAlign: 'center', paddingVertical: Spacing.md },
 
+  whatsappRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    borderWidth: 1.5, borderRadius: Radius.lg,
+    padding: Spacing.md, marginTop: Spacing.sm,
+  },
+  whatsappIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  whatsappLabel: { fontSize: FontSize.sm, fontWeight: '700' },
+  whatsappSub: { fontSize: FontSize.xs, lineHeight: 16, marginTop: 2 },
+  toggleTrack: {
+    width: 40, height: 22, borderRadius: 11, position: 'relative',
+  },
+  toggleThumb: {
+    position: 'absolute', top: 3, width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff',
+  },
+
+  loadingCat: { fontSize: FontSize.sm, textAlign: 'center', paddingVertical: Spacing.md },
   catGrid: { gap: Spacing.sm },
   catOption: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
@@ -791,18 +1019,17 @@ const styles = StyleSheet.create({
   },
   catOptionIcon: { width: 34, height: 34, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center' },
   catOptionText: { fontSize: FontSize.sm, flex: 1 },
-  catCheckWrap: {
-    width: 22, height: 22, borderRadius: 11,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  catCheckWrap: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
 
-  submitBtn: { marginTop: 4 },
   aiBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 10, paddingHorizontal: 14,
     borderRadius: 10, borderWidth: 1.5, marginTop: 6,
   },
   aiBtnText: { fontSize: 13, fontWeight: '700' },
+
+  submitBtn: { marginTop: 4 },
+
   guestContainer: { flex: 1 },
   guestHeader: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl },
   guestHeaderTitle: { fontSize: FontSize.xxl, fontWeight: '800', color: '#fff', letterSpacing: -0.4 },
@@ -828,55 +1055,23 @@ const cityS = StyleSheet.create({
 });
 
 const photoStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: 36,
-    paddingTop: 12,
-    gap: Spacing.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 20,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: Spacing.lg, paddingBottom: 36, paddingTop: 12, gap: Spacing.sm,
   },
-  handle: {
-    width: 40, height: 4, borderRadius: 2,
-    alignSelf: 'center', marginBottom: Spacing.md,
-  },
-  sheetTitle: {
-    fontSize: FontSize.lg, fontWeight: '700',
-    textAlign: 'center',
-  },
-  sheetSub: {
-    fontSize: FontSize.sm, textAlign: 'center',
-    marginBottom: Spacing.sm,
-  },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: Spacing.md },
+  sheetTitle: { fontSize: FontSize.lg, fontWeight: '700', textAlign: 'center' },
+  sheetSub: { fontSize: FontSize.sm, textAlign: 'center', marginBottom: Spacing.sm },
   option: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: Spacing.md, padding: Spacing.md,
-    borderRadius: Radius.lg, borderWidth: 1.5,
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    padding: Spacing.md, borderRadius: Radius.lg, borderWidth: 1.5,
   },
-  optionIcon: {
-    width: 52, height: 52, borderRadius: Radius.md,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  optionIcon: { width: 52, height: 52, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
   optionEmoji: { fontSize: 26 },
   optionText: { flex: 1, gap: 3 },
   optionTitle: { fontSize: FontSize.md, fontWeight: '700' },
   optionSub: { fontSize: FontSize.sm },
-  optionArrow: { paddingLeft: 4 },
-  cancelBtn: {
-    borderRadius: Radius.xl,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: Spacing.xs || 4, // Changed from Spacing.xs ?? 4 to Spacing.xs || 4 for correctness
-  },
+  cancelBtn: { borderRadius: Radius.xl, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   cancelText: { fontSize: FontSize.md, fontWeight: '700' },
 });

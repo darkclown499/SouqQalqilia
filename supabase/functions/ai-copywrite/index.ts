@@ -7,7 +7,8 @@ serve(async (req) => {
   }
 
   try {
-    const { title, description, language } = await req.json();
+    const { title, description, language, mode } = await req.json();
+    const isRequest = mode === 'product_request';
 
     if (!title && !description) {
       return new Response(
@@ -19,14 +20,30 @@ serve(async (req) => {
     const isAr = language === 'ar';
 
     const systemPrompt = isAr
-      ? `أنت خبير تسويق رقمي متخصص في سوق قلقيلية الفلسطيني. مهمتك كتابة عنوان قصير جذاب ووصف تفصيلي مقنع لإعلانات البيع.
+      ? isRequest
+        ? `أنت خبير في صياغة طلبات الشراء لسوق قلقيلية. مهمتك كتابة عنوان واضح وموجز ووصف محترف لطلب شراء منتج.
+
+قواعد صارمة:
+- العنوان: جملة واحدة (أقل من 60 حرف) تبدأ بـ "أبحث عن" أو "مطلوب", تصف المنتج المراد شراؤه.
+- الوصف: فقرة (3-4 جمل) تشمل: المواصفات المطلوبة، الحالة المفضلة، الميزانية إن وُجدت، وطلب التواصل.
+- لا تضع محتوى العنوان داخل الوصف.
+- أجب فقط بالشكل المطلوب بدون أي نص إضافي.`
+        : `أنت خبير تسويق رقمي متخصص في سوق قلقيلية الفلسطيني. مهمتك كتابة عنوان قصير جذاب ووصف تفصيلي مقنع لإعلانات البيع.
 
 قواعد صارمة:
 - العنوان: جملة واحدة قصيرة (أقل من 60 حرف)، يصف المنتج بدقة مع أبرز ميزة.
 - الوصف: فقرة كاملة (3-5 جمل) تشمل: الحالة، المميزات، سبب الشراء، أي معلومات إضافية مفيدة.
 - لا تضع محتوى العنوان داخل الوصف.
 - أجب فقط بالشكل المطلوب بدون أي نص إضافي.`
-      : `You are a digital marketing expert for Qalqilya marketplace. Write a short catchy title and a detailed compelling description for product listings.
+      : isRequest
+        ? `You are an expert in writing buy-request listings for the Qalqilya marketplace. Write a clear title and professional description for a product purchase request.
+
+Strict rules:
+- TITLE: One sentence (under 60 chars) starting with "Looking for" or "Wanted:", describing the desired product.
+- DESCRIPTION: Paragraph (3-4 sentences) covering: required specs, preferred condition, budget if known, and call to action.
+- Never repeat the title content inside the description.
+- Reply only in the required format, no extra text.`
+        : `You are a digital marketing expert for Qalqilya marketplace. Write a short catchy title and a detailed compelling description for product listings.
 
 Strict rules:
 - TITLE: One short sentence (under 60 chars), precise product name with key feature only.
@@ -35,7 +52,16 @@ Strict rules:
 - Reply only in the required format, no extra text.`;
 
     const userPrompt = isAr
-      ? `أعد كتابة هذا الإعلان بأسلوب تسويقي احترافي:
+      ? isRequest
+        ? `أعد صياغة طلب الشراء هذا بأسلوب واضح ومحترف:
+
+العنوان الحالي: ${title || ''}
+الوصف الحالي: ${description || ''}
+
+أجب بهذا الشكل الحرفي فقط (سطرين فقط):
+TITLE: [عنوان يبدأ بـ "أبحث عن" أو "مطلوب" - أقل من 60 حرف]
+DESCRIPTION: [وصف 3-4 جمل يوضح المواصفات والميزانية وطلب التواصل]`
+        : `أعد كتابة هذا الإعلان بأسلوب تسويقي احترافي:
 
 العنوان الحالي: ${title || ''}
 الوصف الحالي: ${description || ''}
@@ -43,7 +69,16 @@ Strict rules:
 أجب بهذا الشكل الحرفي فقط (سطرين فقط):
 TITLE: [عنوان قصير - جملة واحدة أقل من 60 حرف]
 DESCRIPTION: [وصف تفصيلي 3-5 جمل يشرح المنتج بالكامل]`
-      : `Rewrite this listing professionally:
+      : isRequest
+        ? `Rewrite this buy request professionally:
+
+Current title: ${title || ''}
+Current description: ${description || ''}
+
+Reply in this exact format only (two lines only):
+TITLE: [title starting with "Looking for" or "Wanted:" - under 60 chars]
+DESCRIPTION: [3-4 sentences covering specs, preferred condition, budget, and contact prompt]`
+        : `Rewrite this listing professionally:
 
 Current title: ${title || ''}
 Current description: ${description || ''}
@@ -67,7 +102,7 @@ DESCRIPTION: [detailed 3-5 sentence description explaining the product fully]`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gemini-2.5-flash',
+        model: 'google/gemini-3-flash-preview',
         stream: false,
         messages: [
           { role: 'system', content: systemPrompt },
