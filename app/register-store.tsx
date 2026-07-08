@@ -18,6 +18,15 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
 const ADMIN_WHATSAPP = '972559886886';
 
+// ── Qalqilya region locations ─────────────────────────────────────────────────
+const QALQILYA_LOCATIONS = [
+  'مدينة قلقيلية', 'عزون', 'كفر لاقف', 'كفر ثلث', 'النبي إلياس',
+  'عسلة', 'صير', 'جيوس', 'فلامية', 'حبلة', 'رأس عطية', 'رأس طيرة',
+  'عزبة سلمان', 'المدور', 'خربة الأشقر', 'مغارة الضبعة', 'حجة',
+  'باقة الحطب', 'إماتين', 'فرعطة', 'كفر قدوم', 'جيت', 'عزبة جلعود',
+  'جينصافوط', 'سنيريا', 'عزون عتمة', 'بيت أمين', 'واد الرشا', 'الفندق',
+];
+
 // ── Time picker ───────────────────────────────────────────────────────────────
 function TimeInput({
   label, value, onChange, colors, isRTL,
@@ -120,14 +129,16 @@ export default function RegisterStoreScreen() {
   }, []);
 
   // ── Form state ──────────────────────────────────────────────────────────────
-  const [name, setName] = useState('');
   const [nameAr, setNameAr] = useState('');
-  const [address, setAddress] = useState('');
-  const [ownerWhatsapp, setOwnerWhatsapp] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [locationDetail, setLocationDetail] = useState('');
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
+
   const [openingTime, setOpeningTime] = useState('08:00');
   const [closingTime, setClosingTime] = useState('22:00');
   const [storeCategoryId, setStoreCategoryId] = useState('');
   const [catModalVisible, setCatModalVisible] = useState(false);
+
 
   // ── Images ──────────────────────────────────────────────────────────────────
   const [logoUri, setLogoUri] = useState<string | null>(null);
@@ -147,6 +158,11 @@ export default function RegisterStoreScreen() {
 
   const selectedCat = storeCategories.find(c => c.id === storeCategoryId);
 
+  // Build final address string for submission
+  const finalAddress = selectedLocation
+    ? (locationDetail.trim() ? `${selectedLocation} - ${locationDetail.trim()}` : selectedLocation)
+    : '';
+
   const handlePickLogo = useCallback(async () => {
     setLogoLoading(true);
     try {
@@ -165,15 +181,28 @@ export default function RegisterStoreScreen() {
 
   const handleSubmit = useCallback(async () => {
     if (!user) return;
-    const storeName = isAr ? nameAr.trim() || name.trim() : name.trim() || nameAr.trim();
-    if (!storeName) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'أدخل اسم المتجر' : 'Enter store name');
-    if (!storeCategoryId) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'اختر نوع المتجر' : 'Select a store type');
-    if (!address.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'أدخل عنوان المتجر' : 'Enter store address');
-    if (!ownerWhatsapp.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'أدخل رقم واتساب للتواصل' : 'Enter WhatsApp number');
+    const storeName = nameAr.trim();
+    if (!storeName) return showAlert('مطلوب', 'يرجى إدخال اسم المتجر بالعربية');
+    if (!storeCategoryId) return showAlert('مطلوب', 'يرجى اختيار نوع المتجر');
+    if (!selectedLocation) return showAlert('مطلوب', 'يرجى اختيار المنطقة / البلدة');
+    if (!ownerWhatsapp.trim()) return showAlert('مطلوب', 'يرجى إدخال رقم واتساب للتواصل');
+
+    // ── WhatsApp validation: must start with +970 or +972, then optional 0, then 9 digits ──
+    const waRe = /^\+97[02]0?\d{9}$/;
+    if (!waRe.test(ownerWhatsapp.trim())) {
+      return showAlert(
+        'رقم غير صحيح',
+        'يرجى إدخال رقم واتساب صحيح يبدأ بـ +970 أو +972 متبوعاً برقم الجوال.'
+      );
+    }
+
+    // ── Images mandatory ──
+    if (!logoUri) return showAlert('مطلوب', 'يرجى إضافة شعار المتجر (إجباري)');
+    if (!bannerUri) return showAlert('مطلوب', 'يرجى إضافة صورة غلاف المتجر (إجباري)');
 
     const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
     if (!timeRe.test(openingTime) || !timeRe.test(closingTime)) {
-      return showAlert(isAr ? 'توقيت غير صحيح' : 'Invalid Time', isAr ? 'يرجى إدخال التوقيت بصيغة HH:MM (مثال: 08:00)' : 'Enter time in HH:MM format (e.g. 08:00)');
+      return showAlert('توقيت غير صحيح', 'يرجى إدخال التوقيت بصيغة HH:MM (مثال: 08:00)');
     }
 
     setLoading(true);
@@ -194,11 +223,11 @@ export default function RegisterStoreScreen() {
       const { data: storeData, error } = await supabase
         .from('stores')
         .insert({
-          name: name.trim() || nameAr.trim(),
-          name_ar: nameAr.trim() || name.trim(),
+          name: nameAr.trim(),
+          name_ar: nameAr.trim(),
           description: '',
           description_ar: '',
-          address: address.trim(),
+          address: finalAddress,
           whatsapp: ownerWhatsapp.trim(),
           owner_whatsapp: ownerWhatsapp.trim(),
           phone: ownerWhatsapp.trim(),
@@ -228,14 +257,12 @@ export default function RegisterStoreScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user, name, nameAr, storeCategoryId, address, ownerWhatsapp, openingTime, closingTime, logoBase64, logoUri, bannerBase64, bannerUri, isAr, showAlert]);
+  }, [user, nameAr, storeCategoryId, selectedLocation, locationDetail, finalAddress, ownerWhatsapp, openingTime, closingTime, logoBase64, logoUri, bannerBase64, bannerUri, isAr, showAlert]);
 
   const handleSuccessWhatsApp = useCallback(() => {
     if (!submittedStore || !user) return;
     const displayName = user.username || user.email?.split('@')[0] || 'عميل';
-    const msg = isAr
-      ? `مرحباً إدارة سوق قلقيلية، أنا ${displayName}. لقد قمت للتو بتقديم طلب لإضافة متجري (${submittedStore.name}) وهو الآن قيد المراجعة في النظام. رقمي للتواصل: ${submittedStore.whatsapp}.`
-      : `Hello Souq Qalqilya Admin, I am ${displayName}. I just submitted a request to add my store (${submittedStore.name}) which is now pending review. My contact: ${submittedStore.whatsapp}.`;
+    const msg = `مرحباً إدارة سوق قلقيلية، أنا ${displayName}. لقد قمت للتو بتقديم طلب لإضافة متجري (${submittedStore.name}) وهو الآن قيد المراجعة في النظام. رقمي للتواصل: ${submittedStore.whatsapp}.`;
     Linking.openURL(`https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(msg)}`).catch(() => {});
   }, [submittedStore, user, isAr]);
 
@@ -275,49 +302,47 @@ export default function RegisterStoreScreen() {
             </Text>
           </View>
 
-          {/* ── Images ── */}
+          {/* ── Images (mandatory) ── */}
           <View style={[s.section, { backgroundColor: colors.surface }]}>
             <View style={[s.sectionHead, { flexDirection: rtl }]}>
               <MaterialIcons name="photo-camera" size={18} color={colors.primary} />
-              <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{isAr ? 'صور المتجر' : 'Store Images'}</Text>
-              <Text style={[s.sectionSub, { color: colors.textMuted }]}>{isAr ? '(اختياري)' : '(optional)'}</Text>
+              <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{'صور المتجر'}</Text>
+              <Text style={[s.sectionSub, { color: '#EF4444' }]}>{'(إجباري *)'}</Text>
             </View>
             <View style={[s.imageRow, { flexDirection: rtl }]}>
               <View style={{ flex: 1 }}>
-                <Text style={[s.imgLabel, { color: colors.textSecondary, textAlign }]}>{isAr ? 'الشعار' : 'Logo'}</Text>
-                <ImagePickerTile label={isAr ? 'شعار المتجر' : 'Store Logo'} icon="store" uri={logoUri} loading={logoLoading} onPress={handlePickLogo} colors={colors} isRTL={isRTL} />
+                <Text style={[s.imgLabel, { color: colors.textSecondary, textAlign: 'right' }]}>{'الشعار *'}</Text>
+                <ImagePickerTile
+                  label={'شعار المتجر'} icon="store"
+                  uri={logoUri} loading={logoLoading}
+                  onPress={handlePickLogo} colors={colors} isRTL={isRTL}
+                />
+                <Text style={[s.imgDimHint, { color: colors.textMuted }]}>{'المقاس الموصى به: 500×500'}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[s.imgLabel, { color: colors.textSecondary, textAlign }]}>{isAr ? 'صورة الغلاف' : 'Banner'}</Text>
-                <ImagePickerTile label={isAr ? 'غلاف المتجر' : 'Store Banner'} icon="panorama" uri={bannerUri} loading={bannerLoading} onPress={handlePickBanner} colors={colors} isRTL={isRTL} />
+                <Text style={[s.imgLabel, { color: colors.textSecondary, textAlign: 'right' }]}>{'الغلاف *'}</Text>
+                <ImagePickerTile
+                  label={'غلاف المتجر'} icon="panorama"
+                  uri={bannerUri} loading={bannerLoading}
+                  onPress={handlePickBanner} colors={colors} isRTL={isRTL}
+                />
+                <Text style={[s.imgDimHint, { color: colors.textMuted }]}>{'المقاس الموصى به: 1000×500'}</Text>
               </View>
             </View>
           </View>
 
-          {/* ── Store Name ── */}
+          {/* ── Store Name (Arabic only) ── */}
           <View style={[s.section, { backgroundColor: colors.surface }]}>
             <View style={[s.sectionHead, { flexDirection: rtl }]}>
               <MaterialIcons name="drive-file-rename-outline" size={18} color={colors.primary} />
-              <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{isAr ? 'اسم المتجر' : 'Store Name'} *</Text>
+              <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{'اسم المتجر *'}</Text>
             </View>
-            <View style={s.fieldGap}>
-              <View>
-                <Text style={[s.fieldLabel, { color: colors.textSecondary, textAlign }]}>{isAr ? 'الاسم بالعربية' : 'Arabic Name'}</Text>
-                <TextInput
-                  style={[s.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: 'right' }]}
-                  placeholder="اسم المتجر بالعربية" placeholderTextColor={colors.textMuted}
-                  value={nameAr} onChangeText={setNameAr} maxLength={60}
-                />
-              </View>
-              <View>
-                <Text style={[s.fieldLabel, { color: colors.textSecondary, textAlign }]}>{isAr ? 'الاسم بالإنجليزية' : 'English Name'}</Text>
-                <TextInput
-                  style={[s.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: 'left' }]}
-                  placeholder="Store name in English" placeholderTextColor={colors.textMuted}
-                  value={name} onChangeText={setName} maxLength={60}
-                />
-              </View>
-            </View>
+            <Text style={[s.fieldLabel, { color: colors.textSecondary, textAlign: 'right' }]}>{'الاسم بالعربية'}</Text>
+            <TextInput
+              style={[s.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: 'right' }]}
+              placeholder="اسم المتجر بالعربية" placeholderTextColor={colors.textMuted}
+              value={nameAr} onChangeText={setNameAr} maxLength={60}
+            />
           </View>
 
           {/* ── Store Category (from store_categories table) ── */}
@@ -368,17 +393,50 @@ export default function RegisterStoreScreen() {
             )}
           </View>
 
-          {/* ── Address ── */}
+          {/* ── Location (structured) ── */}
           <View style={[s.section, { backgroundColor: colors.surface }]}>
             <View style={[s.sectionHead, { flexDirection: rtl }]}>
               <MaterialIcons name="location-on" size={18} color={colors.primary} />
-              <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{isAr ? 'عنوان المتجر' : 'Store Address'} *</Text>
+              <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{'المنطقة / البلدة *'}</Text>
             </View>
+
+            {/* Location picker */}
+            <Pressable
+              style={[s.catSelector, { borderColor: selectedLocation ? colors.primary : colors.border, backgroundColor: colors.background, flexDirection: rtl }]}
+              onPress={() => setLocationModalVisible(true)}
+            >
+              {selectedLocation ? (
+                <>
+                  <MaterialIcons name="location-on" size={18} color={colors.primary} />
+                  <Text style={[s.catSelectorText, { color: colors.textPrimary, flex: 1, textAlign: 'right' }]}>
+                    {selectedLocation}
+                  </Text>
+                  <MaterialIcons name="check-circle" size={18} color={colors.primary} />
+                </>
+              ) : (
+                <>
+                  <MaterialIcons name="add-location-alt" size={20} color={colors.textMuted} />
+                  <Text style={[s.catSelectorText, { color: colors.textMuted, flex: 1, textAlign: 'right' }]}>
+                    {'اختر المنطقة أو البلدة'}
+                  </Text>
+                  <MaterialIcons name="keyboard-arrow-down" size={20} color={colors.textMuted} />
+                </>
+              )}
+            </Pressable>
+
+            {/* Optional detail input */}
+            <Text style={[s.fieldLabel, { color: colors.textSecondary, textAlign: 'right', marginTop: 4 }]}>
+              {'تفاصيل العنوان (اختياري)'}
+            </Text>
             <TextInput
-              style={[s.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign }]}
-              placeholder={isAr ? 'مثال: قلقيلية، شارع الرئيسي، بجانب البنك' : 'e.g. Qalqilya, Main Street, near the bank'}
+              style={[s.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: 'right' }]}
+              placeholder={'مثال: شارع الرئيسي، بجانب البنك'}
               placeholderTextColor={colors.textMuted}
-              value={address} onChangeText={setAddress} maxLength={120} multiline numberOfLines={2}
+              value={locationDetail}
+              onChangeText={setLocationDetail}
+              maxLength={100}
+              multiline
+              numberOfLines={2}
             />
           </View>
 
@@ -402,18 +460,21 @@ export default function RegisterStoreScreen() {
           <View style={[s.section, { backgroundColor: colors.surface }]}>
             <View style={[s.sectionHead, { flexDirection: rtl }]}>
               <MaterialIcons name="chat" size={18} color="#25D366" />
-              <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{isAr ? 'رقم واتساب للتواصل' : 'WhatsApp Number'} *</Text>
+              <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{'رقم واتساب للتواصل *'}</Text>
             </View>
             <TextInput
-              style={[s.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign }]}
-              placeholder={isAr ? 'مثال: 970599000000+' : 'e.g. +970599000000'}
+              style={[s.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: 'left' }]}
+              placeholder={'+970599000000'}
               placeholderTextColor={colors.textMuted}
               value={ownerWhatsapp} onChangeText={setOwnerWhatsapp}
-              keyboardType="phone-pad" maxLength={20}
+              keyboardType="phone-pad" maxLength={16}
             />
-            <Text style={[s.timeHint, { color: colors.textMuted, textAlign }]}>
-              {isAr ? 'سيُستخدم لتلقي طلبات الشراء وللتواصل من قِبَل الإدارة' : 'Used to receive orders and for admin contact'}
-            </Text>
+            <View style={[s.waHintRow, { flexDirection: rtl }]}>
+              <MaterialIcons name="info-outline" size={13} color={colors.textMuted} />
+              <Text style={[s.timeHint, { color: colors.textMuted, flex: 1, textAlign: 'right' }]}>
+                {'يجب أن يبدأ الرقم بـ +970 أو +972 — سيُستخدم لتلقي طلبات الشراء'}
+              </Text>
+            </View>
           </View>
 
           {/* ── Submit ── */}
@@ -433,6 +494,49 @@ export default function RegisterStoreScreen() {
 
           <View style={{ height: 32 }} />
         </ScrollView>
+
+        {/* ── Location Picker Modal ── */}
+        <Modal visible={locationModalVisible} transparent animationType="slide" onRequestClose={() => setLocationModalVisible(false)}>
+          <Pressable style={cm.overlay} onPress={() => setLocationModalVisible(false)}>
+            <View style={[cm.sheet, { backgroundColor: colors.surface }]}>
+              <View style={[cm.handle, { backgroundColor: colors.border }]} />
+              <View style={[cm.titleRow, { flexDirection: rtl }]}>
+                <MaterialIcons name="location-on" size={20} color={colors.primary} />
+                <Text style={[cm.titleText, { color: colors.textPrimary }]}>{'اختر المنطقة / البلدة'}</Text>
+                <Pressable onPress={() => setLocationModalVisible(false)} hitSlop={10}>
+                  <MaterialIcons name="close" size={20} color={colors.textMuted} />
+                </Pressable>
+              </View>
+              <Text style={[cm.subtitle, { color: colors.textMuted, textAlign: 'right' }]}>
+                {'محافظة قلقيلية — اختر البلدة التي يقع فيها متجرك'}
+              </Text>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={cm.list}>
+                {QALQILYA_LOCATIONS.map(loc => {
+                  const isSel = loc === selectedLocation;
+                  return (
+                    <Pressable
+                      key={loc}
+                      style={({ pressed }) => [cm.item, {
+                        borderColor: isSel ? colors.primary : colors.borderLight,
+                        backgroundColor: isSel ? colors.primary + '12' : (pressed ? colors.surfaceTint : colors.background),
+                        flexDirection: rtl,
+                      }]}
+                      onPress={() => { setSelectedLocation(loc); setLocationModalVisible(false); }}
+                    >
+                      <View style={[cm.icon, { backgroundColor: isSel ? colors.primary + '20' : colors.surfaceTint }]}>
+                        <MaterialIcons name="location-on" size={20} color={isSel ? colors.primary : colors.textMuted} />
+                      </View>
+                      <Text style={[cm.itemText, { color: isSel ? colors.primary : colors.textPrimary, fontWeight: isSel ? '700' : '500', flex: 1, textAlign: 'right' }]}>
+                        {loc}
+                      </Text>
+                      {isSel ? <MaterialIcons name="check-circle" size={20} color={colors.primary} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </Pressable>
+        </Modal>
 
         {/* ── Store Category Picker Modal (store_categories ONLY) ── */}
         <Modal visible={catModalVisible} transparent animationType="slide" onRequestClose={() => setCatModalVisible(false)}>
@@ -550,6 +654,8 @@ const s = StyleSheet.create({
 
   imageRow: { gap: Spacing.md },
   imgLabel: { fontSize: FontSize.xs, fontWeight: '600', marginBottom: 6 },
+  imgDimHint: { fontSize: 10, fontWeight: '500', textAlign: 'center', marginTop: 5, lineHeight: 14 },
+  waHintRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 5, marginTop: 2 },
 
   fieldGap: { gap: Spacing.sm },
   fieldLabel: { fontSize: FontSize.sm, fontWeight: '600', marginBottom: 4 },
