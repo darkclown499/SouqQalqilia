@@ -37,66 +37,16 @@ const QALQILYA_LOCATIONS = [
   'عزبة الأشقر', 'واد الرشا', 'المدور',
 ];
 
-// ── Auto-image stock library: one professional Unsplash URL per category slug ─
-// Used when user posts a product request without uploading a custom image.
-const CATEGORY_STOCK_IMAGES: Record<string, string> = {
-  // Cars / Vehicles
-  cars:        'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=800&q=80',
-  vehicles:    'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=800&q=80',
-  // Electronics
-  electronics: 'https://images.unsplash.com/photo-1468495244123-6c6c332eeece?w=800&q=80',
-  // Jobs / Employment
-  jobs:        'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=800&q=80',
-  work:        'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=800&q=80',
-  // Real Estate / Housing
-  realestate:  'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&q=80',
-  housing:     'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&q=80',
-  // Clothes / Fashion
-  clothes:     'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&q=80',
-  fashion:     'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&q=80',
-  // Furniture / Home
-  furniture:   'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80',
-  home:        'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80',
-  // Animals / Pets
-  animals:     'https://images.unsplash.com/photo-1517849845537-4d257902454a?w=800&q=80',
-  pets:        'https://images.unsplash.com/photo-1517849845537-4d257902454a?w=800&q=80',
-  // Services
-  services:    'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&q=80',
-  // Sports
-  sports:      'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800&q=80',
-  // Books / Education
-  books:       'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=800&q=80',
-  // Food
-  food:        'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800&q=80',
-  // Default fallback
-  default:     'https://images.unsplash.com/photo-1605792657660-596af9009e82?w=800&q=80',
-};
-
-/** Pick the best stock image URL for a given category slug/name */
-function getStockImageForCategory(categorySlug: string, categoryName: string): string {
-  const slug = (categorySlug || '').toLowerCase();
-  const name = (categoryName || '').toLowerCase();
-  // Direct slug match
-  if (CATEGORY_STOCK_IMAGES[slug]) return CATEGORY_STOCK_IMAGES[slug];
-  // Fuzzy name match
-  for (const key of Object.keys(CATEGORY_STOCK_IMAGES)) {
-    if (slug.includes(key) || name.includes(key) || key.includes(slug)) {
-      return CATEGORY_STOCK_IMAGES[key];
-    }
-  }
-  // Arabic keyword matching
-  if (name.includes('سيار') || name.includes('مركب')) return CATEGORY_STOCK_IMAGES.cars;
-  if (name.includes('الكترون') || name.includes('هاتف') || name.includes('جوال')) return CATEGORY_STOCK_IMAGES.electronics;
-  if (name.includes('عقار') || name.includes('شقة') || name.includes('منزل')) return CATEGORY_STOCK_IMAGES.realestate;
-  if (name.includes('ملابس') || name.includes('موضة')) return CATEGORY_STOCK_IMAGES.clothes;
-  if (name.includes('أثاث') || name.includes('منزل')) return CATEGORY_STOCK_IMAGES.furniture;
-  if (name.includes('حيوان') || name.includes('حيوانات')) return CATEGORY_STOCK_IMAGES.animals;
-  if (name.includes('عمل') || name.includes('وظيف')) return CATEGORY_STOCK_IMAGES.jobs;
-  if (name.includes('رياضة')) return CATEGORY_STOCK_IMAGES.sports;
-  if (name.includes('خدم')) return CATEGORY_STOCK_IMAGES.services;
-  if (name.includes('كتاب') || name.includes('تعليم')) return CATEGORY_STOCK_IMAGES.books;
-  if (name.includes('طعام') || name.includes('أكل')) return CATEGORY_STOCK_IMAGES.food;
-  return CATEGORY_STOCK_IMAGES.default;
+// ── Auto-image banner for product requests ───────────────────────────────────
+// Generates a "Wanted / مطلوب" styled graphic banner using placehold.co.
+// The banner shows a solid green background with the Arabic text "مطلوب [Category]"
+// making it instantly recognisable as a buy-request rather than a sale listing.
+function getRequestBannerForCategory(categoryNameAr: string): string {
+  const label = categoryNameAr && categoryNameAr.trim().length > 0
+    ? categoryNameAr.trim()
+    : 'منتج';
+  // placehold.co supports multi-line text via \n in the URL text param
+  return `https://placehold.co/800x800/0A6E5C/FFFFFF/png?text=${encodeURIComponent('مطلوب\n' + label)}&font=open-sans`;
 }
 
 // ── Mode toggle button ────────────────────────────────────────────────────────
@@ -403,12 +353,10 @@ export default function PostAdScreen() {
         }
         if (urls.length > 0) await saveAdImages(ad.id, urls, blurhashes);
       } else if (mode === 'product_request') {
-        // Auto-image: use stock URL for the category
-        const stockUrl = getStockImageForCategory(
-          selectedCategory?.slug ?? '',
-          getCategoryName(selectedCategory ?? { id: '', name: '', name_ar: '', icon: '', slug: '', color: '', created_at: '' } as any, language)
-        );
-        await saveAdImages(ad.id, [stockUrl], [null]);
+        // Auto-image: generate a "مطلوب [Category]" graphic banner
+        const catNameAr = selectedCategory?.name_ar || selectedCategory?.name || title.trim();
+        const bannerUrl = getRequestBannerForCategory(catNameAr);
+        await saveAdImages(ad.id, [bannerUrl], [null]);
       }
 
       setSelectedCity(QALQILYA_CITY);
@@ -440,12 +388,14 @@ export default function PostAdScreen() {
 
         {/* ── Header ── */}
         <View style={[styles.header, { backgroundColor: colors.primary }]}>
-          <View>
-            <Text style={[styles.headerSub, textAlign]}>{t.create}</Text>
-            <Text style={[styles.headerTitle, textAlign]}>{t.createListing}</Text>
-          </View>
-          <View style={styles.headerIcon}>
-            <MaterialIcons name="storefront" size={26} color="rgba(255,255,255,0.7)" />
+          <View style={styles.headerDeco1} pointerEvents="none" />
+          <View style={styles.headerDeco2} pointerEvents="none" />
+          <View style={styles.headerCenter}>
+            <View style={styles.headerIconCircle}>
+              <MaterialIcons name="campaign" size={28} color="#fff" />
+            </View>
+            <Text style={styles.headerSub}>{isAr ? 'إنشاء' : 'Create'}</Text>
+            <Text style={styles.headerTitle}>{isAr ? 'إعلان جديد' : 'New Listing'}</Text>
           </View>
         </View>
 
@@ -902,17 +852,33 @@ export default function PostAdScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.xl,
     paddingTop: Spacing.sm,
-    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  headerSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)', marginBottom: 2 },
-  headerTitle: { fontSize: FontSize.xxl, fontWeight: '800', color: '#fff', letterSpacing: -0.4 },
-  headerIcon: {
-    width: 52, height: 52, borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+  headerDeco1: {
+    position: 'absolute', width: 180, height: 180, borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.07)', top: -70, right: -50,
+  },
+  headerDeco2: {
+    position: 'absolute', width: 100, height: 100, borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.05)', bottom: -30, left: -20,
+  },
+  headerCenter: { alignItems: 'center', gap: 4 },
+  headerIconCircle: {
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)',
     alignItems: 'center', justifyContent: 'center',
+    marginBottom: 6,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18, shadowRadius: 8, elevation: 6,
   },
+  headerSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)', fontWeight: '500', letterSpacing: 0.5 },
+  headerTitle: { fontSize: FontSize.xxl, fontWeight: '800', color: '#fff', letterSpacing: -0.4 },
   content: { padding: Spacing.lg, paddingBottom: 56, gap: Spacing.md },
 
   modeBanner: {
