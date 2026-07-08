@@ -15,6 +15,7 @@ import { fetchStoreProducts, fetchStoreRating, StoreProduct } from '@/services/p
 import { checkStoreIsOpen } from '@/services/storesService';
 import { Spacing, FontSize, Radius } from '@/constants/theme';
 import { Dimensions } from 'react-native';
+import { shortenUrl } from '@/utils/shortenUrl';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const BANNER_H = 240;
@@ -253,6 +254,7 @@ export default function StoreDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(true);
   const [isFavorited, setIsFavorited] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
 
   // ── Cart state ──────────────────────────────────────────────────────────────
   const [cart, setCart] = useState<Record<string, CartItem>>({});
@@ -352,15 +354,21 @@ export default function StoreDetailScreen() {
   }, []);
 
   const handleShare = useCallback(async () => {
+    if (shareLoading || !store) return;
+    setShareLoading(true);
     try {
-      const storeName = store ? (isAr ? (store.name_ar || store.name) : store.name) : '';
+      const storeName = isAr ? (store.name_ar || store.name) : store.name;
+      const longUrl = `https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/store/${store.id}`;
+      const shortLink = await shortenUrl(longUrl);
       await Share.share({
         message: isAr
-          ? `تفقد متجر "${storeName}" في سوق قلقيلية`
-          : `Check out "${storeName}" on Souq Qalqilya`,
+          ? `شاهد متجر "${storeName}" على سوق قلقيلية! 🛒\n\n${shortLink}`
+          : `Check out "${storeName}" on Souq Qalqilya! 🛒\n\n${shortLink}`,
+        url: shortLink,
       });
     } catch { /* silent */ }
-  }, [store, isAr]);
+    finally { setShareLoading(false); }
+  }, [store, isAr, shareLoading]);
 
   // ── WhatsApp checkout ───────────────────────────────────────────────────────
   const handleConfirmOrder = useCallback(() => {
@@ -488,11 +496,14 @@ export default function StoreDetailScreen() {
 
           {/* ── Share button (absolute, safe-area aware) ── */}
           <Pressable
-            style={[s.fabBtn, { top: insets.top + 10, right: isRTL ? undefined : 16, left: isRTL ? 16 : undefined }]}
+            style={[s.fabBtn, { top: insets.top + 10, right: isRTL ? undefined : 16, left: isRTL ? 16 : undefined, opacity: shareLoading ? 0.6 : 1 }]}
             onPress={handleShare}
             hitSlop={8}
+            disabled={shareLoading}
           >
-            <MaterialIcons name="share" size={20} color="#fff" />
+            {shareLoading
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <MaterialIcons name="share" size={20} color="#fff" />}
           </Pressable>
         </View>
 
@@ -594,10 +605,13 @@ export default function StoreDetailScreen() {
 
             {/* Share */}
             <Pressable
-              style={[s.actionCircle, { backgroundColor: colors.surfaceTint, borderColor: colors.borderLight }]}
+              style={[s.actionCircle, { backgroundColor: colors.surfaceTint, borderColor: colors.borderLight, opacity: shareLoading ? 0.6 : 1 }]}
               onPress={handleShare}
+              disabled={shareLoading}
             >
-              <MaterialIcons name="share" size={20} color={colors.textMuted} />
+              {shareLoading
+                ? <ActivityIndicator size="small" color={colors.textMuted} />
+                : <MaterialIcons name="share" size={20} color={colors.textMuted} />}
             </Pressable>
           </View>
 

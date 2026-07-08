@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
-  FlatList, Modal, ActivityIndicator, KeyboardAvoidingView, Platform,
+  FlatList, Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Share,
 } from 'react-native';
+import { shortenUrl } from '@/utils/shortenUrl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -456,6 +457,7 @@ export default function StoreDashboardScreen() {
   const [productModalVisible, setProductModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState<StoreProduct | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'products'>('overview');
+  const [shareLoading, setShareLoading] = useState(false);
 
   const textAlign = isRTL ? 'right' as const : 'left' as const;
   const rtl = isRTL ? 'row-reverse' as const : 'row' as const;
@@ -507,6 +509,23 @@ export default function StoreDashboardScreen() {
       ]
     );
   }, [isAr, showAlert]);
+
+  const handleShareStore = useCallback(async () => {
+    if (!store || shareLoading) return;
+    setShareLoading(true);
+    try {
+      const name = isAr ? (store.name_ar || store.name) : store.name;
+      const longUrl = `https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/store/${store.id}`;
+      const shortLink = await shortenUrl(longUrl);
+      await Share.share({
+        message: isAr
+          ? `مرحباً! تسوقوا من متجري "${name}" عبر تطبيق سوق قلقيلية 🛒✨\n\nاضغط على الرابط هنا: ${shortLink}`
+          : `Shop at "${name}" on Souq Qalqilya! 🛒✨\n\n${shortLink}`,
+        url: shortLink,
+      });
+    } catch { /* silent */ }
+    finally { setShareLoading(false); }
+  }, [store, isAr, shareLoading]);
 
   const handleSaveProduct = useCallback((saved: StoreProduct) => {
     setProducts(prev => {
@@ -651,6 +670,26 @@ export default function StoreDashboardScreen() {
               <Text style={[s.infoText, { color: colors.textPrimary, textAlign }]}>{store.owner_whatsapp || store.whatsapp || (isAr ? 'لم يُضَف' : 'Not added')}</Text>
             </View>
           </View>
+
+          {/* Share My Store button */}
+          <Pressable
+            style={[s.shareStoreBtn, { borderColor: colors.primary, backgroundColor: colors.primaryGhost, opacity: shareLoading ? 0.7 : 1 }]}
+            onPress={handleShareStore}
+            disabled={shareLoading}
+          >
+            {shareLoading
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <MaterialIcons name="share" size={20} color={colors.primary} />}
+            <View style={{ flex: 1 }}>
+              <Text style={[s.shareStoreBtnTitle, { color: colors.primary }]}>
+                {shareLoading ? (isAr ? 'جاري تحضير الرابط...' : 'Preparing link...') : (isAr ? 'مشاركة متجري 📤' : 'Share My Store 📤')}
+              </Text>
+              <Text style={[s.shareStoreBtnSub, { color: colors.textMuted }]}>
+                {isAr ? 'شارك رابط متجرك مع عملائك' : 'Share your store link with customers'}
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-left" size={20} color={colors.primary} />
+          </Pressable>
 
           {/* Approval message when pending */}
           {!store.is_approved ? (
@@ -797,6 +836,14 @@ const s = StyleSheet.create({
   },
   catBadgeText: { fontSize: FontSize.sm, fontWeight: '700' },
 
+  shareStoreBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    borderRadius: Radius.xl, borderWidth: 1.5,
+    paddingHorizontal: Spacing.md, paddingVertical: 14,
+    marginTop: Spacing.sm,
+  },
+  shareStoreBtnTitle: { fontSize: FontSize.md, fontWeight: '700' },
+  shareStoreBtnSub: { fontSize: FontSize.xs, marginTop: 2 },
   pendingCard: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
     borderRadius: Radius.xl, borderWidth: 1.5, padding: Spacing.md, marginTop: Spacing.md,
