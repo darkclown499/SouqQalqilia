@@ -78,6 +78,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth, getSupabaseClient } from '@/template';
 import { trackEvent } from '@/services/analyticsService';
+import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
 
 // Dimensions are now computed reactively via useResponsive() inside the component.
 // Snapshot used only for getItemLayout estimation (close enough; recalculates on resize).
@@ -90,6 +91,170 @@ const _initImgH = Math.max(130, Math.min(Math.round(_initCardW * 0.75), 200));
 const _initCardInfoH = 92;
 const _initRowH = _initImgH + _initCardInfoH + _initCardGap;
 let _interstitialsCache: InterstitialAd[] | null = null;
+
+// ── Featured Stores Strip ───────────────────────────────────────────────────
+function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
+  isAr: boolean; isRTL: boolean; colors: any;
+  onPress: (storeId: string) => void;
+}) {
+  const [stores, setStores] = React.useState<StoreType[]>([]);
+  const flatRef = React.useRef<FlatList<StoreType>>(null);
+  const scrollXRef = React.useRef(0);
+  const isPausedRef = React.useRef(false);
+  const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const totalWidthRef = React.useRef(0); // estimated total scrollable width
+
+  React.useEffect(() => {
+    fetchFeaturedStores().then(({ data }) => {
+      setStores(data);
+      // Double the array for seamless looping when many stores are available
+      if (data.length >= 3) {
+        setStores([...data, ...data]);
+      }
+    });
+  }, []);
+
+  // Auto-scroll: advance 1px per tick, wrap around
+  React.useEffect(() => {
+    if (stores.length === 0) return;
+    const CARD_W = 104; // card + gap
+    const HALF = stores.length / 2;
+    totalWidthRef.current = CARD_W * HALF;
+
+    timerRef.current = setInterval(() => {
+      if (isPausedRef.current) return;
+      scrollXRef.current += 1;
+      // When we have scrolled past the first copy, jump back silently
+      if (scrollXRef.current >= totalWidthRef.current) {
+        scrollXRef.current = 0;
+        flatRef.current?.scrollToOffset({ offset: 0, animated: false });
+        return;
+      }
+      flatRef.current?.scrollToOffset({ offset: scrollXRef.current, animated: false });
+    }, 20);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [stores.length]);
+
+  const resumeAfterPause = React.useCallback(() => {
+    isPausedRef.current = true;
+    // Resume after 4 seconds of no interaction
+    const resume = setTimeout(() => { isPausedRef.current = false; }, 4000);
+    return () => clearTimeout(resume);
+  }, []);
+
+  if (stores.length === 0) return null;
+
+  return (
+    <View style={fs.wrapper}>
+      <View style={[fs.labelRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <View style={[fs.labelDot, { backgroundColor: '#f59e0b' }]} />
+        <Text style={[fs.labelText, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
+          {isAr ? 'متاجر مميزة' : 'Featured Stores'}
+        </Text>
+        <View style={[fs.liveBadge, { backgroundColor: '#fef3c7' }]}>
+          <View style={fs.liveDot} />
+          <Text style={[fs.liveText, { color: '#92400e' }]}>{isAr ? 'مباشر' : 'Live'}</Text>
+        </View>
+      </View>
+      <FlatList
+        ref={flatRef}
+        data={stores}
+        horizontal
+        keyExtractor={(item, i) => `${item.id}-${i}`}
+        showsHorizontalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScrollBeginDrag={() => { isPausedRef.current = true; }}
+        onScrollEndDrag={(e) => {
+          scrollXRef.current = e.nativeEvent.contentOffset.x;
+          resumeAfterPause();
+        }}
+        onMomentumScrollEnd={(e) => {
+          scrollXRef.current = e.nativeEvent.contentOffset.x;
+        }}
+        contentContainerStyle={[fs.listContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+        renderItem={({ item: store }) => {
+          const open = checkStoreIsOpen(store);
+          const name = isAr ? (store.name_ar || store.name) : store.name;
+          return (
+            <Pressable
+              style={({ pressed }) => [fs.card, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.88 : (open ? 1 : 0.5) }]}
+              onPress={() => onPress(store.id)}
+            >
+              {/* Circular logo with live border */}
+              <View style={[fs.logoWrap, {
+                borderColor: open ? '#22c55e' : '#9ca3af',
+                borderWidth: 2.5,
+                backgroundColor: colors.surfaceTint,
+              }]}>
+                {store.logo_url ? (
+                  <Image source={{ uri: store.logo_url }} style={fs.logo} contentFit="cover" transition={200} cachePolicy="disk" />
+                ) : (
+                  <MaterialIcons name="storefront" size={22} color={colors.primary} />
+                )}
+                {/* Status dot */}
+                <View style={[fs.statusDot, { backgroundColor: open ? '#22c55e' : '#9ca3af', borderColor: colors.surface }]} />
+              </View>
+              <Text style={[fs.storeName, { color: colors.textPrimary }]} numberOfLines={2}>
+                {name}
+              </Text>
+              {/* Closed label */}
+              {!open ? (
+                <View style={fs.closedBadge}>
+                  <Text style={fs.closedBadgeText}>مغلق 🔴</Text>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        }}
+      />
+    </View>
+  );
+}
+
+const fs = StyleSheet.create({
+  wrapper: { marginBottom: Spacing.lg },
+  labelRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingHorizontal: Spacing.lg, marginBottom: Spacing.sm,
+  },
+  labelDot: { width: 4, height: 20, borderRadius: 2 },
+  labelText: { fontSize: FontSize.md + 1, fontWeight: '700', flex: 1 },
+  liveBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderRadius: Radius.full, paddingHorizontal: 9, paddingVertical: 4,
+  },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
+  liveText: { fontSize: 11, fontWeight: '700' },
+  listContent: {
+    paddingHorizontal: Spacing.lg, gap: 12, paddingRight: Spacing.xl,
+  },
+  card: {
+    width: 92, alignItems: 'center', gap: 6,
+    borderRadius: Radius.xl, borderWidth: 1,
+    padding: Spacing.sm, paddingTop: Spacing.md,
+  },
+  logoWrap: {
+    width: 58, height: 58, borderRadius: 29,
+    alignItems: 'center', justifyContent: 'center',
+    overflow: 'visible', position: 'relative',
+  },
+  logo: { width: 54, height: 54, borderRadius: 27 },
+  statusDot: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 12, height: 12, borderRadius: 6, borderWidth: 2,
+  },
+  storeName: {
+    fontSize: 11, fontWeight: '600', textAlign: 'center', lineHeight: 15,
+  },
+  closedBadge: {
+    backgroundColor: 'rgba(0,0,0,0.07)',
+    borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  closedBadgeText: { fontSize: 10, fontWeight: '700', color: '#6b7280' },
+});
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'boosted';
 type Condition = 'new' | 'used' | null;
@@ -407,6 +572,9 @@ export default function HomeScreen() {
   }, [isRTL, favIds, user, toggleFav, handleAdView, cardGap, hPad, activeCardWidth, numColumns]);
 
   const currentBanner = banners[featuredIndex] ?? banners[0];
+  const handleFeaturedStorePress = useCallback((storeId: string) => {
+    router.push(`/store/${storeId}` as any);
+  }, [router]);
 
   const ListHeader = useMemo(() => (
     <>
@@ -445,6 +613,14 @@ export default function HomeScreen() {
           ) : null}
         </Pressable>
       ) : null}
+
+      {/* ── FEATURED STORES STRIP ── */}
+      <FeaturedStoresStrip
+        isAr={isAr}
+        isRTL={isRTL}
+        colors={colors}
+        onPress={handleFeaturedStorePress}
+      />
 
       {/* ── RECENTLY VIEWED ── */}
       {recentlyViewed.length > 0 ? (
@@ -606,7 +782,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, router, setSortBy, filteredAds.length]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, handleFeaturedStorePress, router, setSortBy, filteredAds.length]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>

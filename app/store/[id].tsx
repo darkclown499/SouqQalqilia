@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
-  ActivityIndicator, Modal, TextInput, Linking, Animated,
+  ActivityIndicator, Modal, Linking, Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,7 +12,8 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth } from '@/template';
 import { getSupabaseClient } from '@/template';
 import { fetchStoreProducts, fetchStoreRating, StoreProduct } from '@/services/productsService';
-import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+import { checkStoreIsOpen } from '@/services/storesService';
+import { Spacing, FontSize, Radius } from '@/constants/theme';
 
 // ── Cart types ────────────────────────────────────────────────────────────────
 interface CartItem {
@@ -30,25 +31,19 @@ const ORDER_LABELS: Record<OrderType, { ar: string; en: string; icon: string }> 
 
 // ── Product card ──────────────────────────────────────────────────────────────
 function ProductCard({
-  product, qty, onAdd, onRemove, isAr, isRTL, colors,
+  product, qty, onAdd, onRemove, isAr, isRTL, colors, disabled,
 }: {
   product: StoreProduct; qty: number;
   onAdd: () => void; onRemove: () => void;
-  isAr: boolean; isRTL: boolean; colors: any;
+  isAr: boolean; isRTL: boolean; colors: any; disabled?: boolean;
 }) {
   const name = isAr ? (product.name_ar || product.name) : product.name;
   const desc = isAr ? (product.description_ar || product.description) : product.description;
 
   return (
-    <View style={[pc.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View style={[pc.card, { backgroundColor: colors.surface, borderColor: colors.border, opacity: disabled ? 0.55 : 1 }]}>
       {product.image_url ? (
-        <Image
-          source={{ uri: product.image_url }}
-          style={pc.img}
-          contentFit="cover"
-          transition={200}
-          cachePolicy="disk"
-        />
+        <Image source={{ uri: product.image_url }} style={pc.img} contentFit="cover" transition={200} cachePolicy="disk" />
       ) : (
         <View style={[pc.imgPh, { backgroundColor: colors.surfaceTint }]}>
           <MaterialIcons name="fastfood" size={28} color={colors.textMuted} />
@@ -67,22 +62,28 @@ function ProductCard({
           <Text style={[pc.price, { color: colors.primary }]}>
             {product.price > 0 ? `${product.price}₪` : (isAr ? 'مجاني' : 'Free')}
           </Text>
-          {/* Qty controls */}
-          <View style={[pc.qtyRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            {qty > 0 ? (
-              <>
-                <Pressable style={[pc.qtyBtn, { backgroundColor: colors.error + '18', borderColor: colors.error + '44' }]} onPress={onRemove} hitSlop={6}>
-                  <MaterialIcons name="remove" size={14} color={colors.error} />
-                </Pressable>
-                <View style={[pc.qtyBadge, { backgroundColor: colors.primary }]}>
-                  <Text style={pc.qtyBadgeText}>{qty}</Text>
-                </View>
-              </>
-            ) : null}
-            <Pressable style={[pc.qtyBtn, { backgroundColor: colors.primary }]} onPress={onAdd} hitSlop={6}>
-              <MaterialIcons name="add" size={14} color="#fff" />
-            </Pressable>
-          </View>
+          {/* Qty controls — hidden when store is closed */}
+          {!disabled ? (
+            <View style={[pc.qtyRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              {qty > 0 ? (
+                <>
+                  <Pressable style={[pc.qtyBtn, { backgroundColor: colors.error + '18', borderColor: colors.error + '44' }]} onPress={onRemove} hitSlop={6}>
+                    <MaterialIcons name="remove" size={14} color={colors.error} />
+                  </Pressable>
+                  <View style={[pc.qtyBadge, { backgroundColor: colors.primary }]}>
+                    <Text style={pc.qtyBadgeText}>{qty}</Text>
+                  </View>
+                </>
+              ) : null}
+              <Pressable style={[pc.qtyBtn, { backgroundColor: colors.primary }]} onPress={onAdd} hitSlop={6}>
+                <MaterialIcons name="add" size={14} color="#fff" />
+              </Pressable>
+            </View>
+          ) : (
+            <View style={[pc.closedTag, { backgroundColor: '#f3f4f6' }]}>
+              <Text style={pc.closedTagText}>{isAr ? 'مغلق' : 'Closed'}</Text>
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -94,7 +95,7 @@ export default function StoreDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { language, isRTL } = useLanguage();
   const { user } = useAuth();
   const isAr = language === 'ar';
@@ -104,6 +105,8 @@ export default function StoreDetailScreen() {
   const [rating, setRating] = useState({ avg: 0, count: 0 });
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState<string>('__all__');
+  // Live open/closed status — re-evaluated every 60 seconds
+  const [isOpen, setIsOpen] = useState(true);
 
   // ── Cart state ──────────────────────────────────────────────────────────────
   const [cart, setCart] = useState<Record<string, CartItem>>({});
@@ -142,11 +145,21 @@ export default function StoreDetailScreen() {
       fetchStoreProducts(id),
       fetchStoreRating(id),
     ]).then(([storeRes, productsRes, ratingRes]) => {
-      if (storeRes.data) setStore(storeRes.data);
+      if (storeRes.data) {
+        setStore(storeRes.data);
+        setIsOpen(checkStoreIsOpen(storeRes.data));
+      }
       setProducts(productsRes.data);
       setRating(ratingRes);
     }).finally(() => setLoading(false));
   }, [id]);
+
+  // Re-check live status every 60 seconds
+  useEffect(() => {
+    if (!store) return;
+    const tick = setInterval(() => setIsOpen(checkStoreIsOpen(store)), 60_000);
+    return () => clearInterval(tick);
+  }, [store]);
 
   // Animate cart button when cart changes
   useEffect(() => {
@@ -159,11 +172,12 @@ export default function StoreDetailScreen() {
   }, [cartCount]);
 
   const addToCart = useCallback((product: StoreProduct) => {
+    if (!isOpen) return; // blocked when store is closed
     setCart(prev => {
       const existing = prev[product.id];
       return { ...prev, [product.id]: { product, qty: (existing?.qty ?? 0) + 1 } };
     });
-  }, []);
+  }, [isOpen]);
 
   const removeFromCart = useCallback((product: StoreProduct) => {
     setCart(prev => {
@@ -178,7 +192,7 @@ export default function StoreDetailScreen() {
 
   // ── WhatsApp checkout ───────────────────────────────────────────────────────
   const handleConfirmOrder = useCallback(() => {
-    if (!store) return;
+    if (!store || !isOpen) return;
     const userName = user?.username || user?.email?.split('@')[0] || 'عميل';
     const orderTypeLabel = isAr ? ORDER_LABELS[orderType].ar : ORDER_LABELS[orderType].en;
     const storeName = isAr ? (store.name_ar || store.name) : store.name;
@@ -209,7 +223,7 @@ export default function StoreDetailScreen() {
     setCartVisible(false);
     setCart({});
     setCheckoutStep('cart');
-  }, [store, user, orderType, cartItems, cartTotal, isAr]);
+  }, [store, user, orderType, cartItems, cartTotal, isAr, isOpen]);
 
   if (loading) {
     return (
@@ -231,6 +245,9 @@ export default function StoreDetailScreen() {
   const storeName = isAr ? (store.name_ar || store.name) : store.name;
   const storeDesc = isAr ? (store.description_ar || store.description) : store.description;
   const cartBtnScale = cartAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.22, 1] });
+  const hoursLabel = store.opening_time && store.closing_time
+    ? `${store.opening_time} – ${store.closing_time}`
+    : null;
 
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
@@ -243,9 +260,15 @@ export default function StoreDetailScreen() {
         ) : (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.primary }]} />
         )}
-        {/* Gradient overlay */}
         <View style={s.bannerOverlay} />
-        {/* Back button */}
+        {/* Closed banner overlay */}
+        {!isOpen ? (
+          <View style={s.closedBannerOverlay}>
+            <View style={s.closedPill}>
+              <Text style={s.closedPillText}>مغلق حالياً 🔴</Text>
+            </View>
+          </View>
+        ) : null}
         <Pressable
           style={[s.backBtn, { marginTop: insets.top + 8, backgroundColor: 'rgba(0,0,0,0.38)' }]}
           onPress={() => router.back()}
@@ -257,8 +280,15 @@ export default function StoreDetailScreen() {
 
       {/* ── STORE INFO CARD ── */}
       <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {/* Circular logo */}
-        <View style={[s.logoCircle, { borderColor: colors.surface, backgroundColor: colors.surfaceTint }]}>
+        {/* Circular logo with live-status border */}
+        <View style={[
+          s.logoCircle,
+          {
+            borderColor: isOpen ? '#22c55e' : '#9ca3af',
+            backgroundColor: colors.surfaceTint,
+            opacity: isOpen ? 1 : 0.5,
+          },
+        ]}>
           {store.logo_url ? (
             <Image source={{ uri: store.logo_url }} style={s.logoImg} contentFit="cover" transition={200} />
           ) : (
@@ -276,7 +306,7 @@ export default function StoreDetailScreen() {
             </View>
           ) : null}
           {/* Star rating */}
-          <Pressable style={[s.ratingRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={[s.ratingRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <Text style={s.starIcon}>⭐</Text>
             <Text style={[s.ratingNum, { color: colors.textPrimary }]}>
               {rating.avg > 0 ? rating.avg.toFixed(1) : (isAr ? 'لا تقييمات' : 'No ratings')}
@@ -286,7 +316,17 @@ export default function StoreDetailScreen() {
                 ({rating.count} {isAr ? 'مراجعة' : 'reviews'})
               </Text>
             ) : null}
-          </Pressable>
+          </View>
+          {/* Live status + hours */}
+          <View style={[s.statusRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View style={[s.statusDot, { backgroundColor: isOpen ? '#22c55e' : '#9ca3af' }]} />
+            <Text style={[s.statusText, { color: isOpen ? '#16a34a' : '#6b7280' }]}>
+              {isOpen ? (isAr ? 'مفتوح الآن' : 'Open Now') : (isAr ? 'مغلق حالياً' : 'Closed Now')}
+            </Text>
+            {hoursLabel ? (
+              <Text style={[s.hoursText, { color: colors.textMuted }]}>· {hoursLabel}</Text>
+            ) : null}
+          </View>
           {storeDesc ? (
             <Text style={[s.storeDesc, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
               {storeDesc}
@@ -339,9 +379,10 @@ export default function StoreDetailScreen() {
             isAr={isAr}
             isRTL={isRTL}
             colors={colors}
+            disabled={!isOpen}
           />
         )}
-        contentContainerStyle={[s.listContent, { paddingBottom: cartCount > 0 ? 100 : 32 }]}
+        contentContainerStyle={[s.listContent, { paddingBottom: cartCount > 0 && isOpen ? 100 : 32 }]}
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
         ListEmptyComponent={
@@ -354,8 +395,8 @@ export default function StoreDetailScreen() {
         }
       />
 
-      {/* ── FLOATING CART BUTTON ── */}
-      {cartCount > 0 ? (
+      {/* ── FLOATING CART BUTTON (hidden when closed) ── */}
+      {cartCount > 0 && isOpen ? (
         <Animated.View style={[s.cartFab, { transform: [{ scale: cartBtnScale }] }]}>
           <Pressable
             style={[s.cartFabInner, { backgroundColor: colors.primary }]}
@@ -363,7 +404,7 @@ export default function StoreDetailScreen() {
           >
             <MaterialIcons name="shopping-cart" size={22} color="#fff" />
             <Text style={s.cartFabText}>
-              {isAr ? `عربة التسوق` : 'Cart'} · {cartCount}
+              {isAr ? 'عربة التسوق' : 'Cart'} · {cartCount}
             </Text>
             <View style={s.cartFabTotal}>
               <Text style={s.cartFabTotalText}>{cartTotal.toFixed(2)}₪</Text>
@@ -386,7 +427,6 @@ export default function StoreDetailScreen() {
 
             {checkoutStep === 'cart' ? (
               <>
-                {/* Cart header */}
                 <View style={[m.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
                   <MaterialIcons name="shopping-cart" size={22} color={colors.primary} />
                   <Text style={[m.titleText, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
@@ -397,7 +437,6 @@ export default function StoreDetailScreen() {
                   </Pressable>
                 </View>
 
-                {/* Cart items */}
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={m.cartItems}>
                   {cartItems.map(({ product, qty }) => {
                     const pName = isAr ? (product.name_ar || product.name) : product.name;
@@ -423,7 +462,6 @@ export default function StoreDetailScreen() {
                   })}
                 </ScrollView>
 
-                {/* Total + next */}
                 <View style={[m.totalRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderTopColor: colors.borderLight }]}>
                   <Text style={[m.totalLabel, { color: colors.textSecondary }]}>
                     {isAr ? 'المجموع' : 'Total'}
@@ -440,7 +478,6 @@ export default function StoreDetailScreen() {
               </>
             ) : (
               <>
-                {/* Order type step */}
                 <View style={[m.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
                   <Pressable onPress={() => setCheckoutStep('cart')} hitSlop={10}>
                     <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={22} color={colors.textMuted} />
@@ -479,12 +516,21 @@ export default function StoreDetailScreen() {
                   })}
                 </View>
 
+                {/* WhatsApp confirm — disabled when closed */}
                 <Pressable
-                  style={[m.primaryBtn, { backgroundColor: '#16a34a' }]}
-                  onPress={handleConfirmOrder}
+                  style={[m.primaryBtn, {
+                    backgroundColor: isOpen ? '#16a34a' : '#9ca3af',
+                    opacity: isOpen ? 1 : 0.7,
+                  }]}
+                  onPress={isOpen ? handleConfirmOrder : undefined}
+                  disabled={!isOpen}
                 >
-                  <MaterialIcons name="chat" size={18} color="#fff" />
-                  <Text style={m.primaryBtnText}>{isAr ? 'تأكيد عبر واتساب' : 'Confirm via WhatsApp'}</Text>
+                  <MaterialIcons name={isOpen ? 'chat' : 'block'} size={18} color="#fff" />
+                  <Text style={m.primaryBtnText}>
+                    {isOpen
+                      ? (isAr ? 'تأكيد عبر واتساب' : 'Confirm via WhatsApp')
+                      : (isAr ? 'المتجر مغلق حالياً' : 'Store is Closed')}
+                  </Text>
                 </Pressable>
               </>
             )}
@@ -522,6 +568,10 @@ const pc = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6,
   },
   qtyBadgeText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  closedTag: {
+    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  closedTagText: { fontSize: FontSize.xs, fontWeight: '700', color: '#6b7280' },
 });
 
 // ── Screen styles ─────────────────────────────────────────────────────────────
@@ -530,30 +580,32 @@ const s = StyleSheet.create({
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
 
   bannerWrap: { height: 210, backgroundColor: '#1B5E20', position: 'relative' },
-  bannerOverlay: {
+  bannerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)' },
+  closedBannerOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    alignItems: 'center', justifyContent: 'center',
   },
+  closedPill: {
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderRadius: Radius.full,
+    paddingHorizontal: 20, paddingVertical: 10,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  closedPillText: { color: '#fff', fontSize: FontSize.lg, fontWeight: '800' },
+
   backBtn: {
     position: 'absolute', left: 16, width: 38, height: 38,
     borderRadius: 19, alignItems: 'center', justifyContent: 'center',
   },
 
   infoCard: {
-    marginHorizontal: Spacing.lg,
-    marginTop: -36,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    padding: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.md,
-    zIndex: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
+    marginHorizontal: Spacing.lg, marginTop: -36,
+    borderRadius: Radius.xl, borderWidth: 1,
+    padding: Spacing.md, flexDirection: 'row', alignItems: 'flex-start',
+    gap: Spacing.md, zIndex: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12, shadowRadius: 12, elevation: 8,
   },
   logoCircle: {
     width: 68, height: 68, borderRadius: 34,
@@ -570,14 +622,15 @@ const s = StyleSheet.create({
   starIcon: { fontSize: 13 },
   ratingNum: { fontSize: FontSize.sm, fontWeight: '700' },
   ratingCount: { fontSize: FontSize.xs },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  statusDot: { width: 7, height: 7, borderRadius: 3.5 },
+  statusText: { fontSize: FontSize.xs, fontWeight: '700' },
+  hoursText: { fontSize: FontSize.xs },
   storeDesc: { fontSize: FontSize.xs, lineHeight: 17, marginTop: 2 },
 
   tabsOuter: { borderBottomWidth: 1, marginTop: Spacing.md },
   tabsContent: { paddingHorizontal: Spacing.lg, gap: 2 },
-  tab: {
-    paddingHorizontal: Spacing.md, paddingVertical: 10,
-    borderBottomWidth: 2,
-  },
+  tab: { paddingHorizontal: Spacing.md, paddingVertical: 10, borderBottomWidth: 2 },
   tabActive: {},
   tabText: { fontSize: FontSize.sm },
 
@@ -585,21 +638,17 @@ const s = StyleSheet.create({
   emptyWrap: { alignItems: 'center', paddingTop: 60, gap: 12 },
   emptyText: { fontSize: FontSize.md, fontWeight: '600' },
 
-  cartFab: {
-    position: 'absolute', bottom: 24, left: Spacing.lg, right: Spacing.lg,
-  },
+  cartFab: { position: 'absolute', bottom: 24, left: Spacing.lg, right: Spacing.lg },
   cartFabInner: {
     flexDirection: 'row', alignItems: 'center',
-    borderRadius: Radius.full, paddingVertical: 14, paddingHorizontal: Spacing.lg,
-    gap: 10,
+    borderRadius: Radius.full, paddingVertical: 14, paddingHorizontal: Spacing.lg, gap: 10,
     shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.28, shadowRadius: 14, elevation: 12,
   },
   cartFabText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700', flex: 1 },
   cartFabTotal: {
     backgroundColor: 'rgba(255,255,255,0.22)',
-    borderRadius: Radius.full,
-    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4,
   },
   cartFabTotalText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '800' },
 });
@@ -609,8 +658,7 @@ const m = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.52)', justifyContent: 'flex-end' },
   sheet: {
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingTop: 12, paddingBottom: 48,
-    maxHeight: '80%',
+    paddingTop: 12, paddingBottom: 48, maxHeight: '80%',
     shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15, shadowRadius: 20, elevation: 24,
   },
@@ -621,7 +669,6 @@ const m = StyleSheet.create({
     borderBottomWidth: 1, marginBottom: 4,
   },
   titleText: { fontSize: FontSize.lg, fontWeight: '700' },
-
   cartItems: { paddingHorizontal: Spacing.lg, paddingBottom: 8 },
   cartItem: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -635,14 +682,12 @@ const m = StyleSheet.create({
   },
   qtyNum: { fontSize: FontSize.sm, fontWeight: '700', minWidth: 20, textAlign: 'center' },
   cartItemPrice: { fontSize: FontSize.sm, fontWeight: '800', minWidth: 55, textAlign: 'right' },
-
   totalRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderTopWidth: 1,
   },
   totalLabel: { fontSize: FontSize.md, fontWeight: '600' },
   totalPrice: { fontSize: FontSize.xl, fontWeight: '800' },
-
   primaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, marginHorizontal: Spacing.lg, marginTop: Spacing.md,
@@ -651,7 +696,6 @@ const m = StyleSheet.create({
     shadowOpacity: 0.22, shadowRadius: 10, elevation: 6,
   },
   primaryBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
-
   orderTypeList: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
   orderTypeItem: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.md,

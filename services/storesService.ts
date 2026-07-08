@@ -7,13 +7,51 @@ export interface Store {
   description: string;
   description_ar: string;
   logo_url: string;
+  banner_url: string;
   phone: string;
   whatsapp: string;
   address: string;
   category_id: string;
   is_active: boolean;
+  is_featured: boolean;
+  opening_time: string;  // 'HH:MM' 24h format
+  closing_time: string;  // 'HH:MM' 24h format
   position: number;
   created_at: string;
+}
+
+// ── Live status helper ────────────────────────────────────────────────────────
+// Returns true if the current device time is between opening_time and closing_time.
+// Handles overnight ranges (e.g. 22:00 – 02:00) correctly.
+export function checkStoreIsOpen(store: Pick<Store, 'opening_time' | 'closing_time'>): boolean {
+  const { opening_time, closing_time } = store;
+  if (!opening_time || !closing_time) return true;
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const parse = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
+  const open = parse(opening_time);
+  const close = parse(closing_time);
+  return open <= close ? (cur >= open && cur < close) : (cur >= open || cur < close);
+}
+
+// ── Fetch up to 15 featured stores (shuffled client-side) ───────────────────
+export async function fetchFeaturedStores(): Promise<{ data: Store[]; error: string | null }> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('stores')
+    .select('*')
+    .eq('is_active', true)
+    .eq('is_featured', true)
+    .order('position', { ascending: true })
+    .limit(15);
+  if (error) return { data: [], error: error.message };
+  // Fisher-Yates shuffle on the client
+  const arr = (data ?? []) as Store[];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return { data: arr, error: null };
 }
 
 export async function fetchStoresByCategory(categoryId: string): Promise<{ data: Store[]; error: string | null }> {
