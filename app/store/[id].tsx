@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
-  ActivityIndicator, Modal, Linking, Animated, Platform, Share,
+  ActivityIndicator, Modal, Linking, Platform, Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -11,6 +11,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth, getSupabaseClient } from '@/template';
+import Animated from 'react-native-reanimated';
+import { useSharedValue, useAnimatedStyle, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import { useFavoriteIds } from '@/hooks/useFavorites';
 import { fetchStoreProducts, fetchStoreRating, StoreProduct } from '@/services/productsService';
 import { checkStoreIsOpen } from '@/services/storesService';
 import { Spacing, FontSize, Radius } from '@/constants/theme';
@@ -253,7 +256,8 @@ export default function StoreDetailScreen() {
   const [rating, setRating] = useState({ avg: 0, count: 0 });
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(true);
-  const [isFavorited, setIsFavorited] = useState(false);
+  const { ids: favoriteIds, toggle: toggleFav } = useFavoriteIds();
+  const isFavorited = favoriteIds.has(id ?? '');
   const [shareLoading, setShareLoading] = useState(false);
 
   // ── Cart state ──────────────────────────────────────────────────────────────
@@ -261,7 +265,7 @@ export default function StoreDetailScreen() {
   const [cartVisible, setCartVisible] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'order_type'>('cart');
   const [orderType, setOrderType] = useState<OrderType>('delivery');
-  const cartAnim = useRef(new Animated.Value(0)).current;
+  const cartAnim = useSharedValue(0);
 
   const cartItems = useMemo(() => Object.values(cart), [cart]);
   const cartTotal = useMemo(() => cartItems.reduce((s, i) => s + i.product.price * i.qty, 0), [cartItems]);
@@ -327,10 +331,10 @@ export default function StoreDetailScreen() {
 
   useEffect(() => {
     if (cartCount > 0) {
-      Animated.sequence([
-        Animated.timing(cartAnim, { toValue: 1, duration: 120, useNativeDriver: true }),
-        Animated.spring(cartAnim, { toValue: 0, friction: 4, useNativeDriver: true }),
-      ]).start();
+      cartAnim.value = withSequence(
+        withTiming(1, { duration: 120 }),
+        withSpring(0, { damping: 6 }),
+      );
     }
   }, [cartCount]);
 
@@ -436,7 +440,9 @@ export default function StoreDetailScreen() {
   const hoursLabel = store.opening_time && store.closing_time
     ? `${store.opening_time} – ${store.closing_time}`
     : null;
-  const cartBtnScale = cartAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.18, 1] });
+  const cartBtnAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + cartAnim.value * 0.18 }],
+  }));
 
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
@@ -581,7 +587,7 @@ export default function StoreDetailScreen() {
                 backgroundColor: isFavorited ? '#FEE2E2' : colors.surfaceTint,
                 borderColor: isFavorited ? '#EF4444' : colors.borderLight,
               }]}
-              onPress={() => setIsFavorited(v => !v)}
+              onPress={() => id && toggleFav(id)}
             >
               <MaterialIcons
                 name={isFavorited ? 'favorite' : 'favorite-border'}
@@ -683,7 +689,7 @@ export default function StoreDetailScreen() {
 
       {/* ── FLOATING CART BUTTON ── */}
       {cartCount > 0 && isOpen ? (
-        <Animated.View style={[s.cartFab, { transform: [{ scale: cartBtnScale }] }]}>
+        <Animated.View style={[s.cartFab, cartBtnAnimStyle]}>
           <Pressable
             style={[s.cartFabInner, { backgroundColor: colors.primary }]}
             onPress={() => { setCartVisible(true); setCheckoutStep('cart'); }}

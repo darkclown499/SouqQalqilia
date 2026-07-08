@@ -500,11 +500,19 @@ export default function StoreDashboardScreen() {
         {
           text: isAr ? 'حذف' : 'Delete', style: 'destructive',
           onPress: async () => {
-            const { error } = await getSupabaseClient()
-              .from('store_products')
-              .delete()
-              .eq('id', product.id);
-            if (!error) setProducts(prev => prev.filter(p => p.id !== product.id));
+            try {
+              const { error } = await getSupabaseClient()
+                .from('store_products')
+                .delete()
+                .eq('id', product.id);
+              if (error) throw error;
+              setProducts(prev => prev.filter(p => p.id !== product.id));
+            } catch (e: any) {
+              showAlert(
+                isAr ? 'خطأ في الحذف' : 'Delete Failed',
+                e?.message ?? (isAr ? 'تعذّر حذف المنتج' : 'Could not delete the product.')
+              );
+            }
           },
         },
       ]
