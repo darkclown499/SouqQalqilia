@@ -96,3 +96,36 @@ export async function adminDeleteStore(id: string): Promise<{ error: string | nu
   const { error } = await supabase.from('stores').delete().eq('id', id);
   return { error: error ? error.message : null };
 }
+
+// ── Fetch ALL active + approved stores (for grouped feed) ─────────────────────
+export async function fetchAllActiveStores(): Promise<{ data: Store[]; error: string | null }> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('stores')
+    .select('*')
+    .eq('is_active', true)
+    .eq('is_approved', true)
+    .order('position', { ascending: true });
+  if (error) return { data: [], error: error.message };
+  return { data: data as Store[], error: null };
+}
+
+// ── Batch-fetch all store ratings in one query ────────────────────────────────
+export async function fetchAllStoreRatings(): Promise<Record<string, { avg: number; count: number }>> {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase
+    .from('store_ratings')
+    .select('store_id, rating');
+  if (!data || data.length === 0) return {};
+  const map: Record<string, { sum: number; count: number }> = {};
+  for (const row of data) {
+    if (!map[row.store_id]) map[row.store_id] = { sum: 0, count: 0 };
+    map[row.store_id].sum += row.rating;
+    map[row.store_id].count += 1;
+  }
+  const result: Record<string, { avg: number; count: number }> = {};
+  for (const [id, { sum, count }] of Object.entries(map)) {
+    result[id] = { avg: parseFloat((sum / count).toFixed(1)), count };
+  }
+  return result;
+}
