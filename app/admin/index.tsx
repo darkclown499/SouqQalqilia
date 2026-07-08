@@ -16,7 +16,7 @@ import {
   adminBoostAd, adminSetUserAdmin, adminSetUserVerified, UserProfile,
 } from '@/services/adminService';
 import {
-  fetchAllBanners, createBanner, deleteBanner, toggleBannerActive, updateBanner, Banner,
+  fetchAllBanners, createBanner, deleteBanner, toggleBannerActive, updateBanner, Banner, BannerPlacement,
 } from '@/services/bannersService';
 import {
   fetchAllInterstitials, createInterstitial, updateInterstitial, deleteInterstitial, InterstitialAd,
@@ -735,11 +735,16 @@ export default function AdminScreen() {
   // Banner form
   const [showBannerForm, setShowBannerForm] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
+  const [bnPlacement, setBnPlacement] = useState<BannerPlacement>('home');
   const [bnTitle, setBnTitle] = useState('');
   const [bnSubtitle, setBnSubtitle] = useState('');
   const [bnImageUrl, setBnImageUrl] = useState('');
   const [bnLinkUrl, setBnLinkUrl] = useState('');
   const [bnSaving, setBnSaving] = useState(false);
+
+  // Derived: split by placement for dual-section UI
+  const homeBanners = banners.filter(b => !b.placement || b.placement === 'home');
+  const storesBanners = banners.filter(b => b.placement === 'stores_directory');
 
   // Interstitial form
   const [showInterForm, setShowInterForm] = useState(false);
@@ -990,7 +995,8 @@ export default function AdminScreen() {
   };
 
   // ── Banner handlers ──
-  const openBannerForm = (banner?: Banner) => {
+  const openBannerForm = (placement: BannerPlacement, banner?: Banner) => {
+    setBnPlacement(placement);
     if (banner) {
       setEditingBanner(banner);
       setBnTitle(banner.title);
@@ -1009,7 +1015,13 @@ export default function AdminScreen() {
       return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'العنوان ورابط الصورة مطلوبان' : 'Title and Image URL are required.');
     }
     setBnSaving(true);
-    const input = { title: bnTitle.trim(), subtitle: bnSubtitle.trim(), image_url: bnImageUrl.trim(), link_url: bnLinkUrl.trim() };
+    const input = {
+      title: bnTitle.trim(),
+      subtitle: bnSubtitle.trim(),
+      image_url: bnImageUrl.trim(),
+      link_url: bnLinkUrl.trim(),
+      placement: editingBanner ? editingBanner.placement : bnPlacement,
+    };
     const { error } = editingBanner
       ? await updateBanner(editingBanner.id, input)
       : await createBanner(input);
@@ -1279,10 +1291,14 @@ export default function AdminScreen() {
   );
 
   const renderBannerItem = ({ item }: { item: Banner }) => (
-    <View style={[styles.bannerCard, { backgroundColor: colors.surface, borderColor: colors.border, ...Shadow.xs }]}>
+    <View style={[styles.bannerCard, { backgroundColor: colors.surface, borderColor: item.placement === 'stores_directory' ? '#F59E0B45' : colors.border, ...Shadow.xs }]}>
       <View style={styles.bannerPreview}>
-        <View style={[styles.bannerImgWrap, { backgroundColor: colors.surfaceTint }]}>
-          <MaterialIcons name="image" size={24} color={colors.textMuted} />
+        <View style={[styles.bannerImgWrap, { backgroundColor: colors.surfaceTint, overflow: 'hidden' }]}>
+          {item.image_url ? (
+            <Image source={{ uri: item.image_url }} style={{ width: 52, height: 44, borderRadius: Radius.md }} contentFit="cover" />
+          ) : (
+            <MaterialIcons name="image" size={24} color={colors.textMuted} />
+          )}
         </View>
         <View style={styles.bannerInfo}>
           <Text style={[styles.bannerName, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
@@ -1296,7 +1312,7 @@ export default function AdminScreen() {
         </View>
       </View>
       <View style={[styles.cardActions, { borderTopColor: colors.borderLight }]}>
-        <Pressable style={[styles.actionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => openBannerForm(item)}>
+        <Pressable style={[styles.actionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => openBannerForm(item.placement ?? 'home', item)}>
           <MaterialIcons name="edit" size={14} color={colors.primary} />
           <Text style={[styles.actionBtnText, { color: colors.primary }]}>{t.edit}</Text>
         </Pressable>
@@ -1507,9 +1523,15 @@ export default function AdminScreen() {
 
   // ── Banner / Interstitial inline form renderer ──
   const BannerForm = () => (
-    <View style={[styles.inlineForm, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={styles.inlineFormHeader}>
-        <Text style={[styles.inlineFormTitle, { color: colors.textPrimary }]}>
+    <View style={[styles.inlineForm, { backgroundColor: colors.surface, borderColor: bnPlacement === 'home' ? colors.primary + '55' : '#F59E0B55' }]}>
+      <View style={[styles.inlineFormHeader, { marginBottom: 8 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: bnPlacement === 'home' ? colors.primaryGhost : '#FEF3C7' }}>
+          <MaterialIcons name={bnPlacement === 'home' ? 'home' : 'storefront'} size={12} color={bnPlacement === 'home' ? colors.primary : '#D97706'} />
+          <Text style={{ fontSize: 11, fontWeight: '700', color: bnPlacement === 'home' ? colors.primary : '#D97706' }}>
+            {bnPlacement === 'home' ? (isAr ? 'الرئيسية' : 'Home') : (isAr ? 'صفحة المتاجر' : 'Stores Directory')}
+          </Text>
+        </View>
+        <Text style={[styles.inlineFormTitle, { color: colors.textPrimary, flex: 1, marginLeft: 6 }]}>
           {editingBanner ? (isAr ? 'تعديل البانر' : 'Edit Banner') : t.addBanner}
         </Text>
         <Pressable onPress={() => setShowBannerForm(false)} hitSlop={8}>
@@ -1535,7 +1557,7 @@ export default function AdminScreen() {
         </View>
       ))}
       <Pressable
-        style={[styles.formSaveBtn, { backgroundColor: colors.primary, opacity: bnSaving ? 0.7 : 1 }]}
+        style={[styles.formSaveBtn, { backgroundColor: bnPlacement === 'home' ? colors.primary : '#D97706', opacity: bnSaving ? 0.7 : 1 }]}
         onPress={handleSaveBanner}
         disabled={bnSaving}
       >
@@ -1724,31 +1746,89 @@ export default function AdminScreen() {
           }
         />
       ) : tab === 'banners' ? (
-        <FlatList
-          data={banners}
-          keyExtractor={item => item.id}
-          renderItem={renderBannerItem}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            <>
-              <Pressable
-                style={[styles.addBtn, { backgroundColor: showBannerForm ? colors.border : colors.primary }]}
-                onPress={() => openBannerForm()}
-              >
-                <MaterialIcons name="add" size={18} color="#fff" />
-                <Text style={styles.addBtnText}>{t.addBanner}</Text>
-              </Pressable>
-              {showBannerForm ? <BannerForm /> : null}
-            </>
-          }
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <MaterialIcons name="view-carousel" size={44} color={colors.textMuted} />
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>{t.noBanners}</Text>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: Spacing.md, paddingBottom: 48, gap: Spacing.md }}>
+
+          {/* HOME BANNERS SECTION */}
+          <View style={{ borderRadius: Radius.xl, borderWidth: 1.5, borderColor: colors.primary + '40', overflow: 'hidden' }}>
+            <View style={{ backgroundColor: colors.primaryGhost, padding: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+                <MaterialIcons name="home" size={18} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: FontSize.md, fontWeight: '800', color: colors.primary }}>
+                  {isAr ? 'بنرات الصفحة الرئيسية' : 'Home Screen Banners'}
+                </Text>
+                <Text style={{ fontSize: FontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                  {isAr ? 'تظهر في الكاروسيل أعلى الصفحة الرئيسية' : 'Appear in the carousel at the top of the Home screen'}
+                </Text>
+              </View>
+              <View style={{ borderRadius: 12, paddingHorizontal: 9, paddingVertical: 3, backgroundColor: colors.primary }}>
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{homeBanners.length}</Text>
+              </View>
             </View>
-          }
-        />
+            <View style={{ padding: Spacing.md, gap: Spacing.sm }}>
+              <Pressable
+                style={[styles.addBtn, { marginBottom: 0, backgroundColor: (showBannerForm && bnPlacement === 'home') ? colors.border : colors.primary }]}
+                onPress={() => { if (showBannerForm && bnPlacement === 'home') { setShowBannerForm(false); } else { openBannerForm('home'); } }}
+              >
+                <MaterialIcons name={(showBannerForm && bnPlacement === 'home') ? 'close' : 'add'} size={18} color="#fff" />
+                <Text style={styles.addBtnText}>
+                  {(showBannerForm && bnPlacement === 'home') ? (isAr ? 'إلغاء' : 'Cancel') : (isAr ? 'إضافة بنر للرئيسية' : 'Add Home Banner')}
+                </Text>
+              </Pressable>
+              {showBannerForm && bnPlacement === 'home' ? <BannerForm /> : null}
+              {homeBanners.length === 0 ? (
+                <View style={{ alignItems: 'center', padding: 20, gap: 8 }}>
+                  <MaterialIcons name="image" size={32} color={colors.textMuted} />
+                  <Text style={{ color: colors.textMuted, fontSize: FontSize.sm }}>
+                    {isAr ? 'لا توجد بنرات للرئيسية' : 'No home banners yet'}
+                  </Text>
+                </View>
+              ) : homeBanners.map(item => <View key={item.id} style={{ marginBottom: Spacing.sm }}>{renderBannerItem({ item })}</View>)}
+            </View>
+          </View>
+
+          {/* STORES DIRECTORY BANNERS SECTION */}
+          <View style={{ borderRadius: Radius.xl, borderWidth: 1.5, borderColor: '#F59E0B55', overflow: 'hidden' }}>
+            <View style={{ backgroundColor: '#FEF3C7', padding: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D97706', alignItems: 'center', justifyContent: 'center' }}>
+                <MaterialIcons name="storefront" size={18} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: FontSize.md, fontWeight: '800', color: '#D97706' }}>
+                  {isAr ? 'بنرات صفحة المتاجر' : 'Stores Directory Banners'}
+                </Text>
+                <Text style={{ fontSize: FontSize.xs, color: '#92400E', marginTop: 2 }}>
+                  {isAr ? 'تظهر في الكاروسيل أعلى صفحة المتاجر' : 'Appear in the carousel at the top of the Stores page'}
+                </Text>
+              </View>
+              <View style={{ borderRadius: 12, paddingHorizontal: 9, paddingVertical: 3, backgroundColor: '#D97706' }}>
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{storesBanners.length}</Text>
+              </View>
+            </View>
+            <View style={{ padding: Spacing.md, gap: Spacing.sm }}>
+              <Pressable
+                style={[styles.addBtn, { marginBottom: 0, backgroundColor: (showBannerForm && bnPlacement === 'stores_directory') ? colors.border : '#D97706' }]}
+                onPress={() => { if (showBannerForm && bnPlacement === 'stores_directory') { setShowBannerForm(false); } else { openBannerForm('stores_directory'); } }}
+              >
+                <MaterialIcons name={(showBannerForm && bnPlacement === 'stores_directory') ? 'close' : 'add'} size={18} color="#fff" />
+                <Text style={styles.addBtnText}>
+                  {(showBannerForm && bnPlacement === 'stores_directory') ? (isAr ? 'إلغاء' : 'Cancel') : (isAr ? 'إضافة بنر لصفحة المتاجر' : 'Add Stores Banner')}
+                </Text>
+              </Pressable>
+              {showBannerForm && bnPlacement === 'stores_directory' ? <BannerForm /> : null}
+              {storesBanners.length === 0 ? (
+                <View style={{ alignItems: 'center', padding: 20, gap: 8 }}>
+                  <MaterialIcons name="image" size={32} color={colors.textMuted} />
+                  <Text style={{ color: colors.textMuted, fontSize: FontSize.sm }}>
+                    {isAr ? 'لا توجد بنرات لصفحة المتاجر' : 'No stores page banners yet'}
+                  </Text>
+                </View>
+              ) : storesBanners.map(item => <View key={item.id} style={{ marginBottom: Spacing.sm }}>{renderBannerItem({ item })}</View>)}
+            </View>
+          </View>
+
+        </ScrollView>
       ) : (
         <FlatList
           data={interstitials}

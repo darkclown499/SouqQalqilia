@@ -548,18 +548,21 @@ export default function StoresScreen() {
 
   // ── Initial data load ─────────────────────────────────────────────────────
   useEffect(() => {
-    const cached = getBannersCache();
+    const cached = getBannersCache('stores_directory');
     if (cached && cached.length > 0) setBanners(cached);
 
     Promise.all([
       fetchAllActiveStores(),
       fetchAllStoreRatings(),
-      fetchActiveBanners(),
+      fetchActiveBanners('stores_directory'),
       fetchStoreCategories(),
     ]).then(([storesRes, ratingsMap, bannersRes, catsRes]) => {
       setStores(storesRes.data);
       setRatings(ratingsMap);
-      if (bannersRes.data.length > 0) setBanners(bannersRes.data);
+      if (bannersRes.data.length > 0) {
+        setBanners(bannersRes.data);
+        setBannersCache(bannersRes.data, 'stores_directory');
+      }
       setStoreCategories(catsRes.data);
     }).finally(() => setLoading(false));
   }, []);

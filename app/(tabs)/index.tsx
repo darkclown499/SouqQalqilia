@@ -308,7 +308,7 @@ export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [recentlyViewed, setRecentlyViewed] = useState<Ad[]>([]);
   const [featuredIndex, setFeaturedIndex] = useState(0);
-  const [banners, setBanners] = useState<Banner[]>(() => getBannersCache() ?? []);
+  const [banners, setBanners] = useState<Banner[]>(() => getBannersCache('home') ?? []);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [showSortBar, setShowSortBar] = useState(false);
 
@@ -423,10 +423,12 @@ export default function HomeScreen() {
   }, [selectedCategory, sortBy, appliedArea, appliedMaxPrice, appliedCondition, load]);
 
   useEffect(() => {
-    if (!getBannersCache()) {
-      fetchActiveBanners().then(({ data }) => {
-        if (data.length > 0) { setBannersCache(data); setBanners(data); }
+    if (!getBannersCache('home')) {
+      fetchActiveBanners('home').then(({ data }) => {
+        if (data.length > 0) { setBannersCache(data, 'home'); setBanners(data); }
       });
+    } else {
+      setBanners(getBannersCache('home') ?? []);
     }
     if (!_interstitialsCache) {
       fetchActiveInterstitials().then(({ data }) => {
