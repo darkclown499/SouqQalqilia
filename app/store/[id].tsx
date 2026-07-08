@@ -141,7 +141,22 @@ export default function StoreDetailScreen() {
   useEffect(() => {
     if (!id) return;
     // Fire view increment asynchronously — never blocks UI
-    getSupabaseClient().rpc('increment_store_views', { store_id: id }).catch(() => {});
+    getSupabaseClient()
+      .from('stores')
+      .select('views_count')
+      .eq('id', id)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          getSupabaseClient()
+            .from('stores')
+            .update({ views_count: (data.views_count ?? 0) + 1 })
+            .eq('id', id)
+            .then(() => {})
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
 
     Promise.all([
       getSupabaseClient().from('stores').select('*').eq('id', id).single(),
@@ -197,7 +212,22 @@ export default function StoreDetailScreen() {
   const handleConfirmOrder = useCallback(() => {
     if (!store || !isOpen) return;
     // Track WhatsApp click asynchronously
-    getSupabaseClient().rpc('increment_store_whatsapp_clicks', { store_id: store.id }).catch(() => {});
+    getSupabaseClient()
+      .from('stores')
+      .select('whatsapp_clicks_count')
+      .eq('id', store.id)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          getSupabaseClient()
+            .from('stores')
+            .update({ whatsapp_clicks_count: (data.whatsapp_clicks_count ?? 0) + 1 })
+            .eq('id', store.id)
+            .then(() => {})
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
     const userName = user?.username || user?.email?.split('@')[0] || 'عميل';
     const orderTypeLabel = isAr ? ORDER_LABELS[orderType].ar : ORDER_LABELS[orderType].en;
     const storeName = isAr ? (store.name_ar || store.name) : store.name;
