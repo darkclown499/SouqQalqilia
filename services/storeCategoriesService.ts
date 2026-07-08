@@ -49,25 +49,39 @@ export function getStoreCategoryName(cat: StoreCategory, language: string): stri
   return cat.name;
 }
 
-/** Emoji map for common category slugs */
+/** Emoji map for category slugs — covers both new canonical and legacy slugs */
 export function getStoreCategoryEmoji(slug: string): string {
   const map: Record<string, string> = {
-    restaurants:   '🍽️',
-    supermarkets:  '🛒',
-    pharmacies:    '💊',
-    sweets:        '🍰',
-    bakeries:      '🥖',
-    cafes:         '☕',
-    burger:        '🍔',
-    pizza:         '🍕',
-    chicken:       '🍗',
-    grills:        '🔥',
-    falafel:       '🧆',
-    juices:        '🍹',
-    'electronics-s': '📱',
-    'fashion-s':   '👗',
-    'furniture-s': '🪑',
-    beauty:        '💄',
+    // New canonical slugs
+    'gifts':        '🎁',
+    'games':        '🎮',
+    'food':         '🍔',
+    'animals':      '🐾',
+    'cars':         '🚗',
+    'jobs':         '💼',
+    'other':        '✨',
+    'fashion':      '👗',
+    'furniture':    '🛋️',
+    'electronics':  '📱',
+    'sports':       '⚽',
+    'real-estate':  '🏠',
+    // Legacy slugs kept for backward compatibility
+    restaurants:    '🍽️',
+    supermarkets:   '🛒',
+    pharmacies:     '💊',
+    sweets:         '🍰',
+    bakeries:       '🥖',
+    cafes:          '☕',
+    burger:         '🍔',
+    pizza:          '🍕',
+    chicken:        '🍗',
+    grills:         '🔥',
+    falafel:        '🧆',
+    juices:         '🍹',
+    'electronics-s':'📱',
+    'fashion-s':    '👗',
+    'furniture-s':  '🪑',
+    beauty:         '💄',
   };
   return map[slug] ?? '';
 }

@@ -163,26 +163,48 @@ const bc = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. QUICK STORE CATEGORY CARD (uses store_categories, NOT product categories)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Category UI mapping — keyed by Arabic name for reliable display
+interface CategoryUI { emoji: string; bgColor: string }
+function getCategoryUI(nameAr: string): CategoryUI {
+  switch (nameAr?.trim()) {
+    case 'زينة وهدايا':    return { emoji: '🎁', bgColor: '#FFF9C4' };
+    case 'ألعاب وترفيه':  return { emoji: '🎮', bgColor: '#E1BEE7' };
+    case 'مأكولات وحلويات':return { emoji: '🍔', bgColor: '#FFCC80' };
+    case 'حيوانات':        return { emoji: '🐾', bgColor: '#C8E6C9' };
+    case 'سيارات ومركبات': return { emoji: '🚗', bgColor: '#BBDEFB' };
+    case 'وظائف':          return { emoji: '💼', bgColor: '#D7CCC8' };
+    case 'موضة':           return { emoji: '👗', bgColor: '#F8BBD0' };
+    case 'أثاث':           return { emoji: '🛋️', bgColor: '#FFE0B2' };
+    case 'إلكترونيات':     return { emoji: '📱', bgColor: '#B2DFDB' };
+    case 'رياضة':          return { emoji: '⚽', bgColor: '#FFECB3' };
+    case 'عقارات':         return { emoji: '🏠', bgColor: '#CFD8DC' };
+    case 'أخرى':           return { emoji: '✨', bgColor: '#F5F5F5' };
+    default:               return { emoji: '🏪', bgColor: '#E8F5E9' };
+  }
+}
+
 function QuickStoreCatCard({
   cat, isAr, isSelected, onPress,
 }: { cat: StoreCategory; isAr: boolean; isSelected: boolean; onPress: () => void }) {
-  const bgColor = cat.color || '#0A6E5C';
-  const emoji = getStoreCategoryEmoji(cat.slug);
+  const nameAr = cat.name_ar || cat.name;
+  const { emoji, bgColor } = getCategoryUI(nameAr);
+  const borderColor = cat.color || '#0A6E5C';
 
   return (
     <Pressable
-      style={({ pressed }) => [qc.card, isSelected && { borderColor: bgColor, borderWidth: 2 }, { opacity: pressed ? 0.85 : 1 }]}
+      style={({ pressed }) => [
+        qc.card,
+        isSelected && { borderColor, borderWidth: 2, backgroundColor: bgColor },
+        { opacity: pressed ? 0.85 : 1 },
+      ]}
       onPress={onPress}
     >
-      <View style={[qc.iconBg, { backgroundColor: bgColor + '1A' }]}>
-        {emoji ? (
-          <Text style={qc.emoji}>{emoji}</Text>
-        ) : (
-          <MaterialIcons name={cat.icon as any} size={24} color={bgColor} />
-        )}
+      <View style={[qc.iconBg, { backgroundColor: isSelected ? bgColor : bgColor + 'CC' }]}>
+        <Text style={qc.emoji}>{emoji}</Text>
       </View>
-      <Text style={[qc.label, { color: isSelected ? bgColor : '#1a1a2e' }]} numberOfLines={2}>
-        {isAr ? (cat.name_ar || cat.name) : cat.name}
+      <Text style={[qc.label, { color: isSelected ? borderColor : '#1a1a2e' }]} numberOfLines={2}>
+        {isAr ? nameAr : cat.name}
       </Text>
     </Pressable>
   );
