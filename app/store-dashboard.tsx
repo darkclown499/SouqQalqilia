@@ -19,12 +19,9 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
 // ── Add/Edit Product Modal ────────────────────────────────────────────────────
 interface ProductForm {
-  name: string;
   name_ar: string;
-  description: string;
   description_ar: string;
   price: string;
-  category_label: string;
   category_label_ar: string;
   image_url: string;
   is_available: boolean;
@@ -32,37 +29,59 @@ interface ProductForm {
 }
 
 const EMPTY_FORM: ProductForm = {
-  name: '', name_ar: '', description: '', description_ar: '',
-  price: '', category_label: '', category_label_ar: '',
+  name_ar: '', description_ar: '',
+  price: '', category_label_ar: '',
   image_url: '', is_available: true, position: '0',
 };
 
+// ── Product category map by store type ────────────────────────────────────────
+const PRODUCT_CATEGORY_MAP: Record<string, string[]> = {
+  'مطاعم':      ['وجبات رئيسية', 'مقبلات', 'مشروبات', 'حلويات', 'عروض'],
+  'سوبرماركت':  ['مواد غذائية', 'معلبات', 'ألبان وأجبان', 'منظفات', 'تسالي'],
+  'صيدليات':    ['أدوية طبية', 'عناية بالبشرة', 'عناية بالطفل', 'فيتامينات', 'مستلزمات'],
+  'مخابز':      ['خبز بأنواعه', 'معجنات', 'كيك', 'بسكويت', 'عروض'],
+  'كافيهات':    ['قهوة', 'مشروبات باردة', 'عصائر', 'حلويات', 'وجبات خفيفة'],
+  'برجر':       ['برجر', 'وجبات', 'بطاطس', 'مشروبات', 'عروض'],
+  'بيتزا':      ['بيتزا', 'باستا', 'مقبلات', 'مشروبات', 'عروض'],
+  'دجاج':       ['وجبات دجاج', 'قطع مفردة', 'بروستد', 'مشروبات', 'عروض'],
+  'مشويات':     ['مشويات', 'كباب', 'شاورما', 'مقبلات', 'مشروبات'],
+  'فلافل':      ['فلافل', 'فول', 'سندويشات', 'مشروبات', 'وجبات'],
+  'عصائر':      ['عصائر طازجة', 'سموذي', 'مشروبات باردة', 'آيس كريم', 'إضافات'],
+  'حلويات':     ['حلويات شرقية', 'حلويات غربية', 'كيك', 'شوكولاتة', 'عروض'],
+  'إلكترونيات': ['جوالات', 'لابتوبات', 'إكسسوارات', 'أجهزة منزلية', 'صيانة'],
+  'أزياء':      ['رجالي', 'نسائي', 'ولادي', 'أحذية', 'إكسسوارات'],
+  'أثاث':       ['غرف نوم', 'صالونات', 'مطابخ', 'مكتبي', 'ديكور'],
+  'تجميل':      ['عناية بالبشرة', 'مكياج', 'عطور', 'شعر', 'أظافر'],
+};
+const DEFAULT_PRODUCT_CATEGORIES = ['قسم عام', 'عروض', 'منتجات متنوعة', 'أخرى'];
+
 function ProductModal({
-  visible, onClose, onSave, storeId, editProduct, isAr, isRTL, colors,
+  visible, onClose, onSave, storeId, editProduct, storeCategoryNameAr, isAr, isRTL, colors,
 }: {
   visible: boolean; onClose: () => void;
   onSave: (product: StoreProduct) => void;
   storeId: string;
   editProduct: StoreProduct | null;
+  storeCategoryNameAr: string;
   isAr: boolean; isRTL: boolean; colors: any;
 }) {
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
   const [imgUri, setImgUri] = useState<string | null>(null);
-  const [imgBase64, setImgBase64] = useState<string | null>(null);
   const [imgLoading, setImgLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [catError, setCatError] = useState(false);
   const { user } = useAuth();
+
+  // Resolve chips from the store's category
+  const chips = PRODUCT_CATEGORY_MAP[storeCategoryNameAr] ?? DEFAULT_PRODUCT_CATEGORIES;
 
   useEffect(() => {
     if (editProduct) {
       setForm({
-        name: editProduct.name,
-        name_ar: editProduct.name_ar,
-        description: editProduct.description,
-        description_ar: editProduct.description_ar,
+        name_ar: editProduct.name_ar || editProduct.name,
+        description_ar: editProduct.description_ar || editProduct.description,
         price: String(editProduct.price),
-        category_label: editProduct.category_label,
-        category_label_ar: editProduct.category_label_ar,
+        category_label_ar: editProduct.category_label_ar || editProduct.category_label,
         image_url: editProduct.image_url,
         is_available: editProduct.is_available,
         position: String(editProduct.position),
@@ -71,8 +90,8 @@ function ProductModal({
     } else {
       setForm(EMPTY_FORM);
       setImgUri(null);
-      setImgBase64(null);
     }
+    setCatError(false);
   }, [editProduct, visible]);
 
   const handlePickImage = async () => {
@@ -90,19 +109,31 @@ function ProductModal({
   };
 
   const handleSave = async () => {
-    if (!form.name_ar.trim() && !form.name.trim()) return;
+    if (!form.name_ar.trim()) return;
+    // Image is mandatory
+    if (!form.image_url) {
+      const { Alert } = require('react-native');
+      Alert.alert('تنبيه', 'يجب إضافة صورة للمنتج');
+      return;
+    }
+    // Category chip must be selected
+    if (!form.category_label_ar) {
+      setCatError(true);
+      return;
+    }
     setSaving(true);
     try {
       const supabase = getSupabaseClient();
       const payload = {
         store_id: storeId,
-        name: form.name.trim() || form.name_ar.trim(),
-        name_ar: form.name_ar.trim() || form.name.trim(),
-        description: form.description.trim(),
+        // Use Arabic as canonical — English mirrors it for DB compatibility
+        name: form.name_ar.trim(),
+        name_ar: form.name_ar.trim(),
+        description: form.description_ar.trim(),
         description_ar: form.description_ar.trim(),
         price: parseFloat(form.price) || 0,
-        category_label: form.category_label.trim(),
-        category_label_ar: form.category_label_ar.trim(),
+        category_label: form.category_label_ar,
+        category_label_ar: form.category_label_ar,
         image_url: form.image_url,
         is_available: form.is_available,
         position: parseInt(form.position) || 0,
@@ -130,11 +161,11 @@ function ProductModal({
       onSave(result as StoreProduct);
       onClose();
     } catch (e: any) {
-      // silent — UI already has field
+      // silent
     } finally { setSaving(false); }
   };
 
-  const textAlign = isRTL ? 'right' as const : 'left' as const;
+  const textAlign = 'right' as const;
   const rtl = isRTL ? 'row-reverse' as const : 'row' as const;
 
   return (
@@ -147,9 +178,7 @@ function ProductModal({
             <View style={[pm.titleRow, { flexDirection: rtl, borderBottomColor: colors.borderLight }]}>
               <MaterialIcons name={editProduct ? 'edit' : 'add-box'} size={22} color={colors.primary} />
               <Text style={[pm.titleText, { color: colors.textPrimary, flex: 1, textAlign }]}>
-                {editProduct
-                  ? (isAr ? 'تعديل المنتج' : 'Edit Product')
-                  : (isAr ? 'إضافة منتج جديد' : 'Add New Product')}
+                {editProduct ? 'تعديل المنتج' : 'إضافة منتج جديد'}
               </Text>
               <Pressable onPress={onClose} hitSlop={10}>
                 <MaterialIcons name="close" size={22} color={colors.textMuted} />
@@ -157,64 +186,109 @@ function ProductModal({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={pm.content}>
-              {/* Product image */}
-              <Pressable
-                style={[pm.imgArea, { borderColor: imgUri ? colors.primary : colors.border, backgroundColor: colors.background }]}
-                onPress={handlePickImage}
-                disabled={imgLoading}
-              >
-                {imgUri ? (
-                  <>
-                    <Image source={{ uri: imgUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
-                    <View style={pm.imgOverlay} />
-                    <MaterialIcons name="edit" size={22} color="#fff" />
-                  </>
-                ) : imgLoading ? (
-                  <ActivityIndicator color={colors.primary} />
-                ) : (
-                  <>
-                    <MaterialIcons name="add-photo-alternate" size={32} color={colors.primary} />
-                    <Text style={[pm.imgHint, { color: colors.textMuted }]}>{isAr ? 'صورة المنتج (اختياري)' : 'Product photo (optional)'}</Text>
-                  </>
-                )}
-              </Pressable>
 
-              {/* Fields */}
-              {[
-                { label: isAr ? 'اسم المنتج بالعربية *' : 'Product Name (Arabic) *', key: 'name_ar', textAlignOverride: 'right' as const },
-                { label: isAr ? 'اسم المنتج بالإنجليزية' : 'Product Name (English)', key: 'name', textAlignOverride: 'left' as const },
-                { label: isAr ? 'وصف بالعربية' : 'Description (Arabic)', key: 'description_ar', multiline: true, textAlignOverride: 'right' as const },
-                { label: isAr ? 'وصف بالإنجليزية' : 'Description (English)', key: 'description', multiline: true, textAlignOverride: 'left' as const },
-                { label: isAr ? 'تصنيف المنتج (عربي)' : 'Product Category (Arabic)', key: 'category_label_ar', textAlignOverride: 'right' as const },
-                { label: isAr ? 'تصنيف المنتج (إنجليزي)' : 'Product Category (English)', key: 'category_label', textAlignOverride: 'left' as const },
-              ].map(f => (
-                <View key={f.key} style={pm.field}>
-                  <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>{f.label}</Text>
-                  <TextInput
-                    style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: f.textAlignOverride }]}
-                    placeholder=""
-                    placeholderTextColor={colors.textMuted}
-                    value={(form as any)[f.key]}
-                    onChangeText={v => setForm(fv => ({ ...fv, [f.key]: v }))}
-                    multiline={f.multiline}
-                    numberOfLines={f.multiline ? 3 : 1}
-                  />
-                </View>
-              ))}
-
+              {/* ── Product image (mandatory) ── */}
               <View style={pm.field}>
-                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>{isAr ? 'السعر (₪)' : 'Price (₪)'}</Text>
+                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>
+                  {'صورة المنتج (إجباري *)'}
+                </Text>
+                <Pressable
+                  style={[pm.imgArea, { borderColor: form.image_url ? colors.primary : colors.border, backgroundColor: colors.background }]}
+                  onPress={handlePickImage}
+                  disabled={imgLoading}
+                >
+                  {imgUri ? (
+                    <>
+                      <Image source={{ uri: imgUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+                      <View style={pm.imgOverlay} />
+                      <View style={pm.imgEditBadge}>
+                        <MaterialIcons name="edit" size={16} color="#fff" />
+                        <Text style={pm.imgEditText}>{'تغيير'}</Text>
+                      </View>
+                    </>
+                  ) : imgLoading ? (
+                    <ActivityIndicator color={colors.primary} />
+                  ) : (
+                    <>
+                      <View style={[pm.imgIcon, { backgroundColor: colors.primaryGhost }]}>
+                        <MaterialIcons name="add-photo-alternate" size={28} color={colors.primary} />
+                      </View>
+                      <Text style={[pm.imgHint, { color: colors.textMuted }]}>{'اضغط لإضافة صورة'}</Text>
+                      <Text style={[pm.imgRequired, { color: '#EF4444' }]}>{'* إجباري'}</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+
+              {/* ── Product name (Arabic) ── */}
+              <View style={pm.field}>
+                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>{'اسم المنتج *'}</Text>
+                <TextInput
+                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign }]}
+                  placeholder="أدخل اسم المنتج"
+                  placeholderTextColor={colors.textMuted}
+                  value={form.name_ar}
+                  onChangeText={v => setForm(f => ({ ...f, name_ar: v }))}
+                />
+              </View>
+
+              {/* ── Description (Arabic) ── */}
+              <View style={pm.field}>
+                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>{'الوصف'}</Text>
+                <TextInput
+                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign, minHeight: 78 }]}
+                  placeholder="وصف المنتج (اختياري)"
+                  placeholderTextColor={colors.textMuted}
+                  value={form.description_ar}
+                  onChangeText={v => setForm(f => ({ ...f, description_ar: v }))}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+
+              {/* ── Category chips ── */}
+              <View style={pm.field}>
+                <Text style={[pm.fieldLabel, { color: catError ? '#EF4444' : colors.textSecondary, textAlign }]}>
+                  {catError ? 'التصنيف مطلوب *' : 'تصنيف المنتج *'}
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={[pm.chipsScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                >
+                  {chips.map(chip => {
+                    const selected = form.category_label_ar === chip;
+                    return (
+                      <Pressable
+                        key={chip}
+                        style={[pm.chip, {
+                          backgroundColor: selected ? colors.primary : colors.background,
+                          borderColor: selected ? colors.primary : (catError ? '#EF4444' : colors.border),
+                        }]}
+                        onPress={() => { setForm(f => ({ ...f, category_label_ar: chip })); setCatError(false); }}
+                      >
+                        {selected ? <MaterialIcons name="check" size={13} color="#fff" /> : null}
+                        <Text style={[pm.chipText, { color: selected ? '#fff' : colors.textPrimary }]}>{chip}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* ── Price ── */}
+              <View style={pm.field}>
+                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>{'السعر (₪)'}</Text>
                 <TextInput
                   style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign }]}
                   placeholder="0.00"
                   placeholderTextColor={colors.textMuted}
                   value={form.price}
-                  onChangeText={v => setForm(fv => ({ ...fv, price: v }))}
+                  onChangeText={v => setForm(f => ({ ...f, price: v }))}
                   keyboardType="numeric"
                 />
               </View>
 
-              {/* Available toggle */}
+              {/* ── Available toggle ── */}
               <Pressable
                 style={[pm.toggleRow, { flexDirection: rtl, borderColor: form.is_available ? colors.primary : colors.border, backgroundColor: form.is_available ? colors.primaryGhost : colors.background }]}
                 onPress={() => setForm(f => ({ ...f, is_available: !f.is_available }))}
@@ -225,9 +299,7 @@ function ProductModal({
                   color={form.is_available ? colors.primary : colors.textMuted}
                 />
                 <Text style={[pm.toggleLabel, { color: form.is_available ? colors.primary : colors.textSecondary, fontWeight: form.is_available ? '700' : '500' }]}>
-                  {form.is_available
-                    ? (isAr ? 'متاح للطلب' : 'Available')
-                    : (isAr ? 'غير متاح حالياً' : 'Currently Unavailable')}
+                  {form.is_available ? 'متاح للطلب' : 'غير متاح حالياً'}
                 </Text>
               </Pressable>
             </ScrollView>
@@ -238,7 +310,7 @@ function ProductModal({
               disabled={saving}
             >
               {saving ? <ActivityIndicator color="#fff" size="small" /> : <MaterialIcons name="check" size={20} color="#fff" />}
-              <Text style={pm.saveBtnText}>{saving ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'حفظ المنتج' : 'Save Product')}</Text>
+              <Text style={pm.saveBtnText}>{saving ? 'جاري الحفظ...' : 'حفظ المنتج'}</Text>
             </Pressable>
           </View>
         </View>
@@ -262,12 +334,28 @@ const pm = StyleSheet.create({
   titleText: { fontSize: FontSize.lg, fontWeight: '700' },
   content: { paddingHorizontal: Spacing.lg, paddingBottom: 16, gap: 12 },
   imgArea: {
-    height: 130, borderWidth: 1.5, borderStyle: 'dashed',
+    height: 140, borderWidth: 1.5, borderStyle: 'dashed',
     borderRadius: Radius.xl, alignItems: 'center', justifyContent: 'center',
-    gap: 8, overflow: 'hidden',
+    gap: 6, overflow: 'hidden',
   },
   imgOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.32)' },
-  imgHint: { fontSize: FontSize.xs },
+  imgIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  imgHint: { fontSize: FontSize.sm, fontWeight: '600' },
+  imgRequired: { fontSize: FontSize.xs, fontWeight: '700' },
+  imgEditBadge: {
+    position: 'absolute', bottom: 10, right: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: Radius.full,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  imgEditText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
+  chipsScroll: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderWidth: 1.5, borderRadius: Radius.full,
+    paddingHorizontal: 14, paddingVertical: 8, flexShrink: 0,
+  },
+  chipText: { fontSize: FontSize.sm, fontWeight: '700' },
   field: { gap: 4 },
   fieldLabel: { fontSize: FontSize.sm, fontWeight: '600' },
   input: {
@@ -634,6 +722,7 @@ export default function StoreDashboardScreen() {
           onSave={handleSaveProduct}
           storeId={store.id}
           editProduct={editingProduct}
+          storeCategoryNameAr={storeCategory?.name_ar || storeCategory?.name || ''}
           isAr={isAr}
           isRTL={isRTL}
           colors={colors}
