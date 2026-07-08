@@ -513,7 +513,7 @@ export default function RegisterStoreScreen() {
               <Text style={[cm.subtitle, { color: colors.textMuted, textAlign: 'right' }]}>
                 {'محافظة قلقيلية — اختر البلدة التي يقع فيها متجرك'}
               </Text>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={cm.list}>
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={true} contentContainerStyle={cm.list}>
                 {QALQILYA_LOCATIONS.map(loc => {
                   const isSel = loc === selectedLocation;
                   return (
@@ -558,7 +558,7 @@ export default function RegisterStoreScreen() {
               <Text style={[cm.subtitle, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
                 {isAr ? 'هذه التصنيفات خاصة بأنواع المتاجر فقط' : 'These are store-specific business types'}
               </Text>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={cm.list}>
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={true} contentContainerStyle={cm.list}>
                 {storeCategories.map(cat => {
                   const isSel = cat.id === storeCategoryId;
                   const emoji = getStoreCategoryEmoji(cat.slug);
@@ -693,12 +693,12 @@ const s = StyleSheet.create({
 
 const cm = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, paddingBottom: 40, maxHeight: '82%' },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, maxHeight: '82%' },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: Spacing.lg, marginBottom: 4 },
   titleText: { fontSize: FontSize.lg, fontWeight: '700', flex: 1 },
   subtitle: { fontSize: FontSize.xs, paddingHorizontal: Spacing.lg, marginBottom: 10, lineHeight: 17 },
-  list: { paddingHorizontal: Spacing.lg, gap: 8, paddingBottom: 8 },
+  list: { paddingHorizontal: 16, gap: 8, paddingBottom: 40 },
   item: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     borderRadius: Radius.xl, borderWidth: 1.5, paddingVertical: 12, paddingHorizontal: Spacing.md,
