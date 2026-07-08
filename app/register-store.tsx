@@ -206,6 +206,7 @@ export default function RegisterStoreScreen() {
           closing_time: closingTime,
           // Keep category_id null or map if needed; use store_category_id for store typing
           store_category_id: storeCategoryId,
+          category_id: null,
           logo_url: logoUrl,
           banner_url: bannerUrl,
           owner_id: user.id,
