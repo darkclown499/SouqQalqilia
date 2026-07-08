@@ -642,13 +642,13 @@ export default function ProfileScreen() {
             ownerStore === null ? (
               // No store yet — CTA
               <Pressable
-                style={[styles.storeCtaCard, { backgroundColor: colors.primaryGhost, borderColor: colors.primary + '44' }]}
+                style={styles.storeCtaCard}
                 onPress={() => router.push('/register-store' as any)}
               >
                 <View style={[styles.storeCtaIcon, { backgroundColor: colors.primary }]}>
                   <MaterialIcons name="store" size={22} color="#fff" />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.storeCtaTextWrap}>
                   <Text style={[styles.storeCtaTitle, { color: colors.primary, textAlign: isRTL ? 'right' : 'left' }]}>
                     {isRTL ? 'سجّل متجرك معنا 🛒' : 'Register Your Store 🛒'}
                   </Text>
@@ -656,18 +656,18 @@ export default function ProfileScreen() {
                     {isRTL ? 'ابدأ البيع عبر التطبيق اليوم' : 'Start selling through the app today'}
                   </Text>
                 </View>
-                <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.primary} />
+                <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.primary} flexShrink={0} />
               </Pressable>
             ) : ownerStore.is_approved ? (
               // Approved store — management button
               <Pressable
-                style={[styles.storeCtaCard, { backgroundColor: colors.primaryGhost, borderColor: colors.primary }]}
+                style={styles.storeCtaCard}
                 onPress={() => router.push('/store-dashboard' as any)}
               >
                 <View style={[styles.storeCtaIcon, { backgroundColor: colors.primary }]}>
                   <MaterialIcons name="settings" size={22} color="#fff" />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.storeCtaTextWrap}>
                   <Text style={[styles.storeCtaTitle, { color: colors.primary, textAlign: isRTL ? 'right' : 'left' }]}>
                     {isRTL ? '⚙️ إعدادات وإدارة متجري' : '⚙️ Manage My Store'}
                   </Text>
@@ -675,7 +675,7 @@ export default function ProfileScreen() {
                     {isRTL ? (ownerStore.name_ar || ownerStore.name) : ownerStore.name}
                   </Text>
                 </View>
-                <View style={[styles.approvedBadge, { backgroundColor: '#D1FAE5' }]}>
+                <View style={[styles.approvedBadge, { backgroundColor: '#D1FAE5' }]} >
                   <MaterialIcons name="check-circle" size={14} color="#16a34a" />
                   <Text style={styles.approvedText}>{isRTL ? 'مفعّل' : 'Active'}</Text>
                 </View>
@@ -683,13 +683,13 @@ export default function ProfileScreen() {
             ) : (
               // Pending store — info card
               <Pressable
-                style={[styles.storeCtaCard, { backgroundColor: '#FFFBEB', borderColor: '#F59E0B' }]}
+                style={[styles.storeCtaCard, { borderColor: '#F59E0B' }]}
                 onPress={() => router.push('/store-dashboard' as any)}
               >
                 <View style={[styles.storeCtaIcon, { backgroundColor: '#F59E0B' }]}>
                   <MaterialIcons name="access-time" size={22} color="#fff" />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.storeCtaTextWrap}>
                   <Text style={[styles.storeCtaTitle, { color: '#D97706', textAlign: isRTL ? 'right' : 'left' }]}>
                     {isRTL ? `متجرك ${ownerStore.name_ar || ownerStore.name} قيد المراجعة ⏳` : `Store "${ownerStore.name}" Under Review ⏳`}
                   </Text>
@@ -697,7 +697,7 @@ export default function ProfileScreen() {
                     {isRTL ? 'سيتم تفعيله خلال 24 ساعة' : 'Will be activated within 24 hours'}
                   </Text>
                 </View>
-                <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color="#D97706" />
+                <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color="#D97706" flexShrink={0} />
               </Pressable>
             )
           )}
@@ -1243,12 +1243,18 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   storeCtaCard: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
-    borderRadius: Radius.xl, borderWidth: 1.5, padding: Spacing.md,
-    marginHorizontal: Spacing.lg, marginTop: Spacing.md,
-    ...Shadow.xs,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    borderRadius: 16,
+    marginHorizontal: 16, marginTop: 16,
+    borderWidth: 1, borderColor: '#e0e0e0',
+    elevation: 2,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4,
   },
   storeCtaIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  storeCtaTextWrap: { flex: 1, marginHorizontal: 12 },
   storeCtaTitle: { fontSize: FontSize.sm, fontWeight: '700', marginBottom: 2 },
   storeCtaSub: { fontSize: FontSize.xs, lineHeight: 16 },
   approvedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 4 },
