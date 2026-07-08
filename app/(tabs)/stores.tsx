@@ -218,7 +218,8 @@ function PremiumStoreCard({
 }) {
   const [isOpen, setIsOpen] = useState(() => checkStoreIsOpen(store));
   const name = isAr ? ((store as any).name_ar || store.name) : store.name;
-  const storeColor = (store as any).store_categories?.color || '#0A6E5C';
+  // Support both alias `store_category` (new join) and legacy `store_categories`
+  const storeColor = ((store as any).store_category?.color || (store as any).store_categories?.color) || '#0A6E5C';
 
   useEffect(() => {
     const t = setInterval(() => setIsOpen(checkStoreIsOpen(store)), 60_000);
@@ -585,18 +586,31 @@ export default function StoresScreen() {
     }
   }, [editName, user, isAr]);
 
-  // ── Group stores by store_category_id ─────────────────────────────────────
+  // ── Group stores by store_category ─────────────────────────────────────────
+  // Prefers the joined `store_category` alias; falls back to `store_category_id`
+  // lookup in storeCategories state; stores with no resolvable category go into
+  // a fallback "أخرى" group so they never silently disappear from the UI.
+  const FALLBACK_CAT: StoreCategory = {
+    id: '__others__', name: 'Others', name_ar: 'أخرى', icon: 'store',
+    color: '#6B7280', image_url: '', slug: 'others',
+    position: 9999, is_active: true, created_at: '',
+  };
+
   const groupedStores = useMemo(() => {
     const catMap = new Map(storeCategories.map(c => [c.id, c]));
     const map = new Map<string, { cat: StoreCategory; stores: Store[] }>();
 
     for (const store of stores) {
-      const storeCatId = (store as any).store_category_id;
-      if (!storeCatId) continue;
-      const cat = catMap.get(storeCatId);
-      if (!cat) continue;
-      if (!map.has(storeCatId)) map.set(storeCatId, { cat, stores: [] });
-      map.get(storeCatId)!.stores.push(store);
+      // Prefer the joined object from the select alias `store_category:store_categories(*)`
+      const joinedCat = (store as any).store_category as StoreCategory | null | undefined;
+      const storeCatId = (store as any).store_category_id as string | null | undefined;
+      const cat: StoreCategory =
+        (joinedCat && joinedCat.id) ? joinedCat
+        : (storeCatId ? catMap.get(storeCatId) : undefined)
+        ?? FALLBACK_CAT;
+
+      if (!map.has(cat.id)) map.set(cat.id, { cat, stores: [] });
+      map.get(cat.id)!.stores.push(store);
     }
 
     // Sort groups by category position

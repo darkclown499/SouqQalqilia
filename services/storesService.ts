@@ -98,12 +98,14 @@ export async function adminDeleteStore(id: string): Promise<{ error: string | nu
 }
 
 // ── Fetch ALL active + approved stores (for grouped feed) ─────────────────────
+// Filters ONLY on is_approved so stores set is_active = true during registration
+// are visible immediately after admin approval.
 export async function fetchAllActiveStores(): Promise<{ data: Store[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('stores')
-    .select('*, store_categories(id, name, name_ar, icon, color, slug, position)')
-    .eq('is_active', true)
+    // alias as store_category so grouping logic can use store.store_category directly
+    .select('*, store_category:store_categories(id, name, name_ar, icon, color, slug, position, image_url, is_active, created_at)')
     .eq('is_approved', true)
     .order('position', { ascending: true });
   if (error) return { data: [], error: error.message };

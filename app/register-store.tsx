@@ -211,7 +211,7 @@ export default function RegisterStoreScreen() {
           banner_url: bannerUrl,
           owner_id: user.id,
           is_approved: false,
-          is_active: false,
+          is_active: true, // active from creation; visible in feed only after admin sets is_approved = true
           is_featured: false,
           position: 999,
         })
