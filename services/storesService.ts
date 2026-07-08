@@ -61,6 +61,7 @@ export async function fetchStoresByCategory(categoryId: string): Promise<{ data:
     .select('*')
     .eq('category_id', categoryId)
     .eq('is_active', true)
+    .eq('is_approved', true)
     .order('position', { ascending: true });
   if (error) return { data: [], error: error.message };
   return { data: data as Store[], error: null };
