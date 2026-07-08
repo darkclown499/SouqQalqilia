@@ -149,6 +149,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="messages"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
         name="stores"
         options={{
           title: isAr ? 'المتاجر' : 'Stores',
