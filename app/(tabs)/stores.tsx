@@ -13,15 +13,17 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useCategories } from '@/hooks/useCategories';
 import { useAuth, getSupabaseClient } from '@/template';
 import {
   fetchAllActiveStores, fetchAllStoreRatings,
   checkStoreIsOpen, Store,
 } from '@/services/storesService';
+import {
+  fetchStoreCategories, getStoreCategoryEmoji, getStoreCategoryName,
+  StoreCategory,
+} from '@/services/storeCategoriesService';
 import { getBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
-import { getCategoryName } from '@/services/categoriesService';
-import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+import { FontSize, Radius, Spacing } from '@/constants/theme';
 
 // ── Screen width ──────────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -67,7 +69,6 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
     setActiveIdx(Math.max(0, Math.min(idx, banners.length - 1)));
   }, [banners.length]);
 
-  // Placeholder banners when none exist
   const displayBanners = banners.length > 0 ? banners : [
     { id: '__p1', title: 'ادعوا الاصدقاء واربحوا', subtitle: 'خصومات حصرية لكل إحالة', image_url: '', link_url: '' },
     { id: '__p2', title: 'أفضل المتاجر المحلية', subtitle: 'اكتشف متاجر قلقيلية', image_url: '', link_url: '' },
@@ -123,8 +124,6 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
           </View>
         ))}
       </ScrollView>
-
-      {/* Pagination dots */}
       <View style={bc.dots}>
         {displayBanners.map((_, i) => (
           <Pressable
@@ -144,47 +143,45 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
 const bc = StyleSheet.create({
   wrap: { width: '100%', position: 'relative' },
   slide: { overflow: 'hidden' },
-  gradient: {
-    ...StyleSheet.absoluteFillObject,
-    top: '40%',
-  },
-  textWrap: {
-    position: 'absolute', bottom: 36, left: 16, right: 16, gap: 4,
-  },
+  gradient: { ...StyleSheet.absoluteFillObject, top: '40%' },
+  textWrap: { position: 'absolute', bottom: 36, left: 16, right: 16, gap: 4 },
   title: {
     fontSize: 18, fontWeight: '800', color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.4)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-    lineHeight: 24,
+    textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4, lineHeight: 24,
   },
   sub: { fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
   dots: {
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
     paddingVertical: 10, gap: 6, position: 'absolute', bottom: 0, left: 0, right: 0,
   },
-  dot: { height: 6, borderRadius: 3, transitionDuration: '200ms' } as any,
+  dot: { height: 6, borderRadius: 3 } as any,
   dotActive: { width: 18, backgroundColor: '#fff' },
   dotInactive: { width: 6, backgroundColor: 'rgba(255,255,255,0.45)' },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. QUICK CATEGORY CARD
+// 2. QUICK STORE CATEGORY CARD (uses store_categories, NOT product categories)
 // ─────────────────────────────────────────────────────────────────────────────
-function QuickCatCard({
-  cat, isAr, onPress,
-}: { cat: any; isAr: boolean; onPress: () => void }) {
+function QuickStoreCatCard({
+  cat, isAr, isSelected, onPress,
+}: { cat: StoreCategory; isAr: boolean; isSelected: boolean; onPress: () => void }) {
   const bgColor = cat.color || '#0A6E5C';
+  const emoji = getStoreCategoryEmoji(cat.slug);
 
   return (
     <Pressable
-      style={({ pressed }) => [qc.card, { opacity: pressed ? 0.85 : 1 }]}
+      style={({ pressed }) => [qc.card, isSelected && { borderColor: bgColor, borderWidth: 2 }, { opacity: pressed ? 0.85 : 1 }]}
       onPress={onPress}
     >
-      <View style={[qc.iconBg, { backgroundColor: bgColor + '18' }]}>
-        <MaterialIcons name={cat.icon as any} size={26} color={bgColor} />
+      <View style={[qc.iconBg, { backgroundColor: bgColor + '1A' }]}>
+        {emoji ? (
+          <Text style={qc.emoji}>{emoji}</Text>
+        ) : (
+          <MaterialIcons name={cat.icon as any} size={24} color={bgColor} />
+        )}
       </View>
-      <Text style={qc.label} numberOfLines={2}>
+      <Text style={[qc.label, { color: isSelected ? bgColor : '#1a1a2e' }]} numberOfLines={2}>
         {isAr ? (cat.name_ar || cat.name) : cat.name}
       </Text>
     </Pressable>
@@ -194,19 +191,16 @@ function QuickCatCard({
 const qc = StyleSheet.create({
   card: {
     width: 76, alignItems: 'center', gap: 7,
-    backgroundColor: '#fff',
-    borderRadius: 16, padding: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-    marginRight: 10,
+    backgroundColor: '#fff', borderRadius: 16, padding: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08, shadowRadius: 6, elevation: 2,
+    marginRight: 10, borderWidth: 2, borderColor: 'transparent',
   },
   iconBg: {
     width: 50, height: 50, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
   },
+  emoji: { fontSize: 24 },
   label: {
     fontSize: 11, fontWeight: '700', textAlign: 'center',
     color: '#1a1a2e', lineHeight: 14,
@@ -214,7 +208,7 @@ const qc = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. PREMIUM STORE CARD (Talabat-style)
+// 3. PREMIUM STORE CARD
 // ─────────────────────────────────────────────────────────────────────────────
 function PremiumStoreCard({
   store, rating, isAr, isRTL, colors, onPress,
@@ -224,6 +218,7 @@ function PremiumStoreCard({
 }) {
   const [isOpen, setIsOpen] = useState(() => checkStoreIsOpen(store));
   const name = isAr ? ((store as any).name_ar || store.name) : store.name;
+  const storeColor = (store as any).store_categories?.color || '#0A6E5C';
 
   useEffect(() => {
     const t = setInterval(() => setIsOpen(checkStoreIsOpen(store)), 60_000);
@@ -235,7 +230,7 @@ function PremiumStoreCard({
       style={({ pressed }) => [psc.card, { opacity: pressed ? 0.93 : 1 }]}
       onPress={onPress}
     >
-      {/* Top colored strip / banner */}
+      {/* Top banner strip */}
       <View style={psc.bannerStrip}>
         {(store as any).banner_url ? (
           <Image
@@ -246,15 +241,12 @@ function PremiumStoreCard({
             cachePolicy="disk"
           />
         ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: (store as any).category_color || '#0A6E5C' }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: storeColor }]} />
         )}
-        {/* Dim overlay for closed */}
-        {!isOpen ? (
-          <View style={psc.closedOverlay} />
-        ) : null}
+        {!isOpen ? <View style={psc.closedOverlay} /> : null}
       </View>
 
-      {/* Circular Logo centered overlapping the strip */}
+      {/* Circular logo centered overlapping the strip */}
       <View style={psc.logoWrap}>
         <View style={[psc.logoCircle, { borderColor: isOpen ? '#22c55e' : '#d1d5db' }]}>
           {(store as any).logo_url ? (
@@ -271,18 +263,15 @@ function PremiumStoreCard({
         </View>
       </View>
 
-      {/* Store Name */}
       <Text style={psc.name} numberOfLines={1}>{name}</Text>
 
-      {/* Address */}
       {store.address ? (
         <Text style={psc.address} numberOfLines={1}>{store.address}</Text>
       ) : null}
 
-      {/* Divider */}
       <View style={psc.divider} />
 
-      {/* Rating + Status row */}
+      {/* Rating + status */}
       <View style={[psc.bottomRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         {rating.avg > 0 ? (
           <View style={[psc.ratingRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -305,33 +294,18 @@ function PremiumStoreCard({
 
 const psc = StyleSheet.create({
   card: {
-    width: STORE_CARD_W,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.09,
-    shadowRadius: 8,
-    elevation: 2,
-    marginBottom: 16,
+    width: STORE_CARD_W, backgroundColor: '#fff', borderRadius: 16,
+    overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.09, shadowRadius: 8, elevation: 2, marginBottom: 16,
   },
   bannerStrip: { height: 72, position: 'relative' },
-  closedOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-  },
+  closedOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.5)' },
   logoWrap: { alignItems: 'center', marginTop: -26, marginBottom: 8 },
   logoCircle: {
-    width: 52, height: 52, borderRadius: 26,
-    borderWidth: 2.5, backgroundColor: '#fff',
-    alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.14,
-    shadowRadius: 6,
-    elevation: 4,
+    width: 52, height: 52, borderRadius: 26, borderWidth: 2.5, backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.14, shadowRadius: 6, elevation: 4,
   },
   logoImg: { width: 52, height: 52 },
   name: {
@@ -344,8 +318,7 @@ const psc = StyleSheet.create({
   },
   divider: { height: 1, backgroundColor: '#F3F4F6', marginHorizontal: 12, marginTop: 10 },
   bottomRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 10, paddingVertical: 9,
   },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
@@ -361,33 +334,39 @@ const psc = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. CATEGORY BLOCK (grouped stores section)
+// 4. CATEGORY BLOCK (grouped by store_category_id)
 // ─────────────────────────────────────────────────────────────────────────────
 function CategoryBlock({
-  catName, catEmoji, stores, ratings, isAr, isRTL, colors,
-  onViewAll, onStorePress,
+  cat, stores, ratings, isAr, isRTL, colors, onStorePress,
 }: {
-  catName: string; catEmoji?: string;
-  stores: Store[]; ratings: Record<string, { avg: number; count: number }>;
+  cat: StoreCategory; stores: Store[]; ratings: Record<string, { avg: number; count: number }>;
   isAr: boolean; isRTL: boolean; colors: any;
-  onViewAll: () => void; onStorePress: (id: string) => void;
+  onStorePress: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const INITIAL_ROWS = 2; // 2 rows × 2 cols = 4 stores
-  const INITIAL_COUNT = INITIAL_ROWS * 2;
+  const INITIAL_COUNT = 4; // 2 rows × 2 cols
   const displayStores = expanded ? stores : stores.slice(0, INITIAL_COUNT);
   const hasMore = stores.length > INITIAL_COUNT;
+  const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
+  const emoji = getStoreCategoryEmoji(cat.slug);
 
   return (
     <View style={cb.block}>
       {/* Block header */}
       <View style={[cb.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <View style={[cb.catDot, { backgroundColor: cat.color + '22' }]}>
+          {emoji ? (
+            <Text style={{ fontSize: 16 }}>{emoji}</Text>
+          ) : (
+            <MaterialIcons name={cat.icon as any} size={18} color={cat.color} />
+          )}
+        </View>
         <Text style={[cb.title, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
-          {catName}{catEmoji ? ` ${catEmoji}` : ''}
+          {catName}
         </Text>
         <Pressable
           style={[cb.viewAllBtn, { backgroundColor: '#FFF0F0', borderColor: '#FFCCC9' }]}
-          onPress={onViewAll}
+          onPress={() => setExpanded(true)}
         >
           <Text style={cb.viewAllText}>{isAr ? 'عرض الكل' : 'View All'}</Text>
         </Pressable>
@@ -395,7 +374,7 @@ function CategoryBlock({
 
       {/* 2-column grid */}
       <View style={cb.grid}>
-        {displayStores.map((store, idx) => (
+        {displayStores.map((store) => (
           <PremiumStoreCard
             key={store.id}
             store={store}
@@ -406,13 +385,11 @@ function CategoryBlock({
             onPress={() => onStorePress(store.id)}
           />
         ))}
-        {/* Spacer if odd count to keep grid clean */}
         {displayStores.length % 2 !== 0 ? (
           <View style={{ width: STORE_CARD_W }} />
         ) : null}
       </View>
 
-      {/* Show more / Show less */}
       {hasMore ? (
         <Pressable
           style={[cb.showMoreBtn, { borderColor: colors.borderLight }]}
@@ -420,8 +397,7 @@ function CategoryBlock({
         >
           <MaterialIcons
             name={expanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
-            size={20}
-            color={colors.primary}
+            size={20} color={colors.primary}
           />
           <Text style={[cb.showMoreText, { color: colors.primary }]}>
             {expanded
@@ -440,18 +416,18 @@ const cb = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: SIDE_PAD, marginBottom: 14, gap: 10,
   },
+  catDot: {
+    width: 36, height: 36, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
   title: { fontSize: 17, fontWeight: '800', lineHeight: 22 },
   viewAllBtn: {
-    borderWidth: 1.5, borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 5,
+    borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5,
   },
   viewAllText: { fontSize: 12, fontWeight: '700', color: '#EF4444' },
   grid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    paddingHorizontal: SIDE_PAD,
-    gap: 0, // gap handled via card marginBottom
-    columnGap: CARD_GAP,
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',
+    paddingHorizontal: SIDE_PAD, columnGap: CARD_GAP,
   },
   showMoreBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -474,8 +450,7 @@ function RegisterStoreCTA({ isAr, isRTL, onPress }: {
     >
       <LinearGradient
         colors={['#0A6E5C', '#065f46', '#064e3b']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
         style={cta.gradient}
       >
         <View style={cta.deco1} />
@@ -526,27 +501,26 @@ export default function StoresScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { language, isRTL } = useLanguage();
-  const { categories } = useCategories();
   const { user } = useAuth();
+  const isAr = language === 'ar';
 
   const [stores, setStores] = useState<Store[]>([]);
+  const [storeCategories, setStoreCategories] = useState<StoreCategory[]>([]);
   const [ratings, setRatings] = useState<Record<string, { avg: number; count: number }>>({});
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
   const [ownerStore, setOwnerStore] = useState<any>(undefined);
+  const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
 
-  // ── Gatekeeper ──────────────────────────────────────────────────────────────
+  // ── Gatekeeper ───────────────────────────────────────────────────────────
   const [nameGateVisible, setNameGateVisible] = useState(false);
   const [editName, setEditName] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState('');
 
-  const isAr = language === 'ar';
-
-  // ── Load everything ─────────────────────────────────────────────────────────
+  // ── Focus effect: check name gate + owner store ───────────────────────────
   useFocusEffect(
     useCallback(() => {
-      // Name gate check
       if (!user) return;
       getSupabaseClient()
         .from('user_profiles')
@@ -561,7 +535,6 @@ export default function StoresScreen() {
         })
         .catch(() => {});
 
-      // Owner store
       getSupabaseClient()
         .from('stores')
         .select('*')
@@ -572,6 +545,7 @@ export default function StoresScreen() {
     }, [user?.id])
   );
 
+  // ── Initial data load ─────────────────────────────────────────────────────
   useEffect(() => {
     const cached = getBannersCache();
     if (cached && cached.length > 0) setBanners(cached);
@@ -580,10 +554,12 @@ export default function StoresScreen() {
       fetchAllActiveStores(),
       fetchAllStoreRatings(),
       fetchActiveBanners(),
-    ]).then(([storesRes, ratingsMap, bannersRes]) => {
+      fetchStoreCategories(),
+    ]).then(([storesRes, ratingsMap, bannersRes, catsRes]) => {
       setStores(storesRes.data);
       setRatings(ratingsMap);
       if (bannersRes.data.length > 0) setBanners(bannersRes.data);
+      setStoreCategories(catsRes.data);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -609,46 +585,43 @@ export default function StoresScreen() {
     }
   }, [editName, user, isAr]);
 
-  // ── Group stores by category ────────────────────────────────────────────────
+  // ── Group stores by store_category_id ─────────────────────────────────────
   const groupedStores = useMemo(() => {
-    const map = new Map<string, { catId: string; catName: string; stores: Store[] }>();
-    const catMap = new Map(categories.map(c => [c.id, c]));
-    for (const store of stores) {
-      const cat = catMap.get(store.category_id);
-      if (!cat) continue;
-      const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
-      if (!map.has(store.category_id)) {
-        map.set(store.category_id, { catId: store.category_id, catName, stores: [] });
-      }
-      map.get(store.category_id)!.stores.push(store);
-    }
-    return Array.from(map.values()).filter(g => g.stores.length > 0);
-  }, [stores, categories, isAr]);
+    const catMap = new Map(storeCategories.map(c => [c.id, c]));
+    const map = new Map<string, { cat: StoreCategory; stores: Store[] }>();
 
-  // Category emoji map
-  const getCatEmoji = (slug?: string) => {
-    if (!slug) return '';
-    const map: Record<string, string> = {
-      food: '🍽️', restaurant: '🍔', pizza: '🍕', sweets: '🍰',
-      cafe: '☕', grocery: '🛒', pharmacy: '💊', electronics: '📱',
-      fashion: '👗', sports: '⚽', beauty: '💄', furniture: '🪑',
-    };
-    for (const [key, emoji] of Object.entries(map)) {
-      if (slug.includes(key)) return emoji;
+    for (const store of stores) {
+      const storeCatId = (store as any).store_category_id;
+      if (!storeCatId) continue;
+      const cat = catMap.get(storeCatId);
+      if (!cat) continue;
+      if (!map.has(storeCatId)) map.set(storeCatId, { cat, stores: [] });
+      map.get(storeCatId)!.stores.push(store);
     }
-    return '';
-  };
+
+    // Sort groups by category position
+    return Array.from(map.values())
+      .filter(g => g.stores.length > 0)
+      .sort((a, b) => a.cat.position - b.cat.position);
+  }, [stores, storeCategories]);
+
+  // ── Filtered groups (when a quick cat is selected) ─────────────────────────
+  const displayedGroups = useMemo(() => {
+    if (!selectedCatId) return groupedStores;
+    return groupedStores.filter(g => g.cat.id === selectedCatId);
+  }, [groupedStores, selectedCatId]);
+
+  // ── Only show store categories that actually have stores ──────────────────
+  const activeCats = useMemo(() => {
+    const idsWithStores = new Set(groupedStores.map(g => g.cat.id));
+    return storeCategories.filter(c => idsWithStores.has(c.id));
+  }, [storeCategories, groupedStores]);
 
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
       {/* ── CUSTOM HEADER ── */}
-      <View style={[s.header, {
-        backgroundColor: colors.primary,
-        paddingTop: insets.top + 8,
-      }]}>
-        {/* Location row */}
+      <View style={[s.header, { backgroundColor: colors.primary, paddingTop: insets.top + 8 }]}>
         <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          {/* Search icon */}
           <Pressable
             style={s.headerIconBtn}
             onPress={() => router.push('/search' as any)}
@@ -657,27 +630,20 @@ export default function StoresScreen() {
             <MaterialIcons name="search" size={22} color="#fff" />
           </Pressable>
 
-          {/* Location center */}
           <Pressable style={[s.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <MaterialIcons name="location-on" size={14} color="rgba(255,255,255,0.8)" />
-            <View style={{ gap: 0 }}>
-              <Text style={s.locationLabel}>
-                {isAr ? 'التوصيل إلى' : 'Delivering to'}
-              </Text>
-              <Text style={s.locationName}>
-                {isAr ? 'قلقيلية 📍' : 'Qalqilya 📍'}
-              </Text>
+            <View>
+              <Text style={s.locationLabel}>{isAr ? 'التوصيل إلى' : 'Delivering to'}</Text>
+              <Text style={s.locationName}>{isAr ? 'قلقيلية 📍' : 'Qalqilya 📍'}</Text>
             </View>
             <MaterialIcons name="keyboard-arrow-down" size={16} color="rgba(255,255,255,0.75)" />
           </Pressable>
 
-          {/* Hamburger */}
           <Pressable style={s.headerIconBtn} hitSlop={8} onPress={() => {}}>
             <MaterialIcons name="menu" size={22} color="#fff" />
           </Pressable>
         </View>
 
-        {/* Search bar */}
         <Pressable
           style={[s.searchBar, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
           onPress={() => router.push('/search' as any)}
@@ -690,15 +656,12 @@ export default function StoresScreen() {
       </View>
 
       {/* ── MAIN SCROLL ── */}
-      <ScrollView
-        style={{ flex: 1 }}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
-      >
-        {/* ── 1. BANNER CAROUSEL ── */}
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+
+        {/* ── BANNER CAROUSEL ── */}
         <BannerCarousel banners={banners} isRTL={isRTL} />
 
-        {/* ── Owner Store Card ── */}
+        {/* ── OWNER STORE CARD ── */}
         {ownerStore !== undefined && ownerStore !== null ? (
           <Pressable
             style={[s.ownerCard, {
@@ -733,7 +696,7 @@ export default function StoresScreen() {
           </Pressable>
         ) : null}
 
-        {/* ── Register CTA (no store yet) ── */}
+        {/* ── REGISTER CTA ── */}
         {ownerStore === null && user ? (
           <View style={{ marginTop: 16 }}>
             <RegisterStoreCTA
@@ -743,30 +706,44 @@ export default function StoresScreen() {
           </View>
         ) : null}
 
-        {/* ── 2. QUICK CATEGORIES ── */}
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
-            {isAr ? 'شو جاي عبالك اليوم؟ 🤔' : "What are you craving? 🤔"}
-          </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-          >
-            {categories.map(cat => (
-              <QuickCatCard
-                key={cat.id}
-                cat={cat}
-                isAr={isAr}
-                onPress={() => {
-                  // Scroll to that category's block or filter
-                }}
-              />
-            ))}
-          </ScrollView>
-        </View>
+        {/* ── QUICK STORE CATEGORIES ── */}
+        {activeCats.length > 0 ? (
+          <View style={s.section}>
+            <Text style={[s.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'شو جاي عبالك اليوم؟ 🤔' : "What are you craving? 🤔"}
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+            >
+              {/* "All" pill */}
+              <Pressable
+                style={[qc.card, selectedCatId === null && { borderColor: '#0A6E5C', borderWidth: 2 }]}
+                onPress={() => setSelectedCatId(null)}
+              >
+                <View style={[qc.iconBg, { backgroundColor: '#0A6E5C1A' }]}>
+                  <Text style={qc.emoji}>🏪</Text>
+                </View>
+                <Text style={[qc.label, { color: selectedCatId === null ? '#0A6E5C' : '#1a1a2e' }]}>
+                  {isAr ? 'الكل' : 'All'}
+                </Text>
+              </Pressable>
 
-        {/* ── 3. LOADING ── */}
+              {activeCats.map(cat => (
+                <QuickStoreCatCard
+                  key={cat.id}
+                  cat={cat}
+                  isAr={isAr}
+                  isSelected={selectedCatId === cat.id}
+                  onPress={() => setSelectedCatId(prev => prev === cat.id ? null : cat.id)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {/* ── LOADING ── */}
         {loading ? (
           <View style={s.loadingWrap}>
             <ActivityIndicator color={colors.primary} size="large" />
@@ -774,7 +751,7 @@ export default function StoresScreen() {
               {isAr ? 'جارٍ تحميل المتاجر...' : 'Loading stores...'}
             </Text>
           </View>
-        ) : groupedStores.length === 0 ? (
+        ) : displayedGroups.length === 0 ? (
           <View style={s.emptyWrap}>
             <View style={[s.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
               <MaterialIcons name="store" size={44} color={colors.textMuted} />
@@ -783,29 +760,36 @@ export default function StoresScreen() {
               {isAr ? 'لا توجد متاجر بعد' : 'No Stores Yet'}
             </Text>
             <Text style={[s.emptySub, { color: colors.textMuted }]}>
-              {isAr ? 'ترقبوا إضافة متاجر قريباً' : 'Stores are coming soon'}
+              {selectedCatId
+                ? (isAr ? 'لا توجد متاجر في هذا التصنيف' : 'No stores in this category')
+                : (isAr ? 'ترقبوا إضافة متاجر قريباً' : 'Stores are coming soon')}
             </Text>
+            {selectedCatId ? (
+              <Pressable
+                style={[s.clearFilterBtn, { borderColor: colors.primary }]}
+                onPress={() => setSelectedCatId(null)}
+              >
+                <Text style={[s.clearFilterText, { color: colors.primary }]}>
+                  {isAr ? 'عرض كل المتاجر' : 'Show all stores'}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : (
-          /* ── 4. GROUPED STORE SECTIONS ── */
+          /* ── GROUPED SECTIONS ── */
           <>
-            {groupedStores.map(group => {
-              const cat = categories.find(c => c.id === group.catId);
-              return (
-                <CategoryBlock
-                  key={group.catId}
-                  catName={group.catName}
-                  catEmoji={getCatEmoji(cat?.slug)}
-                  stores={group.stores}
-                  ratings={ratings}
-                  isAr={isAr}
-                  isRTL={isRTL}
-                  colors={colors}
-                  onViewAll={() => {}}
-                  onStorePress={(id) => router.push(`/store/${id}` as any)}
-                />
-              );
-            })}
+            {displayedGroups.map(group => (
+              <CategoryBlock
+                key={group.cat.id}
+                cat={group.cat}
+                stores={group.stores}
+                ratings={ratings}
+                isAr={isAr}
+                isRTL={isRTL}
+                colors={colors}
+                onStorePress={(id) => router.push(`/store/${id}` as any)}
+              />
+            ))}
           </>
         )}
       </ScrollView>
@@ -863,43 +847,25 @@ export default function StoresScreen() {
 const s = StyleSheet.create({
   container: { flex: 1 },
 
-  // Header
-  header: {
-    paddingHorizontal: SIDE_PAD,
-    paddingBottom: 14,
-    gap: 10,
-  },
-  headerRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  header: { paddingHorizontal: SIDE_PAD, paddingBottom: 14, gap: 10 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerIconBtn: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center', justifyContent: 'center',
   },
   locationCenter: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    gap: 5, paddingHorizontal: 12,
+    flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 12,
   },
-  locationLabel: {
-    fontSize: 10, color: 'rgba(255,255,255,0.65)',
-    fontWeight: '500', textAlign: 'center',
-  },
-  locationName: {
-    fontSize: 14, color: '#fff', fontWeight: '800', textAlign: 'center',
-  },
+  locationLabel: { fontSize: 10, color: 'rgba(255,255,255,0.65)', fontWeight: '500', textAlign: 'center' },
+  locationName: { fontSize: 14, color: '#fff', fontWeight: '800', textAlign: 'center' },
 
-  // Search bar
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
     gap: 8, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10,
   },
-  searchBarText: {
-    fontSize: 14, color: 'rgba(255,255,255,0.65)', fontWeight: '500', flex: 1,
-  },
+  searchBarText: { fontSize: 14, color: 'rgba(255,255,255,0.65)', fontWeight: '500', flex: 1 },
 
-  // Owner card
   ownerCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     borderRadius: 14, borderWidth: 1.5, padding: 12,
@@ -912,31 +878,25 @@ const s = StyleSheet.create({
   ownerBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'flex-start' },
   ownerBadgeText: { fontSize: 10, fontWeight: '700' },
 
-  // Quick categories section
   section: { paddingTop: 22, paddingBottom: 6 },
-  sectionTitle: {
-    fontSize: 17, fontWeight: '800', lineHeight: 22,
-    paddingHorizontal: SIDE_PAD, marginBottom: 14,
-  },
-  catScroll: {
-    paddingHorizontal: SIDE_PAD, paddingBottom: 4, gap: 0,
-  },
+  sectionTitle: { fontSize: 17, fontWeight: '800', lineHeight: 22, paddingHorizontal: SIDE_PAD, marginBottom: 14 },
+  catScroll: { paddingHorizontal: SIDE_PAD, paddingBottom: 4 },
 
-  // Loading / empty
   loadingWrap: { alignItems: 'center', paddingTop: 60, gap: 12 },
   loadingText: { fontSize: FontSize.sm, fontWeight: '500' },
   emptyWrap: { alignItems: 'center', paddingTop: 60, gap: 14, paddingHorizontal: SIDE_PAD },
   emptyIllus: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: FontSize.xl, fontWeight: '700', textAlign: 'center' },
   emptySub: { fontSize: FontSize.md, textAlign: 'center', lineHeight: 22 },
+  clearFilterBtn: { borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, marginTop: 4 },
+  clearFilterText: { fontSize: FontSize.sm, fontWeight: '700' },
 });
 
 // Gatekeeper modal styles
 const g = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.62)', alignItems: 'center', justifyContent: 'center', padding: 24 },
   card: {
-    width: '100%', borderRadius: 24,
-    padding: 24, gap: 12, alignItems: 'center',
+    width: '100%', borderRadius: 24, padding: 24, gap: 12, alignItems: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.22, shadowRadius: 20, elevation: 20,
   },
@@ -951,10 +911,8 @@ const g = StyleSheet.create({
   errorText: { fontSize: FontSize.xs, fontWeight: '600', alignSelf: 'flex-start' },
   saveBtn: {
     width: '100%', height: 50, borderRadius: 20,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    marginTop: 4,
-    shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4,
+    shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
   },
   saveBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
 });

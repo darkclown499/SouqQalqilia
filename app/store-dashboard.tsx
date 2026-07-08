@@ -11,6 +11,9 @@ import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { fetchStoreProducts, StoreProduct, submitStoreRating } from '@/services/productsService';
+import {
+  fetchStoreCategories, getStoreCategoryEmoji, getStoreCategoryName, StoreCategory,
+} from '@/services/storeCategoriesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
@@ -359,6 +362,7 @@ export default function StoreDashboardScreen() {
   const isAr = language === 'ar';
 
   const [store, setStore] = useState<any>(null);
+  const [storeCategory, setStoreCategory] = useState<StoreCategory | null>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [productModalVisible, setProductModalVisible] = useState(false);
@@ -374,10 +378,19 @@ export default function StoreDashboardScreen() {
     try {
       const { data: storeData } = await getSupabaseClient()
         .from('stores')
-        .select('*')
+        .select('*, store_categories(id, name, name_ar, icon, color, slug, position, is_active, image_url, created_at)')
         .eq('owner_id', user.id)
         .maybeSingle();
       setStore(storeData);
+      if (storeData?.store_categories) {
+        setStoreCategory(storeData.store_categories as StoreCategory);
+      } else if (storeData?.store_category_id) {
+        // Fallback: fetch separately if join didn't return it
+        fetchStoreCategories().then(res => {
+          const cat = res.data.find(c => c.id === storeData.store_category_id);
+          if (cat) setStoreCategory(cat);
+        });
+      }
       if (storeData) {
         const { data: prods } = await fetchStoreProducts(storeData.id);
         setProducts(prods);
@@ -520,6 +533,21 @@ export default function StoreDashboardScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.tabContent}>
           {/* Store info card */}
           <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {/* Store category badge */}
+            {storeCategory ? (
+              <View style={[s.infoRow, { flexDirection: rtl }]}>
+                <View style={[s.catBadge, { backgroundColor: storeCategory.color + '18' }]}>
+                  {getStoreCategoryEmoji(storeCategory.slug) ? (
+                    <Text style={{ fontSize: 16 }}>{getStoreCategoryEmoji(storeCategory.slug)}</Text>
+                  ) : (
+                    <MaterialIcons name={storeCategory.icon as any} size={16} color={storeCategory.color} />
+                  )}
+                  <Text style={[s.catBadgeText, { color: storeCategory.color }]}>
+                    {getStoreCategoryName(storeCategory, language)}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
             <View style={[s.infoRow, { flexDirection: rtl }]}>
               <MaterialIcons name="location-on" size={16} color={colors.primary} />
               <Text style={[s.infoText, { color: colors.textPrimary, flex: 1, textAlign }]}>{store.address || (isAr ? 'لا يوجد عنوان' : 'No address')}</Text>
@@ -674,6 +702,11 @@ const s = StyleSheet.create({
   },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   infoText: { fontSize: FontSize.sm, fontWeight: '500', lineHeight: 20 },
+  catBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 6,
+  },
+  catBadgeText: { fontSize: FontSize.sm, fontWeight: '700' },
 
   pendingCard: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,

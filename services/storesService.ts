@@ -71,8 +71,8 @@ export async function adminFetchAllStores(): Promise<{ data: Store[]; error: str
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('stores')
-    .select('*, categories(name, name_ar, icon, color)')
-    .order('category_id', { ascending: true })
+    .select('*, store_categories(id, name, name_ar, icon, color, slug)')
+    .order('store_category_id', { ascending: true })
     .order('position', { ascending: true });
   if (error) return { data: [], error: error.message };
   return { data: data as Store[], error: null };
@@ -102,7 +102,7 @@ export async function fetchAllActiveStores(): Promise<{ data: Store[]; error: st
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('stores')
-    .select('*')
+    .select('*, store_categories(id, name, name_ar, icon, color, slug, position)')
     .eq('is_active', true)
     .eq('is_approved', true)
     .order('position', { ascending: true });
