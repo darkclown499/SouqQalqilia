@@ -17,6 +17,7 @@ import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-g
 import { Image } from 'expo-image';
 import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
 import { APP_VERSION } from '@/constants/config';
+import { trackEvent } from '@/services/analyticsService';
 
 // ── Lock the splash screen immediately at module evaluation time ──────────────
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -558,8 +559,11 @@ export default function RootLayout() {
     // Ensures stale/rotated tokens are always up to date in the DB.
     let appStateSub: any = null;
     if (Platform.OS !== 'web') {
+      // Track app_open on every foreground activation
+      trackEvent('app_open').catch(() => {});
       appStateSub = AppState.addEventListener('change', (state) => {
         if (state === 'active') {
+          trackEvent('app_open').catch(() => {});
           import('@/hooks/useChat').then(({ registerPushToken }) => {
             registerPushToken().catch(() => {});
           }).catch(() => {});

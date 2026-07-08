@@ -8,6 +8,7 @@ import Animated, {
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useConversations } from '@/hooks/useChat';
+import { trackEvent } from '@/services/analyticsService';
 import { useAuth } from '@/template';
 
 /** Receives unreadCount as prop — no hook calls inside */
@@ -46,7 +47,8 @@ const badge = StyleSheet.create({
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isAr = language === 'ar';
   const { user } = useAuth();
   // Must be at TabLayout level so _globalRefreshUnread is always registered
   // while the tab bar is visible — never inside a child component
@@ -147,14 +149,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="messages"
+        name="stores"
         options={{
-          title: t.messages,
+          title: isAr ? 'المتاجر' : 'Stores',
           tabBarIcon: ({ color, focused }) => (
-            <View>
-              <MaterialIcons name={focused ? 'chat-bubble' : 'chat-bubble-outline'} size={24} color={color} />
-              {user ? <UnreadBadge count={unreadCount} /> : null}
-            </View>
+            <MaterialIcons name={focused ? 'storefront' : 'storefront'} size={24} color={color} />
           ),
         }}
       />

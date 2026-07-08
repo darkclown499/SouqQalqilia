@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
-  Dimensions, RefreshControl, ActivityIndicator, Platform, TextInput, Linking,
+  Dimensions, RefreshControl, ActivityIndicator, Platform, TextInput, Linking, Modal,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -77,6 +77,7 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth, getSupabaseClient } from '@/template';
+import { trackEvent } from '@/services/analyticsService';
 
 // Dimensions are now computed reactively via useResponsive() inside the component.
 // Snapshot used only for getItemLayout estimation (close enough; recalculates on resize).
@@ -162,6 +163,53 @@ export default function HomeScreen() {
   const [interstitialVisible, setInterstitialVisible] = useState(false);
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   const [totalAdsCount, setTotalAdsCount] = useState(0);
+
+  // ── Notification bell state ───────────────────────────────────────────────
+  const [notifModalVisible, setNotifModalVisible] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState<Array<{
+    id: string;
+    conversationId: string;
+    senderName: string;
+    messagePreview: string;
+    createdAt: string;
+  }>>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  const fetchUnreadMessages = useCallback(async () => {
+    if (!user) return;
+    setNotifLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data } = await supabase
+        .from('messages')
+        .select(`
+          id, content, message_type, conversation_id, created_at,
+          conversations!inner(buyer_id, seller_id),
+          user_profiles!messages_sender_id_fkey(username, email)
+        `)
+        .neq('sender_id', user.id)
+        .is('read_at', null)
+        .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`, { referencedTable: 'conversations' })
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (data) {
+        setUnreadMessages(data.map((m: any) => ({
+          id: m.id,
+          conversationId: m.conversation_id,
+          senderName: m.user_profiles?.username || m.user_profiles?.email?.split('@')[0] || 'مستخدم',
+          messagePreview: m.message_type === 'image' ? '📷 صورة' : (m.content?.slice(0, 60) ?? ''),
+          createdAt: m.created_at,
+        })));
+      }
+    } catch { /* silent */ } finally {
+      setNotifLoading(false);
+    }
+  }, [user]);
+
+  const handleBellPress = useCallback(() => {
+    setNotifModalVisible(true);
+    fetchUnreadMessages();
+  }, [fetchUnreadMessages]);
   const appStartTime = useRef(Date.now());
   const interstitialShown = useRef(false);
 
@@ -367,6 +415,7 @@ export default function HomeScreen() {
         <Pressable
           style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md }]}
           onPress={() => {
+            trackEvent('banner_click').catch(() => {});
             if (currentBanner.link_url?.trim()) {
               Linking.openURL(currentBanner.link_url.trim()).catch(() => {});
             } else {
@@ -598,8 +647,15 @@ export default function HomeScreen() {
                 </View>
               ) : null}
             </Pressable>
-            <Pressable style={styles.headerIconBtn} onPress={() => router.push('/search')} hitSlop={6}>
-              <MaterialIcons name="search" size={20} color="#fff" />
+            <Pressable style={styles.headerIconBtn} onPress={handleBellPress} hitSlop={6}>
+              <MaterialIcons name="notifications" size={20} color="#fff" />
+              {unreadMessages.length > 0 && !notifModalVisible ? (
+                <View style={styles.filterDot}>
+                  <Text style={styles.filterDotText}>
+                    {unreadMessages.length > 9 ? '9+' : String(unreadMessages.length)}
+                  </Text>
+                </View>
+              ) : null}
             </Pressable>
             <Pressable style={styles.headerIconBtn} onPress={() => router.push('/ai-support')} hitSlop={6}>
               <MaterialIcons name="smart-toy" size={20} color="#fff" />
@@ -753,6 +809,76 @@ export default function HomeScreen() {
       )}
 
       <InterstitialAdOverlay ad={activeInterstitial} visible={interstitialVisible} onClose={() => setInterstitialVisible(false)} />
+
+      {/* ── NOTIFICATION MODAL ── */}
+      <Modal
+        visible={notifModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setNotifModalVisible(false)}
+      >
+        <View style={nStyles.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setNotifModalVisible(false)} />
+          <View style={[nStyles.sheet, { backgroundColor: colors.surface }]}>
+            <View style={[nStyles.handle, { backgroundColor: colors.border }]} />
+
+            {/* Modal Header */}
+            <View style={[nStyles.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
+              <View style={[nStyles.titleIcon, { backgroundColor: colors.primaryGhost }]}>
+                <MaterialIcons name="notifications" size={20} color={colors.primary} />
+              </View>
+              <Text style={[nStyles.titleText, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
+                {isAr ? 'الرسائل غير المقروءة' : 'Unread Messages'}
+              </Text>
+              <Pressable onPress={() => setNotifModalVisible(false)} hitSlop={10}>
+                <MaterialIcons name="close" size={22} color={colors.textMuted} />
+              </Pressable>
+            </View>
+
+            {/* Content */}
+            {notifLoading ? (
+              <View style={nStyles.loadingWrap}>
+                <ActivityIndicator color={colors.primary} />
+              </View>
+            ) : unreadMessages.length === 0 ? (
+              <View style={nStyles.emptyWrap}>
+                <MaterialIcons name="mark-chat-read" size={44} color={colors.textMuted} />
+                <Text style={[nStyles.emptyText, { color: colors.textMuted }]}>
+                  {isAr ? 'لا توجد رسائل غير مقروءة' : 'No unread messages'}
+                </Text>
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={nStyles.listContent}>
+                {unreadMessages.map((msg) => (
+                  <Pressable
+                    key={msg.id}
+                    style={({ pressed }) => [nStyles.notifItem, { backgroundColor: pressed ? colors.primaryGhost : colors.background, borderColor: colors.borderLight }]}
+                    onPress={() => {
+                      setNotifModalVisible(false);
+                      router.push(`/chat/${msg.conversationId}` as any);
+                    }}
+                  >
+                    <View style={[nStyles.notifAvatar, { backgroundColor: colors.primary }]}>
+                      <Text style={nStyles.notifAvatarText}>
+                        {msg.senderName.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={[nStyles.notifBody, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+                      <Text style={[nStyles.notifTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
+                        {isAr ? `تم إرسال رسالة من ${msg.senderName}` : `Message from ${msg.senderName}`}
+                      </Text>
+                      <Text style={[nStyles.notifPreview, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+                        {msg.messagePreview}
+                      </Text>
+                    </View>
+                    <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={18} color={colors.textMuted} />
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* ── FILTER BOTTOM SHEET ── */}
       {filterVisible ? (
@@ -1209,6 +1335,49 @@ const styles = StyleSheet.create({
   },
   headerStatText: { fontSize: 11, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
   sectionAccent: { width: 4, height: 20, borderRadius: 2 },
+});
+
+// ── Notification Modal Styles ─────────────────────────────────────────────────
+const nStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.52)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingTop: 12, paddingBottom: 48,
+    maxHeight: '75%',
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15, shadowRadius: 20, elevation: 24,
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
+  titleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md,
+    borderBottomWidth: 1, marginBottom: 4,
+  },
+  titleIcon: {
+    width: 38, height: 38, borderRadius: 19,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  titleText: { fontSize: FontSize.lg, fontWeight: '700' },
+  loadingWrap: { padding: 40, alignItems: 'center' },
+  emptyWrap: { padding: 48, alignItems: 'center', gap: 12 },
+  emptyText: { fontSize: FontSize.md, fontWeight: '600', textAlign: 'center' },
+  listContent: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: Spacing.sm, paddingBottom: 8 },
+  notifItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: Spacing.md, borderRadius: Radius.xl, borderWidth: 1,
+  },
+  notifAvatar: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  notifAvatarText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  notifBody: { flex: 1, gap: 3 },
+  notifTitle: { fontSize: FontSize.sm, fontWeight: '700', lineHeight: 18 },
+  notifPreview: { fontSize: FontSize.xs, lineHeight: 16 },
 });
 
 // ── Filter Sheet Styles ────────────────────────────────────────────────────────
