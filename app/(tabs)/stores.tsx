@@ -22,7 +22,7 @@ import {
   fetchStoreCategories, getStoreCategoryEmoji, getStoreCategoryName,
   StoreCategory,
 } from '@/services/storeCategoriesService';
-import { getBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
+import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
 import { FontSize, Radius, Spacing } from '@/constants/theme';
 
 // ── Screen width ──────────────────────────────────────────────────────────────

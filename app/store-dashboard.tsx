@@ -72,6 +72,7 @@ function ProductModal({
   const [saving, setSaving] = useState(false);
   const [catError, setCatError] = useState(false);
   const { user } = useAuth();
+  const { showAlert } = useAlert();
 
   // Resolve chips from the store's category
   const chips = PRODUCT_CATEGORY_MAP[storeCategoryNameAr] ?? DEFAULT_PRODUCT_CATEGORIES;
@@ -113,8 +114,7 @@ function ProductModal({
     if (!form.name_ar.trim()) return;
     // Image is mandatory
     if (!form.image_url) {
-      const { Alert } = require('react-native');
-      Alert.alert('تنبيه', 'يجب إضافة صورة للمنتج');
+      showAlert('تنبيه', 'يجب إضافة صورة للمنتج');
       return;
     }
     // Category chip must be selected
@@ -482,7 +482,8 @@ export default function StoreDashboardScreen() {
         });
       }
       if (storeData) {
-        const { data: prods } = await fetchStoreProducts(storeData.id);
+        // includeUnavailable=true so merchants see all their products in dashboard
+        const { data: prods } = await fetchStoreProducts(storeData.id, true);
         setProducts(prods);
       }
     } finally { setLoading(false); }

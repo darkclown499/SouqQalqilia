@@ -257,6 +257,8 @@ export default function AdDetailScreen() {
     );
   }
 
+  const isRequest = (ad as any).ad_type === 'product_request';
+
   const images = (ad.ad_images ?? [])
     .sort((a, b) => a.position - b.position)
     .filter(img => {
@@ -275,7 +277,6 @@ export default function AdDetailScreen() {
       : (seller?.email?.split('@')[0] ?? 'Seller'));
   const isOwner = user?.id === ad.user_id;
   const isFree = ad.price === 0;
-  const isRequest = (ad as any).ad_type === 'product_request';
   const hasPhone = !!(ad.phone_number?.trim());
   const isNew = ad.condition === 'new';
   const isBoosted = ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now();

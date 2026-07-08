@@ -34,14 +34,20 @@ export interface StoreWithRating {
   rating_count: number;
 }
 
-export async function fetchStoreProducts(storeId: string): Promise<{ data: StoreProduct[]; error: string | null }> {
+export async function fetchStoreProducts(
+  storeId: string,
+  includeUnavailable = false,
+): Promise<{ data: StoreProduct[]; error: string | null }> {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('store_products')
     .select('*')
     .eq('store_id', storeId)
-    .eq('is_available', true)
     .order('position', { ascending: true });
+  if (!includeUnavailable) {
+    query = query.eq('is_available', true);
+  }
+  const { data, error } = await query;
   if (error) return { data: [], error: error.message };
   return { data: data as StoreProduct[], error: null };
 }
