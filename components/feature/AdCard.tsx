@@ -32,6 +32,10 @@ function formatPrice(price: number, isAr: boolean) {
   return `₪${price.toLocaleString()}`;
 }
 
+function isProductRequest(ad: Ad): boolean {
+  return (ad as any).ad_type === 'product_request';
+}
+
 // ── Shimmer skeleton ──────────────────────────────────────────────────────────
 interface ShimmerBlockProps {
   style: object;
@@ -170,6 +174,7 @@ export const AdCard = memo(function AdCard({
   const isSold = ad.status === 'sold';
   const isNew = ad.condition === 'new';
   const isFree = ad.price === 0;
+  const isRequest = isProductRequest(ad);
 
   const catName = useMemo(
     () => (ad.categories ? getCategoryName(ad.categories as any, language) : null),
@@ -301,13 +306,24 @@ export const AdCard = memo(function AdCard({
           </View>
         ) : null}
 
-        {/* Price badge */}
+        {/* Price / Request badge */}
         <View style={[
           styles.priceBadge,
-          { backgroundColor: isFree ? '#22C55E' : colors.primary },
+          {
+            backgroundColor: isRequest
+              ? '#F59E0B'
+              : isFree ? '#22C55E' : colors.primary,
+          },
           isRTL ? { right: 8, left: undefined } : { left: 8 },
         ]}>
-          <Text style={styles.priceText}>{formatPrice(ad.price, isAr)}</Text>
+          {isRequest ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Text style={styles.priceText}>🛒</Text>
+              <Text style={styles.priceText}>{isAr ? 'مطلوب' : 'Wanted'}</Text>
+            </View>
+          ) : (
+            <Text style={styles.priceText}>{formatPrice(ad.price, isAr)}</Text>
+          )}
         </View>
       </View>
 

@@ -266,6 +266,7 @@ export default function AdDetailScreen() {
       : (seller?.email?.split('@')[0] ?? 'Seller'));
   const isOwner = user?.id === ad.user_id;
   const isFree = ad.price === 0;
+  const isRequest = (ad as any).ad_type === 'product_request';
   const hasPhone = !!(ad.phone_number?.trim());
   const isNew = ad.condition === 'new';
   const isBoosted = ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now();
@@ -440,29 +441,64 @@ export default function AdDetailScreen() {
           </View>
         ) : (
           <View style={styles.contactSection}>
-            <Text style={[styles.contactLabel, { color: colors.textMuted }]}>{t.contactSeller}</Text>
-            <View style={styles.contactButtons}>
-              <Pressable
-                style={[styles.chatBtn, { backgroundColor: colors.primary, flex: 1 }]}
-                onPress={handleChat}
-                disabled={chatLoading}
-              >
-                <MaterialIcons name="chat-bubble-outline" size={18} color="#fff" />
-                <Text style={styles.chatBtnText}>
-                  {chatLoading ? t.openingChat : t.chatWithSeller}
-                </Text>
-              </Pressable>
+            {isRequest ? (
+              /* ── Product Request: WhatsApp ONLY ── */
+              <>
+                <View style={[styles.requestBanner, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+                  <Text style={{ fontSize: 16 }}>🛒</Text>
+                  <Text style={[styles.requestBannerText, { color: '#92400E' }]}>
+                    {isAr
+                      ? 'هذا طلب شراء — تواصل مع صاحب الطلب مباشرة'
+                      : 'This is a buy request — contact the requester directly'}
+                  </Text>
+                </View>
+                {hasPhone ? (
+                  <Pressable
+                    style={[styles.waFullBtn, { backgroundColor: '#25D366' }]}
+                    onPress={handleWhatsApp}
+                  >
+                    <Text style={{ fontSize: 20 }}>💬</Text>
+                    <Text style={styles.waFullBtnText}>
+                      {isAr ? 'تواصل مع المعلن عبر واتساب' : 'Contact via WhatsApp'}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <View style={[styles.noPhoneBanner, { backgroundColor: '#F3F4F6', borderColor: '#D1D5DB' }]}>
+                    <MaterialIcons name="phone-disabled" size={18} color="#9CA3AF" />
+                    <Text style={{ color: '#6B7280', fontSize: FontSize.sm, fontWeight: '600', flex: 1, textAlign: isAr ? 'right' : 'left' }}>
+                      {isAr ? 'لم يُضف المعلن رقم واتساب' : 'No WhatsApp number provided'}
+                    </Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              /* ── Regular Sale Ad: Chat + WhatsApp ── */
+              <>
+                <Text style={[styles.contactLabel, { color: colors.textMuted }]}>{t.contactSeller}</Text>
+                <View style={styles.contactButtons}>
+                  <Pressable
+                    style={[styles.chatBtn, { backgroundColor: colors.primary, flex: 1 }]}
+                    onPress={handleChat}
+                    disabled={chatLoading}
+                  >
+                    <MaterialIcons name="chat-bubble-outline" size={18} color="#fff" />
+                    <Text style={styles.chatBtnText}>
+                      {chatLoading ? t.openingChat : t.chatWithSeller}
+                    </Text>
+                  </Pressable>
 
-              {hasPhone ? (
-                <Pressable
-                  style={[styles.waBtn, { backgroundColor: '#25D366' }]}
-                  onPress={handleWhatsApp}
-                >
-                  <MaterialIcons name="phone-in-talk" size={18} color="#fff" />
-                  <Text style={[styles.waBtnText, { color: '#fff' }]}>{t.whatsappSeller}</Text>
-                </Pressable>
-              ) : null}
-            </View>
+                  {hasPhone ? (
+                    <Pressable
+                      style={[styles.waBtn, { backgroundColor: '#25D366' }]}
+                      onPress={handleWhatsApp}
+                    >
+                      <MaterialIcons name="phone-in-talk" size={18} color="#fff" />
+                      <Text style={[styles.waBtnText, { color: '#fff' }]}>{t.whatsappSeller}</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </>
+            )}
           </View>
         )}
       </View>
@@ -1157,6 +1193,24 @@ const styles = StyleSheet.create({
   contactSection: { gap: Spacing.sm },
   contactLabel: { fontSize: FontSize.xs, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' },
   contactButtons: { flexDirection: 'row', gap: Spacing.sm },
+  requestBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: Radius.md, borderWidth: 1.5,
+    paddingHorizontal: Spacing.md, paddingVertical: 10, marginBottom: 8,
+  },
+  requestBannerText: { fontSize: FontSize.sm, fontWeight: '600', flex: 1, lineHeight: 18 },
+  waFullBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, paddingVertical: 16, borderRadius: Radius.lg,
+    shadowColor: '#25D366', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
+  },
+  waFullBtnText: { color: '#fff', fontSize: FontSize.lg, fontWeight: '800' },
+  noPhoneBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: Radius.md, borderWidth: 1.5,
+    paddingHorizontal: Spacing.md, paddingVertical: 12,
+  },
   chatBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, paddingVertical: 14, borderRadius: Radius.lg,

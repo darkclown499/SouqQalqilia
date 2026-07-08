@@ -38,15 +38,21 @@ const QALQILYA_LOCATIONS = [
 ];
 
 // ── Auto-image banner for product requests ───────────────────────────────────
-// Generates a "Wanted / مطلوب" styled graphic banner using placehold.co.
-// The banner shows a solid green background with the Arabic text "مطلوب [Category]"
-// making it instantly recognisable as a buy-request rather than a sale listing.
+// Generates a "Wanted" styled graphic banner using placehold.co.
+// We use English-only text in the URL since placehold.co may not render Arabic
+// characters properly in all environments. The card badge "مطلوب" already
+// communicates the request nature to Arabic users via the AdCard component.
 function getRequestBannerForCategory(categoryNameAr: string): string {
-  const label = categoryNameAr && categoryNameAr.trim().length > 0
-    ? categoryNameAr.trim()
-    : 'منتج';
-  // placehold.co supports multi-line text via \n in the URL text param
-  return `https://placehold.co/800x800/0A6E5C/FFFFFF/png?text=${encodeURIComponent('مطلوب\n' + label)}&font=open-sans`;
+  // Map common Arabic category names to short English slugs for the banner
+  const categoryMap: Record<string, string> = {
+    'إلكترونيات': 'Electronics', 'هواتف': 'Phones', 'سيارات': 'Cars',
+    'أثاث': 'Furniture', 'ملابس': 'Clothing', 'كتب': 'Books',
+    'رياضة': 'Sports', 'بيت وحديقة': 'Home', 'أطفال': 'Kids',
+    'حيوانات': 'Pets', 'عقارات': 'Real Estate', 'أدوات': 'Tools',
+    'مجوهرات': 'Jewelry', 'طعام': 'Food', 'خدمات': 'Services',
+  };
+  const englishLabel = categoryMap[categoryNameAr?.trim()] || 'Item';
+  return `https://placehold.co/800x800/0A6E5C/FFFFFF/png?text=WANTED%0A${encodeURIComponent(englishLabel)}`;
 }
 
 // ── Mode toggle button ────────────────────────────────────────────────────────
