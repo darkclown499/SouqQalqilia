@@ -724,7 +724,7 @@ export default function StoresScreen() {
         {storeCategories.length > 0 ? (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
-              {isAr ? 'شو جاي عبالك اليوم؟ 🤔' : "What are you craving? 🤔"}
+              {isAr ? 'شو ناقصك اليوم؟ 🛒' : "What do you need today? 🛒"}
             </Text>
             <ScrollView
               horizontal
