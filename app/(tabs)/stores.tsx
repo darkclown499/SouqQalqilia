@@ -706,8 +706,8 @@ export default function StoresScreen() {
           </View>
         ) : null}
 
-        {/* ── QUICK STORE CATEGORIES ── */}
-        {activeCats.length > 0 ? (
+        {/* ── QUICK STORE CATEGORIES — always rendered once categories load ── */}
+        {storeCategories.length > 0 ? (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
               {isAr ? 'شو جاي عبالك اليوم؟ 🤔' : "What are you craving? 🤔"}
@@ -730,7 +730,7 @@ export default function StoresScreen() {
                 </Text>
               </Pressable>
 
-              {activeCats.map(cat => (
+              {storeCategories.map(cat => (
                 <QuickStoreCatCard
                   key={cat.id}
                   cat={cat}
@@ -743,7 +743,7 @@ export default function StoresScreen() {
           </View>
         ) : null}
 
-        {/* ── LOADING ── */}
+        {/* ── LOADING / EMPTY / GROUPED — rendered below categories ── */}
         {loading ? (
           <View style={s.loadingWrap}>
             <ActivityIndicator color={colors.primary} size="large" />
