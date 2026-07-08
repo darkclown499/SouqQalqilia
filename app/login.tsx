@@ -96,6 +96,22 @@ export default function LoginScreen() {
 
   // ── Social ─────────────────────────────────────────────────────────────────
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [loginCooldown, setLoginCooldown] = useState(0);
+  const loginCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startLoginCooldown = useCallback((seconds = 30) => {
+    setLoginCooldown(seconds);
+    if (loginCooldownRef.current) clearInterval(loginCooldownRef.current);
+    loginCooldownRef.current = setInterval(() => {
+      setLoginCooldown(v => {
+        if (v <= 1) {
+          if (loginCooldownRef.current) clearInterval(loginCooldownRef.current);
+          return 0;
+        }
+        return v - 1;
+      });
+    }, 1000);
+  }, []);
 
   // ── Pulsing badge animation (Android Google button badge) ─────────────────
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -266,6 +282,26 @@ export default function LoginScreen() {
     }
   };
 
+  // ── Friendly error message mapper ──────────────────────────────────────────
+  const mapAuthError = useCallback((error: string): string => {
+    if (error.includes('RequestRateLimitReached') || error.includes('rate limit') || error.includes('429')) {
+      return isAr
+        ? 'تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار دقيقة ثم المحاولة مجدداً.'
+        : 'Too many attempts. Please wait a moment and try again.';
+    }
+    if (error.includes('Invalid login credentials') || error.includes('invalid_credentials')) {
+      return isAr ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' : 'Incorrect email or password.';
+    }
+    if (error.includes('Email not confirmed')) {
+      return isAr ? 'يرجى تأكيد بريدك الإلكتروني أولاً.' : 'Please confirm your email first.';
+    }
+    if (error.includes('Failed to load user profile')) {
+      // Profile fetch failed — not a fatal error, navigate to app
+      return '';
+    }
+    return error;
+  }, [isAr]);
+
   // ── Email: Login ───────────────────────────────────────────────────────────
   const handleLogin = async () => {
     if (!email.trim() || !password) return showAlert(t.missingFields, t.fillAllFields);
@@ -274,7 +310,22 @@ export default function LoginScreen() {
     isSubmittingRef.current = true;
     try {
       const { error, user: u } = await signInWithPassword(email.trim().toLowerCase(), password);
-      if (error) { showAlert(t.loginFailed, error); return; }
+      if (error) {
+        // If profile load failed but auth succeeded, navigate to app anyway
+        if (error.includes('Failed to load user profile')) {
+          router.replace('/(tabs)');
+          return;
+        }
+        const friendlyError = mapAuthError(error);
+        if (friendlyError) {
+          showAlert(t.loginFailed, friendlyError);
+          // Start cooldown after rate limit error to prevent hammer-clicking
+          if (error.includes('RequestRateLimitReached') || error.includes('rate limit')) {
+            startLoginCooldown(30);
+          }
+        }
+        return;
+      }
       if (u) router.replace('/(tabs)');
     } finally { isSubmittingRef.current = false; }
   };
@@ -307,7 +358,10 @@ export default function LoginScreen() {
     isSubmittingRef.current = true;
     try {
       const { error } = await sendOTP(email.trim().toLowerCase());
-      if (error) return showAlert('Error', error);
+      if (error) {
+        const friendlyError = mapAuthError(error);
+        return showAlert(isAr ? 'خطأ' : 'Error', friendlyError || error);
+      }
       setEmailMode('otp');
       setResendCooldown(60);
     } finally { isSubmittingRef.current = false; }
@@ -330,8 +384,16 @@ export default function LoginScreen() {
     setVerifying(true);
     try {
       const { error, user: newUser } = await verifyOTPAndLogin(email.trim(), otp.trim(), { password });
-      if (error) showAlert(t.verificationFailed, error);
-      else if (newUser) router.replace('/(tabs)');
+      if (error) {
+        if (error.includes('Failed to load user profile')) {
+          router.replace('/(tabs)');
+          return;
+        }
+        const friendlyError = mapAuthError(error);
+        showAlert(t.verificationFailed, friendlyError || error);
+      } else if (newUser) {
+        router.replace('/(tabs)');
+      }
     } finally { setVerifying(false); }
   };
 
@@ -566,6 +628,7 @@ export default function LoginScreen() {
                   showPassword={showPassword} togglePassword={() => setShowPassword(v => !v)}
                   loading={operationLoading} onLogin={handleLogin}
                   onForgot={() => setEmailMode('forgot')}
+                  cooldown={loginCooldown}
                   colors={colors} t={t} isAr={isAr}
                 />
               ) : emailMode === 'register' ? (
@@ -874,7 +937,8 @@ const PhoneOtpPanel = React.memo(function PhoneOtpPanel({ phoneNumber, otp, setO
 });
 
 // ─── Login Panel ──────────────────────────────────────────────────────────────
-const LoginPanel = React.memo(function LoginPanel({ email, setEmail, password, setPassword, showPassword, togglePassword, loading, onLogin, onForgot, colors, t, isAr }: any) {
+const LoginPanel = React.memo(function LoginPanel({ email, setEmail, password, setPassword, showPassword, togglePassword, loading, onLogin, onForgot, cooldown, colors, t, isAr }: any) {
+  const isDisabled = loading || (cooldown ?? 0) > 0;
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
@@ -892,9 +956,27 @@ const LoginPanel = React.memo(function LoginPanel({ email, setEmail, password, s
       <Pressable style={[s.forgotLink, { alignSelf: isAr ? 'flex-start' : 'flex-end', marginTop: -6 }]} onPress={onForgot} hitSlop={8}>
         <Text style={[s.forgotText, { color: colors.primary }]}>{isAr ? 'نسيت كلمة المرور؟' : 'Forgot password?'}</Text>
       </Pressable>
-      <Pressable style={({ pressed }) => [s.primaryBtn, { backgroundColor: colors.primary, opacity: pressed || loading ? 0.85 : 1 }]} onPress={onLogin} disabled={loading}>
+      {/* Cooldown warning */}
+      {(cooldown ?? 0) > 0 ? (
+        <View style={[s.rateLimitBanner, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+          <MaterialIcons name="timer" size={15} color="#D97706" />
+          <Text style={s.rateLimitText}>
+            {isAr
+              ? `تم تجاوز عدد المحاولات. انتظر ${cooldown}ث ثم حاول مجدداً.`
+              : `Too many attempts. Wait ${cooldown}s before trying again.`}
+          </Text>
+        </View>
+      ) : null}
+      <Pressable
+        style={({ pressed }) => [s.primaryBtn, { backgroundColor: isDisabled ? colors.textMuted : colors.primary, opacity: pressed ? 0.85 : 1 }]}
+        onPress={onLogin}
+        disabled={isDisabled}
+      >
         {loading ? <ActivityIndicator size="small" color="#fff" /> : (
-          <><MaterialIcons name="login" size={16} color="#fff" /><Text style={s.primaryBtnText}>{t.signIn}</Text></>
+          <><MaterialIcons name={isDisabled && !loading ? 'timer' : 'login'} size={16} color="#fff" />
+          <Text style={s.primaryBtnText}>
+            {(cooldown ?? 0) > 0 ? (isAr ? `انتظر (${cooldown}ث)` : `Wait (${cooldown}s)`) : t.signIn}
+          </Text></>
         )}
       </Pressable>
     </View>
@@ -1356,4 +1438,6 @@ const s = StyleSheet.create({
   eulaAcceptLabel: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
   spamWarning: { flexDirection: 'row', alignItems: 'flex-start', gap: 7, padding: 10, borderRadius: Radius.md, borderWidth: 1, marginTop: -4, marginBottom: -4 },
   spamWarningText: { flex: 1, fontSize: FontSize.xs, lineHeight: 17, fontWeight: '500', color: '#92400E' },
+  rateLimitBanner: { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 10, borderRadius: Radius.md, borderWidth: 1 },
+  rateLimitText: { flex: 1, fontSize: FontSize.xs, lineHeight: 17, fontWeight: '600', color: '#92400E' },
 });
