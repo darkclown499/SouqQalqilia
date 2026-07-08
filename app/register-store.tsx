@@ -140,6 +140,9 @@ export default function RegisterStoreScreen() {
   const [catModalVisible, setCatModalVisible] = useState(false);
 
 
+  // ── WhatsApp ─────────────────────────────────────────────────────────────────
+  const [ownerWhatsapp, setOwnerWhatsapp] = useState('');
+
   // ── Images ──────────────────────────────────────────────────────────────────
   const [logoUri, setLogoUri] = useState<string | null>(null);
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
