@@ -26,14 +26,22 @@ export function useFavoriteIds() {
     // Prevent concurrent double-tap on the same ad
     if (togglingRef.current.has(adId)) return;
     togglingRef.current.add(adId);
-    const wasFav = ids.has(adId);
-    // Optimistic update
+
+    // Read the CURRENT state inside the functional updater to avoid stale closures
+    // on rapid multi-ad toggling (W2 fix)
+    let wasFav = false;
     setIds(prev => {
+      wasFav = prev.has(adId);
       const next = new Set(prev);
       if (wasFav) next.delete(adId);
       else next.add(adId);
       return next;
     });
+
+    // Yield to the event loop so the state update above is flushed before the
+    // async network call, ensuring wasFav reflects the freshest snapshot.
+    await Promise.resolve();
+
     const { error } = await toggleFavorite(adId, wasFav);
     togglingRef.current.delete(adId);
     if (error) {
@@ -45,7 +53,7 @@ export function useFavoriteIds() {
         return next;
       });
     }
-  }, [ids]);
+  }, []);  // no dependency on `ids` — always reads latest via functional updater
 
   return { ids, loading, toggle, reload: load };
 }

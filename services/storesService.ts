@@ -12,12 +12,21 @@ export interface Store {
   whatsapp: string;
   address: string;
   category_id: string;
+  // Store-specific category (separate from product categories)
+  store_category_id: string | null;
   is_active: boolean;
   is_featured: boolean;
+  is_approved: boolean;
   opening_time: string;  // 'HH:MM' 24h format
   closing_time: string;  // 'HH:MM' 24h format
   position: number;
   created_at: string;
+  // Owner fields
+  owner_id: string | null;
+  owner_whatsapp: string;
+  // Analytics counters
+  views_count: number;
+  whatsapp_clicks_count: number;
 }
 
 // ── Live status helper ────────────────────────────────────────────────────────

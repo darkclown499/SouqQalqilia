@@ -674,6 +674,9 @@ export default function StoresScreen() {
   }, [filteredGroupedStores, selectedCatId]);
 
   // ── Only show store categories that actually have stores ──────────────────
+  // Note: activeCats was previously computed but never used in the render tree.
+  // Now wired to the horizontal category scroll so only categories with stores
+  // are displayed — prevents empty category pills. (CL3 / W5 fix)
   const activeCats = useMemo(() => {
     const idsWithStores = new Set(groupedStores.map(g => g.cat.id));
     return storeCategories.filter(c => idsWithStores.has(c.id));
@@ -814,7 +817,7 @@ export default function StoresScreen() {
                 </Text>
               </Pressable>
 
-              {storeCategories.map(cat => (
+              {activeCats.map(cat => (
                 <QuickStoreCatCard
                   key={cat.id}
                   cat={cat}

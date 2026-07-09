@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
   ActivityIndicator, Modal, ScrollView,
@@ -84,12 +85,14 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
     }
   }, []);
 
-  useEffect(() => {
-    fetchStats();
-    // Poll every 30 seconds for real-time feel
-    const interval = setInterval(fetchStats, 30_000);
-    return () => clearInterval(interval);
-  }, [fetchStats]);
+  // Only poll while the analytics tab is actively visible (W4 fix)
+  useFocusEffect(
+    useCallback(() => {
+      fetchStats();
+      const interval = setInterval(fetchStats, 30_000);
+      return () => clearInterval(interval);
+    }, [fetchStats])
+  );
 
   const maxTrend = Math.max(...(stats?.trend.map(t => t.count) ?? [1]), 1);
 

@@ -114,13 +114,15 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     });
   }, []);
 
-  // Auto-scroll: advance 1px per tick, wrap around
+  // W6 fix: clear any existing timer before starting a new interval so that
+  // doubling the stores array (for loop) doesn't stack multiple setInterval calls.
   React.useEffect(() => {
     if (stores.length === 0) return;
     const CARD_W = 104; // card + gap
     const HALF = stores.length / 2;
     totalWidthRef.current = CARD_W * HALF;
 
+    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       if (isPausedRef.current) return;
       scrollXRef.current += 1;
@@ -134,7 +136,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     }, 20);
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     };
   }, [stores.length]);
 
@@ -310,7 +312,6 @@ export default function HomeScreen() {
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [banners, setBanners] = useState<Banner[]>(() => getBannersCache('home') ?? []);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
-  const [showSortBar, setShowSortBar] = useState(false);
 
   // ── Filter state ─────────────────────────────────────────────────────────
   const [filterVisible, setFilterVisible] = useState(false);
@@ -546,6 +547,15 @@ export default function HomeScreen() {
     await clearSearchHistory();
     setSearchHistory([]);
   }, []);
+
+  // ── Reactive row height for getItemLayout (W1 fix) ───────────────────────────
+  // Derived from live useResponsive() values so it adapts correctly on rotation,
+  // tablet split-screen, and desktop resizing — not stale from module load time.
+  const rowHeight = useMemo(() => {
+    const cw = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
+    const imgH = Math.max(130, Math.min(Math.round(cw * 0.75), 200));
+    return imgH + _initCardInfoH + _initCardGap;
+  }, [cardWidth, cardWidthLg, isTablet, isDesktop]);
 
   // Card width depends on number of columns
   const activeCardWidth = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
@@ -890,35 +900,7 @@ export default function HomeScreen() {
           </View>
         </Pressable>
 
-        {/* Sort bar */}
-        {showSortBar ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.sortBarContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-            style={styles.sortBar}
-          >
-            {SORT_OPTIONS.map(opt => {
-              const isSelected = sortBy === opt.key;
-              return (
-                <Pressable
-                  key={opt.key}
-                  style={[styles.sortChip, {
-                    backgroundColor: isSelected ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.1)',
-                    borderColor: isSelected ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)',
-                  }]}
-                  onPress={() => { setSortBy(opt.key); setShowSortBar(false); }}
-                >
-                  <MaterialIcons name={opt.icon as any} size={12} color={isSelected ? '#fff' : 'rgba(255,255,255,0.7)'} />
-                  <Text style={[styles.sortChipText, { color: isSelected ? '#fff' : 'rgba(255,255,255,0.75)', fontWeight: isSelected ? '700' : '500' }]}>
-                    {isAr ? opt.labelAr : opt.label}
-                  </Text>
-                  {isSelected ? <MaterialIcons name="check" size={11} color="#fff" /> : null}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        ) : null}
+
       </View>
 
       {/* ── OFFLINE BANNER ── */}
@@ -948,8 +930,8 @@ export default function HomeScreen() {
           key={numColumns}
           removeClippedSubviews={false}
           getItemLayout={(_data, index) => ({
-            length: _initRowH,
-            offset: _initRowH * index,
+            length: rowHeight,
+            offset: rowHeight * index,
             index,
           })}
           refreshControl={

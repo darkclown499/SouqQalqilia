@@ -237,9 +237,7 @@ export default function ProfileScreen() {
   const [testPushResult, setTestPushResult] = useState<'idle' | 'success' | 'error' | 'no_token'>('idle');
   const [currentPushToken, setCurrentPushToken] = useState<string | null>(null);
 
-  const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
-
-  const loadBlockedUsers = useCallback(async () => {
+ = useCallback(async () => {
     const ids = await fetchBlockedIds();
     if (ids.length === 0) { setBlockedUsers([]); return; }
     const { data } = await getSupabaseClient()

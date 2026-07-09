@@ -40,7 +40,6 @@ const QALQILYA_LOCATIONS = [
 // ── Auto-image banner for product requests ───────────────────────────────────
 // Requests use a native React Native placeholder rendered in AdCard.
 // No external URL is generated — we simply don't attach any image to request ads.
-const REQUEST_NO_IMAGE = null; // explicit null; AdCard renders native Arabic gradient UI
 
 // ── Mode toggle button ────────────────────────────────────────────────────────
 function ModeToggle({

@@ -544,10 +544,8 @@ export default function RootLayout() {
               const url = await ExpoLinking.getInitialURL();
               if (url && url.includes(convId)) {
                 // User is in this chat — swallow the notification (already handled)
-                console.log('[Notification] Suppressed foreground push — user already in conv:', convId);
                 return;
               }
-              console.log('[Notification] ✅ Foreground received, showing banner for conv:', convId);
             }).catch(() => {});
           }
         });
