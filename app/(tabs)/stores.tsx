@@ -710,6 +710,8 @@ export default function StoresScreen() {
           </Pressable>
         </View>
 
+      </View>
+
       {/* ── MAIN SCROLL ── */}
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
