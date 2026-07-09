@@ -6,7 +6,7 @@ import {
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import { useAuth, useAlert } from '@/template';
 import { Button, Badge } from '@/components';
 import { fetchAdById, fetchAds, clearAdsCache, Ad, AdImage, updateAdStatus, reportAd } from '@/services/adsService';
@@ -24,10 +24,6 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { timeAgoLong } from '@/utils/timeAgo';
 
 // carousel width is computed reactively inside AdDetailScrollContent
-
-function formatPrice(price: number) {
-  return price === 0 ? 'Free' : `₪${price.toLocaleString()}`;
-}
 
 const REPORT_REASONS = [
   { key: 'fraud', icon: 'report-problem' as const },
@@ -351,7 +347,7 @@ export default function AdDetailScreen() {
         </Pressable>
         {/* WhatsApp direct share */}
         <Pressable style={[styles.iconBtn, { backgroundColor: 'rgba(37,211,102,0.82)' }]} onPress={handleShareWhatsApp} hitSlop={8}>
-          <MaterialIcons name="whatsapp" size={18} color="#fff" />
+          <FontAwesome name="whatsapp" size={18} color="#fff" />
         </Pressable>
         {!isOwner ? (
           <Pressable

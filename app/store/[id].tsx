@@ -297,7 +297,11 @@ export default function StoreDetailScreen() {
 
   // ── Load data ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      // No id means invalid/malformed deep link — stop loading immediately
+      setLoading(false);
+      return;
+    }
     // Fire-and-forget view increment
     getSupabaseClient()
       .from('stores').select('views_count').eq('id', id).single()
@@ -419,6 +423,25 @@ export default function StoreDetailScreen() {
   const cartBtnAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: 1 + cartAnim.value * 0.18 }],
   }));
+
+  // ── Guard: malformed deep link (id undefined/empty) ───────────────────────
+  // Never stay in an infinite loading state — show an error and let the user go back.
+  if (!id) {
+    return (
+      <View style={[s.loadingScreen, { backgroundColor: colors.background }]}>
+        <MaterialIcons name="error-outline" size={44} color={colors.textMuted} />
+        <Text style={{ color: colors.textMuted, marginTop: 12 }}>
+          {isAr ? 'رابط غير صحيح' : 'Invalid link'}
+        </Text>
+        <Pressable
+          style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20, backgroundColor: colors.primary }}
+          onPress={() => router.back()}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{isAr ? 'العودة' : 'Go Back'}</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   // ── Loading / error states ───────────────────────────────────────────────
   if (loading) {

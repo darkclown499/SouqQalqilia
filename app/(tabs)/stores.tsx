@@ -31,6 +31,14 @@ const CARD_GAP = 12;
 const SIDE_PAD = 16;
 const STORE_CARD_W = Math.max(1, Math.floor((SCREEN_W - SIDE_PAD * 2 - CARD_GAP) / 2));
 
+// ── Module-level fallback category (must be outside the component to keep a stable
+// reference and prevent useMemo from invalidating on every render) ─────────────
+const FALLBACK_CAT: StoreCategory = {
+  id: '__others__', name: 'Others', name_ar: 'أخرى', icon: 'store',
+  color: '#6B7280', image_url: '', slug: 'others',
+  position: 9999, is_active: true, created_at: '',
+};
+
 // ── Name validator ────────────────────────────────────────────────────────────
 function isNameInvalid(name: string): boolean {
   if (!name || name.trim().length < 2) return true;
@@ -612,33 +620,11 @@ export default function StoresScreen() {
     }
   }, [editName, user, isAr]);
 
-  // ── Filter groupedStores by search query ───────────────────────────────────
-  const filteredGroupedStores = useMemo(() => {
-    if (!searchQuery.trim()) return groupedStores;
-    const q = searchQuery.trim().toLowerCase();
-    return groupedStores
-      .map(group => ({
-        ...group,
-        stores: group.stores.filter(store => {
-          const name = ((store as any).name || '').toLowerCase();
-          const nameAr = ((store as any).name_ar || '').toLowerCase();
-          const address = ((store as any).address || '').toLowerCase();
-          return name.includes(q) || nameAr.includes(q) || address.includes(q);
-        }),
-      }))
-      .filter(group => group.stores.length > 0);
-  }, [groupedStores, searchQuery]);
-
   // ── Group stores by store_category ─────────────────────────────────────────
   // Prefers the joined `store_category` alias; falls back to `store_category_id`
   // lookup in storeCategories state; stores with no resolvable category go into
-  // a fallback "أخرى" group so they never silently disappear from the UI.
-  const FALLBACK_CAT: StoreCategory = {
-    id: '__others__', name: 'Others', name_ar: 'أخرى', icon: 'store',
-    color: '#6B7280', image_url: '', slug: 'others',
-    position: 9999, is_active: true, created_at: '',
-  };
-
+  // the module-level FALLBACK_CAT so they never silently disappear from the UI.
+  // IMPORTANT: declared BEFORE filteredGroupedStores to avoid Hermes hoisting crash.
   const groupedStores = useMemo(() => {
     const catMap = new Map(storeCategories.map(c => [c.id, c]));
     const map = new Map<string, { cat: StoreCategory; stores: Store[] }>();
@@ -661,6 +647,24 @@ export default function StoresScreen() {
       .filter(g => g.stores.length > 0)
       .sort((a, b) => a.cat.position - b.cat.position);
   }, [stores, storeCategories]);
+
+  // ── Filter groupedStores by search query ──────────────────────────────────
+  // IMPORTANT: declared AFTER groupedStores to avoid Hermes ReferenceError.
+  const filteredGroupedStores = useMemo(() => {
+    if (!searchQuery.trim()) return groupedStores;
+    const q = searchQuery.trim().toLowerCase();
+    return groupedStores
+      .map(group => ({
+        ...group,
+        stores: group.stores.filter(store => {
+          const name = ((store as any).name || '').toLowerCase();
+          const nameAr = ((store as any).name_ar || '').toLowerCase();
+          const address = ((store as any).address || '').toLowerCase();
+          return name.includes(q) || nameAr.includes(q) || address.includes(q);
+        }),
+      }))
+      .filter(group => group.stores.length > 0);
+  }, [groupedStores, searchQuery]);
 
   // ── Filtered groups (category + search combined) ────────────────────────────
   const displayedGroups = useMemo(() => {
