@@ -645,7 +645,7 @@ export default function AdDetailScreen() {
 // ── Inner scroll content ──
 function AdDetailScrollContent({
   ad, images, activeImage, setActiveImage, openGallery,
-  isNew, isBoosted, isFree, hasPhone, isOwner,
+  isRequest, isNew, isBoosted, isFree, hasPhone, isOwner,
   sellerName, seller, t, isAr, colors,
   onPromote, onReport, onReportUser, router, user, showAlert,
   relatedAds, sellerAds, favIds, toggleFav, sellerVerified, language,
