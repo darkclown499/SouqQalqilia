@@ -776,7 +776,7 @@ export default function PostAdScreen() {
         {/* ── City Picker Modal ── */}
         <Modal visible={cityModalVisible} transparent animationType="slide" onRequestClose={() => setCityModalVisible(false)} statusBarTranslucent>
           <Pressable style={cityS.overlay} onPress={() => setCityModalVisible(false)}>
-            <Pressable style={[cityS.sheet, { backgroundColor: colors.surface }]} onPress={() => {}}>
+            <View style={[cityS.sheet, { backgroundColor: colors.surface }]} onStartShouldSetResponder={() => true}>
               <View style={[cityS.handle, { backgroundColor: colors.border }]} />
               <View style={[cityS.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
                 <MaterialIcons name="location-on" size={20} color={accentColor} />
@@ -784,7 +784,7 @@ export default function PostAdScreen() {
                   {isAr ? 'اختر المنطقة' : 'Select Area'}
                 </Text>
               </View>
-              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={true} contentContainerStyle={cityS.listContent}>
+              <ScrollView style={{ flex: 1, width: '100%' }} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true} contentContainerStyle={cityS.listContent}>
                 {QALQILYA_LOCATIONS.map(loc => {
                   const isSelected = selectedCity === loc;
                   const isMainCity = loc === QALQILYA_CITY;
@@ -810,7 +810,7 @@ export default function PostAdScreen() {
                   );
                 })}
               </ScrollView>
-            </Pressable>
+            </View>
           </Pressable>
         </Modal>
 

@@ -501,7 +501,7 @@ export default function RegisterStoreScreen() {
         {/* ── Location Picker Modal ── */}
         <Modal visible={locationModalVisible} transparent animationType="slide" onRequestClose={() => setLocationModalVisible(false)} statusBarTranslucent>
           <Pressable style={cm.overlay} onPress={() => setLocationModalVisible(false)}>
-            <Pressable style={[cm.sheet, { backgroundColor: colors.surface }]} onPress={() => {}}>
+            <View style={[cm.sheet, { backgroundColor: colors.surface }]} onStartShouldSetResponder={() => true}>
               <View style={[cm.handle, { backgroundColor: colors.border }]} />
               <View style={[cm.titleRow, { flexDirection: rtl }]}>
                 <MaterialIcons name="location-on" size={20} color={colors.primary} />
@@ -513,7 +513,7 @@ export default function RegisterStoreScreen() {
               <Text style={[cm.subtitle, { color: colors.textMuted, textAlign: 'right' }]}>
                 {'محافظة قلقيلية — اختر البلدة التي يقع فيها متجرك'}
               </Text>
-              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={true} contentContainerStyle={cm.list}>
+              <ScrollView style={{ flex: 1, width: '100%' }} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true} contentContainerStyle={cm.list}>
                 {QALQILYA_LOCATIONS.map(loc => {
                   const isSel = loc === selectedLocation;
                   return (
@@ -537,14 +537,14 @@ export default function RegisterStoreScreen() {
                   );
                 })}
               </ScrollView>
-            </Pressable>
+            </View>
           </Pressable>
         </Modal>
 
         {/* ── Store Category Picker Modal (store_categories ONLY) ── */}
         <Modal visible={catModalVisible} transparent animationType="slide" onRequestClose={() => setCatModalVisible(false)} statusBarTranslucent>
           <Pressable style={cm.overlay} onPress={() => setCatModalVisible(false)}>
-            <Pressable style={[cm.sheet, { backgroundColor: colors.surface }]} onPress={() => {}}>
+            <View style={[cm.sheet, { backgroundColor: colors.surface }]} onStartShouldSetResponder={() => true}>
               <View style={[cm.handle, { backgroundColor: colors.border }]} />
               <View style={[cm.titleRow, { flexDirection: rtl }]}>
                 <MaterialIcons name="storefront" size={20} color={colors.primary} />
@@ -558,7 +558,7 @@ export default function RegisterStoreScreen() {
               <Text style={[cm.subtitle, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
                 {isAr ? 'هذه التصنيفات خاصة بأنواع المتاجر فقط' : 'These are store-specific business types'}
               </Text>
-              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={true} contentContainerStyle={cm.list}>
+              <ScrollView style={{ flex: 1, width: '100%' }} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true} contentContainerStyle={cm.list}>
                 {storeCategories.length === 0 ? (
                   <View style={{ alignItems: 'center', paddingVertical: 32, gap: 10 }}>
                     <ActivityIndicator color={colors.primary} />
@@ -594,7 +594,7 @@ export default function RegisterStoreScreen() {
                   );
                 })}
               </ScrollView>
-            </Pressable>
+            </View>
           </Pressable>
         </Modal>
 
