@@ -775,7 +775,8 @@ export default function PostAdScreen() {
 
         {/* ── City Picker Modal ── */}
         <Modal visible={cityModalVisible} transparent animationType="slide" onRequestClose={() => setCityModalVisible(false)} statusBarTranslucent>
-          <Pressable style={cityS.overlay} onPress={() => setCityModalVisible(false)}>
+          <View style={cityS.overlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setCityModalVisible(false)} />
             <View style={[cityS.sheet, { backgroundColor: colors.surface }]}>
               <View style={[cityS.handle, { backgroundColor: colors.border }]} />
               <View style={[cityS.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -784,7 +785,7 @@ export default function PostAdScreen() {
                   {isAr ? 'اختر المنطقة' : 'Select Area'}
                 </Text>
               </View>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={cityS.listContent}>
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={true} contentContainerStyle={cityS.listContent}>
                 {QALQILYA_LOCATIONS.map(loc => {
                   const isSelected = selectedCity === loc;
                   const isMainCity = loc === QALQILYA_CITY;
@@ -811,7 +812,7 @@ export default function PostAdScreen() {
                 })}
               </ScrollView>
             </View>
-          </Pressable>
+          </View>
         </Modal>
 
         {/* ── Photo Source Modal ── */}
@@ -1021,8 +1022,8 @@ const styles = StyleSheet.create({
 });
 
 const cityS = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 36, paddingTop: 12, maxHeight: '82%' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'flex-end', zIndex: 9999 },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 36, paddingTop: 12, maxHeight: '82%', minHeight: 300 },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, marginBottom: 12 },
   titleText: { fontSize: FontSize.lg, fontWeight: '800' },

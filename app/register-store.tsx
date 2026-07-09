@@ -499,8 +499,9 @@ export default function RegisterStoreScreen() {
         </ScrollView>
 
         {/* ── Location Picker Modal ── */}
-        <Modal visible={locationModalVisible} transparent animationType="slide" onRequestClose={() => setLocationModalVisible(false)}>
-          <Pressable style={cm.overlay} onPress={() => setLocationModalVisible(false)}>
+        <Modal visible={locationModalVisible} transparent animationType="slide" onRequestClose={() => setLocationModalVisible(false)} statusBarTranslucent>
+          <View style={cm.overlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setLocationModalVisible(false)} />
             <View style={[cm.sheet, { backgroundColor: colors.surface }]}>
               <View style={[cm.handle, { backgroundColor: colors.border }]} />
               <View style={[cm.titleRow, { flexDirection: rtl }]}>
@@ -538,12 +539,13 @@ export default function RegisterStoreScreen() {
                 })}
               </ScrollView>
             </View>
-          </Pressable>
+          </View>
         </Modal>
 
         {/* ── Store Category Picker Modal (store_categories ONLY) ── */}
-        <Modal visible={catModalVisible} transparent animationType="slide" onRequestClose={() => setCatModalVisible(false)}>
-          <Pressable style={cm.overlay} onPress={() => setCatModalVisible(false)}>
+        <Modal visible={catModalVisible} transparent animationType="slide" onRequestClose={() => setCatModalVisible(false)} statusBarTranslucent>
+          <View style={cm.overlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setCatModalVisible(false)} />
             <View style={[cm.sheet, { backgroundColor: colors.surface }]}>
               <View style={[cm.handle, { backgroundColor: colors.border }]} />
               <View style={[cm.titleRow, { flexDirection: rtl }]}>
@@ -559,7 +561,14 @@ export default function RegisterStoreScreen() {
                 {isAr ? 'هذه التصنيفات خاصة بأنواع المتاجر فقط' : 'These are store-specific business types'}
               </Text>
               <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={true} contentContainerStyle={cm.list}>
-                {storeCategories.map(cat => {
+                {storeCategories.length === 0 ? (
+                  <View style={{ alignItems: 'center', paddingVertical: 32, gap: 10 }}>
+                    <ActivityIndicator color={colors.primary} />
+                    <Text style={{ color: colors.textMuted, fontSize: FontSize.sm }}>
+                      {isAr ? 'جاري التحميل...' : 'Loading...'}
+                    </Text>
+                  </View>
+                ) : storeCategories.map(cat => {
                   const isSel = cat.id === storeCategoryId;
                   const emoji = getStoreCategoryEmoji(cat.slug);
                   return (
@@ -588,7 +597,7 @@ export default function RegisterStoreScreen() {
                 })}
               </ScrollView>
             </View>
-          </Pressable>
+          </View>
         </Modal>
 
         {/* ── Success Modal ── */}
@@ -692,8 +701,8 @@ const s = StyleSheet.create({
 });
 
 const cm = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, maxHeight: '82%' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', zIndex: 9999 },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, maxHeight: '82%', minHeight: 300 },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: Spacing.lg, marginBottom: 4 },
   titleText: { fontSize: FontSize.lg, fontWeight: '700', flex: 1 },
