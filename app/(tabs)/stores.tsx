@@ -710,17 +710,6 @@ export default function StoresScreen() {
           </Pressable>
         </View>
 
-        <Pressable
-          style={[s.searchBar, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
-          onPress={() => storeSearchInputRef.current?.focus()}
-        >
-          <MaterialIcons name="search" size={18} color="rgba(255,255,255,0.7)" />
-          <Text style={s.searchBarText}>
-            {isAr ? 'ابحث عن متجر أو عنوان...' : 'Search stores or address...'}
-          </Text>
-        </Pressable>
-      </View>
-
       {/* ── MAIN SCROLL ── */}
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
