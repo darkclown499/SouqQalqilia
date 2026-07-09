@@ -580,7 +580,7 @@ export default function ProfileScreen() {
   const soldAds = ads.filter(a => a.status === 'sold');
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <ScrollView showsVerticalScrollIndicator={false}>
 
@@ -1235,7 +1235,7 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

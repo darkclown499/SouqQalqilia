@@ -543,6 +543,7 @@ export default function StoresScreen() {
   const [ownerStore, setOwnerStore] = useState<any>(undefined);
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const storeSearchInputRef = useRef<any>(null);
 
   // ── Gatekeeper ───────────────────────────────────────────────────────────
   const [nameGateVisible, setNameGateVisible] = useState(false);
@@ -685,7 +686,7 @@ export default function StoresScreen() {
         <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <Pressable
             style={s.headerIconBtn}
-            onPress={() => router.push('/search' as any)}
+            onPress={() => storeSearchInputRef.current?.focus()}
             hitSlop={8}
           >
             <MaterialIcons name="search" size={22} color="#fff" />
@@ -707,11 +708,11 @@ export default function StoresScreen() {
 
         <Pressable
           style={[s.searchBar, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
-          onPress={() => router.push('/search' as any)}
+          onPress={() => storeSearchInputRef.current?.focus()}
         >
           <MaterialIcons name="search" size={18} color="rgba(255,255,255,0.7)" />
           <Text style={s.searchBarText}>
-            {isAr ? 'ابحث عن متجر أو منتج...' : 'Search for a store or product...'}
+            {isAr ? 'ابحث عن متجر أو عنوان...' : 'Search stores or address...'}
           </Text>
         </Pressable>
       </View>
@@ -728,6 +729,7 @@ export default function StoresScreen() {
             <MaterialIcons name="search" size={16} color={colors.primary} />
           </View>
           <TextInput
+            ref={storeSearchInputRef}
             style={[s.storeSearchInput, { color: colors.textPrimary }]}
             placeholder={isAr ? 'ابحث عن متجر أو عنوان...' : 'Search stores or address...'}
             placeholderTextColor={colors.textMuted}

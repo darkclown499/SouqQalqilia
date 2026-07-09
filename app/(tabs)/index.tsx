@@ -578,6 +578,17 @@ export default function HomeScreen() {
     router.push(`/store/${storeId}` as any);
   }, [router]);
 
+  // FeaturedStoresStrip is kept as a stable node outside ListHeader useMemo
+  // so its internal auto-scroll interval never resets when ads list changes.
+  const featuredStoresNode = (
+    <FeaturedStoresStrip
+      isAr={isAr}
+      isRTL={isRTL}
+      colors={colors}
+      onPress={handleFeaturedStorePress}
+    />
+  );
+
   const ListHeader = useMemo(() => (
     <>
       {/* ── BANNER ── */}
@@ -616,13 +627,10 @@ export default function HomeScreen() {
         </Pressable>
       ) : null}
 
-      {/* ── FEATURED STORES STRIP ── */}
-      <FeaturedStoresStrip
-        isAr={isAr}
-        isRTL={isRTL}
-        colors={colors}
-        onPress={handleFeaturedStorePress}
-      />
+      {/* ── FEATURED STORES STRIP: rendered as a stable component reference ──
+           NOT inlined here to prevent remounting the auto-scroll interval
+           every time filteredAds.length or other dependencies change. ── */}
+      {featuredStoresNode}
 
       {/* ── RECENTLY VIEWED ── */}
       {recentlyViewed.length > 0 ? (
@@ -784,7 +792,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, handleFeaturedStorePress, router, setSortBy, filteredAds.length]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, setSortBy]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>

@@ -303,6 +303,8 @@ export default function StoreDetailScreen() {
       return;
     }
     // Fire-and-forget view increment
+    // TODO: Replace with atomic RPC (increment_store_views) to prevent lost view counts
+    // under concurrent access. Currently a read-then-write pattern with a race condition.
     getSupabaseClient()
       .from('stores').select('views_count').eq('id', id).single()
       .then(({ data }) => {

@@ -465,8 +465,8 @@ export default function PostAdScreen() {
               <MaterialIcons name="auto-awesome" size={16} color={colors.primary} />
               <Text style={[styles.autoImgText, { color: colors.textSecondary }]}>
                 {isAr
-                  ? 'سيتم إضافة صورة تلقائية بناءً على التصنيف الذي تختاره.'
-                  : 'A stock image will be automatically assigned based on the selected category.'}
+                  ? 'سيتم إنشاء تصميم احترافي للطلب تلقائياً.'
+                  : 'A visual poster will be generated automatically.'}
               </Text>
             </View>
           )}

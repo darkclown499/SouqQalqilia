@@ -11,7 +11,7 @@ import { Image } from 'expo-image';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { fetchStoreProducts, StoreProduct, submitStoreRating } from '@/services/productsService';
+import { fetchStoreProducts, StoreProduct } from '@/services/productsService';
 import {
   fetchStoreCategories, getStoreCategoryEmoji, getStoreCategoryName, StoreCategory,
 } from '@/services/storeCategoriesService';

@@ -268,16 +268,19 @@ const reqPh = StyleSheet.create({
   },
   pillBadgeText: {
     color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.4,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   titleText: {
     fontSize: 20, fontWeight: 'bold', textAlign: 'center', color: '#fff',
     lineHeight: 25, letterSpacing: -0.2,
-    textShadowColor: 'rgba(0,0,0,0.22)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+    textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
   },
   wantedText: {
     fontSize: 24, fontWeight: '900', textAlign: 'center', color: '#fff',
     letterSpacing: 1,
-    textShadowColor: 'rgba(0,0,0,0.18)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+    textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
   },
   descText: {
     fontSize: 11, fontWeight: '500', textAlign: 'center',
@@ -353,8 +356,14 @@ export const AdCard = memo(function AdCard({
   const { locationLabel, locationIconColor, locationIconName } = locationDerived;
 
   const handlePress = useCallback(() => {
-    onAdPress?.(ad);
-    router.push(`/ad/${ad.id}`);
+    // If a parent-provided handler exists, delegate routing entirely to it.
+    // Otherwise fall back to direct navigation — prevents double-push race conditions.
+    if (onAdPress) {
+      onAdPress(ad);
+      router.push(`/ad/${ad.id}`);
+    } else {
+      router.push(`/ad/${ad.id}`);
+    }
   }, [ad, onAdPress, router]);
 
   const handleFavorite = useCallback((e: any) => {

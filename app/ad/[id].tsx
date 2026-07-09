@@ -638,6 +638,38 @@ export default function AdDetailScreen() {
   );
 }
 
+// ── AdDetailScrollContent prop types ────────────────────────────────────────
+interface AdDetailScrollContentProps {
+  ad: Ad;
+  images: AdImage[];
+  activeImage: number;
+  setActiveImage: (index: number) => void;
+  openGallery: (index: number) => void;
+  isRequest: boolean;
+  isNew: boolean;
+  isBoosted: boolean;
+  isFree: boolean;
+  hasPhone: boolean;
+  isOwner: boolean;
+  sellerName: string;
+  seller: any;
+  t: any;
+  isAr: boolean;
+  colors: any;
+  onPromote: () => void;
+  onReport: () => void;
+  onReportUser: () => void;
+  router: any;
+  user: any;
+  showAlert: any;
+  relatedAds: Ad[];
+  sellerAds: Ad[];
+  favIds: Set<string>;
+  toggleFav: (id: string) => void;
+  sellerVerified: boolean;
+  language: string;
+}
+
 // ── Inner scroll content ──
 function AdDetailScrollContent({
   ad, images, activeImage, setActiveImage, openGallery,
@@ -645,7 +677,7 @@ function AdDetailScrollContent({
   sellerName, seller, t, isAr, colors,
   onPromote, onReport, onReportUser, router, user, showAlert,
   relatedAds, sellerAds, favIds, toggleFav, sellerVerified, language,
-}: any) {
+}: AdDetailScrollContentProps) {
   const carouselRef = React.useRef<FlatList<AdImage>>(null);
   const [carouselWidth, setCarouselWidth] = useState(Dimensions.get('window').width);
 
