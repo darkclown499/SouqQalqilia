@@ -702,18 +702,20 @@ const s = StyleSheet.create({
 
 const cm = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', zIndex: 9999 },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, maxHeight: '82%', minHeight: 300 },
+  // Explicit height so flex:1 on the inner ScrollView has a concrete parent to fill.
+  // Without this the sheet collapses to 0 height on Android.
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, height: '72%', overflow: 'hidden' },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: Spacing.lg, marginBottom: 4 },
   titleText: { fontSize: FontSize.lg, fontWeight: '700', flex: 1 },
   subtitle: { fontSize: FontSize.xs, paddingHorizontal: Spacing.lg, marginBottom: 10, lineHeight: 17 },
-  list: { paddingHorizontal: 16, gap: 8, paddingBottom: 40 },
+  list: { paddingHorizontal: 16, gap: 8, paddingBottom: 60 },
   item: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     borderRadius: Radius.xl, borderWidth: 1.5, paddingVertical: 12, paddingHorizontal: Spacing.md,
   },
   icon: { width: 44, height: 44, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
-  itemText: { fontSize: FontSize.md },
+  itemText: { fontSize: FontSize.md, color: '#111827' },
 });
 
 const sm = StyleSheet.create({

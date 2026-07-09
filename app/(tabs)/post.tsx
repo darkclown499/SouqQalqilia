@@ -1023,14 +1023,16 @@ const styles = StyleSheet.create({
 
 const cityS = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'flex-end', zIndex: 9999 },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 36, paddingTop: 12, maxHeight: '82%', minHeight: 300 },
+  // Explicit height so flex:1 on the inner ScrollView has a concrete parent to fill.
+  // Without this the sheet collapses to 0 height on Android.
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, height: '72%', overflow: 'hidden' },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, marginBottom: 12 },
   titleText: { fontSize: FontSize.lg, fontWeight: '800' },
-  listContent: { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 60, gap: 8 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: Radius.lg, borderWidth: 1.5 },
   itemIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  itemText: { fontSize: FontSize.md, flex: 1 },
+  itemText: { fontSize: FontSize.md, flex: 1, color: '#111827' },
   defaultBadge: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
   defaultText: { fontSize: 10, fontWeight: '700' },
 });
