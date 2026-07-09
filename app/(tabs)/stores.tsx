@@ -817,7 +817,7 @@ export default function StoresScreen() {
                 </Text>
               </Pressable>
 
-              {activeCats.map(cat => (
+              {storeCategories.map(cat => (
                 <QuickStoreCatCard
                   key={cat.id}
                   cat={cat}
