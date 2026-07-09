@@ -34,7 +34,7 @@ function formatPrice(price: number, isAr: boolean) {
 }
 
 function isProductRequest(ad: Ad): boolean {
-  return (ad as any).ad_type === 'product_request';
+  return ad.ad_type === 'product_request';
 }
 
 // ── Shimmer skeleton ──────────────────────────────────────────────────────────
@@ -264,7 +264,10 @@ export const AdCard = memo(function AdCard({
   const { language, isRTL } = useLanguage();
   const { width: screenW, isTablet, isDesktop } = useResponsive();
   const isAr = language === 'ar';
-  // Must be declared before the ref that reads it
+
+  // ── isRequest MUST be declared before any useMemo that references it ──────
+  const isRequest = isProductRequest(ad);
+
   const sortedImages = useMemo(
     () => (ad.ad_images ? [...ad.ad_images].sort((a, b) => a.position - b.position) : []),
     [ad.ad_images]
@@ -293,7 +296,7 @@ export const AdCard = memo(function AdCard({
   const isSold = ad.status === 'sold';
   const isNew = ad.condition === 'new';
   const isFree = ad.price === 0;
-  const isRequest = isProductRequest(ad);
+  // isRequest already declared above — do not re-declare here
 
   const catName = useMemo(
     () => (ad.categories ? getCategoryName(ad.categories as any, language) : null),

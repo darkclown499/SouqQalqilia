@@ -141,6 +141,7 @@ export interface Ad {
   phone_number: string;
   condition: 'new' | 'used';
   status: 'active' | 'sold' | 'deleted' | 'featured';
+  ad_type?: 'product_ad' | 'product_request';
   views: number;
   created_at: string;
   updated_at: string;
@@ -190,8 +191,8 @@ export async function fetchAds(params?: {
 
   // Shared select fragment
   const SELECT = `
-    id, user_id, category_id, title, price, location, condition,
-    status, views, created_at, boosted_until, serial_number,
+    id, user_id, category_id, title, description, price, location, phone_number, condition,
+    status, views, created_at, boosted_until, serial_number, ad_type,
     categories(id, name, name_ar, icon, color),
     ad_images(id, url, position, blurhash)
   `;
