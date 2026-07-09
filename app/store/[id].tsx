@@ -415,6 +415,11 @@ export default function StoreDetailScreen() {
     setCheckoutStep('cart');
   }, [store, user, orderType, cartItems, cartTotal, isAr, isOpen]);
 
+  // ── Animated style — MUST be declared before any conditional returns (Rules of Hooks) ──
+  const cartBtnAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + cartAnim.value * 0.18 }],
+  }));
+
   // ── Loading / error states ───────────────────────────────────────────────
   if (loading) {
     return (
@@ -440,9 +445,6 @@ export default function StoreDetailScreen() {
   const hoursLabel = store.opening_time && store.closing_time
     ? `${store.opening_time} – ${store.closing_time}`
     : null;
-  const cartBtnAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 + cartAnim.value * 0.18 }],
-  }));
 
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
