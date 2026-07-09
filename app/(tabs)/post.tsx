@@ -775,9 +775,8 @@ export default function PostAdScreen() {
 
         {/* ── City Picker Modal ── */}
         <Modal visible={cityModalVisible} transparent animationType="slide" onRequestClose={() => setCityModalVisible(false)} statusBarTranslucent>
-          <View style={cityS.overlay}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setCityModalVisible(false)} />
-            <View style={[cityS.sheet, { backgroundColor: colors.surface }]}>
+          <Pressable style={cityS.overlay} onPress={() => setCityModalVisible(false)}>
+            <Pressable style={[cityS.sheet, { backgroundColor: colors.surface }]} onPress={() => {}}>
               <View style={[cityS.handle, { backgroundColor: colors.border }]} />
               <View style={[cityS.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
                 <MaterialIcons name="location-on" size={20} color={accentColor} />
@@ -811,8 +810,8 @@ export default function PostAdScreen() {
                   );
                 })}
               </ScrollView>
-            </View>
-          </View>
+            </Pressable>
+          </Pressable>
         </Modal>
 
         {/* ── Photo Source Modal ── */}

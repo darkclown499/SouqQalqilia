@@ -500,9 +500,8 @@ export default function RegisterStoreScreen() {
 
         {/* ── Location Picker Modal ── */}
         <Modal visible={locationModalVisible} transparent animationType="slide" onRequestClose={() => setLocationModalVisible(false)} statusBarTranslucent>
-          <View style={cm.overlay}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setLocationModalVisible(false)} />
-            <View style={[cm.sheet, { backgroundColor: colors.surface }]}>
+          <Pressable style={cm.overlay} onPress={() => setLocationModalVisible(false)}>
+            <Pressable style={[cm.sheet, { backgroundColor: colors.surface }]} onPress={() => {}}>
               <View style={[cm.handle, { backgroundColor: colors.border }]} />
               <View style={[cm.titleRow, { flexDirection: rtl }]}>
                 <MaterialIcons name="location-on" size={20} color={colors.primary} />
@@ -538,15 +537,14 @@ export default function RegisterStoreScreen() {
                   );
                 })}
               </ScrollView>
-            </View>
-          </View>
+            </Pressable>
+          </Pressable>
         </Modal>
 
         {/* ── Store Category Picker Modal (store_categories ONLY) ── */}
         <Modal visible={catModalVisible} transparent animationType="slide" onRequestClose={() => setCatModalVisible(false)} statusBarTranslucent>
-          <View style={cm.overlay}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setCatModalVisible(false)} />
-            <View style={[cm.sheet, { backgroundColor: colors.surface }]}>
+          <Pressable style={cm.overlay} onPress={() => setCatModalVisible(false)}>
+            <Pressable style={[cm.sheet, { backgroundColor: colors.surface }]} onPress={() => {}}>
               <View style={[cm.handle, { backgroundColor: colors.border }]} />
               <View style={[cm.titleRow, { flexDirection: rtl }]}>
                 <MaterialIcons name="storefront" size={20} color={colors.primary} />
@@ -596,8 +594,8 @@ export default function RegisterStoreScreen() {
                   );
                 })}
               </ScrollView>
-            </View>
-          </View>
+            </Pressable>
+          </Pressable>
         </Modal>
 
         {/* ── Success Modal ── */}
