@@ -300,6 +300,7 @@ export default function AdDetailScreen() {
             activeImage={activeImage}
             setActiveImage={setActiveImage}
             openGallery={openGallery}
+            isRequest={isRequest}
             isNew={isNew}
             isBoosted={!!isBoosted}
             isFree={isFree}
