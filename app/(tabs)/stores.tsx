@@ -544,6 +544,7 @@ export default function StoresScreen() {
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const storeSearchInputRef = useRef<any>(null);
+  const scrollRef = useRef<any>(null);
 
   // ── Gatekeeper ───────────────────────────────────────────────────────────
   const [nameGateVisible, setNameGateVisible] = useState(false);
@@ -800,6 +801,12 @@ export default function StoresScreen() {
               {isAr ? 'شو ناقصك اليوم؟ 🛒' : "What do you need today? 🛒"}
             </Text>
             <ScrollView
+              ref={scrollRef}
+              onContentSizeChange={() => {
+                if (isRTL && scrollRef.current) {
+                  scrollRef.current.scrollToEnd({ animated: false });
+                }
+              }}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
