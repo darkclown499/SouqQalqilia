@@ -237,7 +237,7 @@ export default function ProfileScreen() {
   const [testPushResult, setTestPushResult] = useState<'idle' | 'success' | 'error' | 'no_token'>('idle');
   const [currentPushToken, setCurrentPushToken] = useState<string | null>(null);
 
- = useCallback(async () => {
+  const loadBlockedUsers = useCallback(async () => {
     const ids = await fetchBlockedIds();
     if (ids.length === 0) { setBlockedUsers([]); return; }
     const { data } = await getSupabaseClient()
