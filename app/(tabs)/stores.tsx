@@ -534,6 +534,7 @@ export default function StoresScreen() {
   const [loading, setLoading] = useState(true);
   const [ownerStore, setOwnerStore] = useState<any>(undefined);
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // ── Gatekeeper ───────────────────────────────────────────────────────────
   const [nameGateVisible, setNameGateVisible] = useState(false);
@@ -611,6 +612,23 @@ export default function StoresScreen() {
     }
   }, [editName, user, isAr]);
 
+  // ── Filter groupedStores by search query ───────────────────────────────────
+  const filteredGroupedStores = useMemo(() => {
+    if (!searchQuery.trim()) return groupedStores;
+    const q = searchQuery.trim().toLowerCase();
+    return groupedStores
+      .map(group => ({
+        ...group,
+        stores: group.stores.filter(store => {
+          const name = ((store as any).name || '').toLowerCase();
+          const nameAr = ((store as any).name_ar || '').toLowerCase();
+          const address = ((store as any).address || '').toLowerCase();
+          return name.includes(q) || nameAr.includes(q) || address.includes(q);
+        }),
+      }))
+      .filter(group => group.stores.length > 0);
+  }, [groupedStores, searchQuery]);
+
   // ── Group stores by store_category ─────────────────────────────────────────
   // Prefers the joined `store_category` alias; falls back to `store_category_id`
   // lookup in storeCategories state; stores with no resolvable category go into
@@ -644,11 +662,11 @@ export default function StoresScreen() {
       .sort((a, b) => a.cat.position - b.cat.position);
   }, [stores, storeCategories]);
 
-  // ── Filtered groups (when a quick cat is selected) ─────────────────────────
+  // ── Filtered groups (category + search combined) ────────────────────────────
   const displayedGroups = useMemo(() => {
-    if (!selectedCatId) return groupedStores;
-    return groupedStores.filter(g => g.cat.id === selectedCatId);
-  }, [groupedStores, selectedCatId]);
+    if (!selectedCatId) return filteredGroupedStores;
+    return filteredGroupedStores.filter(g => g.cat.id === selectedCatId);
+  }, [filteredGroupedStores, selectedCatId]);
 
   // ── Only show store categories that actually have stores ──────────────────
   const activeCats = useMemo(() => {
@@ -699,6 +717,27 @@ export default function StoresScreen() {
 
         {/* ── BANNER CAROUSEL ── */}
         <BannerCarousel banners={banners} isRTL={isRTL} />
+
+        {/* ── STORE SEARCH BAR ── */}
+        <View style={[s.storeSearchWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[s.storeSearchIcon, { backgroundColor: colors.primaryGhost }]}>
+            <MaterialIcons name="search" size={16} color={colors.primary} />
+          </View>
+          <TextInput
+            style={[s.storeSearchInput, { color: colors.textPrimary }]}
+            placeholder={isAr ? 'ابحث عن متجر أو عنوان...' : 'Search stores or address...'}
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCapitalize="none"
+          />
+          {searchQuery.length > 0 ? (
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+              <MaterialIcons name="close" size={16} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
 
         {/* ── OWNER STORE CARD ── */}
         {ownerStore !== undefined && ownerStore !== null ? (
@@ -793,20 +832,28 @@ export default function StoresScreen() {
         ) : displayedGroups.length === 0 ? (
           <View style={s.emptyWrap}>
             <View style={[s.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
-              <MaterialIcons name="store" size={44} color={colors.textMuted} />
+              <MaterialIcons
+                name={searchQuery.trim() ? 'search-off' : 'store'}
+                size={44}
+                color={colors.textMuted}
+              />
             </View>
             <Text style={[s.emptyTitle, { color: colors.textPrimary }]}>
-              {isAr ? 'لا توجد متاجر بعد' : 'No Stores Yet'}
+              {searchQuery.trim()
+                ? (isAr ? 'لا يوجد نتائج' : 'No Results Found')
+                : (isAr ? 'لا توجد متاجر بعد' : 'No Stores Yet')}
             </Text>
             <Text style={[s.emptySub, { color: colors.textMuted }]}>
-              {selectedCatId
-                ? (isAr ? 'لا توجد متاجر في هذا التصنيف' : 'No stores in this category')
-                : (isAr ? 'ترقبوا إضافة متاجر قريباً' : 'Stores are coming soon')}
+              {searchQuery.trim()
+                ? (isAr ? 'عذراً، لا يوجد متاجر مطابقة لبحثك' : 'Sorry, no stores match your search')
+                : selectedCatId
+                  ? (isAr ? 'لا توجد متاجر في هذا التصنيف' : 'No stores in this category')
+                  : (isAr ? 'ترقبوا إضافة متاجر قريباً' : 'Stores are coming soon')}
             </Text>
-            {selectedCatId ? (
+            {(selectedCatId || searchQuery.trim()) ? (
               <Pressable
                 style={[s.clearFilterBtn, { borderColor: colors.primary }]}
-                onPress={() => setSelectedCatId(null)}
+                onPress={() => { setSelectedCatId(null); setSearchQuery(''); }}
               >
                 <Text style={[s.clearFilterText, { color: colors.primary }]}>
                   {isAr ? 'عرض كل المتاجر' : 'Show all stores'}
@@ -929,6 +976,23 @@ const s = StyleSheet.create({
   emptySub: { fontSize: FontSize.md, textAlign: 'center', lineHeight: 22 },
   clearFilterBtn: { borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, marginTop: 4 },
   clearFilterText: { fontSize: FontSize.sm, fontWeight: '700' },
+
+  // ── Store search bar ──
+  storeSearchWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: SIDE_PAD, marginTop: 14, marginBottom: 4,
+    gap: 10, borderRadius: 14, borderWidth: 1.5,
+    paddingHorizontal: 12, height: 46,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+  },
+  storeSearchIcon: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  storeSearchInput: {
+    flex: 1, fontSize: FontSize.sm, fontWeight: '500',
+  },
 });
 
 // Gatekeeper modal styles

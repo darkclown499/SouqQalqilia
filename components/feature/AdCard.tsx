@@ -193,11 +193,16 @@ function getRequestStyle(categoryName: string | null | undefined): RequestStyle 
 interface RequestPlaceholderProps {
   height: number;
   categoryName: string | null;
+  title?: string | null;
+  description?: string | null;
   isAr: boolean;
 }
 
-const RequestPlaceholder: FC<RequestPlaceholderProps> = ({ height, categoryName, isAr }) => {
+const RequestPlaceholder: FC<RequestPlaceholderProps> = ({ height, categoryName, title, description, isAr }) => {
   const style = getRequestStyle(categoryName);
+  const truncatedDesc = description
+    ? (description.length > 50 ? description.slice(0, 50) + '…' : description)
+    : null;
 
   return (
     <View style={[reqPh.container, { height, backgroundColor: style.gradientColors[0] }]}>
@@ -210,19 +215,35 @@ const RequestPlaceholder: FC<RequestPlaceholderProps> = ({ height, categoryName,
           style={{ opacity: 0.12 }}
         />
       </View>
+
+      {/* Top pill badge: مطلوب • category */}
+      <View style={reqPh.pillBadge}>
+        <Text style={reqPh.pillBadgeText}>
+          {categoryName ? `مطلوب • ${categoryName}` : 'مطلوب'}
+        </Text>
+      </View>
+
       {/* Foreground icon */}
       <MaterialIcons
         name={style.icon as any}
-        size={38}
+        size={30}
         color={style.iconColor}
-        style={{ opacity: 0.9 }}
+        style={{ opacity: 0.88 }}
       />
-      {/* Solid "\u0645\u0637\u0644\u0648\u0628" text */}
-      <Text style={[reqPh.wantedText, { color: '#fff' }]}>مطلوب</Text>
-      {/* Category name */}
-      {categoryName ? (
-        <Text style={[reqPh.catText, { color: style.iconColor }]} numberOfLines={2}>
-          {categoryName}
+
+      {/* Post title — large bold Arabic */}
+      {title ? (
+        <Text style={reqPh.titleText} numberOfLines={2}>
+          {title}
+        </Text>
+      ) : (
+        <Text style={reqPh.wantedText}>مطلوب</Text>
+      )}
+
+      {/* Description snippet */}
+      {truncatedDesc ? (
+        <Text style={reqPh.descText} numberOfLines={2}>
+          {truncatedDesc}
         </Text>
       ) : null}
     </View>
@@ -232,7 +253,7 @@ const RequestPlaceholder: FC<RequestPlaceholderProps> = ({ height, categoryName,
 const reqPh = StyleSheet.create({
   container: {
     width: '100%', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingHorizontal: 16, paddingVertical: 12,
+    gap: 5, paddingHorizontal: 14, paddingVertical: 10,
     position: 'relative', overflow: 'hidden',
   },
   bgIconWrap: {
@@ -240,16 +261,28 @@ const reqPh = StyleSheet.create({
     top: '50%', left: '50%',
     transform: [{ translateX: -48 }, { translateY: -48 }],
   },
+  pillBadge: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 20, paddingHorizontal: 11, paddingVertical: 4,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)',
+  },
+  pillBadgeText: {
+    color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.4,
+  },
+  titleText: {
+    fontSize: 20, fontWeight: 'bold', textAlign: 'center', color: '#fff',
+    lineHeight: 25, letterSpacing: -0.2,
+    textShadowColor: 'rgba(0,0,0,0.22)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+  },
   wantedText: {
-    fontSize: 26, fontWeight: '900', textAlign: 'center',
+    fontSize: 24, fontWeight: '900', textAlign: 'center', color: '#fff',
     letterSpacing: 1,
     textShadowColor: 'rgba(0,0,0,0.18)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
   },
-  pill: {
-    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3,
-    marginTop: 2,
+  descText: {
+    fontSize: 11, fontWeight: '500', textAlign: 'center',
+    color: 'rgba(255,255,255,0.72)', lineHeight: 15, paddingHorizontal: 4,
   },
-  pillText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
   catText: { fontSize: 12, fontWeight: '700', textAlign: 'center', lineHeight: 16 },
 });
 
@@ -365,6 +398,8 @@ export const AdCard = memo(function AdCard({
           <RequestPlaceholder
             height={clampImgH}
             categoryName={catName}
+            title={ad.title}
+            description={ad.description}
             isAr={isAr}
           />
         ) : (
