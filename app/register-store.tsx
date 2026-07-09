@@ -704,7 +704,7 @@ const cm = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', zIndex: 9999 },
   // Explicit height so flex:1 on the inner ScrollView has a concrete parent to fill.
   // Without this the sheet collapses to 0 height on Android.
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, height: '72%', overflow: 'hidden' },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, height: '72%' },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: Spacing.lg, marginBottom: 4 },
   titleText: { fontSize: FontSize.lg, fontWeight: '700', flex: 1 },
