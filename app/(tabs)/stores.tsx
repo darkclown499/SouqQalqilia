@@ -24,6 +24,10 @@ import {
 } from '@/services/storeCategoriesService';
 import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
 import { FontSize, Radius, Spacing } from '@/constants/theme';
+import { FontSize, Radius, Spacing } from '@/constants/theme';
+
+// 👈 حطه هون بالضبط
+const FEATURED_STORE_IDS = ['ID1', 'ID2']; 
 
 // ── Screen width ──────────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -205,6 +209,7 @@ function PremiumStoreCard({
   const name = isAr ? ((store as any).name_ar || store.name) : store.name;
   // Support both alias `store_category` (new join) and legacy `store_categories`
   const storeColor = ((store as any).store_category?.color || (store as any).store_categories?.color) || '#0A6E5C';
+  const isFeatured = FEATURED_STORE_IDS.includes(store.id);
 
   useEffect(() => {
     const t = setInterval(() => setIsOpen(checkStoreIsOpen(store)), 60_000);
@@ -218,6 +223,7 @@ function PremiumStoreCard({
     >
       {/* Top banner strip */}
       <View style={psc.bannerStrip}>
+
         {(store as any).banner_url ? (
           <Image
             source={{ uri: (store as any).banner_url }}
@@ -233,6 +239,11 @@ function PremiumStoreCard({
         <View style={psc.ribbon}>
           <Text style={psc.ribbonText}>جديد</Text>
         </View>
+        {isFeatured && (
+          <View style={psc.vipBadge}>
+            <Text style={psc.vipBadgeText}>VIP ⭐</Text>
+          </View>
+        )}
       </View>
 
       {/* Circular logo centered overlapping the strip */}
@@ -294,6 +305,7 @@ const psc = StyleSheet.create({
     elevation: 3, 
     marginBottom: 16,
     paddingBottom: 12, // 👈 هون لغينا الفراغ الأبيض الطويل
+
   },
   bannerStrip: { height: 100, position: 'relative', backgroundColor: '#F3F4F6' },
   closedOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.6)' },
@@ -343,6 +355,21 @@ const psc = StyleSheet.create({
       color: '#fff', 
       fontSize: 10, 
       fontWeight: 'bold' 
+    },
+    vipBadge: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      backgroundColor: '#F59E0B',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 8,
+      zIndex: 10,
+    },
+    vipBadgeText: {
+      color: '#fff',
+      fontSize: 10,
+      fontWeight: '900',
     }
 });
 // ─────────────────────────────────────────────────────────────────────────────
