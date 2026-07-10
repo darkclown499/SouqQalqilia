@@ -230,6 +230,13 @@ function PremiumStoreCard({
           <View style={[StyleSheet.absoluteFill, { backgroundColor: storeColor }]} />
         )}
         {!isOpen ? <View style={psc.closedOverlay} /> : null}
+        {/* أضف هذا الكود هنا، قبل سطر 234 */}
+        <View style={psc.ribbon}>
+          <Text style={psc.ribbonText}>جديد</Text>
+        </View>
+
+        {!isOpen ? <View style={psc.closedOverlay} /> : null}
+      </View>
       </View>
 
       {/* Circular logo centered overlapping the strip */}
@@ -325,6 +332,25 @@ const psc = StyleSheet.create({
   },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 10, fontWeight: '800' },
+    // 👈 الصق الكود الجديد هون في هذا المكان بالضبط:
+    ribbon: { 
+      position: 'absolute', 
+      top: 10, 
+      left: -20, 
+      width: 80, 
+      backgroundColor: '#EF4444', 
+      transform: [{ rotate: '-45deg' }], 
+      alignItems: 'center', 
+      zIndex: 10 
+    },
+    ribbonText: { 
+      color: '#fff', 
+      fontSize: 10, 
+      fontWeight: 'bold' 
+    }
+}); // 👈 هاد القوس لازم يضل آخر إشي (السطر 337 تقريباً)
+  statusText: { fontSize: 10, fontWeight: '800' },
+
 });
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. CATEGORY BLOCK (grouped by store_category_id)
