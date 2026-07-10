@@ -53,7 +53,7 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   const scrollRef = useRef<ScrollView>(null);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userScrolling = useRef(false);
-  const BANNER_H = Math.round(SCREEN_W * 0.45) + 16; // 👈 زودنا الارتفاع عشان يستوعب النقاط تحت
+  const BANNER_H = Math.round(SCREEN_W * 0.54) + 16; // 👈 زودنا الارتفاع عشان يستوعب النقاط تحت
 
   const startAuto = useCallback(() => {
     if (banners.length <= 1) return;
@@ -123,10 +123,10 @@ const bc = StyleSheet.create({
   wrap: { width: '100%', position: 'relative' },
   slide: { flex: 1, overflow: 'hidden', borderRadius: 16 }, // 👈 ضفنا حواف دائرية للبنر
   gradient: { ...StyleSheet.absoluteFillObject, top: '40%' },
-  textWrap: { position: 'absolute', bottom: 16, left: 16, right: 16, gap: 4 },
+  textWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, gap: 4 },
   title: { fontSize: 18, fontWeight: '900', color: '#fff', textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4, lineHeight: 24 },
   sub: { fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
-  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'absolute', bottom: 0, left: 0, right: 0, height: 24, gap: 6 },
+  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'absolute', bottom: 8, left: 0, right: 0, gap: 6 },
   dot: { height: 6, borderRadius: 3 } as any,
   dotActive: { width: 20, backgroundColor: '#0A6E5C' }, // 👈 غيرنا لون النقطة للأخضر
   dotInactive: { width: 6, backgroundColor: '#D1D5DB' },
