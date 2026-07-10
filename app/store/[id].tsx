@@ -292,6 +292,7 @@ export default function StoreDetailScreen() {
   // ── Cart state ──────────────────────────────────────────────────────────────
   const [cart, setCart] = useState<Record<string, CartItem>>({});
   const [cartVisible, setCartVisible] = useState(false);
+  const [orderNote, setOrderNote] = useState('');
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'order_type'>('cart');
   const [orderType, setOrderType] = useState<OrderType>('delivery');
   const cartAnim = useSharedValue(0);
@@ -410,6 +411,7 @@ export default function StoreDetailScreen() {
   }, [store, isAr, shareLoading]);
 
   // ── WhatsApp checkout ───────────────────────────────────────────────────────
+  // ── WhatsApp checkout ───────────────────────────────────────────────────────
   const handleConfirmOrder = useCallback(() => {
     if (!store || !isOpen) return;
     getSupabaseClient().from('stores').select('whatsapp_clicks_count').eq('id', store.id).single()
@@ -439,16 +441,26 @@ export default function StoreDetailScreen() {
       }),
       '',
       isAr ? `💰 المجموع: ${cartTotal.toFixed(2)}₪` : `💰 Total: ${cartTotal.toFixed(2)}₪`,
-      '',
-      isAr ? 'شكراً لطلبكم! 🙏' : 'Thank you for your order! 🙏',
     ];
+
+    // ── إضافة الملاحظات هين بشكل صحيح ──
+    if (orderNote && orderNote.trim().length > 0) {
+      lines.push(''); // سطر فاضي للترتيب
+      lines.push(isAr ? `📝 ملاحظات الزبون: ${orderNote}` : `📝 Notes: ${orderNote}`);
+    }
+
+    // سطر الشكر في النهاية
+    lines.push('');
+    lines.push(isAr ? 'شكراً لطلبكم! 🙏' : 'Thank you for your order! 🙏');
+
     const message = encodeURIComponent(lines.join('\n'));
     const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
     Linking.openURL(`https://wa.me/${phone}?text=${message}`).catch(() => {});
     setCartVisible(false);
     setCart({});
     setCheckoutStep('cart');
-  }, [store, user, orderType, cartItems, cartTotal, isAr, isOpen]);
+    setOrderNote(''); // تصفير حقل الملاحظات بعد إرسال الطلب
+  }, [store, user, orderType, cartItems, cartTotal, isAr, isOpen, orderNote]);
 
   // ── Animated style — MUST be declared before any conditional returns (Rules of Hooks) ──
   const cartBtnAnimStyle = useAnimatedStyle(() => ({
@@ -802,7 +814,7 @@ export default function StoreDetailScreen() {
                   </Pressable>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={m.cartItems}>
+               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={m.cartItems}>
                   {cartItems.map(({ product, qty }) => {
                     const pName = isAr ? (product.name_ar || product.name) : product.name;
                     return (
@@ -814,24 +826,61 @@ export default function StoreDetailScreen() {
                             <MaterialIcons name="fastfood" size={16} color={colors.textMuted} />
                           </View>
                         )}
-                        <Text style={[m.cartItemName, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
+                        <Text style={[m.cartItemName, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left', marginHorizontal: 8 }]}>
                           {pName}
                         </Text>
-                        <View style={[m.cartItemQty, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                          <Pressable onPress={() => removeFromCart(product)} hitSlop={8} style={[m.qtyBtnSm, { borderColor: colors.border }]}>
-                            <MaterialIcons name="remove" size={13} color={colors.textMuted} />
+                        
+                        {/* أزرار الكمية بالتصميم الجديد (أحمر وأخضر) */}
+                        <View style={[m.cartItemQty, { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' }]}>
+                          <Pressable 
+                            onPress={() => removeFromCart(product)} 
+                            hitSlop={8} 
+                            style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <MaterialIcons name="remove" size={16} color="#EF4444" />
                           </Pressable>
-                          <Text style={[m.qtyNum, { color: colors.textPrimary }]}>{qty}</Text>
-                          <Pressable onPress={() => addToCart(product)} hitSlop={8} style={[m.qtyBtnSm, { borderColor: colors.border }]}>
-                            <MaterialIcons name="add" size={13} color={colors.primary} />
+                          
+                          <Text style={[m.qtyNum, { color: colors.textPrimary, fontSize: 15, fontWeight: '800', marginHorizontal: 8 }]}>{qty}</Text>
+                          
+                          <Pressable 
+                            onPress={() => addToCart(product)} 
+                            hitSlop={8} 
+                            style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#DCFCE7', borderWidth: 1, borderColor: '#22c55e', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <MaterialIcons name="add" size={16} color="#22c55e" />
                           </Pressable>
                         </View>
-                        <Text style={[m.cartItemPrice, { color: colors.primary }]}>
+                        
+                        <Text style={[m.cartItemPrice, { color: colors.primary, minWidth: 60, textAlign: isRTL ? 'left' : 'right' }]}>
                           {(product.price * qty).toFixed(2)}₪
                         </Text>
                       </View>
                     );
                   })}
+
+                  {/* ── حقل الملاحظات الجديد ── */}
+                  <View style={{ marginTop: 20, paddingHorizontal: 5 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textSecondary, marginBottom: 8, textAlign: isRTL ? 'right' : 'left' }}>
+                      {isAr ? 'ملاحظات إضافية (اختياري)' : 'Order Notes (Optional)'}
+                    </Text>
+                    <TextInput
+                      style={{
+                        backgroundColor: colors.surfaceTint || '#F3F4F6',
+                        borderRadius: 12,
+                        padding: 14,
+                        minHeight: 80,
+                        textAlign: isRTL ? 'right' : 'left',
+                        textAlignVertical: 'top',
+                        color: colors.textPrimary,
+                        fontSize: 14
+                      }}
+                      placeholder={isAr ? 'مثال: بدون بصل، التوصيل للباب الخلفي...' : 'e.g. No onions, deliver to back door...'}
+                      placeholderTextColor={colors.textMuted}
+                      multiline
+                      value={orderNote}
+                      onChangeText={setOrderNote}
+                    />
+                  </View>
                 </ScrollView>
 
                 <View style={[m.totalRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderTopColor: colors.borderLight }]}>
