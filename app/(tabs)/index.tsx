@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
@@ -10,7 +9,27 @@ import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingOffersButton from '@/components/FloatingOffersButton';
+import { useAuth, getSupabaseClient } from '@/template';
+import { trackEvent } from '@/services/analyticsService';
+import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
 
+// Dimensions are now computed reactively via useResponsive() inside the component.
+// Snapshot used only for getItemLayout estimation (close enough; recalculates on resize).
+import { Dimensions as _RNDims } from 'react-native';
+const _initW = _RNDims.get('window').width;
+const _initHPad = _initW < 375 ? 12 : Spacing.lg;
+const _initCardGap = _initW < 375 ? 8 : 10;
+const _initCardW = (_initW - _initHPad * 2 - _initCardGap) / 2;
+const _initImgH = Math.max(130, Math.min(Math.round(_initCardW * 0.75), 200));
+const _initCardInfoH = 92;
+const _initRowH = _initImgH + _initCardInfoH + _initCardGap;
+let _interstitialsCache: InterstitialAd[] | null = null;
+
+const FEATURED_STORES = [
+  { id: '1', name: 'سوبرماركت التوفير', logo: 'https://images.unsplash.com/photo-1588964895597-cfccd6e2dbf9?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?q=80&w=400&auto=format&fit=crop' },
+  { id: '2', name: 'بوتيك الأناقة', logo: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=400&auto=format&fit=crop' },
+  { id: '3', name: 'مطعم البيك', logo: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=400&auto=format&fit=crop' },
+];
 const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
 const MAX_RECENTLY_VIEWED = 6;
 const SEARCH_HISTORY_KEY = 'search_history_v1';
@@ -77,27 +96,6 @@ import { Ad } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useAuth, getSupabaseClient } from '@/template';
-import { trackEvent } from '@/services/analyticsService';
-import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
-
-// Dimensions are now computed reactively via useResponsive() inside the component.
-// Snapshot used only for getItemLayout estimation (close enough; recalculates on resize).
-import { Dimensions as _RNDims } from 'react-native';
-const _initW = _RNDims.get('window').width;
-const _initHPad = _initW < 375 ? 12 : Spacing.lg;
-const _initCardGap = _initW < 375 ? 8 : 10;
-const _initCardW = (_initW - _initHPad * 2 - _initCardGap) / 2;
-const _initImgH = Math.max(130, Math.min(Math.round(_initCardW * 0.75), 200));
-const _initCardInfoH = 92;
-const _initRowH = _initImgH + _initCardInfoH + _initCardGap;
-let _interstitialsCache: InterstitialAd[] | null = null;
-
-const FEATURED_STORES = [
-  { id: '1', name: 'سوبرماركت التوفير', logo: 'https://images.unsplash.com/photo-1588964895597-cfccd6e2dbf9?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?q=80&w=400&auto=format&fit=crop' },
-  { id: '2', name: 'بوتيك الأناقة', logo: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=400&auto=format&fit=crop' },
-  { id: '3', name: 'مطعم البيك', logo: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=400&auto=format&fit=crop' },
-];
 
 // ── Featured Stores Strip ───────────────────────────────────────────────────
 function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
