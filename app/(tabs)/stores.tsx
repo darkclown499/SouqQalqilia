@@ -395,7 +395,7 @@ function CategoryBlock({
           ) : (
             <MaterialIcons name={cat.icon as any} size={18} color={cat.color} />
           )}
-        </View>س
+        </View>
         <Text style={[cb.title, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
           {catName}
         </Text>
