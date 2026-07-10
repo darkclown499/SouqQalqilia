@@ -54,6 +54,13 @@ fs.writeFileSync(virtualViewStubPath, [
   'module.exports.VirtualView = VirtualView;',
 ].join('\n'), 'utf8');
 
+// ─── Shim 3: react-native-gesture-handler (web / SSR) ───────────────────────
+// On web, the real gesture-handler loads native modules that don't exist in
+// the Node.js SSR environment used by expo-router's static renderer.
+// We substitute a safe no-op shim so that top-level imports and component
+// renders don't crash with "Cannot read properties of null" errors.
+const gestureHandlerShimPath = path.resolve(shimDir, 'react-native-gesture-handler.js');
+
 // ─── Unified resolver ────────────────────────────────────────────────────────
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
@@ -67,6 +74,13 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     (moduleName.includes('virtualview'))
   ) {
     return { filePath: virtualViewStubPath, type: 'sourceFile' };
+  }
+  // Intercept react-native-gesture-handler on web/SSR to prevent native-module crash
+  if (
+    moduleName === 'react-native-gesture-handler' &&
+    (platform === 'web' || platform == null)
+  ) {
+    return { filePath: gestureHandlerShimPath, type: 'sourceFile' };
   }
   if (originalResolveRequest) {
     return originalResolveRequest(context, moduleName, platform);
