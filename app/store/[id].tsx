@@ -748,9 +748,9 @@ export default function StoreDetailScreen() {
           /* Menu section header */
           <View style={s.menuWrap}>
             <View style={[s.menuHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
-              <MaterialIcons name="restaurant-menu" size={18} color={colors.primary} />
+              <MaterialIcons name="shopping-bag" size={18} color={colors.primary} />
               <Text style={[s.menuHeaderText, { color: colors.textPrimary }]}>
-                {isAr ? 'قائمة الطلبات 🧾' : 'Menu 🧾'}
+                {isAr ? 'قائمة المنتجات 🛍️' : 'Products 🛍️'}
               </Text>
             </View>
 
