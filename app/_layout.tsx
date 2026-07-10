@@ -1,3 +1,4 @@
+import 'react-native-gesture-handler';
 import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AlertProvider, AuthProvider, getSupabaseClient, useAuth } from '@/template';

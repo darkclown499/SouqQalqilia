@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import FloatingOffersButton from '@/components/FloatingOffersButton';
 
 const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
 const MAX_RECENTLY_VIEWED = 6;
@@ -900,30 +901,7 @@ export default function HomeScreen() {
           </View>
         </Pressable>
 
-       {/* ── زر العروض النارية 🔥 ── */}
-        <Pressable
-          onPress={() => router.push('/offers')}
-          style={({ pressed }) => ({
-            flexDirection: isRTL ? 'row-reverse' : 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(254,242,242,0.15)',
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            borderRadius: 14,
-            marginTop: 10,
-            gap: 8,
-            transform: [{ scale: pressed ? 0.98 : 1 }],
-            borderWidth: 1,
-            borderColor: 'rgba(254,202,202,0.4)',
-          })}
-        >
-          <MaterialIcons name="local-fire-department" size={20} color="#FCA5A5" />
-          <Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }}>
-            {isAr ? 'عروض نار حصرية 🔥' : 'Hot Exclusive Deals 🔥'}
-          </Text>
-        </Pressable>
-      </View>
+ 
 
       {/* ── OFFLINE BANNER ── */}
       {!isOnline ? (
@@ -1203,6 +1181,7 @@ export default function HomeScreen() {
           </View>
         </View>
       ) : null}
+      <FloatingOffersButton />
     </View>
   );
 }
