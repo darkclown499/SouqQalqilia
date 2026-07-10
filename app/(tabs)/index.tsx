@@ -665,8 +665,8 @@ export default function HomeScreen() {
             </View>
           ) : null}
         </Pressable>
-        <FeaturedVIPStrip isRTL={isRTL} colors={colors} />
       ) : null}
+      <FeaturedVIPStrip isRTL={isRTL} colors={colors} />
 
       {/* ── FEATURED STORES STRIP: rendered as a stable component reference ──
            NOT inlined here to prevent remounting the auto-scroll interval
