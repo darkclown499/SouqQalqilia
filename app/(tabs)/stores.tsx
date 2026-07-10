@@ -53,7 +53,7 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   const scrollRef = useRef<ScrollView>(null);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userScrolling = useRef(false);
-  const BANNER_H = Math.round(SCREEN_W * 0.42);
+  const BANNER_H = Math.round(SCREEN_W * 0.45) + 16; // 👈 زودنا الارتفاع عشان يستوعب النقاط تحت
 
   const startAuto = useCallback(() => {
     if (banners.length <= 1) return;
@@ -85,68 +85,52 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   return (
     <View style={bc.wrap}>
       <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
+        ref={scrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+        onScroll={handleScroll} scrollEventThrottle={16}
         onScrollBeginDrag={() => { userScrolling.current = true; }}
         onScrollEndDrag={() => { userScrolling.current = false; }}
         onMomentumScrollEnd={handleScroll}
       >
         {displayBanners.map((banner, i) => (
-          <View key={banner.id} style={[bc.slide, { width: SCREEN_W, height: BANNER_H }]}>
-            {banner.image_url ? (
-              <Image
-                source={{ uri: banner.image_url }}
-                style={StyleSheet.absoluteFill}
-                contentFit="cover"
-                transition={300}
-                cachePolicy="disk"
-              />
-            ) : (
-              <LinearGradient
-                colors={i % 2 === 0 ? ['#0A6E5C', '#065f46'] : ['#1a4f7a', '#0d2d4a']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-            )}
-            <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.52)']}
-              style={bc.gradient}
-            />
-            <View style={[bc.textWrap, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-              {banner.title ? (
-                <Text style={[bc.title, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
-                  {banner.title}
-                </Text>
-              ) : null}
-              {banner.subtitle ? (
-                <Text style={[bc.sub, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
-                  {banner.subtitle}
-                </Text>
-              ) : null}
+          <View key={banner.id} style={{ width: SCREEN_W, height: BANNER_H, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
+            <View style={bc.slide}>
+              {banner.image_url ? (
+                <Image source={{ uri: banner.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} cachePolicy="disk" />
+              ) : (
+                <LinearGradient colors={i % 2 === 0 ? ['#0A6E5C', '#065f46'] : ['#1a4f7a', '#0d2d4a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+              )}
+              <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={bc.gradient} />
+              <View style={[bc.textWrap, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+                {banner.title ? <Text style={[bc.title, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>{banner.title}</Text> : null}
+                {banner.subtitle ? <Text style={[bc.sub, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{banner.subtitle}</Text> : null}
+              </View>
             </View>
           </View>
         ))}
       </ScrollView>
       <View style={bc.dots}>
         {displayBanners.map((_, i) => (
-          <Pressable
-            key={i}
-            style={[bc.dot, activeIdx === i ? bc.dotActive : bc.dotInactive]}
-            onPress={() => {
-              setActiveIdx(i);
-              scrollRef.current?.scrollTo({ x: i * SCREEN_W, animated: true });
-            }}
+          <Pressable key={i} style={[bc.dot, activeIdx === i ? bc.dotActive : bc.dotInactive]}
+            onPress={() => { setActiveIdx(i); scrollRef.current?.scrollTo({ x: i * SCREEN_W, animated: true }); }}
           />
         ))}
       </View>
     </View>
   );
 }
+
+const bc = StyleSheet.create({
+  wrap: { width: '100%', position: 'relative' },
+  slide: { flex: 1, overflow: 'hidden', borderRadius: 16 }, // 👈 ضفنا حواف دائرية للبنر
+  gradient: { ...StyleSheet.absoluteFillObject, top: '40%' },
+  textWrap: { position: 'absolute', bottom: 16, left: 16, right: 16, gap: 4 },
+  title: { fontSize: 18, fontWeight: '900', color: '#fff', textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4, lineHeight: 24 },
+  sub: { fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
+  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'absolute', bottom: 0, left: 0, right: 0, height: 24, gap: 6 },
+  dot: { height: 6, borderRadius: 3 } as any,
+  dotActive: { width: 20, backgroundColor: '#0A6E5C' }, // 👈 غيرنا لون النقطة للأخضر
+  dotInactive: { width: 6, backgroundColor: '#D1D5DB' },
+});
 
 const bc = StyleSheet.create({
   wrap: { width: '100%', position: 'relative' },
@@ -325,45 +309,52 @@ function PremiumStoreCard({
 
 const psc = StyleSheet.create({
   card: {
-    width: STORE_CARD_W, backgroundColor: '#fff', borderRadius: 16,
-    overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.09, shadowRadius: 8, elevation: 2, marginBottom: 16,
+    width: STORE_CARD_W, 
+    backgroundColor: '#fff', 
+    borderRadius: 16,
+    overflow: 'hidden', 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06, 
+    shadowRadius: 10, 
+    elevation: 3, 
+    marginBottom: 16,
+    paddingBottom: 12, // 👈 هون لغينا الفراغ الأبيض الطويل
   },
-  bannerStrip: { height: 95, position: 'relative' },
-  closedOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.5)' },
-  logoWrap: { alignItems: 'center', marginTop: -35, marginBottom: 8 },
+  bannerStrip: { height: 100, position: 'relative', backgroundColor: '#F3F4F6' },
+  closedOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.6)' },
+  logoWrap: { alignItems: 'center', marginTop: -32, marginBottom: 8, zIndex: 10 },
   logoCircle: {
-    width: 70, height: 70, borderRadius: 35, borderWidth: 2.5, backgroundColor: '#fff',
+    width: 64, height: 64, borderRadius: 32, borderWidth: 3, borderColor: '#fff', backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.14, shadowRadius: 6, elevation: 4,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1, shadowRadius: 4, elevation: 4,
   },
-  logoImg: { width: 70, height: 70 },
+  logoImg: { width: '100%', height: '100%' },
   name: {
-    fontSize: 13, fontWeight: '800', color: '#111827',
-    textAlign: 'center', paddingHorizontal: 8, lineHeight: 18,
+    fontSize: 14, fontWeight: '900', color: '#111827', // 👈 كبرنا الخط وخلينها بولد
+    textAlign: 'center', paddingHorizontal: 8, lineHeight: 20,
   },
   address: {
-    fontSize: 11, color: '#9ca3af', textAlign: 'center',
-    paddingHorizontal: 8, marginTop: 3, lineHeight: 15,
+    fontSize: 11, color: '#6B7280', textAlign: 'center',
+    paddingHorizontal: 8, marginTop: 4, lineHeight: 16,
   },
-  divider: { height: 1, backgroundColor: '#F3F4F6', marginHorizontal: 12, marginTop: 10 },
+  divider: { height: 1, backgroundColor: '#F3F4F6', marginHorizontal: 16, marginTop: 12, marginBottom: 10 },
   bottomRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 10, paddingVertical: 9,
+    paddingHorizontal: 12,
   },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   star: { fontSize: 11 },
   ratingNum: { fontSize: 12, fontWeight: '800', color: '#111827' },
-  newText: { fontSize: 11, fontWeight: '700', color: '#0A6E5C' },
+  newText: { fontSize: 11, fontWeight: '800', color: '#0A6E5C' },
   statusPill: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderRadius: 20, paddingHorizontal: 7, paddingVertical: 3,
+    borderRadius: 20, paddingHorizontal: 8, paddingVertical: 4,
   },
-  statusDot: { width: 5, height: 5, borderRadius: 2.5 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 10, fontWeight: '800' },
 });
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. CATEGORY BLOCK (grouped by store_category_id)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -987,18 +978,20 @@ const s = StyleSheet.create({
   // ── Store search bar ──
   storeSearchWrap: {
     flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: SIDE_PAD, marginTop: 14, marginBottom: 4,
-    gap: 10, borderRadius: 14, borderWidth: 1.5,
-    paddingHorizontal: 12, height: 46,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    marginHorizontal: SIDE_PAD, marginTop: 16, marginBottom: 10,
+    gap: 10, borderRadius: 16, 
+    backgroundColor: '#fff', // 👈 ضفنا خلفية بيضاء
+    borderWidth: 0, // 👈 لغينا الإطار
+    paddingHorizontal: 14, height: 50, // 👈 زدنا الارتفاع شوي
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06, shadowRadius: 10, elevation: 3, // 👈 ضفنا ظل فخم
   },
   storeSearchIcon: {
-    width: 28, height: 28, borderRadius: 14,
+    width: 32, height: 32, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
   },
   storeSearchInput: {
-    flex: 1, fontSize: FontSize.sm, fontWeight: '500',
+    flex: 1, fontSize: 13, fontWeight: '600',
   },
 });
 
