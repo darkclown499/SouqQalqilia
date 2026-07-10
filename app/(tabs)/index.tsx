@@ -900,8 +900,7 @@ export default function HomeScreen() {
             <Text style={[styles.filterChipText, { color: isDark ? 'rgba(255,255,255,0.7)' : colors.primary }]}>{isAr ? 'فلتر' : 'Filter'}</Text>
           </View>
         </Pressable>
-
- 
+      </View>
 
       {/* ── OFFLINE BANNER ── */}
       {!isOnline ? (
