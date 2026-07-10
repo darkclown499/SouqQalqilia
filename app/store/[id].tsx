@@ -505,15 +505,6 @@ export default function StoreDetailScreen() {
             style={[StyleSheet.absoluteFill, { top: '40%' }]}
           />
 
-          {/* Closed overlay */}
-          {!isOpen ? (
-            <View style={s.closedOverlay}>
-              <View style={s.closedPill}>
-                <Text style={s.closedPillText}>مغلق حالياً 🔴</Text>
-              </View>
-            </View>
-          ) : null}
-
           {/* ── Back button (absolute, safe-area aware) ── */}
           <Pressable
             style={[s.fabBtn, { top: insets.top + 10, left: isRTL ? undefined : 16, right: isRTL ? 16 : undefined }]}
@@ -540,16 +531,22 @@ export default function StoreDetailScreen() {
           </Pressable>
         </View>
 
-        {/* ═══════════════════════════════════════════════════════════
-            SECTION 2 — OVERLAPPING STORE INFO CARD
+        {{/* ═══════════════════════════════════════════════════════════
+            SECTION 2 — OVERLAPPING STORE INFO CARD (PREMIUM DESIGN)
         ═══════════════════════════════════════════════════════════ */}
         <View style={[s.infoCard, { backgroundColor: colors.surface }]}>
 
-          {/* Circular logo — overlaps banner */}
+          {/* Circular logo — overlaps banner (With 3D Shadow) */}
           <View style={s.logoWrap}>
             <View style={[s.logoCircle, {
               borderColor: isOpen ? '#22c55e' : '#D1D5DB',
               backgroundColor: colors.surfaceTint,
+              // إضافة الظل للوجو
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 8,
+              elevation: 6,
             }]}>
               {store.logo_url ? (
                 <Image
@@ -564,21 +561,23 @@ export default function StoreDetailScreen() {
             </View>
           </View>
 
-          {/* Store name */}
-          <Text style={[s.storeName, { color: colors.textPrimary }]}>{storeName}</Text>
+          {/* Store name (Bigger and Bolder) */}
+          <Text style={[s.storeName, { color: colors.textPrimary, fontSize: 22, fontWeight: '900', marginTop: 4, marginBottom: 2 }]}>
+            {storeName}
+          </Text>
 
           {/* Address */}
           {store.address ? (
             <View style={[s.centerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <MaterialIcons name="location-on" size={13} color={colors.textMuted} />
-              <Text style={[s.addrText, { color: colors.textMuted }]} numberOfLines={1}>
+              <MaterialIcons name="location-on" size={14} color={colors.textMuted} />
+              <Text style={[s.addrText, { color: colors.textMuted, fontSize: 13 }]} numberOfLines={1}>
                 {store.address}
               </Text>
             </View>
           ) : null}
 
           {/* Status + hours + rating badges row */}
-          <View style={[s.badgesRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={[s.badgesRow, { flexDirection: isRTL ? 'row-reverse' : 'row', marginTop: 12 }]}>
             {/* Open/Closed pill */}
             <View style={[s.statusPill, { backgroundColor: isOpen ? '#DCFCE7' : '#F3F4F6' }]}>
               <View style={[s.statusDot, { backgroundColor: isOpen ? '#16a34a' : '#9CA3AF' }]} />
@@ -606,56 +605,79 @@ export default function StoreDetailScreen() {
             ) : null}
           </View>
 
-          {/* Action icon row */}
-          <View style={[s.actionRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            {/* Favorite */}
+          {/* Action icon row (Revamped for Conversion) */}
+          <View style={[s.actionRow, { flexDirection: isRTL ? 'row-reverse' : 'row', gap: 10, marginTop: 16 }]}>
+            
+            {/* WhatsApp quick contact (Primary Button) */}
+            {(store.whatsapp || store.owner_whatsapp || store.phone) ? (
+              <Pressable
+                style={{ 
+                  flex: 1, 
+                  backgroundColor: '#22c55e', 
+                  borderRadius: 12, 
+                  flexDirection: isRTL ? 'row-reverse' : 'row', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  paddingVertical: 12, 
+                  gap: 8,
+                  shadowColor: '#22c55e',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 4,
+                  elevation: 2
+                }}
+                onPress={() => {
+                  const phone = (store.whatsapp || store.owner_whatsapp || store.phone || '').replace(/\D/g, '');
+                  Linking.openURL(`https://wa.me/${phone}`).catch(() => {});
+                }}
+              >
+                <MaterialIcons name="chat" size={20} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 15, fontWeight: 'bold' }}>
+                  {isAr ? 'تواصل مع المتجر' : 'Contact Store'}
+                </Text>
+              </Pressable>
+            ) : null}
+
+            {/* Favorite (Circle) */}
             <Pressable
               style={[s.actionCircle, {
+                width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center',
                 backgroundColor: isFavorited ? '#FEE2E2' : colors.surfaceTint,
+                borderWidth: 1,
                 borderColor: isFavorited ? '#EF4444' : colors.borderLight,
               }]}
               onPress={() => id && toggleFav(id)}
             >
               <MaterialIcons
                 name={isFavorited ? 'favorite' : 'favorite-border'}
-                size={20}
+                size={22}
                 color={isFavorited ? '#EF4444' : colors.textMuted}
               />
             </Pressable>
 
-            {/* WhatsApp quick contact */}
-            {(store.whatsapp || store.owner_whatsapp || store.phone) ? (
-              <Pressable
-                style={[s.actionCircle, { backgroundColor: '#DCFCE7', borderColor: '#22c55e' }]}
-                onPress={() => {
-                  const phone = (store.whatsapp || store.owner_whatsapp || store.phone || '').replace(/\D/g, '');
-                  Linking.openURL(`https://wa.me/${phone}`).catch(() => {});
-                }}
-              >
-                <MaterialIcons name="chat" size={20} color="#16a34a" />
-              </Pressable>
-            ) : null}
-
-            {/* Share */}
+            {/* Share (Circle) */}
             <Pressable
-              style={[s.actionCircle, { backgroundColor: colors.surfaceTint, borderColor: colors.borderLight, opacity: shareLoading ? 0.6 : 1 }]}
+              style={[s.actionCircle, { 
+                width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center',
+                backgroundColor: colors.surfaceTint, borderWidth: 1, borderColor: colors.borderLight, opacity: shareLoading ? 0.6 : 1 
+              }]}
               onPress={handleShare}
               disabled={shareLoading}
             >
               {shareLoading
                 ? <ActivityIndicator size="small" color={colors.textMuted} />
-                : <MaterialIcons name="share" size={20} color={colors.textMuted} />}
+                : <MaterialIcons name="share" size={22} color={colors.textMuted} />}
             </Pressable>
+
           </View>
 
           {/* Description */}
           {storeDesc ? (
-            <Text style={[s.storeDesc, { color: colors.textSecondary }]} numberOfLines={3}>
+            <Text style={[s.storeDesc, { color: colors.textSecondary, marginTop: 16 }]} numberOfLines={3}>
               {storeDesc}
             </Text>
           ) : null}
         </View>
-
         {/* ═══════════════════════════════════════════════════════════
             SECTION 3 — MENU (Grouped vertically by category)
         ═══════════════════════════════════════════════════════════ */}
