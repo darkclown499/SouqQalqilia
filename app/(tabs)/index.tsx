@@ -93,6 +93,12 @@ const _initCardInfoH = 92;
 const _initRowH = _initImgH + _initCardInfoH + _initCardGap;
 let _interstitialsCache: InterstitialAd[] | null = null;
 
+const FEATURED_STORES = [
+  { id: '1', name: 'سوبرماركت التوفير', logo: 'https://images.unsplash.com/photo-1588964895597-cfccd6e2dbf9?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?q=80&w=400&auto=format&fit=crop' },
+  { id: '2', name: 'بوتيك الأناقة', logo: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=400&auto=format&fit=crop' },
+  { id: '3', name: 'مطعم البيك', logo: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=400&auto=format&fit=crop' },
+];
+
 // ── Featured Stores Strip ───────────────────────────────────────────────────
 function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   isAr: boolean; isRTL: boolean; colors: any;
@@ -294,6 +300,29 @@ function buildFeedRows(ads: Ad[], numCols: number): FeedRow[] {
     i += numCols;
   }
   return rows;
+}
+
+function FeaturedVIPStrip({ isRTL, colors }: { isRTL: boolean; colors: any }) {
+  return (
+    <View style={vip.container}>
+      <View style={[vip.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <Text style={[vip.title, { color: colors.textPrimary }]}>⭐ متاجر مميزة</Text>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={vip.scrollContent} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}>
+        {FEATURED_STORES.map((store) => (
+          <Pressable key={store.id} style={[vip.card, isRTL ? { transform: [{ scaleX: -1 }] } : undefined]}>
+            <Image source={{ uri: store.cover }} style={StyleSheet.absoluteFill} contentFit="cover" />
+            <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={StyleSheet.absoluteFill} />
+            <View style={vip.vipBadge}><Text style={vip.vipBadgeText}>VIP</Text></View>
+            <View style={vip.cardContent}>
+              <View style={vip.logoWrap}><Image source={{ uri: store.logo }} style={vip.logo} /></View>
+              <Text style={vip.storeName} numberOfLines={1}>{store.name}</Text>
+            </View>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
 }
 
 export default function HomeScreen() {
@@ -636,6 +665,7 @@ export default function HomeScreen() {
             </View>
           ) : null}
         </Pressable>
+        <FeaturedVIPStrip isRTL={isRTL} colors={colors} />
       ) : null}
 
       {/* ── FEATURED STORES STRIP: rendered as a stable component reference ──
@@ -1600,4 +1630,17 @@ const fStyles = StyleSheet.create({
   areaText: { fontSize: FontSize.md },
   cityBadge: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
   cityBadgeText: { fontSize: 10, fontWeight: '700' },
+});
+const vip = StyleSheet.create({
+  container: { marginTop: 16, marginBottom: 8 },
+  header: { paddingHorizontal: 16, marginBottom: 12 },
+  title: { fontSize: 17, fontWeight: '900' },
+  scrollContent: { paddingHorizontal: 16, gap: 12 },
+  card: { width: 130, height: 160, borderRadius: 16, overflow: 'hidden', backgroundColor: '#E5E7EB' },
+  vipBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+  vipBadgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
+  cardContent: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', padding: 10 },
+  logoWrap: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#fff', padding: 2, marginBottom: 6 },
+  logo: { width: '100%', height: '100%', borderRadius: 21 },
+  storeName: { color: '#fff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
 });
