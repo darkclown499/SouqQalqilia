@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -7,10 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-// عرض البنر رح يكون عرض الشاشة ناقص المسافات الجانبية عشان يطلع متناسق بالملي
 const VIP_WIDTH = SCREEN_WIDTH - 24; 
 
-// 🌟 مصفوفة الـ VIP: ضيف قد ما بدك عروض هون ورح تتحول لسلايدر أوتوماتيكياً!
 const VIP_OFFERS = [
   {
     id: 'vip-1',
@@ -49,6 +47,31 @@ export default function OffersScreen() {
   
   const [activeCategory, setActiveCategory] = useState('الكل');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // 🌟 إعدادات الحركة التلقائية للبنر (Auto-Scroll)
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [currentVipIndex, setCurrentVipIndex] = useState(0);
+
+  useEffect(() => {
+    // تشغيل مؤقت يقلب البنر كل 3.5 ثواني
+    const interval = setInterval(() => {
+      const nextIndex = (currentVipIndex + 1) % VIP_OFFERS.length;
+      scrollViewRef.current?.scrollTo({
+        x: nextIndex * (VIP_WIDTH + 12), // عرض البنر + مسافة الفراغ
+        animated: true,
+      });
+      setCurrentVipIndex(nextIndex);
+    }, 3500);
+
+    return () => clearInterval(interval); // تنظيف المؤقت لما تطلع من الشاشة
+  }, [currentVipIndex]); // نربطه بالـ Index عشان لو سحبت بإيدك يتبرمج من جديد
+
+  // تحديث النقطة السفلية لو الزبون سحب البنر بأصبعه
+  const handleScrollEnd = (event: any) => {
+    const contentOffsetX = Math.abs(event.nativeEvent.contentOffset.x);
+    const newIndex = Math.round(contentOffsetX / (VIP_WIDTH + 12));
+    setCurrentVipIndex(newIndex);
+  };
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -126,13 +149,15 @@ export default function OffersScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
-        {/* 🌟 سلايدر عروض الـ VIP الجديد */}
+        {/* 🌟 سلايدر عروض الـ VIP المتحرك */}
         <View style={styles.vipSliderWrapper}>
           <ScrollView
+            ref={scrollViewRef} // ربطنا الـ Ref هون
             horizontal
             showsHorizontalScrollIndicator={false}
-            snapToInterval={VIP_WIDTH + 12} // عشان السلايدر يوقف بالضبط على العرض التالي (العرض + المسافة)
+            snapToInterval={VIP_WIDTH + 12}
             decelerationRate="fast"
+            onMomentumScrollEnd={handleScrollEnd} // تحديث الحركة اليدوية
             style={styles.rtlScrollView}
             contentContainerStyle={styles.vipSliderContent}
           >
@@ -157,6 +182,16 @@ export default function OffersScreen() {
               </Pressable>
             ))}
           </ScrollView>
+
+          {/* 🌟 نقاط السلايدر السفلية (Pagination) */}
+          <View style={styles.paginationContainer}>
+            {VIP_OFFERS.map((_, index) => (
+              <View 
+                key={index} 
+                style={[styles.dot, currentVipIndex === index && styles.activeDot]} 
+              />
+            ))}
+          </View>
         </View>
 
         {/* باقي العروض */}
@@ -178,14 +213,7 @@ export default function OffersScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff' },
   headerBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19 },
   refreshBtn: { backgroundColor: '#F3F4F6' },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
@@ -201,12 +229,12 @@ const styles = StyleSheet.create({
   
   scrollContent: { padding: 12, paddingBottom: 40 },
   
-  // 🌟 ستايلات سلايدر الـ VIP
-  vipSliderWrapper: { marginBottom: 20 },
+  // ستايلات السلايدر
+  vipSliderWrapper: { marginBottom: 16 },
   vipSliderContent: { gap: 12, flexDirection: 'row' },
   vipBannerContainer: { 
     width: VIP_WIDTH, 
-    height: 260, // 👈 كبرنا الارتفاع هون لـ 260 بكسل!
+    height: 260,
     borderRadius: 20, 
     overflow: 'hidden', 
     backgroundColor: '#1F2937', 
@@ -226,6 +254,25 @@ const styles = StyleSheet.create({
   vipButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E11D48', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, gap: 8 },
   vipButtonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   
+  // 🌟 ستايلات النقاط السفلية (Pagination)
+  paginationContainer: {
+    flexDirection: 'row-reverse', // عكسنا الاتجاه عشان يطابق اليمين لليسار
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#D1D5DB',
+  },
+  activeDot: {
+    width: 24, // النقطة الفعالة بتكون أعرض
+    backgroundColor: '#E11D48',
+  },
+
   masonryContainer: { flexDirection: 'row-reverse', justifyContent: 'space-between' },
   column: { width: '48.5%', gap: 12 },
   bannerCard: { width: '100%', borderRadius: 16, overflow: 'hidden', backgroundColor: '#E5E7EB', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 4 },
