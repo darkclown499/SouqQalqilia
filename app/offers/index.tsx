@@ -7,13 +7,30 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+// عرض البنر رح يكون عرض الشاشة ناقص المسافات الجانبية عشان يطلع متناسق بالملي
+const VIP_WIDTH = SCREEN_WIDTH - 24; 
 
-const VIP_OFFER = {
-  id: 'vip-1',
-  storeName: 'الراعي الرسمي',
-  title: 'مهرجان تحطيم الأسعار - خصومات تصل لـ 70% على كل الأقسام!',
-  image: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?q=80&w=1000&auto=format&fit=crop',
-};
+// 🌟 مصفوفة الـ VIP: ضيف قد ما بدك عروض هون ورح تتحول لسلايدر أوتوماتيكياً!
+const VIP_OFFERS = [
+  {
+    id: 'vip-1',
+    storeName: 'الراعي الرسمي',
+    title: 'مهرجان تحطيم الأسعار - خصومات تصل لـ 70% على كل الأقسام!',
+    image: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?q=80&w=1000&auto=format&fit=crop',
+  },
+  {
+    id: 'vip-2',
+    storeName: 'معرض الإلكترونيات',
+    title: 'أقوى أجهزة اللابتوب بأسعار حصرية لفترة محدودة 💻',
+    image: 'https://images.unsplash.com/photo-1531297172868-942cece06ac1?q=80&w=1000&auto=format&fit=crop',
+  },
+  {
+    id: 'vip-3',
+    storeName: 'بوتيك الأناقة',
+    title: 'اشتري قطعة واحصل على الثانية مجاناً الآن 🎁',
+    image: 'https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=1000&auto=format&fit=crop',
+  }
+];
 
 const DUMMY_OFFERS = [
   { id: '1', storeName: 'سوبرماركت التوفير', title: 'خصم 50% على المنظفات', category: 'سوبرماركت', height: 220, image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=600&auto=format&fit=crop' },
@@ -31,13 +48,10 @@ export default function OffersScreen() {
   const insets = useSafeAreaInsets();
   
   const [activeCategory, setActiveCategory] = useState('الكل');
-  // 🌟 حالة التحديث عشان زر الـ Refresh
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 🌟 دالة لتشغيل حركة التحديث الوهمية (وبالمستقبل بتربطها مع الـ Backend)
   const handleRefresh = () => {
     setIsRefreshing(true);
-    // محاكاة تحميل البيانات لمدة ثانية ونص
     setTimeout(() => {
       setIsRefreshing(false);
     }, 1500);
@@ -75,22 +89,13 @@ export default function OffersScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       
-      {/* 🌟 الهيدر المحدث مع زر التحديث */}
+      {/* الهيدر */}
       <View style={styles.header}>
-        {/* زر الرجوع (على اليسار) */}
         <Pressable onPress={() => router.back()} hitSlop={10} style={styles.headerBtn}>
           <MaterialIcons name="chevron-right" size={28} color="#111827" />
         </Pressable>
-        
-        {/* العنوان */}
         <Text style={styles.headerTitle}>أقوى العروض 🔥</Text>
-        
-        {/* زر التحديث الأنيق (على اليمين) */}
-        <Pressable 
-          onPress={handleRefresh} 
-          disabled={isRefreshing} 
-          style={[styles.headerBtn, styles.refreshBtn]}
-        >
+        <Pressable onPress={handleRefresh} disabled={isRefreshing} style={[styles.headerBtn, styles.refreshBtn]}>
           {isRefreshing ? (
             <ActivityIndicator size="small" color="#E11D48" />
           ) : (
@@ -99,6 +104,7 @@ export default function OffersScreen() {
         </Pressable>
       </View>
 
+      {/* شريط الفلاتر */}
       <View style={styles.filtersWrapper}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rtlScrollView} contentContainerStyle={styles.filtersScrollContent}>
           {CATEGORIES.map((cat) => {
@@ -120,23 +126,40 @@ export default function OffersScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
-        <Pressable style={styles.vipBannerContainer}>
-          <Image source={{ uri: VIP_OFFER.image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
-          <LinearGradient colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.95)']} style={StyleSheet.absoluteFill} />
-          <View style={styles.vipTag}>
-            <FontAwesome5 name="crown" size={12} color="#B45309" />
-            <Text style={styles.vipTagText}>عرض VIP</Text>
-          </View>
-          <View style={styles.vipContent}>
-            <Text style={styles.vipStoreName}>{VIP_OFFER.storeName}</Text>
-            <Text style={styles.vipTitle}>{VIP_OFFER.title}</Text>
-            <View style={styles.vipButton}>
-              <Text style={styles.vipButtonText}>اكتشف العرض الآن</Text>
-              <MaterialIcons name="local-activity" size={16} color="#fff" />
-            </View>
-          </View>
-        </Pressable>
+        {/* 🌟 سلايدر عروض الـ VIP الجديد */}
+        <View style={styles.vipSliderWrapper}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={VIP_WIDTH + 12} // عشان السلايدر يوقف بالضبط على العرض التالي (العرض + المسافة)
+            decelerationRate="fast"
+            style={styles.rtlScrollView}
+            contentContainerStyle={styles.vipSliderContent}
+          >
+            {VIP_OFFERS.map((offer) => (
+              <Pressable key={offer.id} style={[styles.vipBannerContainer, styles.rtlItem]}>
+                <Image source={{ uri: offer.image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
+                <LinearGradient colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.95)']} style={StyleSheet.absoluteFill} />
+                
+                <View style={styles.vipTag}>
+                  <FontAwesome5 name="crown" size={12} color="#B45309" />
+                  <Text style={styles.vipTagText}>عرض VIP</Text>
+                </View>
+                
+                <View style={styles.vipContent}>
+                  <Text style={styles.vipStoreName}>{offer.storeName}</Text>
+                  <Text style={styles.vipTitle}>{offer.title}</Text>
+                  <View style={styles.vipButton}>
+                    <Text style={styles.vipButtonText}>اكتشف العرض الآن</Text>
+                    <MaterialIcons name="local-activity" size={16} color="#fff" />
+                  </View>
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
 
+        {/* باقي العروض */}
         {filteredOffers.length > 0 ? (
           <View style={styles.masonryContainer}>
             <View style={styles.column}>{leftCol.map(renderBanner)}</View>
@@ -163,17 +186,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: '#fff',
   },
-  // 🌟 ستايلات أزرار الهيدر الجديدة
-  headerBtn: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 19,
-  },
-  refreshBtn: {
-    backgroundColor: '#F3F4F6', // خلفية دائرية أنيقة للزر
-  },
+  headerBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19 },
+  refreshBtn: { backgroundColor: '#F3F4F6' },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
   
   filtersWrapper: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingVertical: 10 },
@@ -184,8 +198,26 @@ const styles = StyleSheet.create({
   activeFilterChip: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
   filterText: { fontSize: 13, fontWeight: '700', color: '#4B5563' },
   activeFilterText: { color: '#E11D48', fontWeight: '900' },
+  
   scrollContent: { padding: 12, paddingBottom: 40 },
-  vipBannerContainer: { width: '100%', height: 200, borderRadius: 20, overflow: 'hidden', backgroundColor: '#1F2937', marginBottom: 20, shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8, borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.3)' },
+  
+  // 🌟 ستايلات سلايدر الـ VIP
+  vipSliderWrapper: { marginBottom: 20 },
+  vipSliderContent: { gap: 12, flexDirection: 'row' },
+  vipBannerContainer: { 
+    width: VIP_WIDTH, 
+    height: 260, // 👈 كبرنا الارتفاع هون لـ 260 بكسل!
+    borderRadius: 20, 
+    overflow: 'hidden', 
+    backgroundColor: '#1F2937', 
+    shadowColor: '#F59E0B', 
+    shadowOffset: { width: 0, height: 6 }, 
+    shadowOpacity: 0.3, 
+    shadowRadius: 8, 
+    elevation: 8, 
+    borderWidth: 1, 
+    borderColor: 'rgba(245, 158, 11, 0.3)' 
+  },
   vipTag: { position: 'absolute', top: 12, right: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, gap: 6 },
   vipTagText: { fontSize: 12, fontWeight: '900', color: '#B45309' },
   vipContent: { flex: 1, justifyContent: 'flex-end', padding: 16, alignItems: 'flex-end' },
@@ -193,6 +225,7 @@ const styles = StyleSheet.create({
   vipTitle: { color: '#ffffff', fontSize: 18, fontWeight: '900', textAlign: 'right', lineHeight: 26, marginBottom: 12 },
   vipButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E11D48', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, gap: 8 },
   vipButtonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  
   masonryContainer: { flexDirection: 'row-reverse', justifyContent: 'space-between' },
   column: { width: '48.5%', gap: 12 },
   bannerCard: { width: '100%', borderRadius: 16, overflow: 'hidden', backgroundColor: '#E5E7EB', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 4 },
