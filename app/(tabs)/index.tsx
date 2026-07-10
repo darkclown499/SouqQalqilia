@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import FloatingOffersButton from '@/components/FloatingOffersButton';
 
 const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
 const MAX_RECENTLY_VIEWED = 6;
@@ -1181,6 +1182,7 @@ export default function HomeScreen() {
           </View>
         </View>
       ) : null}
+    <FloatingOffersButton />
     </View>
   );
 }
