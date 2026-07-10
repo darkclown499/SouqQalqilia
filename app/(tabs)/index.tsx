@@ -113,7 +113,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
 
   return (
     <View style={{ marginVertical: 20 }}>
-      <Text style={{ fontSize: 20, fontWeight: '900', paddingHorizontal: 16, marginBottom: 16, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }}>
+      <Text style={{ fontSize: 17, fontWeight: '700', paddingHorizontal: 16, marginBottom: 16, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }}>
         {isAr ? 'متاجر مميزة 👑' : 'Featured Stores 👑'}
       </Text>
       
