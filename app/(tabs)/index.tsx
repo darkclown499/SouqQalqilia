@@ -98,6 +98,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 
 // ── Featured Stores Strip ───────────────────────────────────────────────────
+// ── Featured Stores Strip (التصميم الجديد والفخم) ───────────────────────────
 function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   isAr: boolean; isRTL: boolean; colors: any;
   onPress: (storeId: string) => void;
@@ -107,23 +108,17 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   const scrollXRef = React.useRef(0);
   const isPausedRef = React.useRef(false);
   const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-  const totalWidthRef = React.useRef(0); // estimated total scrollable width
+  const totalWidthRef = React.useRef(0);
 
   React.useEffect(() => {
     fetchFeaturedStores().then(({ data }) => {
-      setStores(data);
-      // Double the array for seamless looping when many stores are available
-      if (data.length >= 3) {
-        setStores([...data, ...data]);
-      }
+      setStores(data.length >= 3 ? [...data, ...data] : data);
     });
   }, []);
 
-  // W6 fix: clear any existing timer before starting a new interval so that
-  // doubling the stores array (for loop) doesn't stack multiple setInterval calls.
   React.useEffect(() => {
     if (stores.length === 0) return;
-    const CARD_W = 104; // card + gap
+    const CARD_W = 120;
     const HALF = stores.length / 2;
     totalWidthRef.current = CARD_W * HALF;
 
@@ -131,7 +126,6 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     timerRef.current = setInterval(() => {
       if (isPausedRef.current) return;
       scrollXRef.current += 1;
-      // When we have scrolled past the first copy, jump back silently
       if (scrollXRef.current >= totalWidthRef.current) {
         scrollXRef.current = 0;
         flatRef.current?.scrollToOffset({ offset: 0, animated: false });
@@ -140,82 +134,45 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
       flatRef.current?.scrollToOffset({ offset: scrollXRef.current, animated: false });
     }, 20);
 
-    return () => {
-      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [stores.length]);
-
-  const resumeAfterPause = React.useCallback(() => {
-    isPausedRef.current = true;
-    // Resume after 4 seconds of no interaction
-    const resume = setTimeout(() => { isPausedRef.current = false; }, 4000);
-    return () => clearTimeout(resume);
-  }, []);
 
   if (stores.length === 0) return null;
 
   return (
-    <View style={fs.wrapper}>
-      <View style={[fs.labelRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <View style={[fs.labelDot, { backgroundColor: '#f59e0b' }]} />
-        <Text style={[fs.labelText, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
-          {isAr ? 'متاجر مميزة' : 'Featured Stores'}
-        </Text>
-        <View style={[fs.liveBadge, { backgroundColor: '#fef3c7' }]}>
-          <View style={fs.liveDot} />
-          <Text style={[fs.liveText, { color: '#92400e' }]}>{isAr ? 'مباشر' : 'Live'}</Text>
-        </View>
-      </View>
+    <View style={{ marginVertical: 20 }}>
+      <Text style={{ fontSize: 20, fontWeight: '900', paddingHorizontal: 16, marginBottom: 16, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }}>
+        {isAr ? 'متاجر مميزة ⭐️' : 'Featured Stores ⭐️'}
+      </Text>
       <FlatList
         ref={flatRef}
-        data={stores}
         horizontal
-        keyExtractor={(item, i) => `${item.id}-${i}`}
         showsHorizontalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onScrollBeginDrag={() => { isPausedRef.current = true; }}
-        onScrollEndDrag={(e) => {
-          scrollXRef.current = e.nativeEvent.contentOffset.x;
-          resumeAfterPause();
-        }}
-        onMomentumScrollEnd={(e) => {
-          scrollXRef.current = e.nativeEvent.contentOffset.x;
-        }}
-        contentContainerStyle={[fs.listContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-        renderItem={({ item: store }) => {
-          const open = checkStoreIsOpen(store);
-          const name = isAr ? (store.name_ar || store.name) : store.name;
-          return (
-            <Pressable
-              style={({ pressed }) => [fs.card, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.88 : (open ? 1 : 0.5) }]}
-              onPress={() => onPress(store.id)}
-            >
-              {/* Circular logo with live border */}
-              <View style={[fs.logoWrap, {
-                borderColor: open ? '#22c55e' : '#9ca3af',
-                borderWidth: 2.5,
-                backgroundColor: colors.surfaceTint,
-              }]}>
-                {store.logo_url ? (
-                  <Image source={{ uri: store.logo_url }} style={fs.logo} contentFit="cover" transition={200} cachePolicy="disk" />
-                ) : (
-                  <MaterialIcons name="storefront" size={22} color={colors.primary} />
-                )}
-                {/* Status dot */}
-                <View style={[fs.statusDot, { backgroundColor: open ? '#22c55e' : '#9ca3af', borderColor: colors.surface }]} />
-              </View>
-              <Text style={[fs.storeName, { color: colors.textPrimary }]} numberOfLines={2}>
-                {name}
-              </Text>
-              {/* Closed label */}
-              {!open ? (
-                <View style={fs.closedBadge}>
-                  <Text style={fs.closedBadgeText}>مغلق 🔴</Text>
-                </View>
-              ) : null}
-            </Pressable>
-          );
-        }}
+        data={stores}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
+        renderItem={({ item: store }) => (
+          <Pressable 
+            style={{ width: 110, alignItems: 'center', gap: 8 }}
+            onPress={() => onPress(store.id)}
+            onPressIn={() => isPausedRef.current = true}
+            onPressOut={() => isPausedRef.current = false}
+          >
+            <View style={{ 
+              width: 80, height: 80, borderRadius: 25, 
+              padding: 3, backgroundColor: colors.surface,
+              shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15, shadowRadius: 8, elevation: 5 
+            }}>
+              <Image 
+                source={{ uri: store.logo_url }} 
+                style={{ width: '100%', height: '100%', borderRadius: 22 }} 
+              />
+            </View>
+            <Text style={{ fontSize: 12, fontWeight: '700', textAlign: 'center', color: colors.textPrimary }} numberOfLines={2}>
+              {isAr ? (store.name_ar || store.name) : store.name}
+            </Text>
+          </Pressable>
+        )}
       />
     </View>
   );
@@ -298,33 +255,6 @@ function buildFeedRows(ads: Ad[], numCols: number): FeedRow[] {
     i += numCols;
   }
   return rows;
-}
-
-function FeaturedVIPStrip({ isRTL, colors, onPress }: { isRTL: boolean; colors: any; onPress: (storeId: string) => void }) {
-  return (
-    <View style={vip.container}>
-      <View style={[vip.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <Text style={[vip.title, { color: colors.textPrimary }]}>⭐ متاجر مميزة</Text>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={vip.scrollContent} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}>
-        {FEATURED_STORES.map((store) => (
-          <Pressable 
-            key={store.id} 
-            style={[vip.card, isRTL ? { transform: [{ scaleX: -1 }] } : undefined]}
-            onPress={() => onPress(store.id)} // 👈 ضفنا أمر الضغط هون
-          >
-            <Image source={{ uri: store.cover }} style={StyleSheet.absoluteFill} contentFit="cover" />
-            <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={StyleSheet.absoluteFill} />
-            <View style={vip.vipBadge}><Text style={vip.vipBadgeText}>VIP</Text></View>
-            <View style={vip.cardContent}>
-              <View style={vip.logoWrap}><Image source={{ uri: store.logo }} style={vip.logo} /></View>
-              <Text style={vip.storeName} numberOfLines={1}>{store.name}</Text>
-            </View>
-          </Pressable>
-        ))}
-      </ScrollView>
-    </View>
-  );
 }
 
 export default function HomeScreen() {
@@ -620,17 +550,6 @@ export default function HomeScreen() {
     router.push(`/store/${storeId}` as any);
   }, [router]);
 
-  // FeaturedStoresStrip is kept as a stable node outside ListHeader useMemo
-  // so its internal auto-scroll interval never resets when ads list changes.
-  const featuredStoresNode = (
-    <FeaturedStoresStrip
-      isAr={isAr}
-      isRTL={isRTL}
-      colors={colors}
-      onPress={handleFeaturedStorePress}
-    />
-  );
-
   const ListHeader = useMemo(() => (
     <>
       {/* ── BANNER ── */}
@@ -668,7 +587,6 @@ export default function HomeScreen() {
           ) : null}
         </Pressable>
       ) : null}
-      {/* <FeaturedVIPStrip isRTL={isRTL} colors={colors} onPress={handleFeaturedStorePress} /> */}
       {/* ── FEATURED STORES STRIP: rendered as a stable component reference ──
            NOT inlined here to prevent remounting the auto-scroll interval
            every time filteredAds.length or other dependencies change. ── */}
