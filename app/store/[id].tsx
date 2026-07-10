@@ -99,23 +99,52 @@ function ProductCard({
         </Text>
 
         {!unavailable ? (
-          qty > 0 ? (
+         qty > 0 ? (
             /* Qty controls */
-            <View style={[pc.qtyRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <Pressable style={[pc.qtyMinus]} onPress={onRemove} hitSlop={6}>
-                <MaterialIcons name="remove" size={12} color={colors.error} />
+            <View style={[pc.qtyRow, { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' }]}>
+              {/* زر الناقص (أحمر) */}
+              <Pressable 
+                onPress={onRemove} 
+                hitSlop={8}
+                style={{
+                  width: 32, height: 32, borderRadius: 16,
+                  backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#EF4444',
+                  alignItems: 'center', justifyContent: 'center'
+                }}
+              >
+                <MaterialIcons name="remove" size={18} color="#EF4444" />
               </Pressable>
-              <View style={[pc.qtyBadge, { backgroundColor: colors.primary }]}>
-                <Text style={pc.qtyBadgeText}>{qty}</Text>
-              </View>
-              <Pressable style={[pc.addCircle, { backgroundColor: colors.primary }]} onPress={onAdd} hitSlop={6}>
-                <MaterialIcons name="add" size={14} color="#fff" />
+
+              {/* كمية المنتج */}
+              <Text style={{ fontSize: 16, fontWeight: '800', marginHorizontal: 8, color: '#111827' }}>
+                {qty}
+              </Text>
+
+              {/* زر الزائد (أخضر) */}
+              <Pressable 
+                onPress={onAdd} 
+                hitSlop={8}
+                style={{
+                  width: 32, height: 32, borderRadius: 16,
+                  backgroundColor: '#DCFCE7', borderWidth: 1, borderColor: '#22c55e',
+                  alignItems: 'center', justifyContent: 'center'
+                }}
+              >
+                <MaterialIcons name="add" size={18} color="#22c55e" />
               </Pressable>
             </View>
           ) : (
-            /* + button */
-            <Pressable style={[pc.addCircle, { backgroundColor: colors.primary }]} onPress={onAdd} hitSlop={4}>
-              <MaterialIcons name="add" size={16} color="#fff" />
+            /* + button only */
+            <Pressable 
+              onPress={onAdd} 
+              hitSlop={8}
+              style={{
+                width: 32, height: 32, borderRadius: 16,
+                backgroundColor: '#DCFCE7', borderWidth: 1, borderColor: '#22c55e',
+                alignItems: 'center', justifyContent: 'center'
+              }}
+            >
+              <MaterialIcons name="add" size={18} color="#22c55e" />
             </Pressable>
           )
         ) : (
