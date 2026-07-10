@@ -24,7 +24,6 @@ import {
 } from '@/services/storeCategoriesService';
 import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
 import { FontSize, Radius, Spacing } from '@/constants/theme';
-import { FontSize, Radius, Spacing } from '@/constants/theme';
 
 // 👈 حطه هون بالضبط
 const FEATURED_STORE_IDS = ['ID1', 'ID2']; 
