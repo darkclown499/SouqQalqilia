@@ -5,7 +5,6 @@ import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// بيانات وهمية للعروض (بأطوال مختلفة لمحاكاة التصميم)
 const DUMMY_OFFERS = [
   { id: '1', storeName: 'سوبرماركت التوفير', title: 'خصم 50% على المنظفات', height: 220, image: 'https://images.unsplash.com/photo-1584473457406-6240486418e9?auto=format&fit=crop&q=80&w=400' },
   { id: '2', storeName: 'صيدلية الشفاء', title: 'عروض الفيتامينات', height: 160, image: 'https://images.unsplash.com/photo-1584308666744-24d5e4a778fc?auto=format&fit=crop&q=80&w=400' },
@@ -19,7 +18,6 @@ export default function OffersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // تقسيم العروض لعمودين (يمين ويسار) لعمل شكل الـ Masonry
   const { leftCol, rightCol } = useMemo(() => {
     const left: typeof DUMMY_OFFERS = [];
     const right: typeof DUMMY_OFFERS = [];
@@ -30,15 +28,13 @@ export default function OffersScreen() {
     return { leftCol: left, rightCol: right };
   }, []);
 
-  // دالة لرسم كرت العرض
   const renderBanner = (item: typeof DUMMY_OFFERS[0]) => (
     <Pressable 
       key={item.id} 
       style={[styles.bannerCard, { height: item.height }]}
-      onPress={() => console.log('الذهاب لعرض:', item.id)} // تقدر تربطها بصفحة المتجر بعدين
+      onPress={() => console.log('الذهاب لعرض:', item.id)}
     >
       <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
-      {/* طبقة تظليل عشان النص يكون واضح */}
       <View style={styles.overlay} />
       
       <View style={styles.bannerContent}>
@@ -53,24 +49,20 @@ export default function OffersScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* الهيدر */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
           <MaterialIcons name="chevron-right" size={28} color="#111827" />
         </Pressable>
         <Text style={styles.headerTitle}>أقوى العروض 🔥</Text>
-        <View style={{ width: 28 }} /> {/* عشان نوسط العنوان */}
+        <View style={{ width: 28 }} />
       </View>
 
-      {/* المحتوى (البنرات) */}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.masonryContainer}>
-          {/* العمود الأول (يمين) */}
           <View style={styles.column}>
             {leftCol.map(renderBanner)}
           </View>
           
-          {/* العمود الثاني (يسار) */}
           <View style={styles.column}>
             {rightCol.map(renderBanner)}
           </View>
@@ -83,7 +75,7 @@ export default function OffersScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB', // خلفية مريحة للعين
+    backgroundColor: '#F9FAFB',
   },
   header: {
     flexDirection: 'row',
@@ -108,19 +100,18 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   masonryContainer: {
-    flexDirection: 'row-reverse', // عشان نبلش من اليمين
+    flexDirection: 'row-reverse',
     justifyContent: 'space-between',
   },
   column: {
-    width: '48%', // كل عمود بياخذ أقل من النص بشوي عشان الفراغ اللّي بالنص
-    gap: 12,      // الفراغ العمودي بين البنرات
+    width: '48%',
+    gap: 12,
   },
   bannerCard: {
     width: '100%',
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#E5E7EB',
-    // الظل (Shadow)
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -129,7 +120,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)', // تظليل خفيف
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   bannerContent: {
     flex: 1,
