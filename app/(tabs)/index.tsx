@@ -104,73 +104,64 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   onPress: (storeId: string) => void;
 }) {
   const [stores, setStores] = React.useState<StoreType[]>([]);
-  const flatRef = React.useRef<FlatList<StoreType>>(null);
-  const scrollXRef = React.useRef(0);
-  const isPausedRef = React.useRef(false);
-  const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-  const totalWidthRef = React.useRef(0);
 
   React.useEffect(() => {
-    fetchFeaturedStores().then(({ data }) => {
-      setStores(data.length >= 3 ? [...data, ...data] : data);
-    });
+    fetchFeaturedStores().then(({ data }) => setStores(data));
   }, []);
-
-  React.useEffect(() => {
-    if (stores.length === 0) return;
-    const CARD_W = 120;
-    const HALF = stores.length / 2;
-    totalWidthRef.current = CARD_W * HALF;
-
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      if (isPausedRef.current) return;
-      scrollXRef.current += 1;
-      if (scrollXRef.current >= totalWidthRef.current) {
-        scrollXRef.current = 0;
-        flatRef.current?.scrollToOffset({ offset: 0, animated: false });
-        return;
-      }
-      flatRef.current?.scrollToOffset({ offset: scrollXRef.current, animated: false });
-    }, 20);
-
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [stores.length]);
 
   if (stores.length === 0) return null;
 
   return (
     <View style={{ marginVertical: 20 }}>
       <Text style={{ fontSize: 20, fontWeight: '900', paddingHorizontal: 16, marginBottom: 16, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }}>
-        {isAr ? 'متاجر مميزة ⭐️' : 'Featured Stores ⭐️'}
+        {isAr ? 'متاجر مميزة 👑' : 'Featured Stores 👑'}
       </Text>
+      
       <FlatList
-        ref={flatRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         data={stores}
         contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
         renderItem={({ item: store }) => (
           <Pressable 
-            style={{ width: 110, alignItems: 'center', gap: 8 }}
+            style={{ width: 130, height: 180, borderRadius: 24, overflow: 'hidden', backgroundColor: colors.surface }}
             onPress={() => onPress(store.id)}
-            onPressIn={() => isPausedRef.current = true}
-            onPressOut={() => isPausedRef.current = false}
           >
-            <View style={{ 
-              width: 80, height: 80, borderRadius: 25, 
-              padding: 3, backgroundColor: colors.surface,
-              shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.15, shadowRadius: 8, elevation: 5 
-            }}>
-              <Image 
-                source={{ uri: store.logo_url }} 
-                style={{ width: '100%', height: '100%', borderRadius: 22 }} 
-              />
+            {/* 1. خلفية المتجر (البنر) */}
+            <Image 
+              source={{ uri: store.cover_url || store.logo_url }} 
+              style={StyleSheet.absoluteFill} 
+              contentFit="cover" 
+            />
+            
+            {/* 2. تدرج غامق عشان الكلام واللوجو يبينوا بوضوح */}
+            <LinearGradient 
+              colors={['transparent', 'rgba(0,0,0,0.9)']} 
+              style={StyleSheet.absoluteFill} 
+            />
+
+            {/* 3. شارة VIP بريميم (تدرج ذهبي) */}
+            <LinearGradient 
+              colors={['#FCD34D', '#F59E0B']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={{ position: 'absolute', top: 10, left: 10, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}
+            >
+              <Text style={{ color: '#000', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>VIP</Text>
+            </LinearGradient>
+
+            {/* 4. اللوجو والاسم */}
+            <View style={{ flex: 1, justifyContent: 'flex-end', padding: 12, alignItems: 'center' }}>
+              <View style={{ 
+                width: 55, height: 55, borderRadius: 28, backgroundColor: '#fff', 
+                padding: 2, marginBottom: 8,
+                shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, elevation: 5
+              }}>
+                <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 26 }} />
+              </View>
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }} numberOfLines={1}>
+                {isAr ? (store.name_ar || store.name) : store.name}
+              </Text>
             </View>
-            <Text style={{ fontSize: 12, fontWeight: '700', textAlign: 'center', color: colors.textPrimary }} numberOfLines={2}>
-              {isAr ? (store.name_ar || store.name) : store.name}
-            </Text>
           </Pressable>
         )}
       />
