@@ -925,8 +925,6 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      </View>
-
       {/* ── OFFLINE BANNER ── */}
       {!isOnline ? (
         <View style={styles.offlineBanner}>
