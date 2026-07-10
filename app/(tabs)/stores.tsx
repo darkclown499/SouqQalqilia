@@ -53,7 +53,7 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   const scrollRef = useRef<ScrollView>(null);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userScrolling = useRef(false);
-  const BANNER_H = Math.round(SCREEN_W * 0.54) + 16; // 👈 زودنا الارتفاع عشان يستوعب النقاط تحت
+  const BANNER_H = Math.round(SCREEN_W * 0.54);
 
   const startAuto = useCallback(() => {
     if (banners.length <= 1) return;
