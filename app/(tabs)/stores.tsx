@@ -395,7 +395,7 @@ function CategoryBlock({
           ) : (
             <MaterialIcons name={cat.icon as any} size={18} color={cat.color} />
           )}
-        </View>
+        </View>س
         <Text style={[cb.title, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
           {catName}
         </Text>
@@ -410,16 +410,16 @@ function CategoryBlock({
       {/* 2-column grid */}
       <View style={cb.grid}>
         {displayStores.map((store) => (
-          <PremiumStoreCard
-            key={store.id}
-            store={store}
-            rating={ratings[store.id] ?? { avg: 0, count: 0 }}
-            isAr={isAr}
-            isRTL={isRTL}
-            colors={colors}
-            onPress={() => onStorePress(store.id)}
-          />
-        ))}
+  <PremiumStoreCard
+    key={store.id}
+    store={store}
+    rating={ratings[store.id] ?? { avg: 0, count: 0 }}
+    isAr={isAr}
+    isRTL={isRTL}
+    colors={colors}
+        onPress={() => onStorePress(store.id)}
+         />
+       ))}
         {displayStores.length % 2 !== 0 ? (
           <View style={{ width: STORE_CARD_W }} />
         ) : null}
