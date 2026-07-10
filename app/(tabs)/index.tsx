@@ -903,6 +903,34 @@ export default function HomeScreen() {
 
       </View>
 
+      </Pressable>
+
+        {/* ── زر العروض النارية 🔥 ── */}
+        <Pressable
+          onPress={() => router.push('/offers')}
+          style={({ pressed }) => ({
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#FEF2F2', // لون أحمر فاتح ملفت
+            paddingHorizontal: 12,
+            paddingVertical: 12,
+            borderRadius: 14,
+            marginTop: 14,
+            gap: 8,
+            transform: [{ scale: pressed ? 0.98 : 1 }],
+            borderWidth: 1,
+            borderColor: '#FECACA'
+          })}
+        >
+          <MaterialIcons name="local-fire-department" size={22} color="#EF4444" />
+          <Text style={{ color: '#EF4444', fontWeight: '900', fontSize: 15, letterSpacing: 0.5 }}>
+            {isAr ? 'عروض نار حصرية 🔥' : 'Hot Exclusive Deals 🔥'}
+          </Text>
+        </Pressable>
+
+      </View>
+
       {/* ── OFFLINE BANNER ── */}
       {!isOnline ? (
         <View style={styles.offlineBanner}>
