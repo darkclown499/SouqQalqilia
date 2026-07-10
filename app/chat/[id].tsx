@@ -405,30 +405,22 @@ export default function ChatScreen() {
 
   const doMark = useCallback(async () => {
     if (!id || !user) return;
-    await markMessagesRead(id, user.id);
-    markReadLocally(user.id);
-    markDeliveredLocally(user.id);
-    // ── Immediately sync the in-app tab-bar unread badge ──────────────────
-    triggerUnreadRefresh();
-    // ── Also update the OS app-icon badge ─────────────────────────────────
     try {
-      if (Platform.OS !== 'web') {
-        const Notifications = require('expo-notifications');
-        const supabase = getSupabaseClient();
-        const { data: convRows } = await supabase
-          .from('conversations').select('id')
-          .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
-        const convIds = (convRows ?? []).map((c: any) => c.id);
-        if (convIds.length > 0) {
-          const { count } = await supabase
-            .from('messages').select('id', { count: 'exact', head: true })
-            .is('read_at', null).neq('sender_id', user.id).in('conversation_id', convIds);
-          await Notifications.setBadgeCountAsync(count ?? 0);
-        } else {
-          await Notifications.setBadgeCountAsync(0);
-        }
-      }
-    } catch (_) {}
+      const supabase = getSupabaseClient();
+      // تحديث رسائل الطرف الآخر فقط لتصبح مقروءة (قاعدة البيانات)
+      await supabase
+        .from('messages')
+        .update({ read_at: new Date().toISOString() })
+        .eq('conversation_id', id)
+        .neq('sender_id', user.id) // نحدث رسائل الشخص الثاني فقط
+        .is('read_at', null); // فقط اللي لسه مش مقروءة
+        
+      // تحديث الواجهة فوراً
+      markReadLocally(user.id);
+      triggerUnreadRefresh();
+    } catch (e) {
+      console.error("Mark read error:", e);
+    }
   }, [id, user?.id, markReadLocally]);
 
   useEffect(() => {
