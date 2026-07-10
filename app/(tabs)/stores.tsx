@@ -108,13 +108,6 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
           </View>
         ))}
       </ScrollView>
-      <View style={bc.dots}>
-        {displayBanners.map((_, i) => (
-          <Pressable key={i} style={[bc.dot, activeIdx === i ? bc.dotActive : bc.dotInactive]}
-            onPress={() => { setActiveIdx(i); scrollRef.current?.scrollTo({ x: i * SCREEN_W, animated: true }); }}
-          />
-        ))}
-      </View>
     </View>
   );
 }
