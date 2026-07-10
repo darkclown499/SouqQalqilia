@@ -459,8 +459,8 @@ export default function StoreDetailScreen() {
 
     // إضافة التنبيه الإلزامي
     lines.push('');
-    lines.push(isAr ? '⚠️ *الرجاء تأكيد الطلب من المطعم*' : '⚠️ *Please confirm the order from the restaurant*');
-    lines.push(isAr ? 'شكراً لطلبكم! 🙏' : 'Thank you for your order! 🙏');
+    lines.push(isAr ? '⚠️ *الرجاء تأكيد الطلب*' : '⚠️ *Please confirm the order from the restaurant*');
+    lines.push(isAr ? 'شكراً لكم! 🙏' : 'Thank you for your order! 🙏');
 
     const message = encodeURIComponent(lines.join('\n'));
     const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
