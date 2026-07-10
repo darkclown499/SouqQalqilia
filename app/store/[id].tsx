@@ -27,12 +27,11 @@ const HALF_LOGO = LOGO_SIZE / 2;
 
 // ── Cart types ────────────────────────────────────────────────────────────────
 interface CartItem { product: StoreProduct; qty: number }
-type OrderType = 'delivery' | 'pickup' | 'dine_in';
+type OrderType = 'delivery' | 'pickup';
 
 const ORDER_LABELS: Record<OrderType, { ar: string; en: string; icon: string }> = {
   delivery: { ar: 'توصيل للمنزل', en: 'Delivery', icon: 'delivery-dining' },
   pickup:   { ar: 'استلام من المتجر', en: 'Pickup', icon: 'shopping-bag' },
-  dine_in:  { ar: 'تناول في المكان', en: 'Dine-in', icon: 'restaurant' },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -293,6 +292,7 @@ export default function StoreDetailScreen() {
   const [cart, setCart] = useState<Record<string, CartItem>>({});
   const [cartVisible, setCartVisible] = useState(false);
   const [orderNote, setOrderNote] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'order_type'>('cart');
   const [orderType, setOrderType] = useState<OrderType>('delivery');
   const cartAnim = useSharedValue(0);
@@ -412,6 +412,7 @@ export default function StoreDetailScreen() {
 
   // ── WhatsApp checkout ───────────────────────────────────────────────────────
   // ── WhatsApp checkout ───────────────────────────────────────────────────────
+// ── WhatsApp checkout ───────────────────────────────────────────────────────
   const handleConfirmOrder = useCallback(() => {
     if (!store || !isOpen) return;
     getSupabaseClient().from('stores').select('whatsapp_clicks_count').eq('id', store.id).single()
@@ -431,6 +432,14 @@ export default function StoreDetailScreen() {
       isAr ? `🛒 طلب جديد من سوق قلقيلية` : `🛒 New Order from Souq Qalqilya`,
       '',
       isAr ? `👤 الاسم: ${userName}` : `👤 Name: ${userName}`,
+    ];
+
+    // إضافة رقم الهاتف إذا كان الطلب توصيل
+    if (orderType === 'delivery' && customerPhone.trim().length > 0) {
+      lines.push(isAr ? `📞 رقم التواصل: ${customerPhone}` : `📞 Phone: ${customerPhone}`);
+    }
+
+    lines.push(
       isAr ? `📋 نوع الطلب: ${orderTypeLabel}` : `📋 Order type: ${orderTypeLabel}`,
       isAr ? `🏪 المتجر: ${storeName}` : `🏪 Store: ${storeName}`,
       '',
@@ -441,16 +450,16 @@ export default function StoreDetailScreen() {
       }),
       '',
       isAr ? `💰 المجموع: ${cartTotal.toFixed(2)}₪` : `💰 Total: ${cartTotal.toFixed(2)}₪`,
-    ];
+    );
 
-    // ── إضافة الملاحظات هين بشكل صحيح ──
     if (orderNote && orderNote.trim().length > 0) {
-      lines.push(''); // سطر فاضي للترتيب
+      lines.push('');
       lines.push(isAr ? `📝 ملاحظات الزبون: ${orderNote}` : `📝 Notes: ${orderNote}`);
     }
 
-    // سطر الشكر في النهاية
+    // إضافة التنبيه الإلزامي
     lines.push('');
+    lines.push(isAr ? '⚠️ *الرجاء تأكيد الطلب من المطعم*' : '⚠️ *Please confirm the order from the restaurant*');
     lines.push(isAr ? 'شكراً لطلبكم! 🙏' : 'Thank you for your order! 🙏');
 
     const message = encodeURIComponent(lines.join('\n'));
@@ -459,8 +468,9 @@ export default function StoreDetailScreen() {
     setCartVisible(false);
     setCart({});
     setCheckoutStep('cart');
-    setOrderNote(''); // تصفير حقل الملاحظات بعد إرسال الطلب
-  }, [store, user, orderType, cartItems, cartTotal, isAr, isOpen, orderNote]);
+    setOrderNote('');
+    setCustomerPhone(''); // تصفير الرقم بعد الطلب
+  }, [store, user, orderType, cartItems, cartTotal, isAr, isOpen, orderNote, customerPhone]);
 
   // ── Animated style — MUST be declared before any conditional returns (Rules of Hooks) ──
   const cartBtnAnimStyle = useAnimatedStyle(() => ({
@@ -935,18 +945,47 @@ export default function StoreDetailScreen() {
                   })}
                 </View>
 
+                {/* ── حقل رقم الهاتف (يظهر فقط للتوصيل) ── */}
+                {orderType === 'delivery' ? (
+                  <View style={{ paddingHorizontal: 20, marginTop: 10 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textSecondary, marginBottom: 8, textAlign: isRTL ? 'right' : 'left' }}>
+                      {isAr ? 'رقم الهاتف للتواصل *' : 'Contact Phone Number *'}
+                    </Text>
+                    <TextInput
+                      style={{
+                        backgroundColor: colors.surfaceTint || '#F3F4F6',
+                        borderRadius: 12,
+                        padding: 14,
+                        textAlign: isRTL ? 'right' : 'left',
+                        color: colors.textPrimary,
+                        borderWidth: 1,
+                        borderColor: colors.borderLight,
+                        fontSize: 14
+                      }}
+                      placeholder={isAr ? 'أدخل رقم هاتفك...' : 'Enter your phone number...'}
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="phone-pad"
+                      value={customerPhone}
+                      onChangeText={setCustomerPhone}
+                    />
+                  </View>
+                ) : null}
+
+                {/* ── زر التأكيد (مبرمج عشان ما يشتغل إلا لو الرقم مدخل) ── */}
                 <Pressable
                   style={[m.primaryBtn, {
-                    backgroundColor: isOpen ? '#16a34a' : '#9CA3AF',
-                    opacity: isOpen ? 1 : 0.7,
+                    backgroundColor: isOpen && (orderType !== 'delivery' || customerPhone.trim().length > 5) ? '#16a34a' : '#9CA3AF',
+                    opacity: isOpen && (orderType !== 'delivery' || customerPhone.trim().length > 5) ? 1 : 0.7,
                   }]}
-                  onPress={isOpen ? handleConfirmOrder : undefined}
-                  disabled={!isOpen}
+                  onPress={isOpen && (orderType !== 'delivery' || customerPhone.trim().length > 5) ? handleConfirmOrder : undefined}
+                  disabled={!isOpen || (orderType === 'delivery' && customerPhone.trim().length <= 5)}
                 >
                   <MaterialIcons name={isOpen ? 'chat' : 'block'} size={18} color="#fff" />
                   <Text style={m.primaryBtnText}>
                     {isOpen
-                      ? (isAr ? 'تأكيد عبر واتساب' : 'Confirm via WhatsApp')
+                      ? (orderType === 'delivery' && customerPhone.trim().length <= 5 
+                          ? (isAr ? 'يرجى إدخال رقم الهاتف' : 'Enter Phone Number')
+                          : (isAr ? 'تأكيد عبر واتساب' : 'Confirm via WhatsApp'))
                       : (isAr ? 'المتجر مغلق حالياً' : 'Store is Closed')}
                   </Text>
                 </Pressable>
