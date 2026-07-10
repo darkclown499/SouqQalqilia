@@ -900,7 +900,7 @@ export default function HomeScreen() {
           </View>
         </Pressable>
 
-        {/* ── زر العروض النارية 🔥 ── */}
+       {/* ── زر العروض النارية 🔥 ── */}
         <Pressable
           onPress={() => router.push('/offers')}
           style={({ pressed }) => ({
@@ -923,6 +923,7 @@ export default function HomeScreen() {
             {isAr ? 'عروض نار حصرية 🔥' : 'Hot Exclusive Deals 🔥'}
           </Text>
         </Pressable>
+      </View>
 
       </View>
 
