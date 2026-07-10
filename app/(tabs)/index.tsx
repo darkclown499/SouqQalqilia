@@ -550,6 +550,15 @@ export default function HomeScreen() {
     router.push(`/store/${storeId}` as any);
   }, [router]);
 
+  const featuredStoresNode = (
+    <FeaturedStoresStrip
+      isAr={isAr}
+      isRTL={isRTL}
+      colors={colors}
+      onPress={handleFeaturedStorePress}
+    />
+  );
+
   const ListHeader = useMemo(() => (
     <>
       {/* ── BANNER ── */}
