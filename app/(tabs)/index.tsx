@@ -302,7 +302,7 @@ function buildFeedRows(ads: Ad[], numCols: number): FeedRow[] {
   return rows;
 }
 
-function FeaturedVIPStrip({ isRTL, colors }: { isRTL: boolean; colors: any }) {
+function FeaturedVIPStrip({ isRTL, colors, onPress }: { isRTL: boolean; colors: any; onPress: (storeId: string) => void }) {
   return (
     <View style={vip.container}>
       <View style={[vip.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -310,7 +310,11 @@ function FeaturedVIPStrip({ isRTL, colors }: { isRTL: boolean; colors: any }) {
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={vip.scrollContent} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}>
         {FEATURED_STORES.map((store) => (
-          <Pressable key={store.id} style={[vip.card, isRTL ? { transform: [{ scaleX: -1 }] } : undefined]}>
+          <Pressable 
+            key={store.id} 
+            style={[vip.card, isRTL ? { transform: [{ scaleX: -1 }] } : undefined]}
+            onPress={() => onPress(store.id)} // 👈 ضفنا أمر الضغط هون
+          >
             <Image source={{ uri: store.cover }} style={StyleSheet.absoluteFill} contentFit="cover" />
             <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={StyleSheet.absoluteFill} />
             <View style={vip.vipBadge}><Text style={vip.vipBadgeText}>VIP</Text></View>
@@ -666,7 +670,7 @@ export default function HomeScreen() {
           ) : null}
         </Pressable>
       ) : null}
-      <FeaturedVIPStrip isRTL={isRTL} colors={colors} />
+      <FeaturedVIPStrip isRTL={isRTL} colors={colors} onPress={handleFeaturedStorePress} />
 
       {/* ── FEATURED STORES STRIP: rendered as a stable component reference ──
            NOT inlined here to prevent remounting the auto-scroll interval
@@ -1640,7 +1644,7 @@ const vip = StyleSheet.create({
   vipBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
   vipBadgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
   cardContent: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', padding: 10 },
-  logoWrap: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#fff', padding: 2, marginBottom: 6 },
-  logo: { width: '100%', height: '100%', borderRadius: 21 },
+  logoWrap: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff', padding: 2, marginBottom: 8 },
+  logo: { width: '100%', height: '100%', borderRadius: 28 },
   storeName: { color: '#fff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
 });
