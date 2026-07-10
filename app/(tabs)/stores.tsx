@@ -686,7 +686,7 @@ export default function StoresScreen() {
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
       {/* ── CUSTOM HEADER ── */}
-      <View style={[s.header, { backgroundColor: colors.primary, paddingTop: insets.top + 8, paddingBottom: 20, borderBottomLeftRadius: 25, borderBottomRightRadius: 25 }]}>
+      <View style={[s.header, { backgroundColor: colors.primary, paddingTop: insets.top + 8, paddingBottom: 15 }]}>
         <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <Pressable
             style={s.headerIconBtn}
