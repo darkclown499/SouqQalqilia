@@ -309,10 +309,20 @@ export default function HomeScreen() {
         .neq('sender_id', user.id)
         .is('read_at', null)
         .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`, { referencedTable: 'conversations' })
-        .order('created_at', { ascending: false })
-        .limit(20);
+        .order('created_at', { ascending: false });
+
       if (data) {
-        setUnreadMessages(data.map((m: any) => ({
+        // فلترة الرسائل للحصول على آخر رسالة لكل محادثة فقط
+        const uniqueConversationsMap = new Map();
+        data.forEach(m => {
+          if (!uniqueConversationsMap.has(m.conversation_id)) {
+            uniqueConversationsMap.set(m.conversation_id, m);
+          }
+        });
+
+        const latestMessages = Array.from(uniqueConversationsMap.values());
+        
+        setUnreadMessages(latestMessages.map((m: any) => ({
           id: m.id,
           conversationId: m.conversation_id,
           senderName: m.user_profiles?.username || m.user_profiles?.email?.split('@')[0] || 'مستخدم',
@@ -320,10 +330,13 @@ export default function HomeScreen() {
           createdAt: m.created_at,
         })));
       }
-    } catch { /* silent */ } finally {
+    } catch (e) {
+      console.error("Error fetching unread:", e);
+    } finally {
       setNotifLoading(false);
     }
   }, [user]);
+
 
   const handleBellPress = useCallback(() => {
     setNotifModalVisible(true);
