@@ -531,7 +531,7 @@ export default function StoreDetailScreen() {
           </Pressable>
         </View>
 
-        {{/* ═══════════════════════════════════════════════════════════
+        {/* ═══════════════════════════════════════════════════════════
             SECTION 2 — OVERLAPPING STORE INFO CARD (PREMIUM DESIGN)
         ═══════════════════════════════════════════════════════════ */}
         <View style={[s.infoCard, { backgroundColor: colors.surface }]}>
