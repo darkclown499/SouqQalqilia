@@ -152,15 +152,30 @@ export default function TabLayout() {
         name="messages"
         options={{ href: null }}
       />
-      <Tabs.Screen
-        name="stores"
-        options={{
-          title: isAr ? 'المتاجر' : 'Stores',
-          tabBarIcon: ({ color, focused }) => (
-            <MaterialIcons name={focused ? 'storefront' : 'storefront'} size={24} color={color} />
-          ),
-        }}
-      />
+     <Tabs.Screen
+  name="stores" // تأكد من الاسم الصحيح للملف
+  options={{
+    title: 'المتاجر',
+    tabBarIcon: ({ color, size }) => (
+      <View style={{ position: 'relative' }}>
+        <MaterialIcons name="storefront" size={size} color={color} />
+        
+        {/* النقطة الحمراء (البادج) */}
+        <View style={{
+          position: 'absolute',
+          right: -6, // تحكم بمكانها يمين/يسار
+          top: -2,   // تحكم بمكانها فوق/تحت
+          backgroundColor: '#EF4444', // اللون الأحمر
+          borderRadius: 6,
+          width: 12,
+          height: 12,
+          borderWidth: 1.5,
+          borderColor: 'white', // إطار أبيض عشان تفصل عن لون التاب
+        }} />
+      </View>
+    ),
+  }}
+/>
       <Tabs.Screen
         name="profile"
         options={{
