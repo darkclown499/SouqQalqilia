@@ -132,25 +132,7 @@ const bc = StyleSheet.create({
   dotInactive: { width: 6, backgroundColor: '#D1D5DB' },
 });
 
-const bc = StyleSheet.create({
-  wrap: { width: '100%', position: 'relative' },
-  slide: { overflow: 'hidden' },
-  gradient: { ...StyleSheet.absoluteFillObject, top: '40%' },
-  textWrap: { position: 'absolute', bottom: 36, left: 16, right: 16, gap: 4 },
-  title: {
-    fontSize: 18, fontWeight: '800', color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4, lineHeight: 24,
-  },
-  sub: { fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
-  dots: {
-    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-    paddingVertical: 10, gap: 6, position: 'absolute', bottom: 0, left: 0, right: 0,
-  },
-  dot: { height: 6, borderRadius: 3 } as any,
-  dotActive: { width: 18, backgroundColor: '#fff' },
-  dotInactive: { width: 6, backgroundColor: 'rgba(255,255,255,0.45)' },
-});
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. QUICK STORE CATEGORY CARD (uses store_categories, NOT product categories)
