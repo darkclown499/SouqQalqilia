@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView,
-  Dimensions, RefreshControl, ActivityIndicator, Platform, TextInput, Linking, Modal,
+  Dimensions, RefreshControl, ActivityIndicator, Platform, TextInput, Linking, Modal, Animated
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -185,8 +185,8 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
                   <View style={{ 
                     width: 70, height: 70, borderRadius: 35, 
                     backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
-                    borderWidth: 3, borderColor: statusColor,
-                    shadowColor: statusColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 8, elevation: 6
+                    borderWidth: 2, borderColor: statusColor,
+                    shadowColor: statusColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 4, elevation: 4
                   }}>
                     <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 32 }} />
                   </View>
@@ -299,6 +299,17 @@ function buildFeedRows(ads: Ad[], numCols: number): FeedRow[] {
 }
 
 export default function HomeScreen() {
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const searchHeight = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [48, 0], // 48 هو ارتفاع مربع البحث
+    extrapolate: 'clamp',
+  });
+  const searchOpacity = scrollY.interpolate({
+    inputRange: [0, 40],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors, isDark } = useTheme();
@@ -842,6 +853,60 @@ export default function HomeScreen() {
               </Text>
             )}
           </View>
+
+          <View style={[styles.headerActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <Pressable
+              style={[styles.headerIconBtn, activeFilterCount > 0 && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
+              onPress={handleOpenFilter}
+              hitSlop={6}
+            >
+              <MaterialIcons name="tune" size={20} color="#fff" />
+              {activeFilterCount > 0 ? (
+                <View style={styles.filterDot}>
+                  <Text style={styles.filterDotText}>{activeFilterCount}</Text>
+                </View>
+              ) : null}
+            </Pressable>
+            <Pressable style={styles.headerIconBtn} onPress={handleBellPress} hitSlop={6}>
+              <MaterialIcons name="notifications" size={20} color="#fff" />
+              {unreadMessages.length > 0 && !notifModalVisible ? (
+                <View style={styles.filterDot}>
+                  <Text style={styles.filterDotText}>
+                    {unreadMessages.length > 9 ? '9+' : String(unreadMessages.length)}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+            
+            {/* ── زر AI بالتصميم الجديد المميز ── */}
+            <Pressable style={[styles.headerIconBtn, { backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' }]} onPress={() => router.push('/ai-support')} hitSlop={6}>
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900', fontStyle: 'italic', textShadowColor: 'rgba(0,0,0,0.2)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>AI</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* ── تم حذف الإحصائيات لتوفير المساحة ── */}
+
+        {/* ── مربع البحث مع تأثير الإخفاء التدريجي (Animated) ── */}
+        <Animated.View style={{ height: searchHeight, opacity: searchOpacity, overflow: 'hidden' }}>
+          <Pressable
+            style={[styles.searchBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.96)', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+            onPress={() => router.push('/search')}
+          >
+            <View style={[styles.searchIconWrap, { backgroundColor: colors.primary + '22' }]}>
+              <MaterialIcons name="search" size={16} color={isDark ? 'rgba(255,255,255,0.7)' : colors.primary} />
+            </View>
+            <Text style={[styles.searchPlaceholder, { color: isDark ? 'rgba(255,255,255,0.5)' : colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+              {t.searchPlaceholder}
+            </Text>
+            <View style={[styles.filterChipInner, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : colors.primaryGhost }]}>
+              <MaterialIcons name="filter-list" size={13} color={isDark ? 'rgba(255,255,255,0.7)' : colors.primary} />
+              <Text style={[styles.filterChipText, { color: isDark ? 'rgba(255,255,255,0.7)' : colors.primary }]}>{isAr ? 'فلتر' : 'Filter'}</Text>
+            </View>
+          </Pressable>
+        </Animated.View>
+
+      </View>
 
           <View style={[styles.headerActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <Pressable
