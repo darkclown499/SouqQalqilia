@@ -100,8 +100,6 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
 }) {
   const [stores, setStores] = React.useState<StoreType[]>([]);
   const [loading, setLoading] = React.useState(true);
-  
-  // 1. مراجع التحكم بالتمرير التلقائي
   const flatListRef = React.useRef<FlatList>(null);
   const scrollIndex = React.useRef(0);
 
@@ -115,26 +113,16 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     });
   }, []);
 
-  // 2. مشغل الحركة التلقائية (Auto-Scroll)
   React.useEffect(() => {
-    if (stores.length <= 1) return; // لا تمرر إذا كان هناك متجر واحد أو أقل
-
+    if (stores.length <= 1) return;
     const timer = setInterval(() => {
-      scrollIndex.current += 1;
-      
-      // العودة للبداية عند الوصول لآخر متجر
-      if (scrollIndex.current >= stores.length) {
-        scrollIndex.current = 0;
-      }
-
-      // حساب الإزاحة: عرض الكارت (150) + المسافة الفاصلة (14) = 164
+      scrollIndex.current = (scrollIndex.current + 1) % stores.length;
       flatListRef.current?.scrollToOffset({
         offset: scrollIndex.current * 164,
         animated: true,
       });
-    }, 3500); // التمرير يتم كل 3.5 ثانية
-
-    return () => clearInterval(timer); // تنظيف المؤقت عند الخروج
+    }, 3500);
+    return () => clearInterval(timer);
   }, [stores]);
 
   if (!loading && stores.length === 0) return null;
@@ -156,7 +144,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
         </ScrollView>
       ) : (
         <FlatList
-          ref={flatListRef} // 3. ربط المرجع بالقائمة
+          ref={flatListRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           data={stores}
@@ -203,7 +191,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
                   <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>VIP</Text>
                 </View>
 
-                <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 16, paddingHorizontal: 12 }}>
+                <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 24, paddingHorizontal: 12 }}>
                   
                   <View style={{ 
                     width: 66, height: 66, borderRadius: 33, 
@@ -221,15 +209,6 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
                   }} numberOfLines={1}>
                     {isAr ? (store.name_ar || store.name) : store.name}
                   </Text>
-
-                  <Text style={{ 
-                    color: statusColor, fontSize: 10, fontWeight: '700', textAlign: 'center', 
-                    marginTop: 3,
-                    textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2
-                  }}>
-                    {isOpen ? (isAr ? 'مفتوح الأن' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
-                  </Text>
-
                 </View>
               </Pressable>
             );
