@@ -12,7 +12,7 @@ import FloatingOffersButton from '@/components/FloatingOffersButton';
 import { useAuth, getSupabaseClient } from '@/template';
 import { trackEvent } from '@/services/analyticsService';
 import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
-import * as Haptics from 'expo-haptics';
+// expo-haptics is native-only; imported dynamically to avoid web/SSR bundling errors
 
 // Dimensions are now computed reactively via useResponsive() inside the component.
 // Snapshot used only for getItemLayout estimation (close enough; recalculates on resize).
@@ -175,7 +175,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
             return (
               <Pressable
                 onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  if (Platform.OS !== 'web') { try { const H = require('expo-haptics'); H.impactAsync(H.ImpactFeedbackStyle.Light); } catch (_) {} }
                   onPress(store.id);
                 }}
                 style={({ pressed }) => ({
