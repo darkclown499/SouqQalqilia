@@ -244,7 +244,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
                         borderWidth: 2, borderColor: statusColor,
                         overflow: 'hidden', backgroundColor: '#fff',
                       }}>
-                        <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%' }} contentFit="contain" />
+                        <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
                       </View>
                     </View>
 
