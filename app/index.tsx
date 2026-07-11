@@ -8,33 +8,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { preloadAds } from '@/services/adsService';
 import { preloadBanners } from '@/services/bannersService';
-
-// ── Preload ads for guest users (no auth) ───────────────────────────────────
-preloadAds().catch(() => {});
-preloadBanners().catch(() => {});
-
-// ── Track app visit (DAU/WAU/MAU) ────────────────────────────────────────────
-const DEVICE_ID_KEY = 'app_device_id_v1';
-async function trackVisit() {
-  try {
-    let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
-    if (!deviceId) {
-      deviceId = 'dev_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-      await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
-    }
-    const { getSupabaseClient } = require('@/template');
-    const supabase = getSupabaseClient();
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id ?? null;
-    await supabase.from('app_visits').insert({ device_id: deviceId, user_id: userId });
-  } catch { /* silent */ }
-}
+import { getSupabaseClient } from '@/template';
 
 const { width: W, height: H } = Dimensions.get('window');
 
-// ── الألوان الجديدة بناءً على هويتك ──
-const BG = '#0A6E5C'; // اللون الأخضر الخاص بك
-const GOLD = '#E8C060'; // اللون الذهبي للتفاصيل
+// ── الألوان الجديدة ──
+const BG = '#0A6E5C'; 
+const GOLD = '#E8C060'; 
 const WHITE_DIM = 'rgba(255,255,255,0.7)';
 
 const LOADING_MESSAGES = [
@@ -43,6 +23,22 @@ const LOADING_MESSAGES = [
   'نجلب لك أفضل العروض...',
   'سوق قلقيلية في انتظارك...',
 ];
+
+const DEVICE_ID_KEY = 'app_device_id_v1';
+
+async function trackVisit() {
+  try {
+    let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    if (!deviceId) {
+      deviceId = 'dev_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+    }
+    const supabase = getSupabaseClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id ?? null;
+    await supabase.from('app_visits').insert({ device_id: deviceId, user_id: userId });
+  } catch { /* silent */ }
+}
 
 // ─── Phase 1: Launch Screen ──────────────────────────────────────────────────
 function LaunchPhase({ onDone }: { onDone: () => void }) {
@@ -54,13 +50,11 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
   const screenOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // دخول اللوجو (Fade & Scale)
     Animated.parallel([
       Animated.timing(logoOpacity, { toValue: 1, duration: 800, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
       Animated.spring(logoScale, { toValue: 1, damping: 12, stiffness: 90, useNativeDriver: true }),
     ]).start();
 
-    // دخول الشعار النصي بعد اللوجو بقليل
     setTimeout(() => {
       Animated.parallel([
         Animated.timing(sloganOpacity, { toValue: 1, duration: 600, easing: Easing.out(Easing.quad), useNativeDriver: true }),
@@ -68,7 +62,6 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
       ]).start();
     }, 400);
 
-    // إنهاء المرحلة
     const t = setTimeout(() => {
       Animated.timing(screenOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => onDone());
     }, 2000);
@@ -109,22 +102,16 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
   const msgOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // دخول الشاشة
     Animated.timing(screenOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start(() => {
-      
-      // رفع اللوجو للأعلى وإظهاره
       Animated.parallel([
         Animated.timing(logoOpacity, { toValue: 1, duration: 500, easing: Easing.out(Easing.quad), useNativeDriver: true }),
         Animated.timing(logoY, { toValue: 0, duration: 500, easing: Easing.out(Easing.back(1.2)), useNativeDriver: true }),
       ]).start(() => {
-        
-        // إظهار المحتوى السفلي (شريط التحميل والنصوص)
         Animated.parallel([
           Animated.timing(contentOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
           Animated.timing(barWidth, { toValue: W * 0.75, duration: 2400, easing: Easing.bezier(0.25, 0.46, 0.45, 0.94), useNativeDriver: false }),
         ]).start();
 
-        // حركة اللمعة على شريط التحميل
         Animated.loop(
           Animated.sequence([
             Animated.timing(shimmerX, { toValue: W, duration: 1200, easing: Easing.linear, useNativeDriver: true }),
@@ -135,7 +122,6 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
       });
     });
 
-    // تقليب النصوص
     Animated.timing(msgOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
     const cycle = setInterval(() => {
       Animated.timing(msgOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
@@ -144,7 +130,6 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
       });
     }, 1800);
 
-    // إنهاء المرحلة والانتقال للتطبيق
     const t = setTimeout(() => {
       clearInterval(cycle);
       Animated.timing(screenOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => onDone());
@@ -213,6 +198,12 @@ export default function RootScreen() {
   const [phase, setPhase] = useState<'launch' | 'loading' | 'done'>('launch');
 
   useEffect(() => {
+    // تشغيل العمليات في الخلفية بداخل useEffect لمنع كراش السيرفر
+    preloadAds().catch(() => {});
+    preloadBanners().catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (phase === 'done') trackVisit();
   }, [phase]);
 
@@ -221,7 +212,7 @@ export default function RootScreen() {
   return <AuthGate />;
 }
 
-// ─── Auth-aware gate: check username before routing ──────────────────────────
+// ─── Auth-aware gate ──────────────────────────
 function AuthGate() {
   const [target, setTarget] = useState<string | null>(null);
 
@@ -229,7 +220,6 @@ function AuthGate() {
     let cancelled = false;
     async function check() {
       try {
-        const { getSupabaseClient } = require('@/template');
         const supabase = getSupabaseClient();
         const { data: { session } } = await supabase.auth.getSession();
         
