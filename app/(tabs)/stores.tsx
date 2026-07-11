@@ -52,7 +52,7 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   const scrollRef = useRef<ScrollView>(null);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userScrolling = useRef(false);
-  const BANNER_H = Math.round(SCREEN_W * 0.54);
+  const BANNER_H = Math.round(SCREEN_W * 0.45);
 
   const startAuto = useCallback(() => {
     if (banners.length <= 1) return;
@@ -90,15 +90,15 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
         onScrollEndDrag={() => { userScrolling.current = false; }}
         onMomentumScrollEnd={handleScroll}
       >
+        {/* استبدل الـ map القديم بهذا الـ map الجديد */}
         {displayBanners.map((banner, i) => (
-          <View key={banner.id} style={{ width: SCREEN_W, height: BANNER_H, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
-            <View style={bc.slide}>
+          <View key={banner.id} style={{ width: SCREEN_W, height: BANNER_H }}>
+            <View style={[bc.slide, { borderRadius: 0 }]}>
               {banner.image_url ? (
                 <Image source={{ uri: banner.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} cachePolicy="disk" />
               ) : (
                 <LinearGradient colors={i % 2 === 0 ? ['#0A6E5C', '#065f46'] : ['#1a4f7a', '#0d2d4a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
               )}
-              {/* Pattern Overlay for empty banners to make them less boring */}
               {!banner.image_url && (
                 <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255,255,255,0.05)', opacity: 0.5, transform: [{ scale: 1.5 }, { rotate: '45deg' }] }]} />
               )}
@@ -113,7 +113,6 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
       </ScrollView>
     </View>
   );
-}
 
 const bc = StyleSheet.create({
   wrap: { width: '100%', position: 'relative' },
@@ -128,32 +127,36 @@ const bc = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. QUICK STORE CATEGORY CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: {
-  cat: StoreCategory; isAr: boolean; isSelected: boolean; onPress: () => void;
-}) {
+function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
   const nameAr = cat.name_ar || cat.name;
   return (
-    <Pressable
-      style={({ pressed }) => [
-        qc.card,
-        isSelected
-          ? { backgroundColor: '#0A6E5C', borderColor: '#0A6E5C' }
-          : { backgroundColor: '#F8F9FA', borderColor: '#E9ECEF' },
-        { opacity: pressed ? 0.9 : 1 },
-      ]}
-      onPress={onPress}
-    >
-      <MaterialCommunityIcons
-        name={getIconName(nameAr) as any}
-        size={24}
-        color={isSelected ? '#FFF' : '#495057'}
-      />
-      <Text style={[qc.label, { color: isSelected ? '#FFF' : '#343A40' }]} numberOfLines={1}>
+    <Pressable style={qc.card} onPress={onPress}>
+      {/* الحاوية الدائرية */}
+      <View style={[qc.iconCircle, { backgroundColor: isSelected ? '#0A6E5C' : '#F8F9FA' }]}>
+        <MaterialCommunityIcons
+          name={getIconName(nameAr) as any}
+          size={26}
+          color={isSelected ? '#FFF' : '#495057'}
+        />
+      </View>
+      <Text style={[qc.label, { color: isSelected ? '#0A6E5C' : '#374151' }]}>
         {isAr ? nameAr : cat.name}
       </Text>
     </Pressable>
   );
 }
+
+// تأكد أن qc.iconCircle معرفة في الـ StyleSheet كالتالي:
+const qc = StyleSheet.create({
+  card: { width: 80, alignItems: 'center', marginRight: 12 },
+  iconCircle: {
+    width: 60, height: 60, borderRadius: 30, // شكل دائري
+    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+    borderWidth: 1, borderColor: '#E9ECEF',
+    elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3,
+  },
+  label: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
+});
 
 const getIconName = (name: string) => {
   switch (name) {
@@ -176,259 +179,83 @@ const getIconName = (name: string) => {
 
 const qc = StyleSheet.create({
   card: {
-    width: 76, alignItems: 'center', gap: 7,
-    backgroundColor: '#fff', borderRadius: 16, padding: 10,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 6, elevation: 2,
-    marginRight: 10, borderWidth: 1.5, borderColor: 'transparent',
+    width: 75, alignItems: 'center', gap: 8,
+    marginRight: 16,
   },
-  iconBg: {
-    width: 50, height: 50, borderRadius: 14,
+  // إضافة حاوية دائرية للأيقونة
+  iconCircle: {
+    width: 60, height: 60, borderRadius: 30, // دائرة كاملة
+    backgroundColor: '#F3F4F6', 
     alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
+    // ظل ناعم ليعطي عمقاً
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
   },
-  emoji: { fontSize: 24 },
-  label: {
-    fontSize: 11, fontWeight: '800', textAlign: 'center',
-    lineHeight: 14,
-  },
+  label: { fontSize: 11, fontWeight: '600', color: '#374151', textAlign: 'center' },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. PREMIUM STORE CARD (REBUILT)
 // ─────────────────────────────────────────────────────────────────────────────
-function PremiumStoreCard({
-  store, rating, isAr, isRTL, colors, onPress,
-}: {
-  store: Store; rating: { avg: number; count: number };
-  isAr: boolean; isRTL: boolean; colors: any; onPress: () => void;
-}) {
-  const [isOpen, setIsOpen] = useState(() => checkStoreIsOpen(store));
-  const name = isAr ? ((store as any).name_ar || store.name) : store.name;
-  const storeColor = ((store as any).store_category?.color || (store as any).store_categories?.color) || '#0A6E5C';
-  const isFeatured = store.is_featured;
-  const isNew = rating.avg === 0; // نعتبره جديد إذا لم يحصل على تقييم بعد أو يمكن ربطها بـ store.is_new
-
-  useEffect(() => {
-    const t = setInterval(() => setIsOpen(checkStoreIsOpen(store)), 60_000);
-    return () => clearInterval(t);
-  }, [store]);
-
+function PremiumStoreCard({ store, rating, isAr, isRTL, colors, onPress }: any) {
+  const isOpen = checkStoreIsOpen(store);
+  const name = isAr ? (store.name_ar || store.name) : store.name;
+  
   return (
-    <Pressable
-      style={({ pressed }) => [psc.card, { transform: [{ scale: pressed ? 0.97 : 1 }] }]}
-      onPress={onPress}
-    >
-      {/* الغلاف والبادجات العائمة */}
-      <View style={psc.bannerStrip}>
-        {(store as any).banner_url ? (
-          <Image
-            source={{ uri: (store as any).banner_url }}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-            transition={200}
-            cachePolicy="disk"
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: storeColor }]} />
-        )}
-        <View style={psc.coverOverlay} />
-
-        {/* Floating Badges */}
-        <View style={[psc.badgesRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          {isNew && (
-            <View style={[psc.badge, psc.newBadge]}>
-              <Text style={psc.newBadgeText}>{isAr ? 'جديد' : 'New'}</Text>
-            </View>
-          )}
-          {isFeatured && (
-            <View style={[psc.badge, psc.vipBadge]}>
-              <MaterialIcons name="star" size={10} color="#FFF" />
-              <Text style={psc.vipBadgeText}>VIP</Text>
-            </View>
-          )}
-        </View>
+    <Pressable style={psc.listCard} onPress={onPress}>
+      {/* اللوجو على اليسار */}
+      <View style={psc.logoCircle}>
+        <Image source={{ uri: store.logo_url }} style={psc.logoImg} contentFit="cover" />
       </View>
 
-      {/* لوجو المتجر بإطار ناصع */}
-      <View style={psc.logoWrap}>
-        <View style={psc.logoCircle}>
-          {(store as any).logo_url ? (
-            <Image
-              source={{ uri: (store as any).logo_url }}
-              style={psc.logoImg}
-              contentFit="cover"
-              transition={200}
-              cachePolicy="disk"
-            />
-          ) : (
-            <MaterialIcons name="storefront" size={26} color="#0A6E5C" />
-          )}
+      {/* المعلومات في المنتصف */}
+      <View style={psc.infoWrap}>
+        <Text style={psc.name} numberOfLines={1}>{name}</Text>
+        <Text style={psc.address} numberOfLines={1}>{store.address || 'قلقيلية'}</Text>
+        
+        {/* الحالة والتقييم في سطر واحد */}
+        <View style={psc.statusRow}>
+           <Text style={[psc.statusText, { color: isOpen ? '#059669' : '#DC2626' }]}>
+             {isOpen ? '🟢 مفتوح' : '🔴 مغلق'}
+           </Text>
+           {rating.avg > 0 && <Text style={psc.ratingText}>⭐ {rating.avg.toFixed(1)}</Text>}
         </View>
-      </View>
-
-      <Text style={psc.name} numberOfLines={1}>{name}</Text>
-      {store.address ? (
-        <Text style={psc.address} numberOfLines={1}>{store.address}</Text>
-      ) : null}
-
-      {/* التاجز السفلية المدمجة (Pills) */}
-      <View style={[psc.tagsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <View style={[psc.statusPill, { backgroundColor: isOpen ? '#ECFDF5' : '#FEF2F2', borderColor: isOpen ? '#D1FAE5' : '#FEE2E2' }]}>
-          <View style={[psc.statusDot, { backgroundColor: isOpen ? '#10B981' : '#EF4444' }]} />
-          <Text style={[psc.statusText, { color: isOpen ? '#059669' : '#DC2626' }]}>
-            {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
-          </Text>
-        </View>
-
-        {rating.avg > 0 && (
-          <View style={[psc.ratingPill, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <MaterialIcons name="star" size={12} color="#F59E0B" />
-            <Text style={psc.ratingNum}>{rating.avg.toFixed(1)}</Text>
-          </View>
-        )}
       </View>
     </Pressable>
   );
 }
-
-const psc = StyleSheet.create({
-  card: {
-    width: STORE_CARD_W, 
-    backgroundColor: '#fff', 
-    borderRadius: 18,
-    overflow: 'hidden', 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08, 
-    shadowRadius: 14, 
-    elevation: 4, 
-    marginBottom: 16,
-  },
-  bannerStrip: { height: 90, position: 'relative', backgroundColor: '#F3F4F6' },
-  coverOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' },
-  
-  // Floating Badges
-  badgesRow: {
-    position: 'absolute', top: 10, left: 10, right: 10,
-    justifyContent: 'space-between', alignItems: 'flex-start', zIndex: 10,
-  },
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 2 },
-  newBadge: { backgroundColor: '#EF4444' },
-  newBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
-  vipBadge: { backgroundColor: '#F59E0B' },
-  vipBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
-
-  // Logo with prominent shadow and border
-  logoWrap: { 
-    alignItems: 'center', marginTop: -32, marginBottom: 8, zIndex: 10,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 5 
-  },
-  logoCircle: {
-    width: 64, height: 64, borderRadius: 32, borderWidth: 3, borderColor: '#fff', backgroundColor: '#fff',
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-  },
-  logoImg: { width: '100%', height: '100%' },
-  
-  name: { fontSize: 15, fontWeight: '900', color: '#111827', textAlign: 'center', paddingHorizontal: 8, lineHeight: 20 },
-  address: { fontSize: 11, color: '#6B7280', textAlign: 'center', paddingHorizontal: 8, marginTop: 4, lineHeight: 16 },
-  
-  // Tags Row
-  tagsRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingHorizontal: 10, paddingVertical: 12,
-  },
-  statusPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4,
-    borderWidth: 1,
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 11, fontWeight: '800' },
-  
-  ratingPill: {
-    backgroundColor: '#FFFBEB', borderColor: '#FEF3C7', borderWidth: 1,
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4,
-  },
-  ratingNum: { fontSize: 11, fontWeight: '800', color: '#B45309' },
-});
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. CATEGORY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
-function CategoryBlock({
-  cat, stores, ratings, isAr, isRTL, colors, onStorePress,
-}: {
-  cat: StoreCategory; stores: Store[]; ratings: Record<string, { avg: number; count: number }>;
-  isAr: boolean; isRTL: boolean; colors: any;
-  onStorePress: (id: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const INITIAL_COUNT = 4;
-  const displayStores = expanded ? stores : stores.slice(0, INITIAL_COUNT);
-  const hasMore = stores.length > INITIAL_COUNT;
+function CategoryBlock({ cat, stores, ratings, isAr, isRTL, colors, onStorePress }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
-  const emoji = getStoreCategoryEmoji(cat.slug);
 
   return (
     <View style={cb.block}>
-      <View style={[cb.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <View style={[cb.catDot, { backgroundColor: cat.color + '22' }]}>
-          {emoji ? (
-            <Text style={{ fontSize: 16 }}>{emoji}</Text>
-          ) : (
-            <MaterialIcons name={cat.icon as any} size={18} color={cat.color} />
-          )}
-        </View>
-        <Text style={[cb.title, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
-          {catName}
-        </Text>
-        <Pressable
-          style={cb.viewAllBtn}
-          onPress={() => setExpanded(true)}
-        >
-          <Text style={cb.viewAllText}>{isAr ? 'عرض الكل' : 'View All'}</Text>
-        </Pressable>
-      </View>
-
-      <View style={cb.grid}>
-        {displayStores.map((store) => (
-          <PremiumStoreCard
-            key={store.id} store={store} rating={ratings[store.id] ?? { avg: 0, count: 0 }}
-            isAr={isAr} isRTL={isRTL} colors={colors} onPress={() => onStorePress(store.id)}
-          />
+      <Text style={[cb.title, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left', paddingHorizontal: 16 }]}>
+        {catName}
+      </Text>
+      {/* هنا قائمة طولية بدون Grid */}
+      <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+        {stores.map((store: any) => (
+          <PremiumStoreCard key={store.id} store={store} rating={ratings[store.id] ?? { avg: 0, count: 0 }} isAr={isAr} isRTL={isRTL} colors={colors} onPress={() => onStorePress(store.id)} />
         ))}
-        {displayStores.length % 2 !== 0 ? <View style={{ width: STORE_CARD_W }} /> : null}
       </View>
-
-      {hasMore ? (
-        <Pressable
-          style={[cb.showMoreBtn, { borderColor: colors.borderLight }]}
-          onPress={() => setExpanded(v => !v)}
-        >
-          <MaterialIcons name={expanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={colors.primary} />
-          <Text style={[cb.showMoreText, { color: colors.primary }]}>
-            {expanded ? (isAr ? 'عرض أقل' : 'Show Less') : (isAr ? `اعرض المزيد (${stores.length - INITIAL_COUNT}+)` : `Show More (${stores.length - INITIAL_COUNT}+)`)}
-          </Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
 
+// قم بحذف كل الـ StyleSheet.create الخاصة بـ cb السابقة وضع هذا فقط:
+
 const cb = StyleSheet.create({
   block: { marginBottom: 24 },
+  title: { fontSize: 18, fontWeight: '900', lineHeight: 22, paddingHorizontal: 16 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SIDE_PAD, marginBottom: 14, gap: 10 },
   catDot: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  title: { fontSize: 18, fontWeight: '900', lineHeight: 22 },
-  
-  // تم تعديل زر عرض الكل ليصبح أنيق وهادئ
   viewAllBtn: { backgroundColor: '#F3F4F6', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
   viewAllText: { fontSize: 12, fontWeight: '700', color: '#4B5563' },
-  
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: SIDE_PAD, columnGap: CARD_GAP },
-  showMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginHorizontal: SIDE_PAD, marginTop: 0, marginBottom: 4, borderWidth: 1.5, borderRadius: 14, paddingVertical: 11, borderStyle: 'dashed' },
-  showMoreText: { fontSize: 13, fontWeight: '700' },
+  grid: { flexDirection: 'column', paddingHorizontal: 16, marginTop: 12 }, // Grid تحولت لـ Column
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -746,43 +573,57 @@ export default function StoresScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  header: { paddingHorizontal: SIDE_PAD, paddingBottom: 14, gap: 10 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerIconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
-  locationCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 12 },
-  locationLabel: { fontSize: 10, color: 'rgba(255,255,255,0.65)', fontWeight: '500', textAlign: 'center' },
-  locationName: { fontSize: 14, color: '#fff', fontWeight: '800', textAlign: 'center' },
-  ownerCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1.5, padding: 12, marginHorizontal: SIDE_PAD, marginTop: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  ownerIconWrap: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  ownerName: { fontSize: 14, fontWeight: '700', marginBottom: 3 },
-  ownerBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'flex-start' },
-  ownerBadgeText: { fontSize: 10, fontWeight: '700' },
-  section: { paddingTop: 22, paddingBottom: 6 },
-  sectionTitle: { fontSize: 17, fontWeight: '800', lineHeight: 22, paddingHorizontal: SIDE_PAD, marginBottom: 14 },
-  catScroll: { paddingHorizontal: SIDE_PAD, paddingBottom: 4 },
-  loadingWrap: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  loadingText: { fontSize: FontSize.sm, fontWeight: '500' },
-  emptyWrap: { alignItems: 'center', paddingTop: 60, gap: 14, paddingHorizontal: SIDE_PAD },
-  emptyIllus: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle: { fontSize: FontSize.xl, fontWeight: '700', textAlign: 'center' },
-  emptySub: { fontSize: FontSize.md, textAlign: 'center', lineHeight: 22 },
-  clearFilterBtn: { borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, marginTop: 4 },
-  clearFilterText: { fontSize: FontSize.sm, fontWeight: '700' },
-  storeSearchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: SIDE_PAD, marginTop: 16, marginBottom: 10, gap: 10, borderRadius: 16, backgroundColor: '#fff', borderWidth: 0, paddingHorizontal: 14, height: 50, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3 },
-  storeSearchIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  storeSearchInput: { flex: 1, fontSize: 13, fontWeight: '600' },
+const bc = StyleSheet.create({
+  wrap: { width: '100%', position: 'relative' },
+  slide: { flex: 1, overflow: 'hidden', borderRadius: 0 }, // اجعل borderRadius: 0 للبانر
+  gradient: { ...StyleSheet.absoluteFillObject, top: '40%' },
+  textWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, gap: 4 },
+  title: { fontSize: 18, fontWeight: '900', color: '#fff', textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  sub: { fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
 });
 
-const g = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.62)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  card: { width: '100%', borderRadius: 24, padding: 24, gap: 12, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.22, shadowRadius: 20, elevation: 20 },
-  iconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  title: { fontSize: FontSize.xl, fontWeight: '800', textAlign: 'center' },
-  subtitle: { fontSize: FontSize.sm, textAlign: 'center', lineHeight: 21 },
-  input: { width: '100%', height: 50, borderWidth: 1.5, borderRadius: Radius.md, paddingHorizontal: Spacing.md, fontSize: FontSize.md, marginTop: 4 },
-  errorText: { fontSize: FontSize.xs, fontWeight: '600', alignSelf: 'flex-start' },
-  saveBtn: { width: '100%', height: 50, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4, shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
-  saveBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+const qc = StyleSheet.create({
+  card: { width: 75, alignItems: 'center', marginRight: 16 },
+  iconCircle: {
+    width: 60, height: 60, borderRadius: 30, backgroundColor: '#F8F9FA',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+    borderWidth: 1, borderColor: '#E9ECEF',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
+  },
+  label: { fontSize: 11, fontWeight: '600', color: '#374151', textAlign: 'center' },
+});
+
+const psc = StyleSheet.create({
+  // ── ستايل القائمة الطولية (للمتاجر) ──
+  listCard: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  logoCircle: { 
+    width: 65, height: 65, borderRadius: 12, 
+    backgroundColor: '#F9FAFB', overflow: 'hidden',
+    borderWidth: 1, borderColor: '#F3F4F6' 
+  },
+  logoImg: { width: '100%', height: '100%' },
+  infoWrap: { flex: 1, marginLeft: 14 },
+  name: { fontSize: 16, fontWeight: '800', color: '#1A1A1A' },
+  address: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  statusRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  statusText: { fontSize: 11, fontWeight: '700' },
+  ratingText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
+  
+  // ── إضافات (للحفاظ على توافق بقية النظام) ──
+  card: { width: STORE_CARD_W, backgroundColor: '#fff', borderRadius: 18, marginBottom: 16 },
+  bannerStrip: { height: 90, position: 'relative', backgroundColor: '#F3F4F6' },
+  coverOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' },
 });
