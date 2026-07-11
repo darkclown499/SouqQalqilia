@@ -1,11 +1,19 @@
-// ── Preload ads for guest users (no auth) ───────────────────────────────────
+import { Redirect } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import {
+  View, Text, StyleSheet, Dimensions, Animated, Easing,
+} from 'react-native';
+import { Image } from 'expo-image';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { preloadAds } from '@/services/adsService';
 import { preloadBanners } from '@/services/bannersService';
+
+// ── Preload ads for guest users (no auth) ───────────────────────────────────
 preloadAds().catch(() => {});
 preloadBanners().catch(() => {});
 
 // ── Track app visit (DAU/WAU/MAU) ────────────────────────────────────────────
-import AsyncStorage from '@react-native-async-storage/async-storage';
 const DEVICE_ID_KEY = 'app_device_id_v1';
 async function trackVisit() {
   try {
@@ -22,19 +30,12 @@ async function trackVisit() {
   } catch { /* silent */ }
 }
 
-import { Redirect } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import {
-  View, Text, StyleSheet, Dimensions, Animated, Easing,
-} from 'react-native';
-import { Image } from 'expo-image';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 const { width: W, height: H } = Dimensions.get('window');
 
-const BG = '#0A6E5C';
-const GOLD = '#E8C060';
-const WHITE_DIM = 'rgba(255,255,255,0.65)';
+// ── الألوان الجديدة بناءً على هويتك ──
+const BG = '#0A6E5C'; // اللون الأخضر الخاص بك
+const GOLD = '#E8C060'; // اللون الذهبي للتفاصيل
+const WHITE_DIM = 'rgba(255,255,255,0.7)';
 
 const LOADING_MESSAGES = [
   'جاري تحميل خيرات قلقيلية...',
@@ -47,27 +48,30 @@ const LOADING_MESSAGES = [
 function LaunchPhase({ onDone }: { onDone: () => void }) {
   const insets = useSafeAreaInsets();
   const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoScale   = useRef(new Animated.Value(0.82)).current;
+  const logoScale   = useRef(new Animated.Value(0.7)).current;
   const sloganOpacity = useRef(new Animated.Value(0)).current;
-  const sloganY     = useRef(new Animated.Value(14)).current;
+  const sloganY     = useRef(new Animated.Value(20)).current;
   const screenOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    // دخول اللوجو (Fade & Scale)
     Animated.parallel([
-      Animated.timing(logoOpacity, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.spring(logoScale, { toValue: 1, damping: 14, stiffness: 100, useNativeDriver: true }),
+      Animated.timing(logoOpacity, { toValue: 1, duration: 800, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.spring(logoScale, { toValue: 1, damping: 12, stiffness: 90, useNativeDriver: true }),
     ]).start();
 
+    // دخول الشعار النصي بعد اللوجو بقليل
     setTimeout(() => {
       Animated.parallel([
-        Animated.timing(sloganOpacity, { toValue: 1, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(sloganY, { toValue: 0, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(sloganOpacity, { toValue: 1, duration: 600, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(sloganY, { toValue: 0, duration: 600, easing: Easing.out(Easing.quad), useNativeDriver: true }),
       ]).start();
-    }, 500);
+    }, 400);
 
+    // إنهاء المرحلة
     const t = setTimeout(() => {
-      Animated.timing(screenOpacity, { toValue: 0, duration: 350, useNativeDriver: true }).start(() => onDone());
-    }, 1750);
+      Animated.timing(screenOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => onDone());
+    }, 2000);
 
     return () => clearTimeout(t);
   }, []);
@@ -75,12 +79,17 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
   return (
     <Animated.View style={[styles.fullScreen, { backgroundColor: BG, opacity: screenOpacity }]}>
       <View style={styles.glow} />
+      
       <Animated.View style={[styles.logoCenter, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}>
-        <Image source={require('@/assets/images/app-logo-transparent.png')} style={styles.logoImgMain} contentFit="contain" transition={0} />
+        <View style={styles.logoCard}>
+          <Image source={require('@/assets/images/app-logo-transparent.png')} style={styles.logoImgMain} contentFit="contain" transition={0} />
+        </View>
+        <Text style={styles.mainTitle}>سوق قلقيلية</Text>
       </Animated.View>
+
       <Animated.View style={[styles.sloganWrap, { opacity: sloganOpacity, transform: [{ translateY: sloganY }], bottom: insets.bottom + 64 }]}>
         <View style={styles.sloganLine} />
-        <Text style={styles.sloganText}>سوق قلقيلية.. خيرات بلادنا بين يديك</Text>
+        <Text style={styles.sloganText}>خيرات بلادنا بين يديك</Text>
         <View style={styles.sloganLine} />
       </Animated.View>
     </Animated.View>
@@ -91,46 +100,55 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
 function LoadingPhase({ onDone }: { onDone: () => void }) {
   const insets = useSafeAreaInsets();
   const screenOpacity = useRef(new Animated.Value(0)).current;
-  const logoY         = useRef(new Animated.Value(20)).current;
+  const logoY         = useRef(new Animated.Value(30)).current;
   const logoOpacity   = useRef(new Animated.Value(0)).current;
   const barWidth      = useRef(new Animated.Value(0)).current;
-  const shimmerX      = useRef(new Animated.Value(-200)).current;
+  const shimmerX      = useRef(new Animated.Value(-W)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
   const [msgIndex, setMsgIndex] = useState(0);
   const msgOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(screenOpacity, { toValue: 1, duration: 280, useNativeDriver: true }).start(() => {
+    // دخول الشاشة
+    Animated.timing(screenOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start(() => {
+      
+      // رفع اللوجو للأعلى وإظهاره
       Animated.parallel([
-        Animated.timing(logoOpacity, { toValue: 1, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(logoY, { toValue: 0, duration: 450, easing: Easing.out(Easing.back(1.1)), useNativeDriver: true }),
+        Animated.timing(logoOpacity, { toValue: 1, duration: 500, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(logoY, { toValue: 0, duration: 500, easing: Easing.out(Easing.back(1.2)), useNativeDriver: true }),
       ]).start(() => {
+        
+        // إظهار المحتوى السفلي (شريط التحميل والنصوص)
         Animated.parallel([
-          Animated.timing(contentOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
-          Animated.timing(barWidth, { toValue: W * 0.68, duration: 2200, easing: Easing.bezier(0.25, 0.46, 0.45, 0.94), useNativeDriver: false }),
+          Animated.timing(contentOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.timing(barWidth, { toValue: W * 0.75, duration: 2400, easing: Easing.bezier(0.25, 0.46, 0.45, 0.94), useNativeDriver: false }),
         ]).start();
+
+        // حركة اللمعة على شريط التحميل
         Animated.loop(
           Animated.sequence([
-            Animated.timing(shimmerX, { toValue: W * 0.75, duration: 1000, easing: Easing.linear, useNativeDriver: true }),
-            Animated.timing(shimmerX, { toValue: -200, duration: 0, useNativeDriver: true }),
-            Animated.delay(400),
+            Animated.timing(shimmerX, { toValue: W, duration: 1200, easing: Easing.linear, useNativeDriver: true }),
+            Animated.timing(shimmerX, { toValue: -W, duration: 0, useNativeDriver: true }),
+            Animated.delay(300),
           ])
         ).start();
       });
     });
 
-    Animated.timing(msgOpacity, { toValue: 1, duration: 380, useNativeDriver: true }).start();
+    // تقليب النصوص
+    Animated.timing(msgOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
     const cycle = setInterval(() => {
-      Animated.timing(msgOpacity, { toValue: 0, duration: 280, useNativeDriver: true }).start(() => {
+      Animated.timing(msgOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
         setMsgIndex(i => (i + 1) % LOADING_MESSAGES.length);
-        Animated.timing(msgOpacity, { toValue: 1, duration: 380, useNativeDriver: true }).start();
+        Animated.timing(msgOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
       });
-    }, 1600);
+    }, 1800);
 
+    // إنهاء المرحلة والانتقال للتطبيق
     const t = setTimeout(() => {
       clearInterval(cycle);
-      Animated.timing(screenOpacity, { toValue: 0, duration: 350, useNativeDriver: true }).start(() => onDone());
-    }, 2800);
+      Animated.timing(screenOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => onDone());
+    }, 3200);
 
     return () => { clearTimeout(t); clearInterval(cycle); };
   }, []);
@@ -138,17 +156,23 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
   return (
     <Animated.View style={[styles.fullScreen, { backgroundColor: BG, opacity: screenOpacity }]}>
       <View style={styles.glow} />
+      
       <Animated.View style={[styles.logoAboveCenter, { opacity: logoOpacity, transform: [{ translateY: logoY }] }]}>
-        <Image source={require('@/assets/images/app-logo-transparent.png')} style={styles.logoImgLoading} contentFit="contain" transition={0} />
+        <View style={[styles.logoCard, { width: W * 0.28, height: W * 0.28, borderRadius: 20 }]}>
+          <Image source={require('@/assets/images/app-logo-transparent.png')} style={{ width: '70%', height: '70%' }} contentFit="contain" transition={0} />
+        </View>
         <Text style={styles.appTitleLoading}>سوق قلقيلية</Text>
       </Animated.View>
+
       <Animated.View style={[styles.bottomContent, { opacity: contentOpacity, paddingBottom: insets.bottom + 80 }]}>
         <Animated.Text style={[styles.loadingMsg, { opacity: msgOpacity }]}>{LOADING_MESSAGES[msgIndex]}</Animated.Text>
+        
         <View style={styles.progressTrack}>
           <Animated.View style={[styles.progressFill, { width: barWidth }]}>
             <Animated.View style={[styles.progressShimmer, { transform: [{ translateX: shimmerX }] }]} />
           </Animated.View>
         </View>
+        
         <LoadingDots />
       </Animated.View>
     </Animated.View>
@@ -157,26 +181,28 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
 
 function LoadingDots() {
   const dots = [
-    useRef(new Animated.Value(0.4)).current,
-    useRef(new Animated.Value(0.4)).current,
-    useRef(new Animated.Value(0.4)).current,
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
   ];
+  
   useEffect(() => {
     dots.forEach((dot, i) => {
       Animated.loop(
         Animated.sequence([
-          Animated.delay(i * 200),
-          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
-          Animated.timing(dot, { toValue: 0.4, duration: 400, useNativeDriver: true }),
-          Animated.delay((dots.length - i - 1) * 200),
+          Animated.delay(i * 150),
+          Animated.timing(dot, { toValue: 1, duration: 300, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0.3, duration: 300, useNativeDriver: true }),
+          Animated.delay((dots.length - i - 1) * 150 + 200),
         ])
       ).start();
     });
   }, []);
+  
   return (
     <View style={styles.dotsWrap}>
       {dots.map((d, i) => (
-        <Animated.View key={i} style={[styles.loadingDot, { opacity: d, backgroundColor: i === 1 ? GOLD : 'rgba(255,255,255,0.8)' }]} />
+        <Animated.View key={i} style={[styles.loadingDot, { opacity: d, backgroundColor: i === 1 ? GOLD : '#FFF' }]} />
       ))}
     </View>
   );
@@ -186,7 +212,6 @@ function LoadingDots() {
 export default function RootScreen() {
   const [phase, setPhase] = useState<'launch' | 'loading' | 'done'>('launch');
 
-  // Track visit once after splash — safe inside useEffect (AsyncStorage ready)
   useEffect(() => {
     if (phase === 'done') trackVisit();
   }, [phase]);
@@ -207,17 +232,21 @@ function AuthGate() {
         const { getSupabaseClient } = require('@/template');
         const supabase = getSupabaseClient();
         const { data: { session } } = await supabase.auth.getSession();
+        
         if (!session?.user) {
           if (!cancelled) setTarget('/(tabs)');
           return;
         }
+        
         const { data: profile } = await supabase
           .from('user_profiles')
           .select('username')
           .eq('id', session.user.id)
           .maybeSingle();
+          
         const isPhoneUser = (session.user.email ?? '').includes('@sms.souqqalqilya.local');
         const hasName = profile?.username && profile.username.trim().length > 0;
+        
         if (isPhoneUser && !hasName) {
           if (!cancelled) setTarget('/complete-profile');
         } else {
@@ -244,25 +273,37 @@ const styles = StyleSheet.create({
   },
   glow: {
     position: 'absolute',
-    width: W * 1.2, height: W * 1.2,
-    borderRadius: W * 0.6,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    top: H * 0.5 - W * 0.6,
-    left: -W * 0.1,
+    width: W * 1.5, height: W * 1.5,
+    borderRadius: W * 0.75,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    top: H * 0.4 - W * 0.75,
+    left: -W * 0.25,
   },
-  logoCenter: { alignItems: 'center', justifyContent: 'center' },
-  logoImgMain: { width: W * 0.46, height: W * 0.46 },
-  sloganWrap: { position: 'absolute', left: 24, right: 24, alignItems: 'center', gap: 10 },
-  sloganLine: { width: 48, height: 1.5, backgroundColor: GOLD, opacity: 0.7, borderRadius: 99 },
-  sloganText: { color: GOLD, fontSize: 17, fontWeight: '700', textAlign: 'center', letterSpacing: 0.4, lineHeight: 26 },
-  logoAboveCenter: { alignItems: 'center', marginTop: -H * 0.1, gap: 14 },
-  logoImgLoading: { width: W * 0.36, height: W * 0.36 },
-  appTitleLoading: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', letterSpacing: 0.3, textAlign: 'center', opacity: 0.95 },
-  bottomContent: { position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', gap: 14, paddingHorizontal: 32 },
-  loadingMsg: { color: WHITE_DIM, fontSize: 13.5, fontWeight: '500', textAlign: 'center', letterSpacing: 0.2, lineHeight: 20 },
-  progressTrack: { width: W * 0.68, height: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 99, overflow: 'hidden' },
+  logoCenter: { alignItems: 'center', justifyContent: 'center', gap: 16 },
+  logoCard: {
+    width: W * 0.35, height: W * 0.35,
+    backgroundColor: '#fff',
+    borderRadius: 28,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 12,
+  },
+  logoImgMain: { width: '65%', height: '65%' },
+  mainTitle: { color: '#fff', fontSize: 28, fontWeight: '900', letterSpacing: 0.5, textShadowColor: 'rgba(0,0,0,0.2)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 },
+  
+  sloganWrap: { position: 'absolute', left: 24, right: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  sloganLine: { flex: 1, maxWidth: 40, height: 1, backgroundColor: GOLD, opacity: 0.5 },
+  sloganText: { color: GOLD, fontSize: 16, fontWeight: '700', textAlign: 'center', letterSpacing: 0.5 },
+  
+  logoAboveCenter: { alignItems: 'center', marginTop: -H * 0.15, gap: 16 },
+  appTitleLoading: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', letterSpacing: 0.3, textAlign: 'center' },
+  
+  bottomContent: { position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', gap: 16, paddingHorizontal: 32 },
+  loadingMsg: { color: WHITE_DIM, fontSize: 14, fontWeight: '600', textAlign: 'center', letterSpacing: 0.2 },
+  
+  progressTrack: { width: '100%', maxWidth: 300, height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 99, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   progressFill: { height: '100%', backgroundColor: GOLD, borderRadius: 99, overflow: 'hidden' },
-  progressShimmer: { position: 'absolute', top: 0, width: 80, height: '100%', backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 99 },
-  dotsWrap: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 2 },
-  loadingDot: { width: 7, height: 7, borderRadius: 3.5 },
+  progressShimmer: { position: 'absolute', top: 0, width: 120, height: '100%', backgroundColor: 'rgba(255,255,255,0.4)', borderRadius: 99 },
+  
+  dotsWrap: { flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 },
+  loadingDot: { width: 6, height: 6, borderRadius: 3 },
 });
