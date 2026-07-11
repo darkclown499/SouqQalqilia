@@ -24,19 +24,6 @@ import { useLanguage } from '@/hooks/useLanguage';
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢'] as const;
 type ReactionEmoji = typeof REACTION_EMOJIS[number];
 
-function HighlightedText({ text, query, baseStyle, highlightColor }: { text: string; query: string; baseStyle: any; highlightColor: string }) {
-  if (!query.trim()) return <Text style={baseStyle}>{text}</Text>;
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const splitRegex = new RegExp(`(${escaped})`, 'gi');
-  const matchRegex = new RegExp(`^${escaped}$`, 'i');
-  const parts = text.split(splitRegex);
-  return (
-    <Text style={baseStyle}>
-      {parts.map((part, i) => matchRegex.test(part) ? <Text key={i} style={{ backgroundColor: highlightColor, color: '#1a1a1a', borderRadius: 3 }}>{part}</Text> : <Text key={i}>{part}</Text>)}
-    </Text>
-  );
-}
-
 function EmojiPicker({ visible, onSelect, onDismiss, isDark }: { visible: boolean; onSelect: (emoji: ReactionEmoji) => void; onDismiss: () => void; isDark: boolean }) {
   const scale = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -264,9 +251,17 @@ export default function ChatScreen() {
 
   const markedOnMount = useRef(false);
 
-  const doMark = useCallback(() => {
+  const doMark = useCallback(async () => {
     if (!id || !user) return;
     try {
+      const supabase = getSupabaseClient();
+      await supabase
+        .from('messages')
+        .update({ read_at: new Date().toISOString() })
+        .eq('conversation_id', id)
+        .neq('sender_id', user.id)
+        .is('read_at', null);
+
       markReadLocally(user.id);
       triggerUnreadRefresh();
     } catch (e) { }
