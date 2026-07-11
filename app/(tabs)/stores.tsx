@@ -90,7 +90,6 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
         onScrollEndDrag={() => { userScrolling.current = false; }}
         onMomentumScrollEnd={handleScroll}
       >
-        {/* استبدل الـ map القديم بهذا الـ map الجديد */}
         {displayBanners.map((banner, i) => (
           <View key={banner.id} style={{ width: SCREEN_W, height: BANNER_H }}>
             <View style={[bc.slide, { borderRadius: 0 }]}>
@@ -113,15 +112,7 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
       </ScrollView>
     </View>
   );
-
-const bc = StyleSheet.create({
-  wrap: { width: '100%', position: 'relative' },
-  slide: { flex: 1, overflow: 'hidden', borderRadius: 16 },
-  gradient: { ...StyleSheet.absoluteFillObject, top: '40%' },
-  textWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, gap: 4 },
-  title: { fontSize: 18, fontWeight: '900', color: '#fff', textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4, lineHeight: 24 },
-  sub: { fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
-});
+}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,7 +122,6 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
   const nameAr = cat.name_ar || cat.name;
   return (
     <Pressable style={qc.card} onPress={onPress}>
-      {/* الحاوية الدائرية */}
       <View style={[qc.iconCircle, { backgroundColor: isSelected ? '#0A6E5C' : '#F8F9FA' }]}>
         <MaterialCommunityIcons
           name={getIconName(nameAr) as any}
@@ -146,17 +136,6 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
   );
 }
 
-// تأكد أن qc.iconCircle معرفة في الـ StyleSheet كالتالي:
-const qc = StyleSheet.create({
-  card: { width: 80, alignItems: 'center', marginRight: 12 },
-  iconCircle: {
-    width: 60, height: 60, borderRadius: 30, // شكل دائري
-    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
-    borderWidth: 1, borderColor: '#E9ECEF',
-    elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3,
-  },
-  label: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
-});
 
 const getIconName = (name: string) => {
   switch (name) {
@@ -176,24 +155,6 @@ const getIconName = (name: string) => {
     default: return 'store-outline';
   }
 };
-
-const qc = StyleSheet.create({
-  card: {
-    width: 75, alignItems: 'center', gap: 8,
-    marginRight: 16,
-  },
-  // إضافة حاوية دائرية للأيقونة
-  iconCircle: {
-    width: 60, height: 60, borderRadius: 30, // دائرة كاملة
-    backgroundColor: '#F3F4F6', 
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
-    // ظل ناعم ليعطي عمقاً
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
-  },
-  label: { fontSize: 11, fontWeight: '600', color: '#374151', textAlign: 'center' },
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. PREMIUM STORE CARD (REBUILT)
@@ -575,7 +536,7 @@ export default function StoresScreen() {
 
 const bc = StyleSheet.create({
   wrap: { width: '100%', position: 'relative' },
-  slide: { flex: 1, overflow: 'hidden', borderRadius: 0 }, // اجعل borderRadius: 0 للبانر
+  slide: { flex: 1, overflow: 'hidden', borderRadius: 0 },
   gradient: { ...StyleSheet.absoluteFillObject, top: '40%' },
   textWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, gap: 4 },
   title: { fontSize: 18, fontWeight: '900', color: '#fff', textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
@@ -590,6 +551,11 @@ const qc = StyleSheet.create({
     borderWidth: 1, borderColor: '#E9ECEF',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
   },
+  iconBg: {
+    width: 60, height: 60, borderRadius: 30, backgroundColor: '#F3F4F6',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+  },
+  emoji: { fontSize: 26 },
   label: { fontSize: 11, fontWeight: '600', color: '#374151', textAlign: 'center' },
 });
 
