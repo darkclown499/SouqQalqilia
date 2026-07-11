@@ -94,11 +94,16 @@ import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockServic
 import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
-import { useTheme } from '@/hooks/useTheme';
+import { useTheme } from '@/hooks/useTheme';ب
 import { useLanguage } from '@/hooks/useLanguage';
 
 // ── Featured Stores Strip ───────────────────────────────────────────────────
 // ── Featured Stores Strip (التصميم الجديد والفخم) ───────────────────────────
+const CUSTOM_STORE_BANNERS: { [key: string]: string } = {
+  '50035e7a-c583-4d78-bd75-54d1f1f1f541': 'https://example.com/banner1.jpg',
+  '8cb4e4fd-9bc2-4ede-8e56-f1e79f749fe5': 'https://example.com/banner1.jpg', 
+};
+
 function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   isAr: boolean; isRTL: boolean; colors: any;
   onPress: (storeId: string) => void;
@@ -112,58 +117,85 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   if (stores.length === 0) return null;
 
   return (
-    <View style={{ marginVertical: 20 }}>
-      <Text style={{ fontSize: 17, fontWeight: '700', paddingHorizontal: 16, marginBottom: 16, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }}>
-        {isAr ? 'متاجر مميزة 👑' : 'Featured Stores 👑'}
-      </Text>
+    <View style={{ marginBottom: 24 }}>
+      <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 8, marginBottom: 12, paddingHorizontal: 16 }}>
+        <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: colors.primary }} />
+        <Text style={{ fontSize: 17, fontWeight: '700', color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }}>
+          {isAr ? 'متاجر مميزة' : 'Featured Stores'}
+        </Text>
+      </View>
       
       <FlatList
         horizontal
         showsHorizontalScrollIndicator={false}
         data={stores}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
-        renderItem={({ item: store }) => (
-          <Pressable 
-            style={{ width: 130, height: 180, borderRadius: 24, overflow: 'hidden', backgroundColor: colors.surface }}
-            onPress={() => onPress(store.id)}
-          >
-            {/* 1. خلفية المتجر (البنر) */}
-            <Image 
-              source={{ uri: store.cover_url || store.logo_url }} 
-              style={StyleSheet.absoluteFill} 
-              contentFit="cover" 
-            />
-            
-            {/* 2. تدرج غامق عشان الكلام واللوجو يبينوا بوضوح */}
-            <LinearGradient 
-              colors={['transparent', 'rgba(0,0,0,0.9)']} 
-              style={StyleSheet.absoluteFill} 
-            />
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+        renderItem={({ item: store }) => {
+          const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
 
-            {/* 3. شارة VIP بريميم (تدرج ذهبي) */}
-            <LinearGradient 
-              colors={['#FCD34D', '#F59E0B']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              style={{ position: 'absolute', top: 10, left: 10, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}
+          return (
+            <Pressable 
+              style={{ 
+                width: 160, height: 210, 
+                backgroundColor: colors.surface, 
+                borderRadius: 16, borderWidth: 1.5, borderColor: colors.borderLight,
+                overflow: 'hidden',
+                shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2
+              }}
+              onPress={() => onPress(store.id)}
             >
-              <Text style={{ color: '#000', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>VIP</Text>
-            </LinearGradient>
-
-            {/* 4. اللوجو والاسم */}
-            <View style={{ flex: 1, justifyContent: 'flex-end', padding: 12, alignItems: 'center' }}>
-              <View style={{ 
-                width: 55, height: 55, borderRadius: 28, backgroundColor: '#fff', 
-                padding: 2, marginBottom: 8,
-                shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, elevation: 5
-              }}>
-                <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 26 }} />
+              <View style={{ height: 85, width: '100%', backgroundColor: colors.surfaceTint }}>
+                <Image 
+                  source={{ uri: CUSTOM_STORE_BANNERS[store.id] || store.cover_url || store.logo_url }} 
+                  style={{ width: '100%', height: '100%' }} 
+                  contentFit="cover" 
+                />
               </View>
-              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }} numberOfLines={1}>
-                {isAr ? (store.name_ar || store.name) : store.name}
-              </Text>
-            </View>
-          </Pressable>
-        )}
+
+              <View style={{ position: 'absolute', top: 0, left: 0, backgroundColor: '#EF4444', borderBottomRightRadius: 12, paddingHorizontal: 8, paddingVertical: 3 }}>
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{isAr ? 'جديد' : 'New'}</Text>
+              </View>
+
+              <View style={{ position: 'absolute', top: 8, right: 8, backgroundColor: '#F59E0B', borderRadius: 12, paddingHorizontal: 6, paddingVertical: 2, flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>VIP</Text>
+                <MaterialIcons name="star" size={10} color="#fff" />
+              </View>
+
+              <View style={{ 
+                position: 'absolute', top: 60, 
+                alignSelf: 'center', width: 54, height: 54, borderRadius: 27, 
+                backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center',
+                borderWidth: 3, borderColor: colors.surface, zIndex: 2,
+                shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3
+              }}>
+                <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 24 }} />
+              </View>
+
+              <View style={{ marginTop: 35, paddingHorizontal: 10, alignItems: 'center' }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '800', textAlign: 'center' }} numberOfLines={1}>
+                  {isAr ? (store.name_ar || store.name) : store.name}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 3, textAlign: 'center' }} numberOfLines={1}>
+                  {isAr ? 'قلقيلية - المتجر الرسمي' : 'Official Store'}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center', position: 'absolute', bottom: 12, left: 10, right: 10 }}>
+                <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 4, backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isOpen ? '#22C55E' : '#EF4444' }} />
+                  <Text style={{ fontSize: 9, fontWeight: '800', color: isOpen ? '#166534' : '#991B1B' }}>
+                    {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 2 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: colors.primary }}>{isAr ? 'تصفح' : 'View'}</Text>
+                  <MaterialIcons name={isAr ? 'arrow-back' : 'arrow-forward'} size={12} color={colors.primary} />
+                </View>
+              </View>
+            </Pressable>
+          );
+        }}
       />
     </View>
   );
