@@ -100,7 +100,7 @@ import { useLanguage } from '@/hooks/useLanguage';
 // ── Featured Stores Strip ───────────────────────────────────────────────────
 // ── Featured Stores Strip (التصميم الجديد والفخم) ───────────────────────────
 const CUSTOM_STORE_BANNERS: { [key: string]: string } = {
-  '50035e7a-c583-4d78-bd75-54d1f1f1f541': 'https://example.com/banner1.jpg',
+  '50035e7a-c583-4d78-bd75-54d1f1f1f541': 'https://ik.imagekit.io/xbhio5evs/WhatsApp%20Image%202026-07-11%20at%203.33.11%20PM.jpeg',
   '8cb4e4fd-9bc2-4ede-8e56-f1e79f749fe5': 'https://example.com/banner1.jpg', 
 };
 
