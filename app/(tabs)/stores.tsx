@@ -620,3 +620,95 @@ const s = StyleSheet.create({
   storeSearchIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   storeSearchInput: { flex: 1, fontSize: 13, fontWeight: '600' },
 });
+const bc = StyleSheet.create({
+  wrap: { width: '100%', position: 'relative' },
+  slide: { flex: 1, overflow: 'hidden', borderRadius: 0 },
+  gradient: { ...StyleSheet.absoluteFillObject, top: '40%' },
+  textWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, gap: 4 },
+  title: { fontSize: 18, fontWeight: '900', color: '#fff', textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  sub: { fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
+});
+
+const qc = StyleSheet.create({
+  card: { width: 80, alignItems: 'center', marginRight: 12 },
+  iconCircle: {
+    width: 60, height: 60, borderRadius: 30, backgroundColor: '#F8F9FA',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+    borderWidth: 1, borderColor: '#E9ECEF',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
+  },
+  label: { fontSize: 11, fontWeight: '600', color: '#374151', textAlign: 'center' },
+});
+
+const psc = StyleSheet.create({
+  listCard: {
+    width: '100%', backgroundColor: '#fff', borderRadius: 16, padding: 12,
+    flexDirection: 'row', alignItems: 'center', marginBottom: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+  },
+  logoCircle: { width: 65, height: 65, borderRadius: 12, backgroundColor: '#F9FAFB', overflow: 'hidden', borderWidth: 1, borderColor: '#F3F4F6' },
+  logoImg: { width: '100%', height: '100%' },
+  infoWrap: { flex: 1, marginLeft: 14 },
+  name: { fontSize: 16, fontWeight: '800', color: '#1A1A1A' },
+  address: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  statusRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  statusText: { fontSize: 11, fontWeight: '700' },
+  ratingText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
+});
+
+const cb = StyleSheet.create({
+  block: { marginBottom: 24 },
+  title: { fontSize: 18, fontWeight: '900', lineHeight: 22, paddingHorizontal: 16, marginBottom: 4 },
+});
+
+const cta = StyleSheet.create({
+  wrap: { marginHorizontal: 16, marginBottom: 24, borderRadius: 18, overflow: 'hidden', shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 12, elevation: 6 },
+  gradient: { borderRadius: 18, overflow: 'hidden', padding: 16 },
+  deco1: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.06)', top: -55, right: -25 },
+  deco2: { position: 'absolute', width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -18, left: 44 },
+  content: { alignItems: 'center', gap: 12 },
+  iconWrap: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)' },
+  textCol: { flex: 1, gap: 3 },
+  title: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  sub: { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
+});
+
+const s = StyleSheet.create({
+  container: { flex: 1 },
+  header: { backgroundColor: '#0A6E5C', paddingHorizontal: 16, paddingBottom: 15 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerIconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
+  locationCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  locationName: { fontSize: 14, color: '#fff', fontWeight: '800' },
+  ownerCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1.5, padding: 12, marginHorizontal: 16, marginTop: 16 },
+  ownerIconWrap: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  ownerName: { fontSize: 14, fontWeight: '700' },
+  ownerBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'flex-start' },
+  ownerBadgeText: { fontSize: 10, fontWeight: '700' },
+  section: { paddingTop: 22, paddingBottom: 6 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', paddingHorizontal: 16, marginBottom: 14 },
+  catScroll: { paddingHorizontal: 16, paddingBottom: 4 },
+  loadingWrap: { alignItems: 'center', paddingTop: 60, gap: 12 },
+  loadingText: { fontSize: 14, fontWeight: '500' },
+  emptyWrap: { alignItems: 'center', paddingTop: 60, gap: 14, paddingHorizontal: 16 },
+  emptyIllus: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  emptySub: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
+  clearFilterBtn: { borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, marginTop: 4 },
+  clearFilterText: { fontSize: 14, fontWeight: '700' },
+  storeSearchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 16, marginBottom: 10, gap: 10, borderRadius: 16, backgroundColor: '#fff', paddingHorizontal: 14, height: 50 },
+  storeSearchIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  storeSearchInput: { flex: 1, fontSize: 13, fontWeight: '600' },
+});
+
+const g = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  card: { width: '100%', borderRadius: 24, padding: 24, gap: 12, alignItems: 'center' },
+  iconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  title: { fontSize: 18, fontWeight: '800', textAlign: 'center' },
+  subtitle: { fontSize: 14, textAlign: 'center', lineHeight: 21 },
+  input: { width: '100%', height: 50, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 16, fontSize: 14, marginTop: 4 },
+  errorText: { fontSize: 12, fontWeight: '600' },
+  saveBtn: { width: '100%', height: 50, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
+  saveBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+});
