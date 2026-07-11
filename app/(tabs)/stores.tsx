@@ -6,11 +6,9 @@ import {
   ActivityIndicator, Modal, TextInput, Platform, NativeScrollEvent,
   NativeSyntheticEvent,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
@@ -130,7 +128,34 @@ const bc = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. QUICK STORE CATEGORY CARD
 // ─────────────────────────────────────────────────────────────────────────────
-onst getIconName = (name: string) => {
+function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: {
+  cat: StoreCategory; isAr: boolean; isSelected: boolean; onPress: () => void;
+}) {
+  const nameAr = cat.name_ar || cat.name;
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        qc.card,
+        isSelected
+          ? { backgroundColor: '#0A6E5C', borderColor: '#0A6E5C' }
+          : { backgroundColor: '#F8F9FA', borderColor: '#E9ECEF' },
+        { opacity: pressed ? 0.9 : 1 },
+      ]}
+      onPress={onPress}
+    >
+      <MaterialCommunityIcons
+        name={getIconName(nameAr) as any}
+        size={24}
+        color={isSelected ? '#FFF' : '#495057'}
+      />
+      <Text style={[qc.label, { color: isSelected ? '#FFF' : '#343A40' }]} numberOfLines={1}>
+        {isAr ? nameAr : cat.name}
+      </Text>
+    </Pressable>
+  );
+}
+
+const getIconName = (name: string) => {
   switch (name) {
     case 'زينة وهدايا': return 'gift-outline';
     case 'ألعاب وترفيه': return 'gamepad-variant-outline';
@@ -148,46 +173,6 @@ onst getIconName = (name: string) => {
     default: return 'store-outline';
   }
 };
-
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        qc.card,
-        // ستايل عصري: خلفية شفافة وإطار أنيق عند التحديد
-        isSelected 
-          ? { backgroundColor: '#0A6E5C', borderColor: '#0A6E5C' } 
-          : { backgroundColor: '#F8F9FA', borderColor: '#E9ECEF' },
-        { opacity: pressed ? 0.9 : 1 },
-      ]}
-      onPress={onPress}
-    >
-      <MaterialCommunityIcons 
-        name={getIconName(nameAr) as any} 
-        size={24} 
-        color={isSelected ? '#FFF' : '#495057'} 
-      />
-      <Text style={[qc.label, { color: isSelected ? '#FFF' : '#343A40' }]} numberOfLines={1}>
-        {isAr ? nameAr : cat.name}
-      </Text>
-    </Pressable>
-  );
-}
-
-// 3. تحديث الـ Styles ليتناسب مع الشكل الجديد
-const qc = StyleSheet.create({
-  card: {
-    width: 85, alignItems: 'center', gap: 8,
-    borderRadius: 16, padding: 12,
-    borderWidth: 1,
-    marginRight: 12,
-    // ظل خفيف جداً
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03, shadowRadius: 4, elevation: 1,
-  },
-  label: {
-    fontSize: 12, fontWeight: '700', textAlign: 'center',
-  },
-});
 
 const qc = StyleSheet.create({
   card: {
