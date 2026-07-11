@@ -19,7 +19,7 @@ import {
   checkStoreIsOpen, Store,
 } from '@/services/storesService';
 import {
-  fetchStoreCategories, getStoreCategoryEmoji, getStoreCategoryName,
+  fetchStoreCategories,
   StoreCategory,
 } from '@/services/storeCategoriesService';
 import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
@@ -43,6 +43,26 @@ function isNameInvalid(name: string): boolean {
   if (!name || name.trim().length < 2) return true;
   return /[0-9!@#$%^&*()_+=[\]{};':"\\|,.<>/?`~]/.test(name);
 }
+
+// ── Icon name resolver ────────────────────────────────────────────────────────
+const getIconName = (name: string) => {
+  switch (name) {
+    case 'زينة وهدايا': return 'gift-outline';
+    case 'ألعاب وترفيه': return 'gamepad-variant-outline';
+    case 'مأكولات وحلويات': return 'food-outline';
+    case 'إلكترونيات': return 'cellphone';
+    case 'سوبرماركت': return 'cart-outline';
+    case 'حيوانات': return 'paw';
+    case 'سيارات ومركبات': return 'car-outline';
+    case 'وظائف': return 'briefcase-outline';
+    case 'موضة': return 'tshirt-crew-outline';
+    case 'أثاث': return 'sofa-outline';
+    case 'رياضة': return 'soccer';
+    case 'عقارات': return 'home-city-outline';
+    case 'أخرى': return 'dots-horizontal';
+    default: return 'store-outline';
+  }
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. BANNER CAROUSEL
@@ -98,9 +118,6 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
               ) : (
                 <LinearGradient colors={i % 2 === 0 ? ['#0A6E5C', '#065f46'] : ['#1a4f7a', '#0d2d4a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
               )}
-              {!banner.image_url && (
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255,255,255,0.05)', opacity: 0.5, transform: [{ scale: 1.5 }, { rotate: '45deg' }] }]} />
-              )}
               <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={bc.gradient} />
               <View style={[bc.textWrap, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
                 {banner.title ? <Text style={[bc.title, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>{banner.title}</Text> : null}
@@ -113,7 +130,6 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
     </View>
   );
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. QUICK STORE CATEGORY CARD
@@ -136,56 +152,32 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
   );
 }
 
-
-const getIconName = (name: string) => {
-  switch (name) {
-    case 'زينة وهدايا': return 'gift-outline';
-    case 'ألعاب وترفيه': return 'gamepad-variant-outline';
-    case 'مأكولات وحلويات': return 'food-outline';
-    case 'إلكترونيات': return 'cellphone';
-    case 'سوبرماركت': return 'cart-outline';
-    case 'حيوانات': return 'paw';
-    case 'سيارات ومركبات': return 'car-outline';
-    case 'وظائف': return 'briefcase-outline';
-    case 'موضة': return 'tshirt-crew-outline';
-    case 'أثاث': return 'sofa-outline';
-    case 'رياضة': return 'soccer';
-    case 'عقارات': return 'home-city-outline';
-    case 'أخرى': return 'dots-horizontal';
-    default: return 'store-outline';
-  }
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. PREMIUM STORE CARD (REBUILT)
+// 3. PREMIUM STORE CARD
 // ─────────────────────────────────────────────────────────────────────────────
 function PremiumStoreCard({ store, rating, isAr, isRTL, colors, onPress }: any) {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
-  
+
   return (
     <Pressable style={psc.listCard} onPress={onPress}>
-      {/* اللوجو على اليسار */}
       <View style={psc.logoCircle}>
         <Image source={{ uri: store.logo_url }} style={psc.logoImg} contentFit="cover" />
       </View>
-
-      {/* المعلومات في المنتصف */}
       <View style={psc.infoWrap}>
         <Text style={psc.name} numberOfLines={1}>{name}</Text>
         <Text style={psc.address} numberOfLines={1}>{store.address || 'قلقيلية'}</Text>
-        
-        {/* الحالة والتقييم في سطر واحد */}
         <View style={psc.statusRow}>
-           <Text style={[psc.statusText, { color: isOpen ? '#059669' : '#DC2626' }]}>
-             {isOpen ? '🟢 مفتوح' : '🔴 مغلق'}
-           </Text>
-           {rating.avg > 0 && <Text style={psc.ratingText}>⭐ {rating.avg.toFixed(1)}</Text>}
+          <Text style={[psc.statusText, { color: isOpen ? '#059669' : '#DC2626' }]}>
+            {isOpen ? '🟢 مفتوح' : '🔴 مغلق'}
+          </Text>
+          {rating.avg > 0 && <Text style={psc.ratingText}>⭐ {rating.avg.toFixed(1)}</Text>}
         </View>
       </View>
     </Pressable>
   );
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. CATEGORY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
@@ -194,30 +186,25 @@ function CategoryBlock({ cat, stores, ratings, isAr, isRTL, colors, onStorePress
 
   return (
     <View style={cb.block}>
-      <Text style={[cb.title, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left', paddingHorizontal: 16 }]}>
+      <Text style={[cb.title, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
         {catName}
       </Text>
-      {/* هنا قائمة طولية بدون Grid */}
       <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
         {stores.map((store: any) => (
-          <PremiumStoreCard key={store.id} store={store} rating={ratings[store.id] ?? { avg: 0, count: 0 }} isAr={isAr} isRTL={isRTL} colors={colors} onPress={() => onStorePress(store.id)} />
+          <PremiumStoreCard
+            key={store.id}
+            store={store}
+            rating={ratings[store.id] ?? { avg: 0, count: 0 }}
+            isAr={isAr}
+            isRTL={isRTL}
+            colors={colors}
+            onPress={() => onStorePress(store.id)}
+          />
         ))}
       </View>
     </View>
   );
 }
-
-// قم بحذف كل الـ StyleSheet.create الخاصة بـ cb السابقة وضع هذا فقط:
-
-const cb = StyleSheet.create({
-  block: { marginBottom: 24 },
-  title: { fontSize: 18, fontWeight: '900', lineHeight: 22, paddingHorizontal: 16 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SIDE_PAD, marginBottom: 14, gap: 10 },
-  catDot: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  viewAllBtn: { backgroundColor: '#F3F4F6', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-  viewAllText: { fontSize: 12, fontWeight: '700', color: '#4B5563' },
-  grid: { flexDirection: 'column', paddingHorizontal: 16, marginTop: 12 }, // Grid تحولت لـ Column
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. REGISTER CTA BANNER
@@ -245,18 +232,6 @@ function RegisterStoreCTA({ isAr, isRTL, onPress }: {
     </Pressable>
   );
 }
-
-const cta = StyleSheet.create({
-  wrap: { marginHorizontal: SIDE_PAD, marginBottom: 24, borderRadius: 18, overflow: 'hidden', shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 12, elevation: 6 },
-  gradient: { borderRadius: 18, overflow: 'hidden', padding: 16 },
-  deco1: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.06)', top: -55, right: -25 },
-  deco2: { position: 'absolute', width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -18, left: 44 },
-  content: { alignItems: 'center', gap: 12 },
-  iconWrap: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)', flexShrink: 0 },
-  textCol: { flex: 1, gap: 3 },
-  title: { fontSize: 15, fontWeight: '800', color: '#fff', lineHeight: 20 },
-  sub: { fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 16 },
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN SCREEN
@@ -414,10 +389,16 @@ export default function StoresScreen() {
             ref={storeSearchInputRef}
             style={[s.storeSearchInput, { color: colors.textPrimary }]}
             placeholder={isAr ? 'ابحث عن متجر أو عنوان...' : 'Search stores or address...'}
-            placeholderTextColor={colors.textMuted} value={searchQuery} onChangeText={setSearchQuery} returnKeyType="search" autoCapitalize="none"
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCapitalize="none"
           />
           {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}><MaterialIcons name="close" size={16} color={colors.textMuted} /></Pressable>
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+              <MaterialIcons name="close" size={16} color={colors.textMuted} />
+            </Pressable>
           )}
         </View>
 
@@ -436,8 +417,6 @@ export default function StoresScreen() {
               <Text style={[s.ownerName, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
                 {isAr ? ((ownerStore as any).name_ar || ownerStore.name) : ownerStore.name}
               </Text>
-              
-              {/* تم تعديل لون وحالة "المتجر مغلق/قيد المراجعة" ليكون منطقياً (رمادي/أحمر بدلاً من الأخضر) */}
               <View style={[s.ownerBadge, {
                 backgroundColor: ownerStore.is_approved ? '#D1FAE5' : '#FEE2E2',
                 flexDirection: isRTL ? 'row-reverse' : 'row',
@@ -464,7 +443,9 @@ export default function StoresScreen() {
               {isAr ? 'شو ناقصك اليوم؟ 🛒' : "What do you need today? 🛒"}
             </Text>
             <ScrollView
-              ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}
+              ref={scrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
               onContentSizeChange={() => { if (isRTL && scrollRef.current) scrollRef.current.scrollToEnd({ animated: false }); }}
             >
@@ -479,7 +460,13 @@ export default function StoresScreen() {
               </Pressable>
 
               {storeCategories.map(cat => (
-                <QuickStoreCatCard key={cat.id} cat={cat} isAr={isAr} isSelected={selectedCatId === cat.id} onPress={() => setSelectedCatId(prev => prev === cat.id ? null : cat.id)} />
+                <QuickStoreCatCard
+                  key={cat.id}
+                  cat={cat}
+                  isAr={isAr}
+                  isSelected={selectedCatId === cat.id}
+                  onPress={() => setSelectedCatId(prev => prev === cat.id ? null : cat.id)}
+                />
               ))}
             </ScrollView>
           </View>
@@ -499,7 +486,11 @@ export default function StoresScreen() {
               {searchQuery.trim() ? (isAr ? 'لا يوجد نتائج' : 'No Results Found') : (isAr ? 'لا توجد متاجر بعد' : 'No Stores Yet')}
             </Text>
             <Text style={[s.emptySub, { color: colors.textMuted }]}>
-              {searchQuery.trim() ? (isAr ? 'عذراً، لا يوجد متاجر مطابقة لبحثك' : 'Sorry, no stores match your search') : selectedCatId ? (isAr ? 'لا توجد متاجر في هذا التصنيف' : 'No stores in this category') : (isAr ? 'ترقبوا إضافة متاجر قريباً' : 'Stores are coming soon')}
+              {searchQuery.trim()
+                ? (isAr ? 'عذراً، لا يوجد متاجر مطابقة لبحثك' : 'Sorry, no stores match your search')
+                : selectedCatId
+                  ? (isAr ? 'لا توجد متاجر في هذا التصنيف' : 'No stores in this category')
+                  : (isAr ? 'ترقبوا إضافة متاجر قريباً' : 'Stores are coming soon')}
             </Text>
             {(selectedCatId || searchQuery.trim()) && (
               <Pressable style={[s.clearFilterBtn, { borderColor: colors.primary }]} onPress={() => { setSelectedCatId(null); setSearchQuery(''); }}>
@@ -510,7 +501,16 @@ export default function StoresScreen() {
         ) : (
           <>
             {displayedGroups.map(group => (
-              <CategoryBlock key={group.cat.id} cat={group.cat} stores={group.stores} ratings={ratings} isAr={isAr} isRTL={isRTL} colors={colors} onStorePress={(id) => router.push(`/store/${id}` as any)} />
+              <CategoryBlock
+                key={group.cat.id}
+                cat={group.cat}
+                stores={group.stores}
+                ratings={ratings}
+                isAr={isAr}
+                isRTL={isRTL}
+                colors={colors}
+                onStorePress={(id: string) => router.push(`/store/${id}` as any)}
+              />
             ))}
           </>
         )}
@@ -519,13 +519,26 @@ export default function StoresScreen() {
       <Modal visible={nameGateVisible} animationType="fade" transparent onRequestClose={() => {}}>
         <View style={g.overlay}>
           <View style={[g.card, { backgroundColor: colors.surface }]}>
-            <View style={[g.iconWrap, { backgroundColor: colors.primaryGhost }]}><MaterialIcons name="person" size={36} color={colors.primary} /></View>
+            <View style={[g.iconWrap, { backgroundColor: colors.primaryGhost }]}>
+              <MaterialIcons name="person" size={36} color={colors.primary} />
+            </View>
             <Text style={[g.title, { color: colors.textPrimary }]}>{isAr ? 'أكمل ملفك الشخصي' : 'Complete Your Profile'}</Text>
             <Text style={[g.subtitle, { color: colors.textSecondary }]}>{isAr ? 'يرجى كتابة اسمك الحقيقي (بدون أرقام) للمتابعة' : 'Please enter your real name (no digits) to continue'}</Text>
-            <TextInput style={[g.input, { borderColor: nameError ? colors.error : colors.border, color: colors.textPrimary, backgroundColor: colors.background, textAlign: isRTL ? 'right' : 'left' }]} placeholder={isAr ? 'اكتب اسمك الحقيقي' : 'Enter your real name'} placeholderTextColor={colors.textMuted} value={editName} onChangeText={t => { setEditName(t); setNameError(''); }} autoFocus maxLength={40} />
-            {nameError && <Text style={[g.errorText, { color: colors.error }]}>{nameError}</Text>}
+            <TextInput
+              style={[g.input, { borderColor: nameError ? colors.error : colors.border, color: colors.textPrimary, backgroundColor: colors.background, textAlign: isRTL ? 'right' : 'left' }]}
+              placeholder={isAr ? 'اكتب اسمك الحقيقي' : 'Enter your real name'}
+              placeholderTextColor={colors.textMuted}
+              value={editName}
+              onChangeText={t => { setEditName(t); setNameError(''); }}
+              autoFocus
+              maxLength={40}
+            />
+            {nameError ? <Text style={[g.errorText, { color: colors.error }]}>{nameError}</Text> : null}
             <Pressable style={[g.saveBtn, { backgroundColor: colors.primary, opacity: savingName ? 0.7 : 1 }]} onPress={handleSaveName} disabled={savingName}>
-              {savingName ? <ActivityIndicator color="#fff" size="small" /> : <><MaterialIcons name="check" size={18} color="#fff" /><Text style={g.saveBtnText}>{isAr ? 'حفظ الاسم' : 'Save Name'}</Text></>}
+              {savingName
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <><MaterialIcons name="check" size={18} color="#fff" /><Text style={g.saveBtnText}>{isAr ? 'حفظ الاسم' : 'Save Name'}</Text></>
+              }
             </Pressable>
           </View>
         </View>
@@ -534,6 +547,9 @@ export default function StoresScreen() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STYLESHEETS (single declaration each)
+// ─────────────────────────────────────────────────────────────────────────────
 const bc = StyleSheet.create({
   wrap: { width: '100%', position: 'relative' },
   slide: { flex: 1, overflow: 'hidden', borderRadius: 0 },
@@ -560,25 +576,15 @@ const qc = StyleSheet.create({
 });
 
 const psc = StyleSheet.create({
-  // ── ستايل القائمة الطولية (للمتاجر) ──
   listCard: {
-    width: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    width: '100%', backgroundColor: '#fff', borderRadius: 16, padding: 12,
+    flexDirection: 'row', alignItems: 'center', marginBottom: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
-  logoCircle: { 
-    width: 65, height: 65, borderRadius: 12, 
+  logoCircle: {
+    width: 65, height: 65, borderRadius: 12,
     backgroundColor: '#F9FAFB', overflow: 'hidden',
-    borderWidth: 1, borderColor: '#F3F4F6' 
+    borderWidth: 1, borderColor: '#F3F4F6',
   },
   logoImg: { width: '100%', height: '100%' },
   infoWrap: { flex: 1, marginLeft: 14 },
@@ -587,12 +593,25 @@ const psc = StyleSheet.create({
   statusRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
   statusText: { fontSize: 11, fontWeight: '700' },
   ratingText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
-  
-  // ── إضافات (للحفاظ على توافق بقية النظام) ──
-  card: { width: STORE_CARD_W, backgroundColor: '#fff', borderRadius: 18, marginBottom: 16 },
-  bannerStrip: { height: 90, position: 'relative', backgroundColor: '#F3F4F6' },
-  coverOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' },
 });
+
+const cb = StyleSheet.create({
+  block: { marginBottom: 24 },
+  title: { fontSize: 18, fontWeight: '900', lineHeight: 22, paddingHorizontal: 16, marginBottom: 4 },
+});
+
+const cta = StyleSheet.create({
+  wrap: { marginHorizontal: SIDE_PAD, marginBottom: 24, borderRadius: 18, overflow: 'hidden', shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 12, elevation: 6 },
+  gradient: { borderRadius: 18, overflow: 'hidden', padding: 16 },
+  deco1: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.06)', top: -55, right: -25 },
+  deco2: { position: 'absolute', width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -18, left: 44 },
+  content: { alignItems: 'center', gap: 12 },
+  iconWrap: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)', flexShrink: 0 },
+  textCol: { flex: 1, gap: 3 },
+  title: { fontSize: 15, fontWeight: '800', color: '#fff', lineHeight: 20 },
+  sub: { fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 16 },
+});
+
 const s = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 15 },
@@ -616,87 +635,7 @@ const s = StyleSheet.create({
   emptySub: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
   clearFilterBtn: { borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, marginTop: 4 },
   clearFilterText: { fontSize: 14, fontWeight: '700' },
-  storeSearchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 16, marginBottom: 10, gap: 10, borderRadius: 16, backgroundColor: '#fff', paddingHorizontal: 14, height: 50 },
-  storeSearchIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  storeSearchInput: { flex: 1, fontSize: 13, fontWeight: '600' },
-});
-const bc = StyleSheet.create({
-  wrap: { width: '100%', position: 'relative' },
-  slide: { flex: 1, overflow: 'hidden', borderRadius: 0 },
-  gradient: { ...StyleSheet.absoluteFillObject, top: '40%' },
-  textWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, gap: 4 },
-  title: { fontSize: 18, fontWeight: '900', color: '#fff', textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
-  sub: { fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
-});
-
-const qc = StyleSheet.create({
-  card: { width: 80, alignItems: 'center', marginRight: 12 },
-  iconCircle: {
-    width: 60, height: 60, borderRadius: 30, backgroundColor: '#F8F9FA',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
-    borderWidth: 1, borderColor: '#E9ECEF',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
-  },
-  label: { fontSize: 11, fontWeight: '600', color: '#374151', textAlign: 'center' },
-});
-
-const psc = StyleSheet.create({
-  listCard: {
-    width: '100%', backgroundColor: '#fff', borderRadius: 16, padding: 12,
-    flexDirection: 'row', alignItems: 'center', marginBottom: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
-  logoCircle: { width: 65, height: 65, borderRadius: 12, backgroundColor: '#F9FAFB', overflow: 'hidden', borderWidth: 1, borderColor: '#F3F4F6' },
-  logoImg: { width: '100%', height: '100%' },
-  infoWrap: { flex: 1, marginLeft: 14 },
-  name: { fontSize: 16, fontWeight: '800', color: '#1A1A1A' },
-  address: { fontSize: 12, color: '#6B7280', marginTop: 2 },
-  statusRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
-  statusText: { fontSize: 11, fontWeight: '700' },
-  ratingText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
-});
-
-const cb = StyleSheet.create({
-  block: { marginBottom: 24 },
-  title: { fontSize: 18, fontWeight: '900', lineHeight: 22, paddingHorizontal: 16, marginBottom: 4 },
-});
-
-const cta = StyleSheet.create({
-  wrap: { marginHorizontal: 16, marginBottom: 24, borderRadius: 18, overflow: 'hidden', shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 12, elevation: 6 },
-  gradient: { borderRadius: 18, overflow: 'hidden', padding: 16 },
-  deco1: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.06)', top: -55, right: -25 },
-  deco2: { position: 'absolute', width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -18, left: 44 },
-  content: { alignItems: 'center', gap: 12 },
-  iconWrap: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)' },
-  textCol: { flex: 1, gap: 3 },
-  title: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  sub: { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
-});
-
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  header: { backgroundColor: '#0A6E5C', paddingHorizontal: 16, paddingBottom: 15 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerIconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
-  locationCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5 },
-  locationName: { fontSize: 14, color: '#fff', fontWeight: '800' },
-  ownerCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1.5, padding: 12, marginHorizontal: 16, marginTop: 16 },
-  ownerIconWrap: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  ownerName: { fontSize: 14, fontWeight: '700' },
-  ownerBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'flex-start' },
-  ownerBadgeText: { fontSize: 10, fontWeight: '700' },
-  section: { paddingTop: 22, paddingBottom: 6 },
-  sectionTitle: { fontSize: 17, fontWeight: '800', paddingHorizontal: 16, marginBottom: 14 },
-  catScroll: { paddingHorizontal: 16, paddingBottom: 4 },
-  loadingWrap: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  loadingText: { fontSize: 14, fontWeight: '500' },
-  emptyWrap: { alignItems: 'center', paddingTop: 60, gap: 14, paddingHorizontal: 16 },
-  emptyIllus: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  emptySub: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
-  clearFilterBtn: { borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, marginTop: 4 },
-  clearFilterText: { fontSize: 14, fontWeight: '700' },
-  storeSearchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 16, marginBottom: 10, gap: 10, borderRadius: 16, backgroundColor: '#fff', paddingHorizontal: 14, height: 50 },
+  storeSearchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 16, marginBottom: 10, gap: 10, borderRadius: 16, paddingHorizontal: 14, height: 50, borderWidth: 1 },
   storeSearchIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   storeSearchInput: { flex: 1, fontSize: 13, fontWeight: '600' },
 });
