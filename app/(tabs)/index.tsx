@@ -102,6 +102,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   const [loading, setLoading] = React.useState(true);
   const flatListRef = React.useRef<FlatList>(null);
   const scrollIndex = React.useRef(0);
+  const shimmer = React.useRef(new Animated.Value(0.35)).current;
 
   React.useEffect(() => {
     setLoading(true);
@@ -112,6 +113,19 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
       setLoading(false);
     });
   }, []);
+
+  // نبضة هادية أثناء التحميل (shimmer)
+  React.useEffect(() => {
+    if (!loading) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 0.85, duration: 650, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0.35, duration: 650, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [loading]);
 
   // التمرير التلقائي (Auto-Scroll)
   React.useEffect(() => {
@@ -132,15 +146,15 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     <View style={{ marginBottom: 28, marginTop: 8 }}>
       <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 8, marginBottom: 16, paddingHorizontal: 16 }}>
         <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: colors.primary }} />
-        <Text style={{ fontSize: 17, fontWeight: '850', color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left', letterSpacing: -0.3 }}>
+        <Text style={{ fontSize: 17, fontWeight: '800', color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left', letterSpacing: -0.3 }}>
           {isAr ? 'متاجر مميزة' : 'Featured Stores'}
         </Text>
       </View>
-      
+
       {loading ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}>
           {[1, 2, 3].map((key) => (
-            <View key={key} style={{ width: 150, height: 200, backgroundColor: colors.surfaceTint, borderRadius: 18, opacity: 0.4 }} />
+            <Animated.View key={key} style={{ width: 150, height: 200, backgroundColor: colors.surfaceTint, borderRadius: 18, opacity: shimmer }} />
           ))}
         </ScrollView>
       ) : (
@@ -149,7 +163,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
           horizontal
           showsHorizontalScrollIndicator={false}
           data={stores}
-          snapToInterval={164} 
+          snapToInterval={164}
           snapToAlignment="start"
           decelerationRate="fast"
           contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}
@@ -159,58 +173,89 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
             const statusColor = isOpen ? '#10B981' : '#EF4444';
 
             return (
-              <Pressable 
-                style={{ 
-                  width: 150, height: 200, 
-                  borderRadius: 18, 
-                  overflow: 'hidden',
-                  backgroundColor: colors.surface,
-                  shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 4
-                }}
+              <Pressable
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   onPress(store.id);
                 }}
+                style={({ pressed }) => ({
+                  width: 150, height: 200, borderRadius: 18,
+                  backgroundColor: colors.surface,
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.16, shadowRadius: 16, elevation: 6,
+                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                })}
               >
-                <Image 
-                  source={{ uri: bannerImage }} 
-                  style={StyleSheet.absoluteFillObject} 
-                  contentFit="cover" 
-                />
-                
-                <LinearGradient
-                  colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)']}
-                  style={StyleSheet.absoluteFillObject}
-                />
-
-                <View style={{ 
-                  position: 'absolute', top: 12, right: 12, 
-                  backgroundColor: '#F59E0B', 
-                  borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, 
-                  zIndex: 2 
+                <View style={{
+                  flex: 1, borderRadius: 18, overflow: 'hidden',
+                  borderWidth: 1.4, borderColor: 'rgba(245,158,11,0.3)',
                 }}>
-                  <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>VIP</Text>
-                </View>
+                  <Image
+                    source={{ uri: bannerImage }}
+                    style={StyleSheet.absoluteFillObject}
+                    contentFit="cover"
+                  />
 
-                {/* المحتوى في المنتصف تماماً */}
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12 }}>
-                  
-                  <View style={{ 
-                    width: 70, height: 70, borderRadius: 35, 
-                    backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
-                    borderWidth: 2, borderColor: statusColor,
-                    shadowColor: statusColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 8, elevation: 6
+                  <LinearGradient
+                    colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.78)']}
+                    locations={[0, 0.55, 1]}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+
+                  {/* شارة VIP بتدرج ذهبي */}
+                  <LinearGradient
+                    colors={['#FFD966', '#F59E0B']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{
+                      position: 'absolute', top: 12,
+                      ...(isRTL ? { left: 12 } : { right: 12 }),
+                      borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3,
+                      flexDirection: 'row', alignItems: 'center', gap: 2, zIndex: 2,
+                      shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 4, elevation: 3,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 8 }}>★</Text>
+                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.3 }}>VIP</Text>
+                  </LinearGradient>
+
+                  {/* شارة مفتوح / مغلق */}
+                  <View style={{
+                    position: 'absolute', bottom: 10,
+                    ...(isRTL ? { right: 10 } : { left: 10 }),
+                    flexDirection: 'row', alignItems: 'center', gap: 4,
+                    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 20,
+                    paddingHorizontal: 7, paddingVertical: 3, zIndex: 2,
                   }}>
-                    <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 33 }} />
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusColor }} />
+                    <Text style={{ color: '#fff', fontSize: 8, fontWeight: '700' }}>
+                      {isAr ? (isOpen ? 'مفتوح' : 'مغلق') : (isOpen ? 'Open' : 'Closed')}
+                    </Text>
                   </View>
 
-                  <Text style={{ 
-                    color: '#fff', fontSize: 13, fontWeight: '805', textAlign: 'center',
-                    marginTop: 10,
-                    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3
-                  }} numberOfLines={1}>
-                    {isAr ? (store.name_ar || store.name) : store.name}
-                  </Text>
+                  {/* المحتوى في المنتصف تماماً */}
+                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12 }}>
+                    <View style={{
+                      width: 74, height: 74, borderRadius: 37,
+                      backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
+                      shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 8,
+                    }}>
+                      <View style={{
+                        width: 68, height: 68, borderRadius: 34,
+                        borderWidth: 2, borderColor: statusColor,
+                        overflow: 'hidden', backgroundColor: '#fff',
+                      }}>
+                        <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%' }} contentFit="contain" />
+                      </View>
+                    </View>
+
+                    <Text style={{
+                      color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center',
+                      marginTop: 10,
+                      textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
+                    }} numberOfLines={1}>
+                      {isAr ? (store.name_ar || store.name) : store.name}
+                    </Text>
+                  </View>
                 </View>
               </Pressable>
             );
@@ -220,7 +265,6 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     </View>
   );
 }
-
 const fs = StyleSheet.create({
   wrapper: { marginBottom: Spacing.lg },
   labelRow: {
