@@ -113,12 +113,13 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     });
   }, []);
 
+  // التمرير التلقائي (Auto-Scroll)
   React.useEffect(() => {
     if (stores.length <= 1) return;
     const timer = setInterval(() => {
       scrollIndex.current = (scrollIndex.current + 1) % stores.length;
       flatListRef.current?.scrollToOffset({
-        offset: scrollIndex.current * 164,
+        offset: scrollIndex.current * 164, // عرض الكرت 150 + الفراغ 14
         animated: true,
       });
     }, 3500);
@@ -178,7 +179,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
                 />
                 
                 <LinearGradient
-                  colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.95)']}
+                  colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)']}
                   style={StyleSheet.absoluteFillObject}
                 />
 
@@ -191,21 +192,22 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
                   <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>VIP</Text>
                 </View>
 
-                <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 24, paddingHorizontal: 12 }}>
+                {/* المحتوى في المنتصف تماماً */}
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12 }}>
                   
                   <View style={{ 
-                    width: 66, height: 66, borderRadius: 33, 
+                    width: 70, height: 70, borderRadius: 35, 
                     backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
                     borderWidth: 2, borderColor: statusColor,
-                    marginBottom: 10,
-                    shadowColor: statusColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4
+                    shadowColor: statusColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 8, elevation: 6
                   }}>
-                    <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 31 }} />
+                    <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 33 }} />
                   </View>
 
                   <Text style={{ 
                     color: '#fff', fontSize: 13, fontWeight: '805', textAlign: 'center',
-                    textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3
+                    marginTop: 10,
+                    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3
                   }} numberOfLines={1}>
                     {isAr ? (store.name_ar || store.name) : store.name}
                   </Text>
