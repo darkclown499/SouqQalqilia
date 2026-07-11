@@ -99,7 +99,6 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   onPress: (storeId: string) => void;
 }) {
   const [stores, setStores] = React.useState<StoreType[]>([]);
-  // إضافة حالة التحميل (Loading State) لتشغيل الـ Skeleton
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -112,12 +111,10 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     });
   }, []);
 
-  // إخفاء القسم فقط إذا انتهى التحميل ولم يتم العثور على متاجر
   if (!loading && stores.length === 0) return null;
 
   return (
     <View style={{ marginBottom: 24 }}>
-      {/* الهيدر ثابت دائماً لمنع القفز البصري */}
       <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 8, marginBottom: 16, paddingHorizontal: 16 }}>
         <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: colors.primary }} />
         <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }}>
@@ -126,22 +123,9 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
       </View>
       
       {loading ? (
-        // حالة التحميل (Skeleton Shimmer)
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
-          contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
           {[1, 2, 3].map((key) => (
-            <View 
-              key={key} 
-              style={{ 
-                width: 170, height: 220, 
-                backgroundColor: colors.surfaceTint, 
-                borderRadius: 20, 
-                opacity: 0.5 // تأثير بهتان رمادي
-              }} 
-            />
+            <View key={key} style={{ width: 145, height: 185, backgroundColor: colors.surfaceTint, borderRadius: 16, opacity: 0.5 }} />
           ))}
         </ScrollView>
       ) : (
@@ -149,87 +133,82 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
           horizontal
           showsHorizontalScrollIndicator={false}
           data={stores}
-          
-          // إعدادات التمرير المغناطيسي (Snap Scrolling)
-          snapToInterval={186} // عرض الكارت (170) + المسافة الفاصلة (16) = 186
+          snapToInterval={157} 
           snapToAlignment="start"
           decelerationRate="fast"
-          
-          contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
           renderItem={({ item: store }) => {
-            const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
             const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
+            const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
             
-            // قراءة عدد الإعلانات من الـ Database (ووضع 0 كقيمة افتراضية إذا لم تكن متوفرة)
-            const adsCount = store.ads_count || 0; 
+            // تحديد ألوان الحالة
+            const statusColor = isOpen ? '#10B981' : '#EF4444'; // أخضر للمفتوح، أحمر للمغلق
 
             return (
               <Pressable 
                 style={{ 
-                  width: 170, height: 220, 
-                  backgroundColor: colors.surface, 
-                  borderRadius: 20, 
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
-                  shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2
+                  width: 145, height: 185, 
+                  borderRadius: 16, 
+                  overflow: 'hidden',
+                  backgroundColor: colors.surfaceTint,
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 4
                 }}
                 onPress={() => {
-                  // النبض اللمسي (Haptic Feedback) عند الضغط
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   onPress(store.id);
                 }}
               >
-                <View style={{ height: 115, width: '100%', borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden', backgroundColor: colors.surfaceTint }}>
-                  <Image 
-                    source={{ uri: bannerImage }} 
-                    style={{ width: '100%', height: '100%' }} 
-                    contentFit="cover" 
-                  />
-                  <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' }} />
-                </View>
+                <Image 
+                  source={{ uri: bannerImage }} 
+                  style={StyleSheet.absoluteFillObject} 
+                  contentFit="cover" 
+                />
+                
+                <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)' }} />
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.85)']}
+                  style={StyleSheet.absoluteFillObject}
+                />
 
                 <View style={{ 
-                  position: 'absolute', top: 12, right: 12, 
-                  backgroundColor: 'rgba(245, 158, 11, 0.95)', 
-                  borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4, 
-                  flexDirection: 'row', alignItems: 'center', gap: 4,
-                  shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3
+                  position: 'absolute', top: 10, right: 10, 
+                  backgroundColor: '#F59E0B', 
+                  borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, 
+                  zIndex: 2 
                 }}>
                   <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>VIP</Text>
-                  <MaterialIcons name="star" size={12} color="#fff" />
                 </View>
 
-                <View style={{ 
-                  position: 'absolute', top: 77, 
-                  alignSelf: 'center', width: 76, height: 76, borderRadius: 38, 
-                  backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center',
-                  borderWidth: 4, borderColor: colors.surface, zIndex: 2,
-                  shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 5, elevation: 4
-                }}>
-                  <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 34 }} />
-                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12 }}>
+                  
+                  {/* اللوجو مع إطار متصل بالحالة وتوهج (Glow) */}
+                  <View style={{ 
+                    width: 70, height: 70, borderRadius: 35, 
+                    backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
+                    borderWidth: 3, borderColor: statusColor,
+                    shadowColor: statusColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 8, elevation: 6
+                  }}>
+                    <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 32 }} />
+                  </View>
 
-                <View style={{ marginTop: 42, paddingHorizontal: 12, alignItems: 'center' }}>
-                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', textAlign: 'center' }} numberOfLines={1}>
+                  {/* اسم المتجر */}
+                  <Text style={{ 
+                    color: '#fff', fontSize: 14, fontWeight: '800', textAlign: 'center', 
+                    marginTop: 12,
+                    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4
+                  }} numberOfLines={1}>
                     {isAr ? (store.name_ar || store.name) : store.name}
                   </Text>
-                  {/* البيانات الحية (Dynamic Subtitle) */}
-                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, textAlign: 'center' }} numberOfLines={1}>
-                    {isAr ? `${adsCount} إعلان نشط` : `${adsCount} active ads`}
+
+                  {/* نص صغير لتأكيد الحالة */}
+                  <Text style={{ 
+                    color: statusColor, fontSize: 10, fontWeight: '800', textAlign: 'center', 
+                    marginTop: 4,
+                    textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3
+                  }}>
+                    {isOpen ? (isAr ? '• مفتوح' : '• Open') : (isAr ? '• مغلق' : '• Closed')}
                   </Text>
-                </View>
 
-                <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center', position: 'absolute', bottom: 14, left: 14, right: 14 }}>
-                  <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 6, backgroundColor: isOpen ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12 }}>
-                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isOpen ? '#22C55E' : '#EF4444' }} />
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: isOpen ? '#166534' : '#991B1B' }}>
-                      {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 4 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>{isAr ? 'تصفح' : 'View'}</Text>
-                    <MaterialIcons name={isAr ? 'arrow-back' : 'arrow-forward'} size={14} color={colors.primary} />
-                  </View>
                 </View>
               </Pressable>
             );
