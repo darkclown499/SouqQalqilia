@@ -12,6 +12,7 @@ import FloatingOffersButton from '@/components/FloatingOffersButton';
 import { useAuth, getSupabaseClient } from '@/template';
 import { trackEvent } from '@/services/analyticsService';
 import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
+import * as Haptics from 'expo-haptics';
 
 // Dimensions are now computed reactively via useResponsive() inside the component.
 // Snapshot used only for getItemLayout estimation (close enough; recalculates on resize).
@@ -25,11 +26,6 @@ const _initCardInfoH = 92;
 const _initRowH = _initImgH + _initCardInfoH + _initCardGap;
 let _interstitialsCache: InterstitialAd[] | null = null;
 
-const FEATURED_STORES = [
-  { id: '1', name: 'سوبرماركت التوفير', logo: 'https://images.unsplash.com/photo-1588964895597-cfccd6e2dbf9?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?q=80&w=400&auto=format&fit=crop' },
-  { id: '2', name: 'بوتيك الأناقة', logo: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=400&auto=format&fit=crop' },
-  { id: '3', name: 'مطعم البيك', logo: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?q=80&w=150&auto=format&fit=crop', cover: 'https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=400&auto=format&fit=crop' },
-];
 const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
 const MAX_RECENTLY_VIEWED = 6;
 const SEARCH_HISTORY_KEY = 'search_history_v1';
@@ -98,21 +94,30 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 
 // ── Featured Stores Strip ───────────────────────────────────────────────────
-// ── Featured Stores Strip (التصميم الجديد والفخم) ───────────────────────────
 function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   isAr: boolean; isRTL: boolean; colors: any;
   onPress: (storeId: string) => void;
 }) {
   const [stores, setStores] = React.useState<StoreType[]>([]);
+  // إضافة حالة التحميل (Loading State) لتشغيل الـ Skeleton
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    fetchFeaturedStores().then(({ data }) => setStores(data));
+    setLoading(true);
+    fetchFeaturedStores().then(({ data }) => {
+      setStores(data);
+      setLoading(false);
+    }).catch(() => {
+      setLoading(false);
+    });
   }, []);
 
-  if (stores.length === 0) return null;
+  // إخفاء القسم فقط إذا انتهى التحميل ولم يتم العثور على متاجر
+  if (!loading && stores.length === 0) return null;
 
   return (
     <View style={{ marginBottom: 24 }}>
+      {/* الهيدر ثابت دائماً لمنع القفز البصري */}
       <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 8, marginBottom: 16, paddingHorizontal: 16 }}>
         <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: colors.primary }} />
         <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }}>
@@ -120,84 +125,117 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
         </Text>
       </View>
       
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={stores}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
-        renderItem={({ item: store }) => {
-          const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
-          
-          // قراءة البنر المرفوع من المستخدم مباشرة من قاعدة البيانات
-          const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
-
-          return (
-            <Pressable 
+      {loading ? (
+        // حالة التحميل (Skeleton Shimmer)
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
+        >
+          {[1, 2, 3].map((key) => (
+            <View 
+              key={key} 
               style={{ 
-                width: 165, height: 215, 
-                backgroundColor: colors.surface, 
+                width: 170, height: 220, 
+                backgroundColor: colors.surfaceTint, 
                 borderRadius: 20, 
-                shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 5
-              }}
-              onPress={() => onPress(store.id)}
-            >
-              {/* البنر المتزامن مع رفع المستخدم */}
-              <View style={{ height: 90, width: '100%', borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden', backgroundColor: colors.surfaceTint }}>
-                <Image 
-                  source={{ uri: bannerImage }} 
-                  style={{ width: '100%', height: '100%' }} 
-                  contentFit="cover" 
-                />
-                <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' }} />
-              </View>
+                opacity: 0.5 // تأثير بهتان رمادي
+              }} 
+            />
+          ))}
+        </ScrollView>
+      ) : (
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={stores}
+          
+          // إعدادات التمرير المغناطيسي (Snap Scrolling)
+          snapToInterval={186} // عرض الكارت (170) + المسافة الفاصلة (16) = 186
+          snapToAlignment="start"
+          decelerationRate="fast"
+          
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
+          renderItem={({ item: store }) => {
+            const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
+            const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
+            
+            // قراءة عدد الإعلانات من الـ Database (ووضع 0 كقيمة افتراضية إذا لم تكن متوفرة)
+            const adsCount = store.ads_count || 0; 
 
-              <View style={{ 
-                position: 'absolute', top: 12, right: 12, 
-                backgroundColor: 'rgba(245, 158, 11, 0.95)', 
-                borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4, 
-                flexDirection: 'row', alignItems: 'center', gap: 4,
-                shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4
-              }}>
-                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>VIP</Text>
-                <MaterialIcons name="star" size={12} color="#fff" />
-              </View>
+            return (
+              <Pressable 
+                style={{ 
+                  width: 170, height: 220, 
+                  backgroundColor: colors.surface, 
+                  borderRadius: 20, 
+                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2
+                }}
+                onPress={() => {
+                  // النبض اللمسي (Haptic Feedback) عند الضغط
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onPress(store.id);
+                }}
+              >
+                <View style={{ height: 115, width: '100%', borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden', backgroundColor: colors.surfaceTint }}>
+                  <Image 
+                    source={{ uri: bannerImage }} 
+                    style={{ width: '100%', height: '100%' }} 
+                    contentFit="cover" 
+                  />
+                  <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' }} />
+                </View>
 
-              <View style={{ 
-                position: 'absolute', top: 60, 
-                alignSelf: 'center', width: 64, height: 64, borderRadius: 32, 
-                backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center',
-                borderWidth: 4, borderColor: colors.surface, zIndex: 2,
-                shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 6
-              }}>
-                <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 30 }} />
-              </View>
+                <View style={{ 
+                  position: 'absolute', top: 12, right: 12, 
+                  backgroundColor: 'rgba(245, 158, 11, 0.95)', 
+                  borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4, 
+                  flexDirection: 'row', alignItems: 'center', gap: 4,
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3
+                }}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>VIP</Text>
+                  <MaterialIcons name="star" size={12} color="#fff" />
+                </View>
 
-              <View style={{ marginTop: 40, paddingHorizontal: 12, alignItems: 'center' }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '800', textAlign: 'center' }} numberOfLines={1}>
-                  {isAr ? (store.name_ar || store.name) : store.name}
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, textAlign: 'center' }} numberOfLines={1}>
-                  {isAr ? 'قلقيلية - المتجر الرسمي' : 'Official Store'}
-                </Text>
-              </View>
+                <View style={{ 
+                  position: 'absolute', top: 77, 
+                  alignSelf: 'center', width: 76, height: 76, borderRadius: 38, 
+                  backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center',
+                  borderWidth: 4, borderColor: colors.surface, zIndex: 2,
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 5, elevation: 4
+                }}>
+                  <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 34 }} />
+                </View>
 
-              <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center', position: 'absolute', bottom: 14, left: 14, right: 14 }}>
-                <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 6, backgroundColor: isOpen ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12 }}>
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isOpen ? '#22C55E' : '#EF4444' }} />
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: isOpen ? '#166534' : '#991B1B' }}>
-                    {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+                <View style={{ marginTop: 42, paddingHorizontal: 12, alignItems: 'center' }}>
+                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', textAlign: 'center' }} numberOfLines={1}>
+                    {isAr ? (store.name_ar || store.name) : store.name}
+                  </Text>
+                  {/* البيانات الحية (Dynamic Subtitle) */}
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, textAlign: 'center' }} numberOfLines={1}>
+                    {isAr ? `${adsCount} إعلان نشط` : `${adsCount} active ads`}
                   </Text>
                 </View>
 
-                <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 4 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>{isAr ? 'تصفح' : 'View'}</Text>
-                  <MaterialIcons name={isAr ? 'arrow-back' : 'arrow-forward'} size={14} color={colors.primary} />
+                <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center', position: 'absolute', bottom: 14, left: 14, right: 14 }}>
+                  <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 6, backgroundColor: isOpen ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12 }}>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isOpen ? '#22C55E' : '#EF4444' }} />
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: isOpen ? '#166534' : '#991B1B' }}>
+                      {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>{isAr ? 'تصفح' : 'View'}</Text>
+                    <MaterialIcons name={isAr ? 'arrow-back' : 'arrow-forward'} size={14} color={colors.primary} />
+                  </View>
                 </View>
-              </View>
-            </Pressable>
-          );
-        }}
-      />
+              </Pressable>
+            );
+          }}
+        />
+      )}
     </View>
   );
 }
