@@ -100,6 +100,10 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
 }) {
   const [stores, setStores] = React.useState<StoreType[]>([]);
   const [loading, setLoading] = React.useState(true);
+  
+  // 1. مراجع التحكم بالتمرير التلقائي
+  const flatListRef = React.useRef<FlatList>(null);
+  const scrollIndex = React.useRef(0);
 
   React.useEffect(() => {
     setLoading(true);
@@ -111,47 +115,68 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     });
   }, []);
 
+  // 2. مشغل الحركة التلقائية (Auto-Scroll)
+  React.useEffect(() => {
+    if (stores.length <= 1) return; // لا تمرر إذا كان هناك متجر واحد أو أقل
+
+    const timer = setInterval(() => {
+      scrollIndex.current += 1;
+      
+      // العودة للبداية عند الوصول لآخر متجر
+      if (scrollIndex.current >= stores.length) {
+        scrollIndex.current = 0;
+      }
+
+      // حساب الإزاحة: عرض الكارت (150) + المسافة الفاصلة (14) = 164
+      flatListRef.current?.scrollToOffset({
+        offset: scrollIndex.current * 164,
+        animated: true,
+      });
+    }, 3500); // التمرير يتم كل 3.5 ثانية
+
+    return () => clearInterval(timer); // تنظيف المؤقت عند الخروج
+  }, [stores]);
+
   if (!loading && stores.length === 0) return null;
 
   return (
-    <View style={{ marginBottom: 24 }}>
+    <View style={{ marginBottom: 28, marginTop: 8 }}>
       <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 8, marginBottom: 16, paddingHorizontal: 16 }}>
         <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: colors.primary }} />
-        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }}>
+        <Text style={{ fontSize: 17, fontWeight: '850', color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left', letterSpacing: -0.3 }}>
           {isAr ? 'متاجر مميزة' : 'Featured Stores'}
         </Text>
       </View>
       
       {loading ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}>
           {[1, 2, 3].map((key) => (
-            <View key={key} style={{ width: 145, height: 185, backgroundColor: colors.surfaceTint, borderRadius: 16, opacity: 0.5 }} />
+            <View key={key} style={{ width: 150, height: 200, backgroundColor: colors.surfaceTint, borderRadius: 18, opacity: 0.4 }} />
           ))}
         </ScrollView>
       ) : (
         <FlatList
+          ref={flatListRef} // 3. ربط المرجع بالقائمة
           horizontal
           showsHorizontalScrollIndicator={false}
           data={stores}
-          snapToInterval={157} 
+          snapToInterval={164} 
           snapToAlignment="start"
           decelerationRate="fast"
-          contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}
           renderItem={({ item: store }) => {
             const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
             const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
-            
-            // تحديد ألوان الحالة
-            const statusColor = isOpen ? '#10B981' : '#EF4444'; // أخضر للمفتوح، أحمر للمغلق
+            const statusColor = isOpen ? '#10B981' : '#EF4444';
 
             return (
               <Pressable 
                 style={{ 
-                  width: 145, height: 185, 
-                  borderRadius: 16, 
+                  width: 150, height: 200, 
+                  borderRadius: 18, 
                   overflow: 'hidden',
-                  backgroundColor: colors.surfaceTint,
-                  shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 4
+                  backgroundColor: colors.surface,
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 4
                 }}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -164,49 +189,45 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
                   contentFit="cover" 
                 />
                 
-                <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)' }} />
                 <LinearGradient
-                  colors={['transparent', 'rgba(0,0,0,0.85)']}
+                  colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.95)']}
                   style={StyleSheet.absoluteFillObject}
                 />
 
                 <View style={{ 
-                  position: 'absolute', top: 10, right: 10, 
+                  position: 'absolute', top: 12, right: 12, 
                   backgroundColor: '#F59E0B', 
-                  borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, 
+                  borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, 
                   zIndex: 2 
                 }}>
-                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>VIP</Text>
+                  <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>VIP</Text>
                 </View>
 
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12 }}>
+                <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 16, paddingHorizontal: 12 }}>
                   
-                  {/* اللوجو مع إطار متصل بالحالة وتوهج (Glow) */}
                   <View style={{ 
-                    width: 70, height: 70, borderRadius: 35, 
+                    width: 66, height: 66, borderRadius: 33, 
                     backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
                     borderWidth: 2, borderColor: statusColor,
-                    shadowColor: statusColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 4, elevation: 4
+                    marginBottom: 10,
+                    shadowColor: statusColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4
                   }}>
-                    <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 32 }} />
+                    <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 31 }} />
                   </View>
 
-                  {/* اسم المتجر */}
                   <Text style={{ 
-                    color: '#fff', fontSize: 14, fontWeight: '800', textAlign: 'center', 
-                    marginTop: 12,
-                    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4
+                    color: '#fff', fontSize: 13, fontWeight: '805', textAlign: 'center',
+                    textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3
                   }} numberOfLines={1}>
                     {isAr ? (store.name_ar || store.name) : store.name}
                   </Text>
 
-                  {/* نص صغير لتأكيد الحالة */}
                   <Text style={{ 
-                    color: statusColor, fontSize: 10, fontWeight: '800', textAlign: 'center', 
-                    marginTop: 4,
-                    textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3
+                    color: statusColor, fontSize: 10, fontWeight: '700', textAlign: 'center', 
+                    marginTop: 3,
+                    textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2
                   }}>
-                    {isOpen ? (isAr ? '• مفتوح' : '• Open') : (isAr ? '• مغلق' : '• Closed')}
+                    {isOpen ? (isAr ? 'مفتوح الأن' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
                   </Text>
 
                 </View>
