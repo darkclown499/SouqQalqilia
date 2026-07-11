@@ -99,11 +99,6 @@ import { useLanguage } from '@/hooks/useLanguage';
 
 // ── Featured Stores Strip ───────────────────────────────────────────────────
 // ── Featured Stores Strip (التصميم الجديد والفخم) ───────────────────────────
-const CUSTOM_STORE_BANNERS: { [key: string]: string } = {
-  '50035e7a-c583-4d78-bd75-54d1f1f1f541': 'https://ik.imagekit.io/xbhio5evs/WhatsApp%20Image%202026-07-11%20at%203.33.11%20PM.jpeg',
-  '8cb4e4fd-9bc2-4ede-8e56-f1e79f749fe5': 'https://example.com/banner1.jpg', 
-};
-
 function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   isAr: boolean; isRTL: boolean; colors: any;
   onPress: (storeId: string) => void;
@@ -118,9 +113,9 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
 
   return (
     <View style={{ marginBottom: 24 }}>
-      <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 8, marginBottom: 12, paddingHorizontal: 16 }}>
+      <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 8, marginBottom: 16, paddingHorizontal: 16 }}>
         <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: colors.primary }} />
-        <Text style={{ fontSize: 17, fontWeight: '700', color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }}>
+        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }}>
           {isAr ? 'متاجر مميزة' : 'Featured Stores'}
         </Text>
       </View>
@@ -129,68 +124,74 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
         horizontal
         showsHorizontalScrollIndicator={false}
         data={stores}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
         renderItem={({ item: store }) => {
           const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
+          
+          // قراءة البنر المرفوع من المستخدم مباشرة من قاعدة البيانات
+          const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
 
           return (
             <Pressable 
               style={{ 
-                width: 160, height: 210, 
+                width: 165, height: 215, 
                 backgroundColor: colors.surface, 
-                borderRadius: 16, borderWidth: 1.5, borderColor: colors.borderLight,
-                overflow: 'hidden',
-                shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2
+                borderRadius: 20, 
+                shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 5
               }}
               onPress={() => onPress(store.id)}
             >
-              <View style={{ height: 85, width: '100%', backgroundColor: colors.surfaceTint }}>
+              {/* البنر المتزامن مع رفع المستخدم */}
+              <View style={{ height: 90, width: '100%', borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden', backgroundColor: colors.surfaceTint }}>
                 <Image 
-                  source={{ uri: CUSTOM_STORE_BANNERS[store.id] || store.cover_url || store.logo_url }} 
+                  source={{ uri: bannerImage }} 
                   style={{ width: '100%', height: '100%' }} 
                   contentFit="cover" 
                 />
+                <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' }} />
               </View>
 
-              <View style={{ position: 'absolute', top: 0, left: 0, backgroundColor: '#EF4444', borderBottomRightRadius: 12, paddingHorizontal: 8, paddingVertical: 3 }}>
-                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{isAr ? 'جديد' : 'New'}</Text>
-              </View>
-
-              <View style={{ position: 'absolute', top: 8, right: 8, backgroundColor: '#F59E0B', borderRadius: 12, paddingHorizontal: 6, paddingVertical: 2, flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>VIP</Text>
-                <MaterialIcons name="star" size={10} color="#fff" />
+              <View style={{ 
+                position: 'absolute', top: 12, right: 12, 
+                backgroundColor: 'rgba(245, 158, 11, 0.95)', 
+                borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4, 
+                flexDirection: 'row', alignItems: 'center', gap: 4,
+                shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4
+              }}>
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>VIP</Text>
+                <MaterialIcons name="star" size={12} color="#fff" />
               </View>
 
               <View style={{ 
                 position: 'absolute', top: 60, 
-                alignSelf: 'center', width: 54, height: 54, borderRadius: 27, 
+                alignSelf: 'center', width: 64, height: 64, borderRadius: 32, 
                 backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center',
-                borderWidth: 3, borderColor: colors.surface, zIndex: 2,
-                shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3
+                borderWidth: 4, borderColor: colors.surface, zIndex: 2,
+                shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 6
               }}>
-                <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 24 }} />
+                <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%', borderRadius: 30 }} />
               </View>
 
-              <View style={{ marginTop: 35, paddingHorizontal: 10, alignItems: 'center' }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '800', textAlign: 'center' }} numberOfLines={1}>
+              <View style={{ marginTop: 40, paddingHorizontal: 12, alignItems: 'center' }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '800', textAlign: 'center' }} numberOfLines={1}>
                   {isAr ? (store.name_ar || store.name) : store.name}
                 </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 3, textAlign: 'center' }} numberOfLines={1}>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, textAlign: 'center' }} numberOfLines={1}>
                   {isAr ? 'قلقيلية - المتجر الرسمي' : 'Official Store'}
                 </Text>
               </View>
 
-              <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center', position: 'absolute', bottom: 12, left: 10, right: 10 }}>
-                <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 4, backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+              <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center', position: 'absolute', bottom: 14, left: 14, right: 14 }}>
+                <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 6, backgroundColor: isOpen ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12 }}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isOpen ? '#22C55E' : '#EF4444' }} />
-                  <Text style={{ fontSize: 9, fontWeight: '800', color: isOpen ? '#166534' : '#991B1B' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: isOpen ? '#166534' : '#991B1B' }}>
                     {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
                   </Text>
                 </View>
 
-                <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 2 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: colors.primary }}>{isAr ? 'تصفح' : 'View'}</Text>
-                  <MaterialIcons name={isAr ? 'arrow-back' : 'arrow-forward'} size={12} color={colors.primary} />
+                <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>{isAr ? 'تصفح' : 'View'}</Text>
+                  <MaterialIcons name={isAr ? 'arrow-back' : 'arrow-forward'} size={14} color={colors.primary} />
                 </View>
               </View>
             </Pressable>
@@ -1594,17 +1595,4 @@ const fStyles = StyleSheet.create({
   areaText: { fontSize: FontSize.md },
   cityBadge: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
   cityBadgeText: { fontSize: 10, fontWeight: '700' },
-});
-const vip = StyleSheet.create({
-  container: { marginTop: 16, marginBottom: 8 },
-  header: { paddingHorizontal: 16, marginBottom: 12 },
-  title: { fontSize: 17, fontWeight: '900' },
-  scrollContent: { paddingHorizontal: 16, gap: 12 },
-  card: { width: 130, height: 160, borderRadius: 16, overflow: 'hidden', backgroundColor: '#E5E7EB' },
-  vipBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
-  vipBadgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
-  cardContent: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', padding: 10 },
-  logoWrap: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff', padding: 2, marginBottom: 8 },
-  logo: { width: '100%', height: '100%', borderRadius: 28 },
-  storeName: { color: '#fff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
 });
