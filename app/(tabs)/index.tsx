@@ -94,7 +94,7 @@ import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockServic
 import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
-import { useTheme } from '@/hooks/useTheme';ب
+import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 
 // ── Featured Stores Strip ───────────────────────────────────────────────────
