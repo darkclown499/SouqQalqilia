@@ -604,7 +604,6 @@ export default function StoresScreen() {
           <Pressable style={[s.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <MaterialIcons name="location-on" size={14} color="rgba(255,255,255,0.8)" />
             <View>
-              <Text style={s.locationLabel}>{isAr ? 'التوصيل إلى' : 'Delivering to'}</Text>
               <Text style={s.locationName}>{isAr ? 'قلقيلية 📍' : 'Qalqilya 📍'}</Text>
             </View>
             <MaterialIcons name="keyboard-arrow-down" size={16} color="rgba(255,255,255,0.75)" />
