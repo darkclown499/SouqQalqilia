@@ -509,34 +509,25 @@ return (
         }
       }}
     >
-      {/* 1. خيار العروض */}
+     {/* 1. خيار العروض */}
       <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
-        <View style={[
-          qc.iconBg, 
-          { 
-            borderColor: '#EA580C',
-            borderWidth: 2,
-            shadowColor: '#EA580C',
-            shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 0.9,
-            shadowRadius: 12,
-            elevation: 10,
-          }
-        ]}>
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#EA580C', opacity: 0.2, borderRadius: 14 }]} />
+        <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EA580C' }]}>
+          {selectedCatId === '__offers__' && (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#EA580C', opacity: 0.12, borderRadius: 14 }]} />
+          )}
           
-          {/* استخدام Image بدلاً من RNImage لتشغيل الـ GIF بنجاح */}
+          {/* النار المتحركة GIF بدون خلفيات ملونة */}
           <Image 
             source={{ uri: get3DIconUrl('العروض') }} 
-            style={{ width: 60, height: 60, transform: [{ scale: 1.15 }], backgroundColor: 'transparent' }} 
+            style={{ width: 55, height: 55, transform: [{ scale: 1.15 }], backgroundColor: 'transparent' }} 
             contentFit="contain" 
           />
         </View>
-        <Text style={[qc.label, { color: '#EA580C', fontWeight: '900' }]} numberOfLines={2}>
+        <Text style={[qc.label, selectedCatId === '__offers__' ? { color: '#EA580C' } : { color: '#1A1A1A' }]} numberOfLines={2}>
           {isAr ? 'العروض' : 'Offers'}
         </Text>
       </Pressable>
-
+      
       {/* 2. خيار عرض الكل (الافتراضي) */}
       <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
         <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C' }]}>

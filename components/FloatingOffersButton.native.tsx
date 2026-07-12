@@ -5,6 +5,7 @@ import Animated, { useAnimatedGestureHandler, useAnimatedStyle, useSharedValue, 
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const BUTTON_SIZE = 56; 
@@ -92,15 +93,16 @@ export default function FloatingOffersButton() {
     <Animated.View style={[styles.absoluteWrapper, animatedStyle]}>
       <PanGestureHandler onGestureEvent={gestureHandler}>
         <Animated.View style={styles.panWrapper}>
-          <Pressable onPress={() => router.push('/offers')} style={styles.pressableArea}>
+         <Pressable onPress={() => router.push('/offers')} style={styles.pressableArea}>
             
             {/* الدائرة الرئيسية فقط */}
-            <LinearGradient
-              colors={['#FF416C', '#FF4B2B']}
-              style={styles.circle}
-            >
-              <MaterialIcons name="local-fire-department" size={28} color="#fff" />
-            </LinearGradient>
+            <View style={[styles.circle, { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#FFE4E6' }]}>
+              <Image 
+                source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }} 
+                style={{ width: 36, height: 36, backgroundColor: 'transparent' }} 
+                contentFit="contain" 
+              />
+            </View>
 
             {/* سحر الفقاعة: موقعها ثابت بالنسبة للدائرة، تظهر يمين أو يسار بناءً على اللصق */}
             <View style={[
