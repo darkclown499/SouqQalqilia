@@ -74,17 +74,22 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   const userScrolling = useRef(false);
   const BANNER_H = Math.round(SCREEN_W * 0.45);
 
+  const displayBanners = banners.length > 0 ? banners : [
+    { id: '__p1', image_url: 'https://via.placeholder.com/600x300' },
+    { id: '__p2', image_url: 'https://via.placeholder.com/600x300' },
+  ] as Banner[];
+
   const startAuto = useCallback(() => {
-    if (banners.length <= 1) return;
+    if (displayBanners.length <= 1) return;
     autoRef.current = setInterval(() => {
       if (userScrolling.current) return;
       setActiveIdx(prev => {
-        const next = (prev + 1) % banners.length;
+        const next = (prev + 1) % displayBanners.length;
         scrollRef.current?.scrollTo({ x: next * SCREEN_W, animated: true });
         return next;
       });
     }, 4500);
-  }, [banners.length]);
+  }, [displayBanners.length]);
 
   useEffect(() => {
     startAuto();
@@ -93,13 +98,8 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
-    setActiveIdx(Math.max(0, Math.min(idx, banners.length - 1)));
-  }, [banners.length]);
-
-  const displayBanners = banners.length > 0 ? banners : [
-    { id: '__p1', title: 'ادعوا الاصدقاء واربحوا', subtitle: 'خصومات حصرية لكل إحالة', image_url: '', link_url: '' },
-    { id: '__p2', title: 'أفضل المتاجر المحلية', subtitle: 'اكتشف متاجر قلقيلية', image_url: '', link_url: '' },
-  ] as Banner[];
+    setActiveIdx(Math.max(0, Math.min(idx, displayBanners.length - 1)));
+  }, [displayBanners.length]);
 
   return (
     <View style={bc.wrap}>
@@ -111,22 +111,20 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
         onMomentumScrollEnd={handleScroll}
       >
         {displayBanners.map((banner, i) => (
-          <View key={banner.id} style={{ width: SCREEN_W, height: BANNER_H }}>
-            <View style={[bc.slide, { borderRadius: 0 }]}>
+          <View key={banner.id || i} style={{ width: SCREEN_W, height: BANNER_H }}>
+            <View style={bc.slide}>
               {banner.image_url ? (
                 <Image source={{ uri: banner.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} cachePolicy="disk" />
-              ) : (
-                <LinearGradient colors={i % 2 === 0 ? ['#0A6E5C', '#065f46'] : ['#1a4f7a', '#0d2d4a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-              )}
-              <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={bc.gradient} />
-              <View style={[bc.textWrap, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-                {banner.title ? <Text style={[bc.title, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>{banner.title}</Text> : null}
-                {banner.subtitle ? <Text style={[bc.sub, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{banner.subtitle}</Text> : null}
-              </View>
+              ) : null}
             </View>
           </View>
         ))}
       </ScrollView>
+      <View style={bc.paginationWrap}>
+        {displayBanners.map((_, i) => (
+          <View key={i} style={[bc.dot, activeIdx === i && bc.activeDot]} />
+        ))}
+      </View>
     </View>
   );
 }
@@ -134,18 +132,18 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. QUICK STORE CATEGORY CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
+function QuickStoreCatCard({ cat, isAr, onPress }: any) {
   const nameAr = cat.name_ar || cat.name;
   return (
     <Pressable style={qc.card} onPress={onPress}>
-      <View style={[qc.iconCircle, { backgroundColor: isSelected ? '#0A6E5C' : '#F8F9FA' }]}>
-        <MaterialCommunityIcons
-          name={getIconName(nameAr) as any}
-          size={26}
-          color={isSelected ? '#FFF' : '#495057'}
-        />
+      <View style={qc.iconBg}>
+        {cat.image_url ? (
+          <Image source={{ uri: cat.image_url }} style={qc.catImage} contentFit="contain" />
+        ) : (
+          <View style={qc.placeholderIcon} />
+        )}
       </View>
-      <Text style={[qc.label, { color: isSelected ? '#0A6E5C' : '#374151' }]}>
+      <Text style={qc.label} numberOfLines={2}>
         {isAr ? nameAr : cat.name}
       </Text>
     </Pressable>
@@ -155,23 +153,30 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. PREMIUM STORE CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function PremiumStoreCard({ store, rating, isAr, isRTL, colors, onPress }: any) {
+function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
 
   return (
-    <Pressable style={psc.listCard} onPress={onPress}>
-      <View style={psc.logoCircle}>
-        <Image source={{ uri: store.logo_url }} style={psc.logoImg} contentFit="cover" />
+    <Pressable style={psc.card} onPress={onPress}>
+      <View style={psc.imageWrap}>
+        <Image source={{ uri: store.logo_url }} style={psc.logoImg} contentFit="contain" />
       </View>
       <View style={psc.infoWrap}>
         <Text style={psc.name} numberOfLines={1}>{name}</Text>
-        <Text style={psc.address} numberOfLines={1}>{store.address || 'قلقيلية'}</Text>
-        <View style={psc.statusRow}>
-          <Text style={[psc.statusText, { color: isOpen ? '#059669' : '#DC2626' }]}>
-            {isOpen ? '🟢 مفتوح' : '🔴 مغلق'}
+        <Text style={psc.address} numberOfLines={1}>{store.address || (isAr ? 'قلقيلية' : 'Qalqilya')}</Text>
+        <View style={psc.bottomRow}>
+          <Text style={[psc.statusText, { color: isOpen ? '#059669' : '#EA580C' }]}>
+            {isOpen ? (isAr ? 'مفتوح ' : 'Open ') : (isAr ? 'يغلق قريبا ' : 'Closing soon ')}
+            <Text style={psc.timeText}>{isAr ? 'حتى 00:00' : 'until 00:00'}</Text>
           </Text>
-          {rating.avg > 0 && <Text style={psc.ratingText}>⭐ {rating.avg.toFixed(1)}</Text>}
+          {rating.avg > 0 && (
+            <View style={psc.ratingWrap}>
+              <Text style={psc.ratingCount}>(+{rating.count}) </Text>
+              <Text style={psc.ratingScore}>{rating.avg.toFixed(1)} </Text>
+              <MaterialIcons name="star" size={14} color="#1A1A1A" />
+            </View>
+          )}
         </View>
       </View>
     </Pressable>
@@ -181,27 +186,30 @@ function PremiumStoreCard({ store, rating, isAr, isRTL, colors, onPress }: any) 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. CATEGORY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
-function CategoryBlock({ cat, stores, ratings, isAr, isRTL, colors, onStorePress }: any) {
+function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
 
   return (
     <View style={cb.block}>
-      <Text style={[cb.title, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
-        {catName}
-      </Text>
-      <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+      <View style={cb.headerRow}>
+        <Text style={[cb.title, { textAlign: isRTL ? 'right' : 'left' }]}>{catName}</Text>
+        <Text style={[cb.sponsored, { textAlign: isRTL ? 'right' : 'left' }]}>{isAr ? 'ممّول' : 'Sponsored'}</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[cb.scrollContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+      >
         {stores.map((store: any) => (
           <PremiumStoreCard
             key={store.id}
             store={store}
             rating={ratings[store.id] ?? { avg: 0, count: 0 }}
             isAr={isAr}
-            isRTL={isRTL}
-            colors={colors}
             onPress={() => onStorePress(store.id)}
           />
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -217,16 +225,22 @@ function RegisterStoreCTA({ isAr, isRTL, onPress }: {
       style={({ pressed }) => [cta.wrap, { opacity: pressed ? 0.9 : 1 }]}
       onPress={onPress}
     >
-      <LinearGradient colors={['#0A6E5C', '#065f46', '#064e3b']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cta.gradient}>
+      <LinearGradient colors={['#B91C1C', '#991B1B', '#7F1D1D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cta.gradient}>
         <View style={cta.deco1} />
         <View style={cta.deco2} />
         <View style={[cta.content, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          <View style={cta.iconWrap}><MaterialIcons name="store" size={28} color="#fff" /></View>
-          <View style={[cta.textCol, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-            <Text style={[cta.title, { textAlign: isRTL ? 'right' : 'left' }]}>{isAr ? 'سجّل متجرك معنا 🛒' : 'Register Your Store 🛒'}</Text>
-            <Text style={[cta.sub, { textAlign: isRTL ? 'right' : 'left' }]}>{isAr ? 'انضم وابدأ البيع عبر التطبيق اليوم' : 'Join and start selling today'}</Text>
+          <View style={cta.iconWrap}>
+            <MaterialIcons name="storefront" size={26} color="#FFFFFF" />
           </View>
-          <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color="rgba(255,255,255,0.8)" />
+          <View style={[cta.textCol, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+            <Text style={[cta.title, { textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'سجّل متجرك معنا 🛒' : 'Register Your Store 🛒'}
+            </Text>
+            <Text style={[cta.sub, { textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'انضم وابدأ البيع عبر التطبيق اليوم' : 'Join and start selling today'}
+            </Text>
+          </View>
+          <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={24} color="rgba(255,255,255,0.9)" />
         </View>
       </LinearGradient>
     </Pressable>
@@ -358,49 +372,45 @@ export default function StoresScreen() {
 
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
-      <View style={[s.header, { backgroundColor: colors.primary, paddingTop: insets.top + 8, paddingBottom: 15 }]}>
-        <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          <Pressable style={s.headerIconBtn} onPress={() => storeSearchInputRef.current?.focus()} hitSlop={8}>
-            <MaterialIcons name="search" size={22} color="#fff" />
-          </Pressable>
+      <View style={[s.header, { backgroundColor: '#FFFFFF', paddingTop: insets.top + 8, paddingBottom: 15 }]}>
+  <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+    <Pressable hitSlop={8}>
+      <MaterialIcons name="menu" size={26} color="#1A1A1A" />
+    </Pressable>
 
-          <Pressable style={[s.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <MaterialIcons name="location-on" size={14} color="rgba(255,255,255,0.8)" />
-            <View>
-              <Text style={s.locationName}>{isAr ? 'قلقيلية 📍' : 'Qalqilya 📍'}</Text>
-            </View>
-            <MaterialIcons name="keyboard-arrow-down" size={16} color="rgba(255,255,255,0.75)" />
-          </Pressable>
-
-          <Pressable style={s.headerIconBtn} hitSlop={8} onPress={() => {}}>
-            <MaterialIcons name="menu" size={22} color="#fff" />
-          </Pressable>
-        </View>
+    <Pressable style={[s.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      <MaterialIcons name="keyboard-arrow-down" size={20} color="#1A1A1A" />
+      <View style={s.locationTextWrap}>
+        <Text style={s.locationTitle}>{isAr ? 'بيت' : 'Home'}</Text>
+        <Text style={s.locationSubtitle}>{isAr ? 'الرازي 499' : 'Al-Razi 499'}</Text>
       </View>
+      <View style={s.homeIconWrap}>
+        <MaterialIcons name="home" size={16} color="#6B7280" />
+      </View>
+    </Pressable>
+
+    <Pressable hitSlop={8}>
+      <MaterialIcons name="search" size={26} color="#1A1A1A" />
+    </Pressable>
+  </View>
+  <View style={s.floatingButtonsWrap}>
+  <Pressable style={s.supportFab} hitSlop={8}>
+    <MaterialCommunityIcons name="headset" size={24} color="#FFFFFF" />
+  </Pressable>
+  
+  <Pressable 
+    style={s.scrollTopFab} 
+    onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+    hitSlop={8}
+  >
+    <MaterialIcons name="arrow-upward" size={20} color="#B91C1C" />
+  </Pressable>
+</View>
+</View>
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         <BannerCarousel banners={banners} isRTL={isRTL} />
 
-        <View style={[s.storeSearchWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={[s.storeSearchIcon, { backgroundColor: colors.primaryGhost }]}>
-            <MaterialIcons name="search" size={16} color={colors.primary} />
-          </View>
-          <TextInput
-            ref={storeSearchInputRef}
-            style={[s.storeSearchInput, { color: colors.textPrimary }]}
-            placeholder={isAr ? 'ابحث عن متجر أو عنوان...' : 'Search stores or address...'}
-            placeholderTextColor={colors.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            autoCapitalize="none"
-          />
-          {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
-              <MaterialIcons name="close" size={16} color={colors.textMuted} />
-            </Pressable>
-          )}
-        </View>
 
         {ownerStore !== undefined && ownerStore !== null && (
           <Pressable
@@ -438,39 +448,33 @@ export default function StoresScreen() {
         )}
 
         {storeCategories.length > 0 && (
-          <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
-              {isAr ? 'شو ناقصك اليوم؟ 🛒' : "What do you need today? 🛒"}
-            </Text>
-            <ScrollView
-              ref={scrollRef}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-              onContentSizeChange={() => { if (isRTL && scrollRef.current) scrollRef.current.scrollToEnd({ animated: false }); }}
-            >
-              <Pressable
-                style={[qc.card, selectedCatId === null && { backgroundColor: '#E6F4F1', borderColor: '#0A6E5C', borderWidth: 1.5 }]}
-                onPress={() => setSelectedCatId(null)}
-              >
-                <View style={[qc.iconBg, { backgroundColor: selectedCatId === null ? 'transparent' : '#0A6E5C1A' }]}>
-                  <Text style={qc.emoji}>🏪</Text>
-                </View>
-                <Text style={[qc.label, { color: selectedCatId === null ? '#0A6E5C' : '#1a1a2e' }]}>{isAr ? 'الكل' : 'All'}</Text>
-              </Pressable>
-
-              {storeCategories.map(cat => (
-                <QuickStoreCatCard
-                  key={cat.id}
-                  cat={cat}
-                  isAr={isAr}
-                  isSelected={selectedCatId === cat.id}
-                  onPress={() => setSelectedCatId(prev => prev === cat.id ? null : cat.id)}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
+  <View style={s.section}>
+    <Text style={[s.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
+      {isAr ? 'شو ناقصك اليوم؟ 🤔' : "What are you craving today? 🤔"}
+    </Text>
+    {ownerStore === null && user && (
+  <View style={{ marginTop: 12 }}>
+    <RegisterStoreCTA isAr={isAr} isRTL={isRTL} onPress={() => router.push('/register-store' as any)} />
+  </View>
+)}
+    <ScrollView
+      ref={scrollRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+      onContentSizeChange={() => { if (isRTL && scrollRef.current) scrollRef.current.scrollToEnd({ animated: false }); }}
+    >
+      {storeCategories.map(cat => (
+        <QuickStoreCatCard
+          key={cat.id}
+          cat={cat}
+          isAr={isAr}
+          onPress={() => setSelectedCatId(prev => prev === cat.id ? null : cat.id)}
+        />
+      ))}
+    </ScrollView>
+  </View>
+)}
 
         {loading ? (
           <View style={s.loadingWrap}>
@@ -553,63 +557,61 @@ export default function StoresScreen() {
 const bc = StyleSheet.create({
   wrap: { width: '100%', position: 'relative' },
   slide: { flex: 1, overflow: 'hidden', borderRadius: 0 },
-  gradient: { ...StyleSheet.absoluteFillObject, top: '40%' },
-  textWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, gap: 4 },
-  title: { fontSize: 18, fontWeight: '900', color: '#fff', textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
-  sub: { fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
+  paginationWrap: { flexDirection: 'row', position: 'absolute', top: 16, alignSelf: 'center', gap: 6, zIndex: 10 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)' },
+  activeDot: { backgroundColor: '#FFFFFF', width: 8, height: 8, borderRadius: 4, borderColor: 'transparent' },
 });
 
 const qc = StyleSheet.create({
-  card: { width: 75, alignItems: 'center', marginRight: 16 },
-  iconCircle: {
-    width: 60, height: 60, borderRadius: 30, backgroundColor: '#F8F9FA',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
-    borderWidth: 1, borderColor: '#E9ECEF',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
-  },
+  card: { width: 85, alignItems: 'center', marginRight: 12, marginLeft: 4 },
   iconBg: {
-    width: 60, height: 60, borderRadius: 30, backgroundColor: '#F3F4F6',
+    width: 75, height: 75, borderRadius: 16, backgroundColor: '#FFFFFF',
     alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
   },
-  emoji: { fontSize: 26 },
-  label: { fontSize: 11, fontWeight: '600', color: '#374151', textAlign: 'center' },
+  catImage: { width: '85%', height: '85%' },
+  placeholderIcon: { width: '50%', height: '50%', backgroundColor: '#F3F4F6', borderRadius: 8 },
+  label: { fontSize: 13, fontWeight: '700', color: '#1A1A1A', textAlign: 'center', lineHeight: 18 },
 });
 
 const psc = StyleSheet.create({
-  listCard: {
-    width: '100%', backgroundColor: '#fff', borderRadius: 16, padding: 12,
-    flexDirection: 'row', alignItems: 'center', marginBottom: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
-  logoCircle: {
-    width: 65, height: 65, borderRadius: 12,
-    backgroundColor: '#F9FAFB', overflow: 'hidden',
+  card: {
+    width: 170, backgroundColor: '#FFFFFF', borderRadius: 16,
+    marginRight: 12, marginLeft: 4, marginBottom: 8, overflow: 'hidden',
     borderWidth: 1, borderColor: '#F3F4F6',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
   },
+  imageWrap: { height: 110, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', padding: 16 },
   logoImg: { width: '100%', height: '100%' },
-  infoWrap: { flex: 1, marginLeft: 14 },
-  name: { fontSize: 16, fontWeight: '800', color: '#1A1A1A' },
-  address: { fontSize: 12, color: '#6B7280', marginTop: 2 },
-  statusRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
-  statusText: { fontSize: 11, fontWeight: '700' },
-  ratingText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
+  infoWrap: { padding: 12 },
+  name: { fontSize: 14, fontWeight: '800', color: '#1A1A1A', textAlign: 'center', marginBottom: 4 },
+  address: { fontSize: 11, color: '#9CA3AF', textAlign: 'center', marginBottom: 12 },
+  bottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10 },
+  statusText: { fontSize: 11, fontWeight: '800' },
+  timeText: { color: '#9CA3AF', fontWeight: '500' },
+  ratingWrap: { flexDirection: 'row', alignItems: 'center' },
+  ratingScore: { fontSize: 12, fontWeight: '800', color: '#1A1A1A' },
+  ratingCount: { fontSize: 11, color: '#9CA3AF' },
 });
 
 const cb = StyleSheet.create({
-  block: { marginBottom: 24 },
-  title: { fontSize: 18, fontWeight: '900', lineHeight: 22, paddingHorizontal: 16, marginBottom: 4 },
+  block: { marginBottom: 20, backgroundColor: '#FFFFFF', borderRadius: 16, paddingTop: 16, paddingBottom: 8, marginHorizontal: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 1 },
+  headerRow: { paddingHorizontal: 16, marginBottom: 14 },
+  title: { fontSize: 18, fontWeight: '900', color: '#1A1A1A' },
+  sponsored: { fontSize: 13, color: '#9CA3AF', marginTop: 2, fontWeight: '500' },
+  scrollContent: { paddingHorizontal: 16 },
 });
 
 const cta = StyleSheet.create({
-  wrap: { marginHorizontal: SIDE_PAD, marginBottom: 24, borderRadius: 18, overflow: 'hidden', shadowColor: '#0A6E5C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 12, elevation: 6 },
-  gradient: { borderRadius: 18, overflow: 'hidden', padding: 16 },
-  deco1: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.06)', top: -55, right: -25 },
-  deco2: { position: 'absolute', width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -18, left: 44 },
+  wrap: { marginHorizontal: 16, marginBottom: 20, borderRadius: 16, shadowColor: '#B91C1C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 3 },
+  gradient: { borderRadius: 16, overflow: 'hidden', padding: 16 },
+  deco1: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.06)', top: -40, right: -20 },
+  deco2: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -10, left: 30 },
   content: { alignItems: 'center', gap: 12 },
-  iconWrap: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)', flexShrink: 0 },
-  textCol: { flex: 1, gap: 3 },
-  title: { fontSize: 15, fontWeight: '800', color: '#fff', lineHeight: 20 },
-  sub: { fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 16 },
+  iconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  textCol: { flex: 1, gap: 4 },
+  title: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
+  sub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
 });
 
 const s = StyleSheet.create({
@@ -625,7 +627,7 @@ const s = StyleSheet.create({
   ownerBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'flex-start' },
   ownerBadgeText: { fontSize: 10, fontWeight: '700' },
   section: { paddingTop: 22, paddingBottom: 6 },
-  sectionTitle: { fontSize: 17, fontWeight: '800', lineHeight: 22, paddingHorizontal: 16, marginBottom: 14 },
+  sectionTitle: { fontSize: 18, fontWeight: '900', paddingHorizontal: 16, marginBottom: 16 },
   catScroll: { paddingHorizontal: 16, paddingBottom: 4 },
   loadingWrap: { alignItems: 'center', paddingTop: 60, gap: 12 },
   loadingText: { fontSize: 14, fontWeight: '500' },
@@ -638,6 +640,14 @@ const s = StyleSheet.create({
   storeSearchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 16, marginBottom: 10, gap: 10, borderRadius: 16, paddingHorizontal: 14, height: 50, borderWidth: 1 },
   storeSearchIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   storeSearchInput: { flex: 1, fontSize: 13, fontWeight: '600' },
+locationCenter: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB' },
+locationTextWrap: { alignItems: 'center' },
+locationTitle: { fontSize: 13, color: '#1A1A1A', fontWeight: '800' },
+locationSubtitle: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
+homeIconWrap: { backgroundColor: '#F3F4F6', padding: 6, borderRadius: 15 },
+floatingButtonsWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', pointerEvents: 'box-none', zIndex: 100 },
+supportFab: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 },
+scrollTopFab: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
 });
 
 const g = StyleSheet.create({
