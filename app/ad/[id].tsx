@@ -22,6 +22,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { ShimmerBlock } from '@/components/feature/AdCard';
 import { useLanguage } from '@/hooks/useLanguage';
 import { timeAgoLong } from '@/utils/timeAgo';
+import { shortenUrl } from '@/utils/shortenUrl';
 
 // carousel width is computed reactively inside AdDetailScrollContent
 
@@ -153,27 +154,28 @@ export default function AdDetailScreen() {
   const handleShare = async () => {
     if (!ad) return;
     const deepLink = buildDeepLink(ad.id);
+    const shortLink = await shortenUrl(deepLink); // <--- استخدام الدالة هنا
     const priceText = ad.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${ad.price.toLocaleString()}`;
     try {
       await Share.share({
         title: ad.title,
         message: isAr
-          ? `🛒 ${ad.title}\n💰 السعر: ${priceText}\n📍 ${ad.location || 'قلقيلية'}\n\nشاهد الإعلان على سوق قلقيلية:\n${deepLink}`
-          : `🛒 ${ad.title}\n💰 Price: ${priceText}\n📍 ${ad.location || 'Qalqilya'}\n\nView on Souq Qalqilya:\n${deepLink}`,
-        url: deepLink,   // iOS shows this as a tappable link in the share sheet
+          ? `🛒 ${ad.title}\n💰 السعر: ${priceText}\n📍 ${ad.location || 'قلقيلية'}\n\nشاهد الإعلان على سوق قلقيلية:\n${shortLink}`
+          : `🛒 ${ad.title}\n💰 Price: ${priceText}\n📍 ${ad.location || 'Qalqilya'}\n\nView on Souq Qalqilya:\n${shortLink}`,
+        url: shortLink,
       });
     } catch (_) {}
   };
 
-  /** Share directly to WhatsApp with full listing details + deep link */
-  const handleShareWhatsApp = () => {
+  const handleShareWhatsApp = async () => { // <--- أضفنا async هنا
     if (!ad) return;
     const deepLink = buildDeepLink(ad.id);
+    const shortLink = await shortenUrl(deepLink); // <--- استخدام الدالة هنا
     const priceText = ad.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${ad.price.toLocaleString()}`;
     const desc = ad.description ? ad.description.slice(0, 100) + (ad.description.length > 100 ? '...' : '') : '';
     const msg = isAr
-      ? `🛒 *${ad.title}*\n💰 السعر: ${priceText}\n📍 ${ad.location || 'قلقيلية'}\n\n${desc}\n\n🏪 افتح على سوق قلقيلية:\n${deepLink}`
-      : `🛒 *${ad.title}*\n💰 Price: ${priceText}\n📍 ${ad.location || 'Qalqilya'}\n\n${desc}\n\n🏪 Open on Souq Qalqilya:\n${deepLink}`;
+      ? `🛒 *${ad.title}*\n💰 السعر: ${priceText}\n📍 ${ad.location || 'قلقيلية'}\n\n${desc}\n\n🏪 افتح على سوق قلقيلية:\n${shortLink}`
+      : `🛒 *${ad.title}*\n💰 Price: ${priceText}\n📍 ${ad.location || 'Qalqilya'}\n\n${desc}\n\n🏪 Open on Souq Qalqilya:\n${shortLink}`;
     const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
     Linking.openURL(url).catch(() => {});
   };

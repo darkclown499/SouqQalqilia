@@ -17,6 +17,8 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useResponsive } from '@/hooks/useResponsive';
+import { shortenUrl } from '@/utils/shortenUrl';
+import { Share } from 'react-native';
 
 const H_PAD = 16;
 const COLUMN_GAP = 10;
@@ -230,6 +232,22 @@ export default function SellerProfileScreen() {
     Linking.openURL(`https://wa.me/${sanitized}`).catch(() => {});
   }, [seller?.phone]);
 
+  const handleShare = useCallback(async () => {
+    if (!seller || !id) return;
+    const deepLink = `https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/store/${id}`;
+    const shortLink = await shortenUrl(deepLink);
+
+    try {
+      await Share.share({
+        title: displayName,
+        message: isAr
+          ? `شاهد متجر ${displayName} على سوق قلقيلية:\n${shortLink}`
+          : `Check out ${displayName}'s store on Souq Qalqilya:\n${shortLink}`,
+        url: shortLink,
+      });
+    } catch (_) {}
+  }, [seller, id, displayName, isAr]);
+
   const renderItem = useCallback(({ item }: { item: Ad }) => (
     <AdCard
       ad={item}
@@ -430,10 +448,13 @@ export default function SellerProfileScreen() {
         </View>
       </Animated.View>
 
-      {/* Back button */}
-      <View style={[styles.backBar, { top: insets.top + 8 }]}>
+      {/* Top Buttons */}
+      <View style={{ position: 'absolute', top: insets.top + 8, left: 16, right: 16, zIndex: 30, flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between' }}>
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={20} color="#fff" />
+        </Pressable>
+        <Pressable style={styles.backBtn} onPress={handleShare} hitSlop={8}>
+          <MaterialIcons name="share" size={18} color="#fff" />
         </Pressable>
       </View>
 
