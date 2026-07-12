@@ -7,7 +7,7 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 
-const WHATSAPP_NUMBER = '972559886886';
+const WHATSAPP_NUMBER = '972592324302';
 const SUPPORT_EMAIL = 'eyadfadezh499@gmail.com';
 
 interface PromotionOption {
@@ -87,7 +87,6 @@ export function PromotionModal({ visible, onClose }: Props) {
 
   const handleWhatsApp = () => {
     const msg = encodeURIComponent(buildWhatsAppMessage());
-    // تأكد أن الرابط يستخدم المتغير WHATSAPP_NUMBER مباشرة
     Linking.openURL(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`).catch(() => {});
   };
 
@@ -300,7 +299,7 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
   },
-  scroll: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },
+  scroll: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl },
 
   optionCard: {
     borderRadius: Radius.xl, borderWidth: 1.5,
@@ -345,7 +344,7 @@ const styles = StyleSheet.create({
   benefit: { alignItems: 'center', gap: 5 },
   benefitText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
 
-  ctaSection: { gap: Spacing.sm, paddingBottom: 16 }, // قمنا بتقليل الـ padding
+  ctaSection: { gap: Spacing.sm, paddingBottom: 32 },
   ctaLabel: { fontSize: FontSize.xs, textAlign: 'center', fontWeight: '600' },
   ctaWhatsApp: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
