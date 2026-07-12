@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, TextInput,
+  View, Text, StyleSheet, ScrollView, FlatList, Pressable, TextInput,
   KeyboardAvoidingView, Platform, Modal, ActivityIndicator, Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -519,30 +519,32 @@ export default function RegisterStoreScreen() {
               <Text style={[cm.subtitle, { color: colors.textMuted, textAlign: 'right' }]}>
                 {'محافظة قلقيلية — اختر البلدة التي يقع فيها متجرك'}
               </Text>
-              <ScrollView style={{ flex: 1, width: '100%' }} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true} contentContainerStyle={cm.list}>
-                {QALQILYA_LOCATIONS.map(loc => {
-                  const isSel = loc === selectedLocation;
-                  return (
-                    <Pressable
-                      key={loc}
-                      style={({ pressed }) => [cm.item, {
-                        borderColor: isSel ? colors.primary : colors.borderLight,
-                        backgroundColor: isSel ? colors.primary + '12' : (pressed ? colors.surfaceTint : colors.background),
-                        flexDirection: rtl,
-                      }]}
-                      onPress={() => { setSelectedLocation(loc); setLocationModalVisible(false); }}
-                    >
-                      <View style={[cm.icon, { backgroundColor: isSel ? colors.primary + '20' : colors.surfaceTint }]}>
-                        <MaterialIcons name="location-on" size={20} color={isSel ? colors.primary : colors.textMuted} />
-                      </View>
-                      <Text style={[cm.itemText, { color: isSel ? colors.primary : colors.textPrimary, fontWeight: isSel ? '700' : '500', flex: 1, textAlign: 'right' }]}>
-                        {loc}
-                      </Text>
-                      {isSel ? <MaterialIcons name="check-circle" size={20} color={colors.primary} /> : null}
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+              <FlatList
+  data={QALQILYA_LOCATIONS}
+  keyExtractor={(item) => item}
+  contentContainerStyle={cm.list}
+  renderItem={({ item: loc }) => {
+    const isSel = loc === selectedLocation;
+    return (
+      <Pressable
+        style={({ pressed }) => [cm.item, {
+          borderColor: isSel ? colors.primary : colors.borderLight,
+          backgroundColor: isSel ? colors.primary + '12' : (pressed ? colors.surfaceTint : colors.background),
+          flexDirection: rtl,
+        }]}
+        onPress={() => { setSelectedLocation(loc); setLocationModalVisible(false); }}
+      >
+        <View style={[cm.icon, { backgroundColor: isSel ? colors.primary + '20' : colors.surfaceTint }]}>
+          <MaterialIcons name="location-on" size={20} color={isSel ? colors.primary : colors.textMuted} />
+        </View>
+        <Text style={[cm.itemText, { color: isSel ? colors.primary : colors.textPrimary, fontWeight: isSel ? '700' : '500', flex: 1, textAlign: 'right' }]}>
+          {loc}
+        </Text>
+        {isSel ? <MaterialIcons name="check-circle" size={20} color={colors.primary} /> : null}
+      </Pressable>
+    );
+  }}
+/>
             </View>
           </Pressable>
         </Modal>
@@ -564,42 +566,33 @@ export default function RegisterStoreScreen() {
               <Text style={[cm.subtitle, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
                 {isAr ? 'هذه التصنيفات خاصة بأنواع المتاجر فقط' : 'These are store-specific business types'}
               </Text>
-              <ScrollView style={{ flex: 1, width: '100%' }} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true} contentContainerStyle={cm.list}>
-                {storeCategories.length === 0 ? (
-                  <View style={{ alignItems: 'center', paddingVertical: 32, gap: 10 }}>
-                    <ActivityIndicator color={colors.primary} />
-                    <Text style={{ color: colors.textMuted, fontSize: FontSize.sm }}>
-                      {isAr ? 'جاري التحميل...' : 'Loading...'}
-                    </Text>
-                  </View>
-                ) : storeCategories.map(cat => {
-                  const isSel = cat.id === storeCategoryId;
-                  const emoji = getStoreCategoryEmoji(cat.slug);
-                  return (
-                    <Pressable
-                      key={cat.id}
-                      style={({ pressed }) => [cm.item, {
-                        borderColor: isSel ? cat.color : colors.borderLight,
-                        backgroundColor: isSel ? cat.color + '15' : (pressed ? colors.surfaceTint : colors.background),
-                        flexDirection: rtl,
-                      }]}
-                      onPress={() => { setStoreCategoryId(cat.id); setCatModalVisible(false); }}
-                    >
-                      <View style={[cm.icon, { backgroundColor: isSel ? cat.color + '25' : colors.surfaceTint }]}>
-                        {emoji ? (
-                          <Text style={{ fontSize: 22 }}>{emoji}</Text>
-                        ) : (
-                          <MaterialIcons name={cat.icon as any} size={22} color={isSel ? cat.color : colors.textMuted} />
-                        )}
-                      </View>
-                      <Text style={[cm.itemText, { color: isSel ? cat.color : colors.textPrimary, fontWeight: isSel ? '700' : '500', flex: 1, textAlign }]}>
-                        {getStoreCategoryName(cat, language)}
-                      </Text>
-                      {isSel ? <MaterialIcons name="check-circle" size={20} color={cat.color} /> : null}
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+              <FlatList
+  data={storeCategories}
+  keyExtractor={(item) => item.id}
+  contentContainerStyle={cm.list}
+  renderItem={({ item: cat }) => {
+    const isSel = cat.id === storeCategoryId;
+    const emoji = getStoreCategoryEmoji(cat.slug);
+    return (
+      <Pressable
+        style={({ pressed }) => [cm.item, {
+          borderColor: isSel ? cat.color : colors.borderLight,
+          backgroundColor: isSel ? cat.color + '15' : (pressed ? colors.surfaceTint : colors.background),
+          flexDirection: rtl,
+        }]}
+        onPress={() => { setStoreCategoryId(cat.id); setCatModalVisible(false); }}
+      >
+        <View style={[cm.icon, { backgroundColor: isSel ? cat.color + '25' : colors.surfaceTint }]}>
+          {emoji ? <Text style={{ fontSize: 22 }}>{emoji}</Text> : <MaterialIcons name={cat.icon as any} size={22} color={isSel ? cat.color : colors.textMuted} />}
+        </View>
+        <Text style={[cm.itemText, { color: isSel ? cat.color : colors.textPrimary, fontWeight: isSel ? '700' : '500', flex: 1, textAlign }]}>
+          {getStoreCategoryName(cat, language)}
+        </Text>
+        {isSel ? <MaterialIcons name="check-circle" size={20} color={cat.color} /> : null}
+      </Pressable>
+    );
+  }}
+/>
             </View>
           </Pressable>
         </Modal>
@@ -706,21 +699,13 @@ const s = StyleSheet.create({
 
 const cm = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', zIndex: 9999 },
-  sheet: { 
-    borderTopLeftRadius: 24, 
-    borderTopRightRadius: 24, 
-    paddingTop: 12, 
-    height: '80%', // غيّرناها من maxHeight إلى height ثابتة لضمان وجود أبعاد
-  },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, height: 500 },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, marginBottom: 4 },
   titleText: { fontSize: 18, fontWeight: '700', flex: 1 },
   subtitle: { fontSize: 12, paddingHorizontal: 20, marginBottom: 10 },
   list: { paddingHorizontal: 16, gap: 8, paddingBottom: 60 },
-  item: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    borderRadius: 16, borderWidth: 1.5, paddingVertical: 12, paddingHorizontal: 16,
-  },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1.5, paddingVertical: 12, paddingHorizontal: 16 },
   icon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   itemText: { fontSize: 16, color: '#111827' },
 });
