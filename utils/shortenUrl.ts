@@ -1,33 +1,31 @@
 import { Platform } from 'react-native';
 
 export async function shortenUrl(longUrl: string): Promise<string> {
+  const API_KEY = '9c684b9c8532c8a2379ff1c5473df3180fe18';
+  const encodedUrl = encodeURIComponent(longUrl);
+  const targetApi = `https://cutt.ly/api/api.php?key=${API_KEY}&short=${encodedUrl}`;
+
+  // استخدام بروكسي لتجاوز حظر CORS على متصفح الويب، والاتصال المباشر على الجوال
+  const endpoint = Platform.OS === 'web' 
+    ? `https://api.allorigins.win/raw?url=${encodeURIComponent(targetApi)}` 
+    : targetApi;
+
   try {
-    const encodedUrl = encodeURIComponent(longUrl);
-    // استخدام Is.gd لأنه أسرع ومجاني بالكامل
-    const targetApi = `https://is.gd/create.php?format=simple&url=${encodedUrl}`;
-
-    // حل مشكلة الحظر (CORS) على متصفح الويب باستخدام بروكسي
-    // الجوال (iOS/Android) سيتصل بالرابط مباشرة بدون بروكسي
-    const endpoint = Platform.OS === 'web' 
-      ? `https://api.allorigins.win/raw?url=${encodeURIComponent(targetApi)}` 
-      : targetApi;
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
 
     const response = await fetch(endpoint, { signal: controller.signal });
     clearTimeout(timeout);
+    
+    const data = await response.json();
 
-    if (response.ok) {
-      const shortUrl = await response.text();
-      // التأكد من أن النتيجة هي رابط فعلي وليست رسالة خطأ
-      if (shortUrl.startsWith('http')) {
-        return shortUrl.trim();
-      }
+    // حالة 7 تعني نجاح الاختصار في Cuttly
+    if (data.url && data.url.status === 7) {
+      return data.url.shortLink;
     }
     
-    return longUrl;
+    return longUrl; 
   } catch (error) {
-    return longUrl;
+    return longUrl; 
   }
 }
