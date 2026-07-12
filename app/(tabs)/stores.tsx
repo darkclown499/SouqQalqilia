@@ -49,7 +49,7 @@ const get3DIconUrl = (name: string) => {
   const base = 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/';
   switch (name) {
     case 'الكل': return base + 'Star/3D/star_3d.png'; // استخدمنا أيقونة النجمة المضمونة
-    case 'العروض': return base + 'Megaphone/3D/megaphone_3d.png';
+    case 'العروض': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif';
     case 'زينة وهدايا': return base + 'Party%20popper/3D/party_popper_3d.png'; // أيقونة المفرقعات المضمونة
     case 'ألعاب وترفيه': return base + 'Video%20game/3D/video_game_3d.png';
     case 'مأكولات وحلويات': return base + 'Hamburger/3D/hamburger_3d.png';
@@ -299,6 +299,7 @@ export default function StoresScreen() {
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const storeSearchInputRef = useRef<any>(null);
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
   const scrollRef = useRef<any>(null);
   const catScrollRef = useRef<any>(null);
 
@@ -407,25 +408,35 @@ return (
       
       {/* 1. الشريط العلوي النظيف بدون الأزرار */}
       <View style={[s.header, { backgroundColor: '#FFFFFF', paddingTop: insets.top + 8, paddingBottom: 15 }]}>
-        <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          <Pressable hitSlop={8}>
-            <MaterialIcons name="menu" size={26} color="#1A1A1A" />
-          </Pressable>
-
-          <Pressable style={[s.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <MaterialIcons name="keyboard-arrow-down" size={20} color="#1A1A1A" />
-            <View style={s.locationTextWrap}>
-              <Text style={s.locationTitle}>{isAr ? 'بيت' : 'Home'}</Text>
-              <Text style={s.locationSubtitle}>{isAr ? 'الرازي 499' : 'Al-Razi 499'}</Text>
+        <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+          
+          {isSearchVisible ? (
+            <View style={{ flex: 1, flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 12, paddingHorizontal: 12, height: 44 }}>
+              <TextInput
+                autoFocus
+                style={{ flex: 1, textAlign: isRTL ? 'right' : 'left', fontSize: 14 }}
+                placeholder={isAr ? 'ابحث في المتاجر...' : 'Search stores...'}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              <Pressable onPress={() => { setIsSearchVisible(false); setSearchQuery(''); }}>
+                <MaterialIcons name="close" size={22} color="#1A1A1A" />
+              </Pressable>
             </View>
-            <View style={s.homeIconWrap}>
-              <MaterialIcons name="home" size={16} color="#6B7280" />
-            </View>
-          </Pressable>
+          ) : (
+            <>
+              {/* الشعار الجديد */}
+              <Text style={{ fontSize: 20, fontWeight: '900', color: '#B91C1C' }}>
+                {isAr ? 'سوق قلقيلية' : 'Qalqilya Market'}
+              </Text>
+              
+              {/* أيقونة البحث */}
+              <Pressable hitSlop={8} onPress={() => setIsSearchVisible(true)}>
+                <MaterialIcons name="search" size={28} color="#1A1A1A" />
+              </Pressable>
+            </>
+          )}
 
-          <Pressable hitSlop={8}>
-            <MaterialIcons name="search" size={26} color="#1A1A1A" />
-          </Pressable>
         </View>
       </View>
 
@@ -486,14 +497,31 @@ return (
     >
       {/* 1. خيار العروض */}
       <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
-        <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EAB308' }]}>
-          {selectedCatId === '__offers__' && (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#EAB308', opacity: 0.12, borderRadius: 14 }]} />
-          )}
-          <RNImage source={{ uri: get3DIconUrl('العروض') }} style={{ width: 48, height: 48 }} resizeMode="contain" />
-        </View>
-        <Text style={[qc.label, selectedCatId === '__offers__' && { color: '#EAB308' }]} numberOfLines={2}>{isAr ? 'العروض' : 'Offers'}</Text>
-      </Pressable>
+  <View style={[
+    qc.iconBg, 
+    { 
+      borderColor: '#EA580C',
+      borderWidth: 2,
+      shadowColor: '#EA580C',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.9,
+      shadowRadius: 12,
+      elevation: 10,
+    }
+  ]}>
+    {/* طبقة لون برتقالية شفافة ثابتة لتعزيز الإضاءة */}
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#EA580C', opacity: 0.2, borderRadius: 14 }]} />
+    
+    <RNImage 
+      source={{ uri: get3DIconUrl('العروض') }} 
+      style={{ width: 60, height: 60, transform: [{ scale: 1.15 }] }} 
+      resizeMode="contain" 
+    />
+  </View>
+  <Text style={[qc.label, { color: '#EA580C', fontWeight: '900' }]} numberOfLines={2}>
+    {isAr ? 'العروض' : 'Offers'}
+  </Text>
+</Pressable>
 
       {/* 2. خيار عرض الكل (الافتراضي) */}
       <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
