@@ -4,7 +4,7 @@ import React, {
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Dimensions,
   ActivityIndicator, Modal, TextInput, Platform, NativeScrollEvent,
-  NativeSyntheticEvent, Image as RNImage
+  NativeSyntheticEvent, Image as RNImage, Linking
 } from 'react-native';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -425,12 +425,26 @@ return (
             </View>
           ) : (
             <>
-              {/* الشعار الجديد */}
-              <Text style={{ fontSize: 20, fontWeight: '900', color: '#B91C1C' }}>
-                {isAr ? 'سوق قلقيلية' : 'Qalqilya Market'}
-              </Text>
+              {/* 1. أيقونة الدعم الفني (تحويل للواتساب) */}
+              <Pressable 
+                hitSlop={8} 
+                onPress={() => {
+                  const msg = 'مرحبا سوق قلقليلية احتاج استفسر عن اكم شغلة في المتاجر';
+                  const url = `whatsapp://send?phone=+972559886886&text=${encodeURIComponent(msg)}`;
+                  Linking.openURL(url).catch(() => Linking.openURL(`https://wa.me/972559886886?text=${encodeURIComponent(msg)}`));
+                }}
+              >
+                <MaterialCommunityIcons name="whatsapp" size={28} color="#25D366" />
+              </Pressable>
+
+              {/* 2. الزر المركزي (استنو المفاجئات) */}
+              <View style={[s.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: '#F3F4F6', borderColor: 'transparent', paddingVertical: 6, paddingHorizontal: 16 }]}>
+                <Text style={{ fontSize: 13, color: '#1A1A1A', fontWeight: '800' }}>
+                  {isAr ? 'استنو المفاجئات 🎁' : 'Wait for Surprises 🎁'}
+                </Text>
+              </View>
               
-              {/* أيقونة البحث */}
+              {/* 3. أيقونة البحث */}
               <Pressable hitSlop={8} onPress={() => setIsSearchVisible(true)}>
                 <MaterialIcons name="search" size={28} color="#1A1A1A" />
               </Pressable>
@@ -497,31 +511,31 @@ return (
     >
       {/* 1. خيار العروض */}
       <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
-  <View style={[
-    qc.iconBg, 
-    { 
-      borderColor: '#EA580C',
-      borderWidth: 2,
-      shadowColor: '#EA580C',
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.9,
-      shadowRadius: 12,
-      elevation: 10,
-    }
-  ]}>
-    {/* طبقة لون برتقالية شفافة ثابتة لتعزيز الإضاءة */}
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#EA580C', opacity: 0.2, borderRadius: 14 }]} />
-    
-    <RNImage 
-      source={{ uri: get3DIconUrl('العروض') }} 
-      style={{ width: 60, height: 60, transform: [{ scale: 1.15 }] }} 
-      resizeMode="contain" 
-    />
-  </View>
-  <Text style={[qc.label, { color: '#EA580C', fontWeight: '900' }]} numberOfLines={2}>
-    {isAr ? 'العروض' : 'Offers'}
-  </Text>
-</Pressable>
+        <View style={[
+          qc.iconBg, 
+          { 
+            borderColor: '#EA580C',
+            borderWidth: 2,
+            shadowColor: '#EA580C',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0.9,
+            shadowRadius: 12,
+            elevation: 10,
+          }
+        ]}>
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#EA580C', opacity: 0.2, borderRadius: 14 }]} />
+          
+          {/* استخدام Image بدلاً من RNImage لتشغيل الـ GIF بنجاح */}
+          <Image 
+            source={{ uri: get3DIconUrl('العروض') }} 
+            style={{ width: 60, height: 60, transform: [{ scale: 1.15 }], backgroundColor: 'transparent' }} 
+            contentFit="contain" 
+          />
+        </View>
+        <Text style={[qc.label, { color: '#EA580C', fontWeight: '900' }]} numberOfLines={2}>
+          {isAr ? 'العروض' : 'Offers'}
+        </Text>
+      </Pressable>
 
       {/* 2. خيار عرض الكل (الافتراضي) */}
       <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
