@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, KeyboardAvoidingView,
+  View, Text, StyleSheet, ScrollView, FlatList, Pressable, KeyboardAvoidingView,
   Platform, Modal, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -784,32 +784,34 @@ export default function PostAdScreen() {
                   {isAr ? 'اختر المنطقة' : 'Select Area'}
                 </Text>
               </View>
-              <ScrollView style={{ flex: 1, width: '100%' }} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true} contentContainerStyle={cityS.listContent}>
-                {QALQILYA_LOCATIONS.map(loc => {
-                  const isSelected = selectedCity === loc;
-                  const isMainCity = loc === QALQILYA_CITY;
-                  return (
-                    <Pressable
-                      key={loc}
-                      style={({ pressed }) => [cityS.item, { borderColor: isSelected ? accentColor : colors.borderLight, backgroundColor: isSelected ? accentColor + '18' : (pressed ? colors.surfaceTint : colors.background) }]}
-                      onPress={() => { setSelectedCity(loc); setCityModalVisible(false); }}
-                    >
-                      <View style={[cityS.itemIcon, { backgroundColor: isSelected ? accentColor : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
-                        <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSelected ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
-                      </View>
-                      <Text style={[cityS.itemText, { color: isSelected ? accentColor : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>
-                        {loc}
-                      </Text>
-                      {isMainCity && !isSelected ? (
-                        <View style={[cityS.defaultBadge, { backgroundColor: colors.primaryGhost }]}>
-                          <Text style={[cityS.defaultText, { color: colors.primary }]}>{isAr ? 'افتراضي' : 'Default'}</Text>
-                        </View>
-                      ) : null}
-                      {isSelected ? <MaterialIcons name="check-circle" size={18} color={accentColor} /> : null}
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+              <FlatList
+  data={QALQILYA_LOCATIONS}
+  keyExtractor={(item) => item}
+  contentContainerStyle={cityS.listContent}
+  renderItem={({ item: loc }) => {
+    const isSelected = selectedCity === loc;
+    const isMainCity = loc === QALQILYA_CITY;
+    return (
+      <Pressable
+        style={({ pressed }) => [cityS.item, { borderColor: isSelected ? accentColor : colors.borderLight, backgroundColor: isSelected ? accentColor + '18' : (pressed ? colors.surfaceTint : colors.background) }]}
+        onPress={() => { setSelectedCity(loc); setCityModalVisible(false); }}
+      >
+        <View style={[cityS.itemIcon, { backgroundColor: isSelected ? accentColor : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
+          <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSelected ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
+        </View>
+        <Text style={[cityS.itemText, { color: isSelected ? accentColor : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>
+          {loc}
+        </Text>
+        {isMainCity && !isSelected ? (
+          <View style={[cityS.defaultBadge, { backgroundColor: colors.primaryGhost }]}>
+            <Text style={[cityS.defaultText, { color: colors.primary }]}>{isAr ? 'افتراضي' : 'Default'}</Text>
+          </View>
+        ) : null}
+        {isSelected ? <MaterialIcons name="check-circle" size={18} color={accentColor} /> : null}
+      </Pressable>
+    );
+  }}
+/>
             </View>
           </Pressable>
         </Modal>
@@ -1024,7 +1026,7 @@ const cityS = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'flex-end', zIndex: 9999 },
   // Explicit height so flex:1 on the inner ScrollView has a concrete parent to fill.
   // Without this the sheet collapses to 0 height on Android.
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, height: '72%' },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, height: 500 },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, marginBottom: 12 },
   titleText: { fontSize: FontSize.lg, fontWeight: '800' },
