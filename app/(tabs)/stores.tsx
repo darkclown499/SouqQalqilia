@@ -462,29 +462,27 @@ return (
       {isAr ? 'شو ناقصك اليوم؟ 🤔' : "What are you craving today? 🤔"}
     </Text>
     <ScrollView
-      ref={scrollRef}
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-      onContentSizeChange={() => { if (isRTL && scrollRef.current) scrollRef.current.scrollToEnd({ animated: false }); }}
     >
-      {/* 1. خيار العروض */}
-     <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
+      {/* خيار العروض */}
+      <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
         <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EAB308', backgroundColor: '#EAB3081A' }]}>
-          <Image source={{ uri: get3DIconUrl('العروض') }} style={{ width: 52, height: 52, backgroundColor: 'transparent' }} contentFit="contain" />
+          <Image source={{ uri: get3DIconUrl('العروض') }} style={{ width: 40, height: 40 }} contentFit="contain" />
         </View>
         <Text style={[qc.label, selectedCatId === '__offers__' && { color: '#EAB308' }]} numberOfLines={2}>{isAr ? 'العروض' : 'Offers'}</Text>
       </Pressable>
 
-      {/* 2. خيار عرض الكل (الافتراضي) */}
+      {/* خيار الكل */}
       <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
         <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C', backgroundColor: '#B91C1C1A' }]}>
-          <Image source={{ uri: get3DIconUrl('الكل') }} style={{ width: 52, height: 52, backgroundColor: 'transparent' }} contentFit="contain" />
+          <Image source={{ uri: get3DIconUrl('الكل') }} style={{ width: 40, height: 40 }} contentFit="contain" />
         </View>
         <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]} numberOfLines={2}>{isAr ? 'الكل' : 'All'}</Text>
       </Pressable>
 
-      {/* 3. باقي التصنيفات مع حذف "أخرى" */}
+      {/* باقي التصنيفات */}
       {storeCategories.filter(cat => cat.name_ar !== 'أخرى' && cat.name !== 'Others').map(cat => (
         <QuickStoreCatCard
           key={cat.id}
@@ -592,9 +590,7 @@ const qc = StyleSheet.create({
     borderWidth: 2, borderColor: 'transparent',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
   },
-  // التعديل هنا: مقاس ثابت 52x52 لضمان التوسيط الهندسي المثالي، وخلفية شفافة لإلغاء المربع الأبيض
-  catImage: { width: 52, height: 52, backgroundColor: 'transparent' }, 
-  placeholderIcon: { width: '50%', height: '50%', backgroundColor: '#F3F4F6', borderRadius: 8 },
+  catImage: { width: 45, height: 45 }, // تصغير المقاس قليلاً لضمان عدم خروجها عن حدود الحاوية
   label: { fontSize: 13, fontWeight: '700', color: '#1A1A1A', textAlign: 'center', lineHeight: 18 },
 });
 
