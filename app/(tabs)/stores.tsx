@@ -300,6 +300,7 @@ export default function StoresScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const storeSearchInputRef = useRef<any>(null);
   const scrollRef = useRef<any>(null);
+  const catScrollRef = useRef<any>(null);
 
   const [nameGateVisible, setNameGateVisible] = useState(false);
   const [editName, setEditName] = useState('');
