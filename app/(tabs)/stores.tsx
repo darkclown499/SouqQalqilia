@@ -76,7 +76,7 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   const catScrollRef = useRef<any>(null);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userScrolling = useRef(false);
-  const BANNER_H = Math.round(SCREEN_W * 0.45);
+  const BANNER_H = Math.round(SCREEN_W * 0.68);
 
   // روابط جاهزة لصور بانرات بمقاس 600x300 صالحة للاستخدام المباشر لاختبار واجهة التطبيق:
 
