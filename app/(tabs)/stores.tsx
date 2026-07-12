@@ -48,9 +48,9 @@ function isNameInvalid(name: string): boolean {
 const get3DIconUrl = (name: string) => {
   const base = 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/';
   switch (name) {
-    case 'العروض': return base + 'Loudspeaker/3D/loudspeaker_3d.png';
     case 'الكل': return base + 'Hand%20with%20index%20finger%20and%20thumb%20crossed/3D/hand_with_index_finger_and_thumb_crossed_3d_default.png';
-    case 'زينة وهدايا': return base + 'Label/3D/label_3d.png';
+    case 'العروض': return base + 'Loudspeaker/3D/loudspeaker_3d.png';
+    case 'زينة وهدايا': return base + 'Wrapped%20present/3D/wrapped_present_3d.png';
     case 'ألعاب وترفيه': return base + 'Video%20game/3D/video_game_3d.png';
     case 'مأكولات وحلويات': return base + 'Hamburger/3D/hamburger_3d.png';
     case 'إلكترونيات': return base + 'Mobile%20phone/3D/mobile_phone_3d.png';
@@ -58,7 +58,7 @@ const get3DIconUrl = (name: string) => {
     case 'صيدليات': return base + 'Pill/3D/pill_3d.png';
     case 'حيوانات': return base + 'Dog%20face/3D/dog_face_3d.png';
     case 'سيارات ومركبات': return base + 'Automobile/3D/automobile_3d.png';
-    case 'خدمات': return base + 'Briefcase/3D/briefcase_3d.png';
+    case 'وظائف': return base + 'Briefcase/3D/briefcase_3d.png';
     case 'موضة': return base + 'T-shirt/3D/t-shirt_3d.png';
     case 'أثاث': return base + 'Couch%20and%20lamp/3D/couch_and_lamp_3d.png';
     case 'رياضة': return base + 'Soccer%20ball/3D/soccer_ball_3d.png';
@@ -161,7 +161,8 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
         qc.iconBg,
         isSelected && { borderColor: activeColor, backgroundColor: activeColor + '1A' }
       ]}>
-        <Image source={{ uri: targetImageUrl }} style={qc.catImage} contentFit="contain" />
+        {/* تم وضع المقاس والشفافية بشكل مباشر داخل style لضمان تطبيقها في أندرويد */}
+        <Image source={{ uri: targetImageUrl }} style={{ width: 52, height: 52, backgroundColor: 'transparent' }} contentFit="contain" />
       </View>
       <Text style={[qc.label, isSelected && { color: activeColor }]} numberOfLines={2}>
         {isAr ? nameAr : cat.name}
@@ -468,9 +469,9 @@ return (
       onContentSizeChange={() => { if (isRTL && scrollRef.current) scrollRef.current.scrollToEnd({ animated: false }); }}
     >
       {/* 1. خيار العروض */}
-      <Pressable style={qc.card} onPress={() => setSelectedCatId('__offers__')}>
+     <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
         <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EAB308', backgroundColor: '#EAB3081A' }]}>
-          <Image source={{ uri: get3DIconUrl('خصومات') }} style={qc.catImage} contentFit="contain" />
+          <Image source={{ uri: get3DIconUrl('العروض') }} style={{ width: 52, height: 52, backgroundColor: 'transparent' }} contentFit="contain" />
         </View>
         <Text style={[qc.label, selectedCatId === '__offers__' && { color: '#EAB308' }]} numberOfLines={2}>{isAr ? 'العروض' : 'Offers'}</Text>
       </Pressable>
@@ -478,7 +479,7 @@ return (
       {/* 2. خيار عرض الكل (الافتراضي) */}
       <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
         <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C', backgroundColor: '#B91C1C1A' }]}>
-          <Image source={{ uri: get3DIconUrl('الكل') }} style={qc.catImage} contentFit="contain" />
+          <Image source={{ uri: get3DIconUrl('الكل') }} style={{ width: 52, height: 52, backgroundColor: 'transparent' }} contentFit="contain" />
         </View>
         <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]} numberOfLines={2}>{isAr ? 'الكل' : 'All'}</Text>
       </Pressable>
