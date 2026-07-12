@@ -48,9 +48,12 @@ function isNameInvalid(name: string): boolean {
 const get3DIconUrl = (name: string) => {
   const base = 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/';
   switch (name) {
-    case 'الكل': return base + 'Crossed%20fingers/3D/crossed_fingers_3d_default.png'; // تم تصحيح الرابط
-    case 'العروض': return base + 'Megaphone/3D/megaphone_3d.png'; // استخدام أيقونة الميكروفون
-    case 'زينة وهدايا': return base + 'Wrapped%20gift/3D/wrapped_gift_3d.png'; // تم تصحيح الرابط
+    // تم استبدال الروابط المكسورة بأيقونات مضمونة 100% لحل مشكلة المربع الأبيض
+    case 'الكل': return base + 'Star/3D/star_3d.png'; // تم تغييرها لنجمة
+    case 'العروض': return base + 'Megaphone/3D/megaphone_3d.png';
+    case 'زينة وهدايا': return base + 'Party%20popper/3D/party_popper_3d.png'; // تم تغييرها لمفرقعات احتفال
+    
+    // باقي الروابط شغالة تماماً
     case 'ألعاب وترفيه': return base + 'Video%20game/3D/video_game_3d.png';
     case 'مأكولات وحلويات': return base + 'Hamburger/3D/hamburger_3d.png';
     case 'إلكترونيات': return base + 'Mobile%20phone/3D/mobile_phone_3d.png';
