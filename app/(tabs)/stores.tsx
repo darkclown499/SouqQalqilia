@@ -213,35 +213,20 @@ function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
 // ─────────────────────────────────────────────────────────────────────────────
 function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
-  const blockScrollRef = useRef<any>(null);
-
   return (
-    <View style={cb.block}>
-      <View style={cb.headerRow}>
-        <Text style={[cb.title, { textAlign: isRTL ? 'right' : 'left' }]}>{catName}</Text>
-        <Text style={[cb.sponsored, { textAlign: isRTL ? 'right' : 'left' }]}>{isAr ? 'ممّول' : 'Sponsored'}</Text>
-      </View>
-      <ScrollView
-        ref={blockScrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[cb.scrollContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-        onContentSizeChange={() => {
-          if (isRTL && blockScrollRef.current) {
-            blockScrollRef.current.scrollToEnd({ animated: false });
-          }
-        }}
-      >
+    <View style={s.categoryContainer}>
+      <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{catName}</Text>
+      <View style={s.gridContainer}>
         {stores.map((store: any) => (
-          <PremiumStoreCard
-            key={store.id}
-            store={store}
-            rating={ratings[store.id] ?? { avg: 0, count: 0 }}
-            isAr={isAr}
-            onPress={() => onStorePress(store.id)}
+          <StoreGridCard 
+            key={store.id} 
+            store={store} 
+            rating={ratings[store.id] ?? { avg: 0 }} 
+            isAr={isAr} 
+            onPress={() => onStorePress(store.id)} 
           />
         ))}
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -275,6 +260,27 @@ function RegisterStoreCTA({ isAr, isRTL, onPress }: {
           <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={24} color="rgba(255,255,255,0.9)" />
         </View>
       </LinearGradient>
+    </Pressable>
+  );
+}
+
+function StoreGridCard({ store, rating, isAr, onPress }: any) {
+  const isOpen = checkStoreIsOpen(store);
+  const name = isAr ? (store.name_ar || store.name) : store.name;
+  
+  return (
+    <Pressable style={s.gridCard} onPress={onPress}>
+      <View style={s.logoWrap}>
+        <Image source={{ uri: store.logo_url }} style={s.logoImg} contentFit="contain" />
+      </View>
+      <Text style={s.storeName} numberOfLines={1}>{name}</Text>
+      <Text style={s.storeAddress} numberOfLines={1}>{store.address || 'قلقيلية'}</Text>
+      <View style={s.footerRow}>
+        <Text style={{ fontSize: 12, color: isOpen ? '#059669' : '#EA580C', fontWeight: 'bold' }}>
+          {isOpen ? 'مفتوح' : 'مغلق'}
+        </Text>
+        <Text style={s.ratingText}>★ {rating.avg.toFixed(1)}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -738,3 +744,18 @@ const g = StyleSheet.create({
   saveBtn: { width: '100%', height: 50, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
   saveBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 });
+categoryContainer: { paddingHorizontal: 16, marginBottom: 20 },
+  catTitle: { fontSize: 20, fontWeight: '900', marginBottom: 12 },
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  gridCard: { 
+    width: '48%', backgroundColor: '#fff', borderRadius: 16, 
+    padding: 12, marginBottom: 16, alignItems: 'center',
+    borderWidth: 1, borderColor: '#F3F4F6',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2
+  },
+  logoWrap: { width: 70, height: 70, borderRadius: 35, overflow: 'hidden', marginBottom: 8, backgroundColor: '#F9FAFB' },
+  logoImg: { width: '100%', height: '100%' },
+  storeName: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
+  storeAddress: { fontSize: 10, color: '#6B7280', marginBottom: 8 },
+  footerRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: 4 },
+  ratingText: { fontSize: 11, fontWeight: 'bold' }
