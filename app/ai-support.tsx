@@ -352,8 +352,8 @@ export default function AiSupportScreen() {
           </Pressable>
 
           <View style={[styles.headerAvatarWrap, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-            <MaterialIcons name="smart-toy" size={22} color="#fff" />
-          </View>
+              <MaterialIcons name="robot" size={22} color="#fff" />
+        </View>
 
           <View style={{ flex: 1 }}>
             <Text style={[styles.headerTitle, { textAlign: isAr ? 'right' : 'left' }]}>
@@ -383,9 +383,9 @@ export default function AiSupportScreen() {
               styles.welcomeCard,
               { backgroundColor: isDark ? colors.surface : colors.surfaceTint, borderColor: colors.border },
             ]}>
-              <View style={[styles.welcomeIconWrap, { backgroundColor: colors.primary }]}>
-                <MaterialIcons name="smart-toy" size={40} color="#fff" />
-              </View>
+             <View style={[styles.welcomeIconWrap, { backgroundColor: colors.primary }]}>
+                <MaterialIcons name="robot" size={40} color="#fff" />
+                 </View>
               <Text style={[styles.welcomeTitle, { color: colors.textPrimary }]}>
                 {isAr ? 'أهلاً بك في مساعد سوق قلقيلية' : 'Welcome to Souq Qalqilya Assistant'}
               </Text>
@@ -452,8 +452,8 @@ export default function AiSupportScreen() {
                   isAr ? styles.msgRowUser : styles.msgRowOther,
                 ]}>
                   <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
-                    <MaterialIcons name="smart-toy" size={16} color="#fff" />
-                  </View>
+                    <MaterialIcons name="robot" size={16} color="#fff" />
+                    </View>
                   <View style={[styles.bubble, { backgroundColor: colors.surface, ...Shadow.xs }]}>
                     <TypingIndicator color={colors.primary} />
                   </View>
@@ -647,16 +647,17 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   textInput: {
-    flex: 1,
-    minHeight: 46,
-    maxHeight: 110,
-    borderWidth: 1.5,
-    borderRadius: Radius.xl,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 11,
-    fontSize: FontSize.md,
-    lineHeight: 20,
-  },
+  flex: 1,
+  minHeight: 46,
+  maxHeight: 110,
+  borderWidth: 1.5,
+  borderRadius: Radius.xl,
+  paddingHorizontal: Spacing.md,
+  paddingVertical: 11,
+  fontSize: FontSize.md,
+  lineHeight: 20,
+  backgroundColor: 'transparent', // عدل القيمة لـ transparent
+},
   sendBtn: {
     width: 46, height: 46, borderRadius: 23,
     alignItems: 'center', justifyContent: 'center',
