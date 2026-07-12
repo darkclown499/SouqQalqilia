@@ -56,7 +56,7 @@ const get3DIconUrl = (name: string) => {
     case 'صيدليات': return base + 'Pill/3D/pill_3d.png';
     case 'حيوانات': return base + 'Dog%20face/3D/dog_face_3d.png';
     case 'سيارات ومركبات': return base + 'Automobile/3D/automobile_3d.png';
-    case 'وظائف': return base + 'Briefcase/3D/briefcase_3d.png';
+    case 'خدمات': return base + 'Briefcase/3D/briefcase_3d.png';
     case 'موضة': return base + 'T-shirt/3D/t-shirt_3d.png';
     case 'أثاث': return base + 'Couch%20and%20lamp/3D/couch_and_lamp_3d.png';
     case 'رياضة': return base + 'Soccer%20ball/3D/soccer_ball_3d.png';
@@ -148,16 +148,20 @@ const displayBanners = banners.length > 0 ? banners : [
 // ─────────────────────────────────────────────────────────────────────────────
 
 
-function QuickStoreCatCard({ cat, isAr, onPress }: any) {
+function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
   const nameAr = cat.name_ar || cat.name;
   const targetImageUrl = cat.image_url || get3DIconUrl(nameAr);
+  const activeColor = cat.color || '#B91C1C';
 
   return (
     <Pressable style={qc.card} onPress={onPress}>
-      <View style={qc.iconBg}>
+      <View style={[
+        qc.iconBg,
+        isSelected && { borderColor: activeColor, backgroundColor: activeColor + '1A' }
+      ]}>
         <Image source={{ uri: targetImageUrl }} style={qc.catImage} contentFit="contain" />
       </View>
-      <Text style={qc.label} numberOfLines={2}>
+      <Text style={[qc.label, isSelected && { color: activeColor }]} numberOfLines={2}>
         {isAr ? nameAr : cat.name}
       </Text>
     </Pressable>
@@ -449,16 +453,11 @@ return (
           </View>
         )}
 
-        {storeCategories.length > 0 && (
+       {storeCategories.length > 0 && (
   <View style={s.section}>
     <Text style={[s.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
       {isAr ? 'شو ناقصك اليوم؟ 🤔' : "What are you craving today? 🤔"}
     </Text>
-    {ownerStore === null && user && (
-  <View style={{ marginTop: 12 }}>
-    <RegisterStoreCTA isAr={isAr} isRTL={isRTL} onPress={() => router.push('/register-store' as any)} />
-  </View>
-)}
     <ScrollView
       ref={scrollRef}
       horizontal
@@ -466,12 +465,30 @@ return (
       contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
       onContentSizeChange={() => { if (isRTL && scrollRef.current) scrollRef.current.scrollToEnd({ animated: false }); }}
     >
-      {storeCategories.map(cat => (
+      {/* 1. خيار العروض */}
+      <Pressable style={qc.card} onPress={() => setSelectedCatId('__offers__')}>
+        <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EAB308', backgroundColor: '#EAB3081A' }]}>
+          <Text style={{ fontSize: 34, fontWeight: '900', color: selectedCatId === '__offers__' ? '#EAB308' : '#6B7280' }}>%</Text>
+        </View>
+        <Text style={[qc.label, selectedCatId === '__offers__' && { color: '#EAB308' }]}>{isAr ? 'العروض' : 'Offers'}</Text>
+      </Pressable>
+
+      {/* 2. خيار عرض الكل (الافتراضي) */}
+      <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
+        <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C', backgroundColor: '#B91C1C1A' }]}>
+          <MaterialCommunityIcons name="view-grid-outline" size={34} color={selectedCatId === null ? '#B91C1C' : '#6B7280'} />
+        </View>
+        <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]}>{isAr ? 'الكل' : 'All'}</Text>
+      </Pressable>
+
+      {/* 3. باقي التصنيفات مع حذف "أخرى" */}
+      {storeCategories.filter(cat => cat.name_ar !== 'أخرى' && cat.name !== 'Others').map(cat => (
         <QuickStoreCatCard
           key={cat.id}
           cat={cat}
           isAr={isAr}
-          onPress={() => setSelectedCatId(prev => prev === cat.id ? null : cat.id)}
+          isSelected={selectedCatId === cat.id}
+          onPress={() => setSelectedCatId(cat.id)}
         />
       ))}
     </ScrollView>
@@ -569,6 +586,7 @@ const qc = StyleSheet.create({
   iconBg: {
     width: 75, height: 75, borderRadius: 16, backgroundColor: '#FFFFFF',
     alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+    borderWidth: 2, borderColor: 'transparent',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
   },
   catImage: { width: '85%', height: '85%' },
