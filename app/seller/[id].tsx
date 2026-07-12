@@ -331,7 +331,7 @@ export default function SellerProfileScreen() {
             <View style={styles.waIconBadge}>
               <MaterialIcons name="whatsapp" size={18} color="#fff" />
             </View>
-            <Text style={styles.waButtonText}>{isAr ? 'تواصل عبر واتساب' : 'Contact via WhatsApp'}</Text>
+            <Text style={styles.waButtonText}>{isAr ? 'تواصل عبر واتساب' : 'Contacct via WhatsApp'}</Text>
             <MaterialIcons name={isAr ? 'chevron-left' : 'chevron-right'} size={18} color="rgba(255,255,255,0.8)" />
           </Pressable>
         ) : null}
