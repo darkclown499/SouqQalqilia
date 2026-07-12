@@ -61,6 +61,31 @@ fs.writeFileSync(virtualViewStubPath, [
 // renders don't crash with "Cannot read properties of null" errors.
 const gestureHandlerShimPath = path.resolve(shimDir, 'react-native-gesture-handler.js');
 
+// ─── Shim 4: expo-constants (web / SSR) ────────────────────────────────────
+// expo-router's router-store.js statically imports expo-constants, which tries
+// to call requireOptionalNativeModule() — a native-only API that doesn't exist
+// in the Node.js SSR environment. We replace it with a safe no-op shim.
+const expoConstantsShimPath = path.resolve(shimDir, 'expo-constants.js');
+fs.writeFileSync(expoConstantsShimPath, [
+  '// Auto-generated shim — expo-constants is not available during web SSR.',
+  "'use strict';",
+  'module.exports = {',
+  '  default: { manifest: {}, appOwnership: null, executionEnvironment: "storeClient", sessionId: "", statusBarHeight: 0, systemFonts: [], isHeadless: false },',
+  '  ExecutionEnvironment: { Bare: "bare", Standalone: "storeClient", StoreClient: "storeClient" },',
+  '};',
+].join('\n'), 'utf8');
+
+// ─── Shim 5: eslint-plugin-* and @typescript-eslint/* (web / SSR) ────────────
+// eslint.config.js lives in the project root and Metro accidentally bundles it
+// during SSR. These ESLint packages are Node-only and must never enter the
+// browser/SSR bundle.
+const nodeOnlyEmptyShimPath = path.resolve(shimDir, 'node-only-empty.js');
+fs.writeFileSync(nodeOnlyEmptyShimPath, [
+  '// Auto-generated empty shim for Node-only packages.',
+  "'use strict';",
+  'module.exports = {};',
+].join('\n'), 'utf8');
+
 // ─── Unified resolver ────────────────────────────────────────────────────────
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
@@ -81,6 +106,28 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     (platform === 'web' || platform == null)
   ) {
     return { filePath: gestureHandlerShimPath, type: 'sourceFile' };
+  }
+  // Intercept expo-constants on web/SSR to prevent requireOptionalNativeModule crash
+  if (
+    moduleName === 'expo-constants' &&
+    (platform === 'web' || platform == null)
+  ) {
+    return { filePath: expoConstantsShimPath, type: 'sourceFile' };
+  }
+  // Intercept ESLint/TypeScript tooling packages that are Node-only —
+  // Metro accidentally bundles eslint.config.js during SSR and these crash.
+  const nodeOnlyPkgs = [
+    'eslint-plugin-react',
+    'eslint-plugin-react-hooks',
+    '@typescript-eslint/parser',
+    '@typescript-eslint/eslint-plugin',
+    'eslint',
+  ];
+  if (
+    nodeOnlyPkgs.some(pkg => moduleName === pkg || moduleName.startsWith(pkg + '/')) &&
+    (platform === 'web' || platform == null)
+  ) {
+    return { filePath: nodeOnlyEmptyShimPath, type: 'sourceFile' };
   }
   if (originalResolveRequest) {
     return originalResolveRequest(context, moduleName, platform);
