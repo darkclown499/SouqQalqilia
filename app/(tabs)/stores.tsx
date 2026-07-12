@@ -73,6 +73,7 @@ const get3DIconUrl = (name: string) => {
 function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const catScrollRef = useRef<any>(null);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userScrolling = useRef(false);
   const BANNER_H = Math.round(SCREEN_W * 0.45);
@@ -212,6 +213,7 @@ function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
 // ─────────────────────────────────────────────────────────────────────────────
 function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
+  const blockScrollRef = useRef<any>(null);
 
   return (
     <View style={cb.block}>
@@ -220,9 +222,15 @@ function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress }: any)
         <Text style={[cb.sponsored, { textAlign: isRTL ? 'right' : 'left' }]}>{isAr ? 'ممّول' : 'Sponsored'}</Text>
       </View>
       <ScrollView
+        ref={blockScrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[cb.scrollContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+        onContentSizeChange={() => {
+          if (isRTL && blockScrollRef.current) {
+            blockScrollRef.current.scrollToEnd({ animated: false });
+          }
+        }}
       >
         {stores.map((store: any) => (
           <PremiumStoreCard
@@ -465,9 +473,15 @@ return (
       {isAr ? 'شو ناقصك اليوم؟ 🤔' : "What are you craving today? 🤔"}
     </Text>
     <ScrollView
+      ref={catScrollRef}
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+      onContentSizeChange={() => {
+        if (isRTL && catScrollRef.current) {
+          catScrollRef.current.scrollToEnd({ animated: false });
+        }
+      }}
     >
       {/* 1. خيار العروض */}
       <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
@@ -491,7 +505,7 @@ return (
         <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]} numberOfLines={2}>{isAr ? 'الكل' : 'All'}</Text>
       </Pressable>
 
-      {/* باقي التصنيفات */}
+      {/* 3. باقي التصنيفات */}
       {storeCategories.filter(cat => cat.name_ar !== 'أخرى' && cat.name !== 'Others').map(cat => (
         <QuickStoreCatCard
           key={cat.id}
