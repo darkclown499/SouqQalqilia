@@ -48,12 +48,9 @@ function isNameInvalid(name: string): boolean {
 const get3DIconUrl = (name: string) => {
   const base = 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/';
   switch (name) {
-    // تم استبدال الروابط المكسورة بأيقونات مضمونة 100% لحل مشكلة المربع الأبيض
-    case 'الكل': return base + 'Star/3D/star_3d.png'; // تم تغييرها لنجمة
+    case 'الكل': return base + 'Star/3D/star_3d.png'; // استخدمنا أيقونة النجمة المضمونة
     case 'العروض': return base + 'Megaphone/3D/megaphone_3d.png';
-    case 'زينة وهدايا': return base + 'Party%20popper/3D/party_popper_3d.png'; // تم تغييرها لمفرقعات احتفال
-    
-    // باقي الروابط شغالة تماماً
+    case 'زينة وهدايا': return base + 'Party%20popper/3D/party_popper_3d.png'; // أيقونة المفرقعات المضمونة
     case 'ألعاب وترفيه': return base + 'Video%20game/3D/video_game_3d.png';
     case 'مأكولات وحلويات': return base + 'Hamburger/3D/hamburger_3d.png';
     case 'إلكترونيات': return base + 'Mobile%20phone/3D/mobile_phone_3d.png';
@@ -162,10 +159,13 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
     <Pressable style={qc.card} onPress={onPress}>
       <View style={[
         qc.iconBg,
-        isSelected && { borderColor: activeColor, backgroundColor: activeColor + '1A' }
+        isSelected && { borderColor: activeColor } // خلينا الخلفية بيضاء صلبة زي ما هي
       ]}>
-        {/* استخدام RNImage بدلاً من Image لحل مشكلة الأندرويد من جذورها */}
-        <RNImage source={{ uri: targetImageUrl }} style={{ width: 45, height: 45 }} resizeMode="contain" />
+        {/* الطبقة الشفافة اللي بتلون المربع بدون ما تخرب الأندرويد */}
+        {isSelected && (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: activeColor, opacity: 0.12, borderRadius: 14 }]} />
+        )}
+        <RNImage source={{ uri: targetImageUrl }} style={{ width: 48, height: 48 }} resizeMode="contain" />
       </View>
       <Text style={[qc.label, isSelected && { color: activeColor }]} numberOfLines={2}>
         {isAr ? nameAr : cat.name}
@@ -469,18 +469,24 @@ return (
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
     >
-      {/* خيار العروض */}
+      {/* 1. خيار العروض */}
       <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
-        <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EAB308', backgroundColor: '#EAB3081A' }]}>
-          <RNImage source={{ uri: get3DIconUrl('العروض') }} style={{ width: 45, height: 45 }} resizeMode="contain" />
+        <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EAB308' }]}>
+          {selectedCatId === '__offers__' && (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#EAB308', opacity: 0.12, borderRadius: 14 }]} />
+          )}
+          <RNImage source={{ uri: get3DIconUrl('العروض') }} style={{ width: 48, height: 48 }} resizeMode="contain" />
         </View>
         <Text style={[qc.label, selectedCatId === '__offers__' && { color: '#EAB308' }]} numberOfLines={2}>{isAr ? 'العروض' : 'Offers'}</Text>
       </Pressable>
 
-      {/* خيار الكل */}
+      {/* 2. خيار عرض الكل (الافتراضي) */}
       <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
-        <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C', backgroundColor: '#B91C1C1A' }]}>
-          <RNImage source={{ uri: get3DIconUrl('الكل') }} style={{ width: 45, height: 45 }} resizeMode="contain" />
+        <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C' }]}>
+          {selectedCatId === null && (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#B91C1C', opacity: 0.12, borderRadius: 14 }]} />
+          )}
+          <RNImage source={{ uri: get3DIconUrl('الكل') }} style={{ width: 48, height: 48 }} resizeMode="contain" />
         </View>
         <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]} numberOfLines={2}>{isAr ? 'الكل' : 'All'}</Text>
       </Pressable>
