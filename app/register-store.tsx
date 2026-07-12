@@ -169,18 +169,20 @@ export default function RegisterStoreScreen() {
   const handlePickLogo = useCallback(async () => {
     setLogoLoading(true);
     try {
-      const img = await pickImage('gallery');
+      // مرر [1, 1] هنا لفرض المربع فقط لهذا الشعار
+      const img = await pickImage('gallery', [1, 1]); 
       if (img) { setLogoUri(img.uri); setLogoBase64(img.base64); }
     } finally { setLogoLoading(false); }
   }, []);
 
   const handlePickBanner = useCallback(async () => {
-    setBannerLoading(true);
-    try {
-      const img = await pickImage('gallery');
-      if (img) { setBannerUri(img.uri); setBannerBase64(img.base64); }
-    } finally { setBannerLoading(false); }
-  }, []);
+  setBannerLoading(true);
+  try {
+    // [2, 1] تعني نسبة عرض إلى طول 2:1، وهو ما يطابق مقاس 1000×500 تماماً
+    const img = await pickImage('gallery', [2, 1]); 
+    if (img) { setBannerUri(img.uri); setBannerBase64(img.base64); }
+  } finally { setBannerLoading(false); }
+}, []);
 
   const handleSubmit = useCallback(async () => {
     if (!user) return;

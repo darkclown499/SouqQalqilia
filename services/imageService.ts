@@ -92,27 +92,30 @@ export async function pickMultipleImages(limit = 3): Promise<{ uri: string; base
   return processed;
 }
 
-export async function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promise<{ uri: string; base64: string } | null> {
+export async function pickImage(
+  source: 'camera' | 'gallery' = 'gallery', 
+  aspect: [number, number] = [4, 3]
+): Promise<{ uri: string; base64: string } | null> {
   if (source === 'camera') {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') return null;
 
+    // تصحيح: استخدام launchCameraAsync
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       quality: 1,
       base64: false,
       allowsEditing: true,
-      aspect: [4, 3],
+      aspect: aspect, 
     });
 
     if (result.canceled || !result.assets[0]) return null;
     const asset = result.assets[0];
-
+    
     try {
       const compressed = await compressImage(asset.uri, true);
       return { uri: compressed.uri, base64: compressed.base64 ?? '' };
     } catch {
-      // Both passes failed — return raw URI; uploadImage() handles the fallback
       return { uri: asset.uri, base64: '' };
     }
   }
@@ -122,11 +125,11 @@ export async function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promi
   if (status !== 'granted') return null;
 
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],     // images only — never video; avoids READ_MEDIA_VIDEO
+    mediaTypes: ['images'],
     quality: 1,
     base64: false,
     allowsEditing: true,
-    aspect: [4, 3],
+    aspect: aspect, // تصحيح: استخدام المتغير aspect
   });
 
   if (result.canceled || !result.assets[0]) return null;
@@ -136,9 +139,6 @@ export async function pickImage(source: 'camera' | 'gallery' = 'gallery'): Promi
     const compressed = await compressImage(asset.uri, true);
     return { uri: compressed.uri, base64: compressed.base64 ?? '' };
   } catch {
-    // Both compression passes failed — return raw URI so the caller still gets
-    // a result. uploadImage() will attempt a second compress via sourceUri.
-    // Never return null here to avoid triggering a second permission dialog on Android.
     if (!asset.uri) return null;
     return { uri: asset.uri, base64: '' };
   }
