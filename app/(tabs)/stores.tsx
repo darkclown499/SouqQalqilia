@@ -213,20 +213,35 @@ function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
 // ─────────────────────────────────────────────────────────────────────────────
 function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
+  const blockScrollRef = useRef<any>(null);
+
   return (
-    <View style={s.categoryContainer}>
-      <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{catName}</Text>
-      <View style={s.gridContainer}>
+    <View style={cb.block}>
+      <View style={cb.headerRow}>
+        <Text style={[cb.title, { textAlign: isRTL ? 'right' : 'left' }]}>{catName}</Text>
+        <Text style={[cb.sponsored, { textAlign: isRTL ? 'right' : 'left' }]}>{isAr ? 'ممّول' : 'Sponsored'}</Text>
+      </View>
+      <ScrollView
+        ref={blockScrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[cb.scrollContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+        onContentSizeChange={() => {
+          if (isRTL && blockScrollRef.current) {
+            blockScrollRef.current.scrollToEnd({ animated: false });
+          }
+        }}
+      >
         {stores.map((store: any) => (
-          <StoreGridCard 
-            key={store.id} 
-            store={store} 
-            rating={ratings[store.id] ?? { avg: 0 }} 
-            isAr={isAr} 
-            onPress={() => onStorePress(store.id)} 
+          <PremiumStoreCard
+            key={store.id}
+            store={store}
+            rating={ratings[store.id] ?? { avg: 0, count: 0 }}
+            isAr={isAr}
+            onPress={() => onStorePress(store.id)}
           />
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -260,27 +275,6 @@ function RegisterStoreCTA({ isAr, isRTL, onPress }: {
           <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={24} color="rgba(255,255,255,0.9)" />
         </View>
       </LinearGradient>
-    </Pressable>
-  );
-}
-
-function StoreGridCard({ store, rating, isAr, onPress }: any) {
-  const isOpen = checkStoreIsOpen(store);
-  const name = isAr ? (store.name_ar || store.name) : store.name;
-  
-  return (
-    <Pressable style={s.gridCard} onPress={onPress}>
-      <View style={s.logoWrap}>
-        <Image source={{ uri: store.logo_url }} style={s.logoImg} contentFit="contain" />
-      </View>
-      <Text style={s.storeName} numberOfLines={1}>{name}</Text>
-      <Text style={s.storeAddress} numberOfLines={1}>{store.address || 'قلقيلية'}</Text>
-      <View style={s.footerRow}>
-        <Text style={{ fontSize: 12, color: isOpen ? '#059669' : '#EA580C', fontWeight: 'bold' }}>
-          {isOpen ? 'مفتوح' : 'مغلق'}
-        </Text>
-        <Text style={s.ratingText}>★ {rating.avg.toFixed(1)}</Text>
-      </View>
     </Pressable>
   );
 }
@@ -723,28 +717,14 @@ const s = StyleSheet.create({
   storeSearchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 16, marginBottom: 10, gap: 10, borderRadius: 16, paddingHorizontal: 14, height: 50, borderWidth: 1 },
   storeSearchIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   storeSearchInput: { flex: 1, fontSize: 13, fontWeight: '600' },
-  locationTextWrap: { alignItems: 'center' },
-  locationTitle: { fontSize: 13, color: '#1A1A1A', fontWeight: '800' },
-  locationSubtitle: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
-  homeIconWrap: { backgroundColor: '#F3F4F6', padding: 6, borderRadius: 15 },
-  floatingButtonsWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', zIndex: 100 },
-  supportFab: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 },
-  scrollTopFab: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
-  categoryContainer: { paddingHorizontal: 16, marginBottom: 20 },
-  catTitle: { fontSize: 20, fontWeight: '900', marginBottom: 12 },
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  gridCard: {
-    width: '48%', backgroundColor: '#fff', borderRadius: 16,
-    padding: 12, marginBottom: 16, alignItems: 'center',
-    borderWidth: 1, borderColor: '#F3F4F6',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
-  logoWrap: { width: 70, height: 70, borderRadius: 35, overflow: 'hidden', marginBottom: 8, backgroundColor: '#F9FAFB' },
-  logoImg: { width: '100%', height: '100%' },
-  storeName: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
-  storeAddress: { fontSize: 10, color: '#6B7280', marginBottom: 8 },
-  footerRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: 4 },
-  ratingText: { fontSize: 11, fontWeight: 'bold' },
+locationCenter: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB' },
+locationTextWrap: { alignItems: 'center' },
+locationTitle: { fontSize: 13, color: '#1A1A1A', fontWeight: '800' },
+locationSubtitle: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
+homeIconWrap: { backgroundColor: '#F3F4F6', padding: 6, borderRadius: 15 },
+floatingButtonsWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', pointerEvents: 'box-none', zIndex: 100 },
+supportFab: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 },
+scrollTopFab: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
 });
 
 const g = StyleSheet.create({
