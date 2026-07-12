@@ -123,10 +123,14 @@ export default function RegisterStoreScreen() {
   const [catsLoading, setCatsLoading] = useState(true);
 
   useEffect(() => {
-    fetchStoreCategories()
-      .then(res => setStoreCategories(res.data))
-      .finally(() => setCatsLoading(false));
-  }, []);
+  fetchStoreCategories()
+    .then(res => {
+      console.log("Categories loaded:", res.data); // أضف هذا السطر
+      setStoreCategories(res.data);
+    })
+    .catch(err => console.error("Error loading categories:", err)) // أضف خطأ للتوضيح
+    .finally(() => setCatsLoading(false));
+}, []);
 
   // ── Form state ──────────────────────────────────────────────────────────────
   const [nameAr, setNameAr] = useState('');
@@ -704,7 +708,12 @@ const cm = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', zIndex: 9999 },
   // Explicit height so flex:1 on the inner ScrollView has a concrete parent to fill.
   // Without this the sheet collapses to 0 height on Android.
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, height: '72%' },
+  sheet: { 
+  borderTopLeftRadius: 24, 
+  borderTopRightRadius: 24, 
+  paddingTop: 12, 
+  flex: 0.85, // استخدم flex بدلاً من height الثابتة
+},
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: Spacing.lg, marginBottom: 4 },
   titleText: { fontSize: FontSize.lg, fontWeight: '700', flex: 1 },
