@@ -45,22 +45,23 @@ function isNameInvalid(name: string): boolean {
 }
 
 // ── Icon name resolver ────────────────────────────────────────────────────────
-const getIconName = (name: string) => {
+const get3DIconUrl = (name: string) => {
+  const base = 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/';
   switch (name) {
-    case 'زينة وهدايا': return 'gift-outline';
-    case 'ألعاب وترفيه': return 'gamepad-variant-outline';
-    case 'مأكولات وحلويات': return 'food-outline';
-    case 'إلكترونيات': return 'cellphone';
-    case 'سوبرماركت': return 'cart-outline';
-    case 'حيوانات': return 'paw';
-    case 'سيارات ومركبات': return 'car-outline';
-    case 'وظائف': return 'briefcase-outline';
-    case 'موضة': return 'tshirt-crew-outline';
-    case 'أثاث': return 'sofa-outline';
-    case 'رياضة': return 'soccer';
-    case 'عقارات': return 'home-city-outline';
-    case 'أخرى': return 'dots-horizontal';
-    default: return 'store-outline';
+    case 'زينة وهدايا': return base + 'Wrapped%20present/3D/wrapped_present_3d.png';
+    case 'ألعاب وترفيه': return base + 'Video%20game/3D/video_game_3d.png';
+    case 'مأكولات وحلويات': return base + 'Hamburger/3D/hamburger_3d.png';
+    case 'إلكترونيات': return base + 'Mobile%20phone/3D/mobile_phone_3d.png';
+    case 'سوبرماركت': return base + 'Shopping%20cart/3D/shopping_cart_3d.png';
+    case 'صيدليات': return base + 'Pill/3D/pill_3d.png';
+    case 'حيوانات': return base + 'Dog%20face/3D/dog_face_3d.png';
+    case 'سيارات ومركبات': return base + 'Automobile/3D/automobile_3d.png';
+    case 'وظائف': return base + 'Briefcase/3D/briefcase_3d.png';
+    case 'موضة': return base + 'T-shirt/3D/t-shirt_3d.png';
+    case 'أثاث': return base + 'Couch%20and%20lamp/3D/couch_and_lamp_3d.png';
+    case 'رياضة': return base + 'Soccer%20ball/3D/soccer_ball_3d.png';
+    case 'عقارات': return base + 'House/3D/house_3d.png';
+    default: return base + 'Convenience%20store/3D/convenience_store_3d.png';
   }
 };
 
@@ -132,16 +133,16 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. QUICK STORE CATEGORY CARD
 // ─────────────────────────────────────────────────────────────────────────────
+
+
 function QuickStoreCatCard({ cat, isAr, onPress }: any) {
   const nameAr = cat.name_ar || cat.name;
+  const targetImageUrl = cat.image_url || get3DIconUrl(nameAr);
+
   return (
     <Pressable style={qc.card} onPress={onPress}>
       <View style={qc.iconBg}>
-        {cat.image_url ? (
-          <Image source={{ uri: cat.image_url }} style={qc.catImage} contentFit="contain" />
-        ) : (
-          <View style={qc.placeholderIcon} />
-        )}
+        <Image source={{ uri: targetImageUrl }} style={qc.catImage} contentFit="contain" />
       </View>
       <Text style={qc.label} numberOfLines={2}>
         {isAr ? nameAr : cat.name}
@@ -369,46 +370,34 @@ export default function StoresScreen() {
     if (!selectedCatId) return filteredGroupedStores;
     return filteredGroupedStores.filter(g => g.cat.id === selectedCatId);
   }, [filteredGroupedStores, selectedCatId]);
-
-  return (
+return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
+      
+      {/* 1. الشريط العلوي النظيف بدون الأزرار */}
       <View style={[s.header, { backgroundColor: '#FFFFFF', paddingTop: insets.top + 8, paddingBottom: 15 }]}>
-  <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-    <Pressable hitSlop={8}>
-      <MaterialIcons name="menu" size={26} color="#1A1A1A" />
-    </Pressable>
+        <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <Pressable hitSlop={8}>
+            <MaterialIcons name="menu" size={26} color="#1A1A1A" />
+          </Pressable>
 
-    <Pressable style={[s.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-      <MaterialIcons name="keyboard-arrow-down" size={20} color="#1A1A1A" />
-      <View style={s.locationTextWrap}>
-        <Text style={s.locationTitle}>{isAr ? 'بيت' : 'Home'}</Text>
-        <Text style={s.locationSubtitle}>{isAr ? 'الرازي 499' : 'Al-Razi 499'}</Text>
+          <Pressable style={[s.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <MaterialIcons name="keyboard-arrow-down" size={20} color="#1A1A1A" />
+            <View style={s.locationTextWrap}>
+              <Text style={s.locationTitle}>{isAr ? 'بيت' : 'Home'}</Text>
+              <Text style={s.locationSubtitle}>{isAr ? 'الرازي 499' : 'Al-Razi 499'}</Text>
+            </View>
+            <View style={s.homeIconWrap}>
+              <MaterialIcons name="home" size={16} color="#6B7280" />
+            </View>
+          </Pressable>
+
+          <Pressable hitSlop={8}>
+            <MaterialIcons name="search" size={26} color="#1A1A1A" />
+          </Pressable>
+        </View>
       </View>
-      <View style={s.homeIconWrap}>
-        <MaterialIcons name="home" size={16} color="#6B7280" />
-      </View>
-    </Pressable>
 
-    <Pressable hitSlop={8}>
-      <MaterialIcons name="search" size={26} color="#1A1A1A" />
-    </Pressable>
-  </View>
-  <View style={s.floatingButtonsWrap}>
-  <Pressable style={s.supportFab} hitSlop={8}>
-    <MaterialCommunityIcons name="headset" size={24} color="#FFFFFF" />
-  </Pressable>
-  
-  <Pressable 
-    style={s.scrollTopFab} 
-    onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
-    hitSlop={8}
-  >
-    <MaterialIcons name="arrow-upward" size={20} color="#B91C1C" />
-  </Pressable>
-</View>
-</View>
-
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
         <BannerCarousel banners={banners} isRTL={isRTL} />
 
 
