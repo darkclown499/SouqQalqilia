@@ -1,23 +1,13 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const config = getDefaultConfig(__dirname);
-module.exports = config;
-async function triggerHaptic() {
-  if (Platform.OS === 'web') return; // حماية كاملة للمتصفح
-
-  try {
-    const Haptics = require('expo-haptics');
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  } catch (e) {
-    console.log('Haptics not available on this platform');
-  }
-}
-const { getDefaultConfig } = require('expo/metro-config');
-const config = getDefaultConfig(__dirname);
 
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
   'expo-haptics': new Proxy({}, { get: () => ({ impactAsync: () => {} }) }),
-  // أضف أي مكتبة نيتيف أخرى تواجهك فيها مشاكل هنا بنفس الطريقة
+  'eslint-plugin-react': new Proxy({}, { get: () => ({}) }),
+  'eslint-plugin-react-hooks': new Proxy({}, { get: () => ({}) }),
+  '@typescript-eslint/parser': new Proxy({}, { get: () => ({}) }),
+  '@typescript-eslint/eslint-plugin': new Proxy({}, { get: () => ({}) }),
 };
 
 module.exports = config;
