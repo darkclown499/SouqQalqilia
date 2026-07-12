@@ -48,7 +48,9 @@ function isNameInvalid(name: string): boolean {
 const get3DIconUrl = (name: string) => {
   const base = 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/';
   switch (name) {
-    case 'زينة وهدايا': return base + 'Wrapped%20present/3D/wrapped_present_3d.png';
+    case 'العروض': return base + 'Loudspeaker/3D/loudspeaker_3d.png';
+    case 'الكل': return base + 'Hand%20with%20index%20finger%20and%20thumb%20crossed/3D/hand_with_index_finger_and_thumb_crossed_3d_default.png';
+    case 'زينة وهدايا': return base + 'Label/3D/label_3d.png';
     case 'ألعاب وترفيه': return base + 'Video%20game/3D/video_game_3d.png';
     case 'مأكولات وحلويات': return base + 'Hamburger/3D/hamburger_3d.png';
     case 'إلكترونيات': return base + 'Mobile%20phone/3D/mobile_phone_3d.png';
@@ -468,17 +470,17 @@ return (
       {/* 1. خيار العروض */}
       <Pressable style={qc.card} onPress={() => setSelectedCatId('__offers__')}>
         <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EAB308', backgroundColor: '#EAB3081A' }]}>
-          <Text style={{ fontSize: 34, fontWeight: '900', color: selectedCatId === '__offers__' ? '#EAB308' : '#6B7280' }}>%</Text>
+          <Image source={{ uri: get3DIconUrl('خصومات') }} style={qc.catImage} contentFit="contain" />
         </View>
-        <Text style={[qc.label, selectedCatId === '__offers__' && { color: '#EAB308' }]}>{isAr ? 'العروض' : 'Offers'}</Text>
+        <Text style={[qc.label, selectedCatId === '__offers__' && { color: '#EAB308' }]} numberOfLines={2}>{isAr ? 'العروض' : 'Offers'}</Text>
       </Pressable>
 
       {/* 2. خيار عرض الكل (الافتراضي) */}
       <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
         <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C', backgroundColor: '#B91C1C1A' }]}>
-          <MaterialCommunityIcons name="view-grid-outline" size={34} color={selectedCatId === null ? '#B91C1C' : '#6B7280'} />
+          <Image source={{ uri: get3DIconUrl('الكل') }} style={qc.catImage} contentFit="contain" />
         </View>
-        <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]}>{isAr ? 'الكل' : 'All'}</Text>
+        <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]} numberOfLines={2}>{isAr ? 'الكل' : 'All'}</Text>
       </Pressable>
 
       {/* 3. باقي التصنيفات مع حذف "أخرى" */}
@@ -589,7 +591,8 @@ const qc = StyleSheet.create({
     borderWidth: 2, borderColor: 'transparent',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
   },
-  catImage: { width: '85%', height: '85%' },
+  // التعديل هنا: مقاس ثابت 52x52 لضمان التوسيط الهندسي المثالي، وخلفية شفافة لإلغاء المربع الأبيض
+  catImage: { width: 52, height: 52, backgroundColor: 'transparent' }, 
   placeholderIcon: { width: '50%', height: '50%', backgroundColor: '#F3F4F6', borderRadius: 8 },
   label: { fontSize: 13, fontWeight: '700', color: '#1A1A1A', textAlign: 'center', lineHeight: 18 },
 });
