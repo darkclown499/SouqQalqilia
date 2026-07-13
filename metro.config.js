@@ -8,6 +8,7 @@ const config = getDefaultConfig(__dirname);
 // Maps module IDs (or prefixes) to local shim files that export safe no-ops.
 // Only applied when bundling for the web/Node renderer.
 const WEB_SHIMS = {
+  'react-native': path.resolve(__dirname, 'shims/react-native.js'),
   'expo-constants': path.resolve(__dirname, 'shims/expo-constants.js'),
   'expo-splash-screen': path.resolve(__dirname, 'shims/expo-splash-screen.js'),
   'expo-web-browser': path.resolve(__dirname, 'shims/expo-web-browser.js'),
