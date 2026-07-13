@@ -100,7 +100,6 @@ function ProductCard({
   );
 }
 
-
 const pc = StyleSheet.create({
   card: {
     width: '48%',
@@ -471,18 +470,11 @@ export default function StoreDetailScreen() {
 
           {/* التداخل (الشعار + الشارات العائمة) */}
           <View style={s.overlapWrapper}>
-            {/* الشارات اليمين (ساعات العمل + سعر التوصيل) */}
+            {/* شارة ساعات العمل (يمين) */}
             <View style={[s.sideBadge, { right: 16 }]}>
-              <View style={[s.pill, { backgroundColor: '#BE123C', alignSelf: 'flex-end' }]}>
+              <View style={[s.pill, { backgroundColor: '#BE123C' }]}>
                 <Text style={s.pillText}>{hoursLabel || '01:00 - 10:30'}</Text>
                 <MaterialIcons name="access-time" size={12} color="#fff" style={{ marginLeft: 4 }} />
-              </View>
-              <View style={s.infoBox}>
-                <Text style={s.infoBoxTitle}>{isAr ? 'سعر التوصيل\nلموقعك الحالي' : 'Delivery Price'}</Text>
-                <View style={s.infoBoxCircleGray}>
-                  <Text style={s.infoBoxValGray}>9</Text>
-                  <Text style={s.infoBoxUnitGray}>₪</Text>
-                </View>
               </View>
             </View>
 
@@ -495,17 +487,10 @@ export default function StoreDetailScreen() {
               )}
             </View>
 
-            {/* الشارات اليسار (حالة المتجر + زمن التوصيل) */}
+            {/* شارة حالة المتجر (يسار) */}
             <View style={[s.sideBadge, { left: 16 }]}>
-              <View style={[s.pill, { backgroundColor: isOpen ? '#84CC16' : '#9CA3AF', alignSelf: 'flex-start' }]}>
+              <View style={[s.pill, { backgroundColor: isOpen ? '#84CC16' : '#9CA3AF' }]}>
                 <Text style={s.pillText}>{isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}</Text>
-              </View>
-              <View style={s.infoBox}>
-                <Text style={s.infoBoxTitle}>{isAr ? 'الزمن المقدر\nلوصول الطلبية' : 'Est. Time'}</Text>
-                <View style={s.infoBoxCircleRed}>
-                  <Text style={s.infoBoxValRed}>30-40</Text>
-                  <Text style={s.infoBoxUnitRed}>{isAr ? 'دقيقة' : 'min'}</Text>
-                </View>
               </View>
             </View>
           </View>
@@ -523,22 +508,6 @@ export default function StoreDetailScreen() {
               <Pressable style={s.shareCircle} onPress={handleShare}>
                 <MaterialIcons name="share" size={20} color="#fff" />
               </Pressable>
-
-              {/* خدمات المتجر */}
-              <View style={[s.servicesPill, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <View style={s.serviceItem}>
-                  <MaterialIcons name="moped" size={22} color="#6B7280" />
-                  <View style={s.checkMark}><MaterialIcons name="check" size={10} color="#fff" /></View>
-                </View>
-                <View style={s.serviceItem}>
-                  <MaterialIcons name="shopping-bag" size={22} color="#6B7280" />
-                  <View style={s.checkMark}><MaterialIcons name="check" size={10} color="#fff" /></View>
-                </View>
-                <View style={s.serviceItem}>
-                  <MaterialIcons name="restaurant" size={22} color="#6B7280" />
-                  <View style={s.checkMark}><MaterialIcons name="check" size={10} color="#fff" /></View>
-                </View>
-              </View>
 
               {/* المفضلة */}
               <Pressable style={s.favCircle} onPress={() => id && toggleFav(id)}>
@@ -826,8 +795,8 @@ const s = StyleSheet.create({
   bannerWrap: { width: '100%', position: 'relative' },
   fabBtn: { position: 'absolute', zIndex: 10, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   
-  overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -70, zIndex: 10 },
-  sideBadge: { position: 'absolute', top: 5, width: 105, alignItems: 'center' },
+  overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -40, zIndex: 10 },
+  sideBadge: { position: 'absolute', top: 24, alignItems: 'center' },
   pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 8 },
   pillText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   infoBox: { backgroundColor: '#fff', borderRadius: 16, paddingVertical: 12, paddingHorizontal: 4, width: '100%', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
@@ -852,11 +821,6 @@ const s = StyleSheet.create({
   actionsRow: { alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 16, width: '100%', paddingHorizontal: 20 },
   shareCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#BE123C', alignItems: 'center', justifyContent: 'center', shadowColor: '#BE123C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
   favCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#E5E7EB' },
-  servicesPill: { backgroundColor: '#F3F4F6', borderRadius: 24, paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', gap: 18 },
-  serviceItem: { position: 'relative' },
-  checkMark: { position: 'absolute', bottom: -4, right: -4, backgroundColor: '#16A34A', width: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#F3F4F6' },
-
-
 
   closedOverlay: {
     ...StyleSheet.absoluteFillObject,
