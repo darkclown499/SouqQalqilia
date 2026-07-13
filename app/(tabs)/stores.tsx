@@ -82,21 +82,33 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   }, [displayBanners.length]);
 
   return (
-    <View BANNER_H height: style="{[bc.wrap," { }]}>
-      <ScrollView horizontal onScroll="{handleScroll}" pagingEnabled ref="{scrollRef}" scrollEventThrottle="{16}" showsHorizontalScrollIndicator="{false}">
+    <View style={[bc.wrap, { height: BANNER_H }]}>
+      <ScrollView
+        horizontal
+        onScroll={handleScroll}
+        pagingEnabled
+        ref={scrollRef}
+        scrollEventThrottle={16}
+        showsHorizontalScrollIndicator={false}
+      >
         {displayBanners.map((banner, i) => (
-          <View BANNER_H SCREEN_W, height: i} key="{banner.id" style="{{" width: || }}>
-            <View style="{bc.slide}">
+          <View key={banner.id || i} style={{ width: SCREEN_W, height: BANNER_H }}>
+            <View style={bc.slide}>
               {banner.image_url ? (
-                <Image banner.image_url contentFit="cover" source="{{" style="{StyleSheet.absoluteFill}" transition="{300}" uri: }}/>
+                <Image
+                  source={{ uri: banner.image_url }}
+                  contentFit="cover"
+                  style={StyleSheet.absoluteFill}
+                  transition={300}
+                />
               ) : null}
             </View>
           </View>
         ))}
       </ScrollView>
-      <View style="{bc.paginationWrap}">
+      <View style={bc.paginationWrap}>
         {displayBanners.map((_, i) => (
-          <View && activeIdx="==" bc.activeDot]} i key="{i}" style="{[bc.dot,"/>
+          <View key={i} style={[bc.dot, activeIdx === i && bc.activeDot]} />
         ))}
       </View>
     </View>
