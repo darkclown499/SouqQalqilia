@@ -12,6 +12,7 @@ import FloatingOffersButton from '@/components/FloatingOffersButton';
 import { useAuth, getSupabaseClient } from '@/template';
 import { trackEvent } from '@/services/analyticsService';
 import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
+import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 // expo-haptics is native-only; imported dynamically to avoid web/SSR bundling errors
 
 // Dimensions are now computed reactively via useResponsive() inside the component.
@@ -89,7 +90,6 @@ import { fetchActiveInterstitials, InterstitialAd } from '@/services/interstitia
 import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockService';
 import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
-import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 

@@ -73,28 +73,11 @@ const get3DIconUrl = (name: string) => {
 function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
-  const catScrollRef = useRef<any>(null);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userScrolling = useRef(false);
   const BANNER_H = Math.round(SCREEN_W * 0.68);
 
-  // روابط جاهزة لصور بانرات بمقاس 600x300 صالحة للاستخدام المباشر لاختبار واجهة التطبيق:
-
-// 1. صورة وجبة طعام حقيقية عالية الدقة
-const foodBanner = "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=600&h=300";
-
-// 2. صورة جلسة مطعم داخلية
-const restaurantBanner = "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&h=300";
-
-// 3. بانر نصي تجريبي باللون العنابي الخاص بالتطبيق (يحتوي كلمة "مطعم التجربة")
-const textBanner = "https://placehold.co/600x300/B91C1C/FFFFFF/png?text=%D9%85%D8%B7%D8%B9%D9%85+%D8%A7%D9%84%D8%AA%D8%AC%D8%B1%D8%A8%D8%A9";
-
-// طريقة دمجها في الكود لتجربة العرض داخل مكون BannerCarousel:
-const displayBanners = banners.length > 0 ? banners : [
-  { id: 'test_1', image_url: foodBanner },
-  { id: 'test_2', image_url: textBanner },
-  { id: 'test_3', image_url: restaurantBanner },
-] as Banner[];
+  const displayBanners = banners.length > 0 ? banners : [] as Banner[];
 
   const startAuto = useCallback(() => {
     if (displayBanners.length <= 1) return;
