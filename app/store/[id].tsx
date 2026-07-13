@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
@@ -35,7 +36,7 @@ const ORDER_LABELS: Record<OrderType, { ar: string; en: string; icon: string }> 
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PRODUCT CARD (Orgada-style clean layout)
+// PRODUCT CARD (Orgadastyle clean layout)
 // ─────────────────────────────────────────────────────────────────────────────
 function ProductCard({
   product, qty, onAdd, onRemove, isAr, isRTL, colors, disabled,
@@ -67,11 +68,11 @@ function ProductCard({
             <View style={pc.addCircleCheck}>
               <MaterialIcons name="check" size={8} color={colors.primary} />
             </View>
-            {qty > 0 ? (
+            {qty > 0 && (
               <View style={pc.qtyBadge}>
                 <Text style={pc.qtyBadgeText}>{qty}</Text>
               </View>
-            ) : null}
+            )}
           </Pressable>
         ) : null}
       </View>
@@ -92,7 +93,7 @@ function ProductCard({
           <Text style={pc.priceLabel}>{isAr ? 'السعر:' : 'Price:'}</Text>
           <Text style={[pc.price, { color: colors.primary }]}>
             {product.price > 0 ? `${product.price}` : (isAr ? 'مجاني' : 'Free')}
-            {product.price > 0 ? <Text style={pc.priceUnit}> ₪</Text> : null}
+            {product.price > 0 && <Text style={pc.priceUnit}> ₪</Text>}
           </Text>
         </View>
       </View>
@@ -196,7 +197,7 @@ function ProductSection({
       </View>
 
       {/* زر عرض المزيد */}
-      {hasMore ? (
+      {hasMore && (
         <Pressable 
           style={[ps.moreBtn, { borderColor: colors.primary, backgroundColor: `${colors.primary}10` }]} 
           onPress={() => setIsExpanded(!isExpanded)}
@@ -212,7 +213,7 @@ function ProductSection({
             color={colors.primary} 
           />
         </Pressable>
-      ) : null}
+      )}
     </View>
   );
 }
