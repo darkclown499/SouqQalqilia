@@ -120,13 +120,13 @@ const pc = StyleSheet.create({
   img: { width: '100%', height: '100%' },
   imgFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   addCircle: {
-    position: 'absolute', bottom: -12, left: 12, // يطفو في الأسفل على اليسار
+    position: 'absolute', bottom: -12, left: 12,
     width: 34, height: 34, borderRadius: 17,
-    backgroundColor: '#BE123C',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#BE123C', shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3, shadowRadius: 6, elevation: 4, zIndex: 10,
   },
+  price: { fontSize: 15, fontWeight: '900' },
   addCircleCheck: { position: 'absolute', top: 6, right: 6, backgroundColor: '#fff', width: 12, height: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   qtyBadge: { position: 'absolute', top: -6, right: -6, backgroundColor: '#111827', minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   qtyBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
@@ -529,6 +529,7 @@ export default function StoreDetailScreen() {
           </View>
 
           {/* تفاصيل المتجر والأزرار (بعد تنظيف الأيقونات) */}
+         {/* تفاصيل المتجر */}
           <View style={s.storeDetails}>
             <Text style={s.storeNameTxt}>{storeName}</Text>
             
@@ -537,14 +538,16 @@ export default function StoreDetailScreen() {
               <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
             </View>
 
-            {/* عرض وصف المتجر إن وُجد لملء الفراغ بشكل أنيق */}
-            {storeDesc ? (
-              <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
-            ) : null}
+            {!!storeDesc && (
+              <Text style={s.storeDescTxt} numberOfLines={2}>
+                {storeDesc}
+              </Text>
+            )}
           </View>
-        </View> {/* This closing tag was added */}
+        </View>  {/* <--- ضيف هاد القوس هون (تسكيرة heroContainer) */}
 
         {products.length === 0 ? (
+          <View style={s.emptyWrap}>
           <View style={s.emptyWrap}>
             <View style={[s.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
               <MaterialIcons name="fastfood" size={42} color={colors.textMuted} />
