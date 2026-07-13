@@ -896,7 +896,8 @@ const cta = StyleSheet.create({
   sub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
 });
 
-const s = StyleSheet.create(catHeaderRow: {
+const s = StyleSheet.create({
+  catHeaderRow: {
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'space-between',
@@ -936,7 +937,7 @@ featuredBadgeText: {
   color: '#1A1A1A',
   fontSize: 8,
   fontWeight: '800',
-},{
+},
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 15 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

@@ -576,68 +576,15 @@ export default function StoreDetailScreen() {
     <MaterialIcons name="support-agent" size={16} color={colors.primary} />
     <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
   </View>
-  {/* ... */}
 </View>
 
 
             {storeDesc ? (
               <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
             ) : null}
-          </View>
-        </View>
-
-        {products.length === 0 ? (
-          <View style={s.emptyWrap}>
-            <View style={[s.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
-              <MaterialIcons name="fastfood" size={42} color={colors.textMuted} />
-            </View>
-            <Text style={[s.emptyTitle, { color: colors.textPrimary }]}>
-              {isAr ? 'لا توجد منتجات بعد' : 'No Products Yet'}
-            </Text>
-            <Text style={[s.emptySub, { color: colors.textMuted }]}>
-              {isAr ? 'سيتم إضافة منتجات قريباً' : 'Products will be added soon'}
-            </Text>
-          </View>
-        ) : (
-          <View style={s.menuWrap}>
-            <View style={[s.menuHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
-              <MaterialIcons name="shopping-bag" size={18} color={colors.primary} />
-              <Text style={[s.menuHeaderText, { color: colors.textPrimary }]}>
-                {isAr ? 'قائمة المنتجات 🛍️' : 'Products 🛍️'}
-              </Text>
-            </View>
-
-            {groupedProducts.length > 0 ? (
-              groupedProducts.map(group => (
-                <ProductSection
-                  key={group.label}
-                  label={group.label}
-                  products={group.items}
-                  cart={cart}
-                  onAdd={addToCart}
-                  onRemove={removeFromCart}
-                  isAr={isAr}
-                  isRTL={isRTL}
-                  colors={colors}
-                  isOpen={isOpen}
-                />
-              ))
-            ) : (
-              <ProductSection
-                label={isAr ? 'جميع المنتجات' : 'All Products'}
-                products={products}
-                cart={cart}
-                onAdd={addToCart}
-                onRemove={removeFromCart}
-                isAr={isAr}
-                isRTL={isRTL}
-                colors={colors}
-                isOpen={isOpen}
-              />
-            )}
-          </View>
-        )}
-      </ScrollView>
+          {/* Closing tag for View s.heroContainer moved here */}
+          </View> 
+        </ScrollView>
 
       {cartCount > 0 && isOpen ? (
         <Animated.View style={[s.cartFab, cartBtnAnimStyle]}>
