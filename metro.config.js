@@ -11,7 +11,16 @@ const WEB_SHIMS = {
   'expo-web-browser': path.resolve(__dirname, 'shims/expo-web-browser.js'),
   'react-native-gesture-handler': path.resolve(__dirname, 'shims/react-native-gesture-handler.js'),
   'expo-router/node/render': path.resolve(__dirname, 'shims/expo-router-render.js'),
+  'expo-router/node/render.js': path.resolve(__dirname, 'shims/expo-router-render.js'),
 };
+
+// Sub-path prefixes that must also be shimmed (e.g. expo-splash-screen/build/...)
+const WEB_SHIM_PREFIXES = [
+  'expo-constants/',
+  'expo-splash-screen/',
+  'expo-web-browser/',
+  'react-native-gesture-handler/',
+];
 
 const EMPTY_SHIM_MODULES = new Set([
   '@typescript-eslint/eslint-plugin',
@@ -55,6 +64,18 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     for (const [shimKey, shimPath] of Object.entries(WEB_SHIMS)) {
       if (moduleName === shimKey || moduleName.startsWith(shimKey + '/')) {
         return { filePath: shimPath, type: 'sourceFile' };
+      }
+    }
+
+    // Catch any sub-path imports of shimmed packages
+    for (const prefix of WEB_SHIM_PREFIXES) {
+      if (moduleName.startsWith(prefix)) {
+        // Route sub-paths of splash-screen/constants to their root shim
+        const root = prefix.slice(0, -1); // remove trailing slash
+        if (WEB_SHIMS[root]) {
+          return { filePath: WEB_SHIMS[root], type: 'sourceFile' };
+        }
+        return { filePath: EMPTY_SHIM_PATH, type: 'sourceFile' };
       }
     }
 

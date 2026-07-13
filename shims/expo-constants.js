@@ -13,6 +13,8 @@ const Constants = {
   executionEnvironment: 'bare',
   appOwnership: null,
   deviceName: undefined,
+  // Stub NativeModule-level APIs so sub-path requires don't crash
+  requireOptionalNativeModule: () => null,
 };
 
 const ExecutionEnvironment = {
