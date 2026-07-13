@@ -143,14 +143,6 @@ const ps = StyleSheet.create({
   wrap: { marginBottom: 12 },
   header: { paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
   title: { fontSize: 18, fontWeight: '900', color: '#111827' },
-  grid: { flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
-});
-
-// ── Product Section Styles ──
-const ps = StyleSheet.create({
-  wrap: { marginBottom: 12 },
-  header: { paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
-  title: { fontSize: 18, fontWeight: '900', color: '#111827' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
 });
 
@@ -196,52 +188,7 @@ function ProductSection({
   );
 }
 
-// ── Product Card Styles ──
-const pc = StyleSheet.create({
-  card: {
-    width: '48%',
-    borderRadius: 16,
-    backgroundColor: '#fff',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    overflow: 'visible', // ضروري للزر العائم
-  },
-  imgWrap: { width: '100%', height: 110, padding: 10, position: 'relative', borderTopLeftRadius: 16, borderTopRightRadius: 16 },
-  img: { width: '100%', height: '100%' },
-  imgFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
-  addCircle: {
-    position: 'absolute', bottom: -12, left: 12, // يطفو في الأسفل على اليسار
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: '#BE123C',
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#BE123C', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 6, elevation: 4, zIndex: 10,
-  },
-  addCircleCheck: { position: 'absolute', top: 6, right: 6, backgroundColor: '#fff', width: 12, height: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-  qtyBadge: { position: 'absolute', top: -6, right: -6, backgroundColor: '#111827', minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  qtyBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  body: { paddingHorizontal: 12, paddingTop: 16, paddingBottom: 12, gap: 4 },
-  name: { fontSize: 13, fontWeight: '800', lineHeight: 18, color: '#111827' },
-  desc: { fontSize: 10, lineHeight: 14, minHeight: 28, color: '#6B7280' },
-  priceRow: { alignItems: 'center', gap: 4, marginTop: 4 },
-  priceLabel: { fontSize: 11, color: '#9CA3AF' },
-  price: { fontSize: 15, fontWeight: '900', color: '#BE123C' },
-  priceUnit: { fontSize: 11, fontWeight: '700' },
-});
 
-// ── Product Section Styles ──
-const ps = StyleSheet.create({
-  wrap: { marginBottom: 12 },
-  header: { paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
-  title: { fontSize: 18, fontWeight: '900', color: '#111827' },
-  grid: { flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN SCREEN
@@ -908,13 +855,7 @@ const s = StyleSheet.create({
   serviceItem: { position: 'relative' },
   checkMark: { position: 'absolute', bottom: -4, right: -4, backgroundColor: '#16A34A', width: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#F3F4F6' },
 
-  // Floating action buttons (back + share)
-  fabBtn: {
-    position: 'absolute',
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.50)',
-    alignItems: 'center', justifyContent: 'center',
-  },
+
 
   closedOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -929,67 +870,7 @@ const s = StyleSheet.create({
   closedPillText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 
 
-  // Logo centered at the overlap point
-  logoWrap: {
-    alignItems: 'center',
-    marginTop: -(HALF_LOGO),
-    marginBottom: 12,
-  },
-  logoCircle: {
-    width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: LOGO_SIZE / 2,
-    borderWidth: 3.5,
-    overflow: 'hidden',
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  logoImg: { width: LOGO_SIZE, height: LOGO_SIZE },
 
-  storeName: {
-    fontSize: 22, fontWeight: '800', textAlign: 'center',
-    letterSpacing: -0.4, lineHeight: 28, marginBottom: 4,
-  },
-  centerRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 4, marginBottom: 10,
-  },
-  addrText: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
-
-  // Status + hours + rating pills
-  badgesRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    flexWrap: 'wrap', gap: 8, marginBottom: 14,
-  },
-  statusPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 12, fontWeight: '800' },
-  infoBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
-  },
-  infoBadgeText: { fontSize: 12, fontWeight: '600' },
-
-  // Action icon row
-  actionRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 14, marginBottom: 12,
-  },
-  actionCircle: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5,
-  },
-
-  storeDesc: {
-    fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: 2,
-  },
 
   // ── Menu section ──
   menuWrap: { marginTop: 8 },
