@@ -102,7 +102,7 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   }, [displayBanners.length]);
 
   return (
-    <View style={bc.wrap}>
+    <View style={[bc.wrap, { height: BANNER_H }]}>
       <ScrollView
         ref={scrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
         onScroll={handleScroll} scrollEventThrottle={16}
