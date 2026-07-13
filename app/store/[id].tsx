@@ -100,6 +100,7 @@ function ProductCard({
   );
 }
 
+
 const pc = StyleSheet.create({
   card: {
     width: '48%',
