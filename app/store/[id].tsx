@@ -91,8 +91,9 @@ function ProductCard({
         <View style={[pc.priceRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <Text style={pc.priceLabel}>{isAr ? 'السعر:' : 'Price:'}</Text>
           <Text style={[pc.price, { color: colors.primary }]}>
-            {product.price > 0 ? `${product.price}` : (isAr ? 'مجاني' : 'Free')}
-            {product.price > 0 && <Text style={pc.priceUnit}> ₪</Text>}
+            {product.price > 0
+              ? `${product.price} ₪`
+              : (isAr ? 'مجاني' : 'Free')}
           </Text>
         </View>
       </View>
@@ -135,7 +136,6 @@ const pc = StyleSheet.create({
   priceRow: { alignItems: 'center', gap: 4, marginTop: 4 },
   priceLabel: { fontSize: 11, color: '#9CA3AF' },
   price: { fontSize: 15, fontWeight: '900', color: '#BE123C' },
-  priceUnit: { fontSize: 11, fontWeight: '700' },
 });
 
 // ── Product Section Styles ──
