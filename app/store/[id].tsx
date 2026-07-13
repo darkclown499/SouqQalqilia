@@ -67,11 +67,11 @@ function ProductCard({
             <View style={pc.addCircleCheck}>
               <MaterialIcons name="check" size={8} color={colors.primary} />
             </View>
-            {qty > 0 && (
-              <View style={pc.qtyBadge}>
-                <Text style={pc.qtyBadgeText}>{qty}</Text>
-              </View>
-            )}
+            {qty > 0 ? (
+  <View style={pc.qtyBadge}>
+    <Text style={pc.qtyBadgeText}>{qty}</Text>
+  </View>
+) : null}
           </Pressable>
         ) : null}
       </View>
