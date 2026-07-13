@@ -1,46 +1,60 @@
+'use strict';
+
 /**
  * metro-transformer.js
  *
- * Custom Babel transformer that pre-patches pre-compiled expo-router build
- * files before Babel sees them, preventing the platform-guard transform from
- * generating the invalid syntax:
- *   react_native_1.(typeof Platform !== 'undefined' && Platform ? Platform.OS : 'web')
+ * Wraps the upstream Expo Babel transformer to pre-patch pre-compiled
+ * expo-router build files before Babel processes them.
  *
- * Root cause: babel-preset-expo includes a plugin that wraps `Platform.OS`
- * references with typeof guards. When the source already has the module-level
- * CJS alias pattern `react_native_1.Platform.OS`, Babel incorrectly wraps only
- * the `.Platform.OS` tail, corrupting the member expression into invalid JS.
+ * Root cause: babel-preset-expo has an inline-platform-constants plugin that
+ * replaces `Platform.OS` references with typeof guards. When applied to
+ * pre-compiled CJS like ExpoRoot.js that contains:
  *
- * Fix: replace `<alias>.Platform.OS` → `'web'` in the raw source string
- * BEFORE passing it to the upstream Babel transformer. This removes the
- * trigger entirely so the plugin never fires on these files.
+ *   const INITIAL_METRICS = Platform.OS === 'web' || isTestEnv ? ...
+ *
+ * Babel transforms `Platform.OS` into:
+ *   (typeof Platform !== 'undefined' && Platform ? Platform.OS : 'web')
+ *
+ * But since `Platform` is accessed as a destructured import from
+ * `react_native_1`, Babel ends up generating:
+ *   react_native_1.(typeof Platform...)
+ *
+ * which is syntactically invalid.
+ *
+ * Fix strategy:
+ *   1. In metro-transformer.js: replace ALL Platform.OS occurrences with
+ *      the string literal 'web' BEFORE Babel sees the source.
+ *   2. In babel.config.js: disable presets/plugins for expo-router build files.
+ *   3. In metro.config.js: resolver shim for react-native from expo-router.
+ *
+ * All three layers work together as belt-and-suspenders.
  */
-
-'use strict';
 
 const path = require('path');
 const fs = require('fs');
 
 // ── Locate the upstream Expo/Metro Babel transformer ────────────────────────
-// Try multiple resolution paths to handle pnpm/yarn/npm layouts.
 function findUpstreamTransformer() {
   const candidates = [
     '@expo/metro-config/babel-transformer',
     'metro-react-native-babel-transformer',
-    // Resolve relative to expo/metro-config package if the above fail
     () => {
       try {
-        const metroConfigPkg = require.resolve('expo/metro-config');
-        const metroConfigDir = path.dirname(metroConfigPkg);
-        return require(path.join(metroConfigDir, 'babel-transformer'));
+        const pkg = require.resolve('@expo/metro-config/package.json');
+        const dir = path.dirname(pkg);
+        // Try build/babel-transformer.js
+        for (const rel of ['build/babel-transformer.js', 'babel-transformer.js']) {
+          const t = path.join(dir, rel);
+          if (fs.existsSync(t)) return require(t);
+        }
+        return null;
       } catch (_) { return null; }
     },
     () => {
       try {
-        // Walk up from @expo/metro-config to find the transformer
-        const pkg = require.resolve('@expo/metro-config/package.json');
-        const dir = path.dirname(pkg);
-        const t = path.join(dir, 'build', 'babel-transformer.js');
+        // pnpm: resolve from the package itself
+        const expoMetroDir = path.dirname(require.resolve('expo/package.json'));
+        const t = path.join(expoMetroDir, 'node_modules/@expo/metro-config/build/babel-transformer.js');
         if (fs.existsSync(t)) return require(t);
         return null;
       } catch (_) { return null; }
@@ -58,60 +72,49 @@ function findUpstreamTransformer() {
 
 const upstreamTransformer = findUpstreamTransformer();
 
-// ── Files that must be pre-patched before Babel runs ─────────────────────────
-// These are pre-compiled CJS bundles inside node_modules that Babel
-// incorrectly applies platform transforms to.
-const PATCH_FILE_PATTERNS = [
+// ── Files that must be pre-patched ──────────────────────────────────────────
+const PATCH_PATTERNS = [
   /[/\\]expo-router[/\\]build[/\\]/,
   /[/\\]expo-router[/\\]node[/\\]/,
 ];
 
 function shouldPatch(filename) {
-  return PATCH_FILE_PATTERNS.some(re => re.test(filename));
+  return PATCH_PATTERNS.some(re => re.test(filename));
 }
 
 /**
- * Pre-patch source: replace any `<ident>.Platform.OS` access with the string
- * literal `'web'`. This prevents babel-preset-expo's platform-guard plugin
- * from ever seeing the pattern and generating the invalid member expression.
+ * Pre-patch source string:
+ * - Replace `<ident>.Platform.OS`  →  `'web'`   (module-alias pattern)
+ * - Replace bare `Platform.OS`     →  `'web'`   (destructured import pattern)
+ *
+ * This must run BEFORE Babel parses the AST so the platform-guard plugin
+ * never sees the `Platform.OS` expression to wrap.
  */
 function patchSource(src) {
   return src
-    // Handle: react_native_1.Platform.OS  → 'web'
-    // The word boundary \b ensures we don't match inside strings/comments
-    .replace(/\b(\w+)\.Platform\.OS\b/g, () => "'web'")
-    // Safety net: catch any remaining bare Platform.OS (unlikely but possible)
-    .replace(/\bPlatform\.OS\b/g, () => "'web'");
+    // Module-alias: react_native_1.Platform.OS
+    .replace(/\b(\w+)\.Platform\.OS\b/g, "'web'")
+    // Destructured bare reference: Platform.OS
+    .replace(/\bPlatform\.OS\b/g, "'web'");
 }
 
 module.exports.transform = async function transform({ src, filename, options }) {
-  // Always patch expo-router build files, regardless of platform,
-  // because the Babel platform-guard transform corrupts them on any platform
-  // where babel-preset-expo's inline platform plugin is active.
-  const needsPatch = shouldPatch(filename);
-  const effectiveSrc = needsPatch ? patchSource(src) : src;
+  const effectiveSrc = shouldPatch(filename) ? patchSource(src) : src;
 
   if (upstreamTransformer) {
     return upstreamTransformer.transform({ src: effectiveSrc, filename, options });
   }
 
-  // Fallback: if no upstream transformer is available, run a minimal Babel
-  // transform that just strips Flow types and converts ESM→CJS.
-  // This should never happen in a properly installed Expo project.
+  // Fallback: minimal Babel transform (should never reach here in a correct Expo install)
   const babel = require('@babel/core');
   const result = await babel.transformAsync(effectiveSrc, {
     filename,
-    presets: [
-      ['@babel/preset-env', { targets: { node: 'current' } }],
-    ],
+    presets: [['@babel/preset-env', { targets: { node: 'current' } }]],
     plugins: [],
-    sourceType: 'module',
+    sourceType: 'unambiguous',
     configFile: false,
     babelrc: false,
   });
 
-  return {
-    code: result?.code ?? effectiveSrc,
-    map: result?.map ?? null,
-  };
+  return { code: result?.code ?? effectiveSrc, map: result?.map ?? null };
 };

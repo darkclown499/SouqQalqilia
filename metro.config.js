@@ -1,28 +1,31 @@
 // metro.config.js
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
-const os = require('os');
 
 const config = getDefaultConfig(__dirname);
 
 // ── Custom Babel transformer ─────────────────────────────────────────────────
-// Wraps Expo's upstream transformer to patch out the platform-guard Babel
-// transform for pre-compiled expo-router build files, preventing the
-// malformed `react_native_1.(typeof Platform...)` syntax error.
+// Wraps Expo's upstream transformer to pre-patch Platform.OS references in
+// pre-compiled expo-router build files before Babel sees them.
 config.transformer = config.transformer || {};
 config.transformer.babelTransformerPath = path.resolve(__dirname, 'metro-transformer.js');
 
-// ── Web/SSR shims ────────────────────────────────────────────────────────────
+// ── Shim paths ───────────────────────────────────────────────────────────────
+const SHIMS_DIR = path.resolve(__dirname, 'shims');
+const RN_SHIM = path.join(SHIMS_DIR, 'react-native.js');
+const EMPTY_SHIM = path.join(SHIMS_DIR, 'empty.js');
+
+// Exact-match shims for web/SSR
 const WEB_SHIMS = {
-  'expo-constants': path.resolve(__dirname, 'shims/expo-constants.js'),
-  'expo-splash-screen': path.resolve(__dirname, 'shims/expo-splash-screen.js'),
-  'expo-web-browser': path.resolve(__dirname, 'shims/expo-web-browser.js'),
-  'react-native-gesture-handler': path.resolve(__dirname, 'shims/react-native-gesture-handler.js'),
-  'expo-router/node/render': path.resolve(__dirname, 'shims/expo-router-render.js'),
-  'expo-router/node/render.js': path.resolve(__dirname, 'shims/expo-router-render.js'),
+  'expo-constants':                  path.join(SHIMS_DIR, 'expo-constants.js'),
+  'expo-splash-screen':              path.join(SHIMS_DIR, 'expo-splash-screen.js'),
+  'expo-web-browser':                path.join(SHIMS_DIR, 'expo-web-browser.js'),
+  'react-native-gesture-handler':    path.join(SHIMS_DIR, 'react-native-gesture-handler.js'),
+  'expo-router/node/render':         path.join(SHIMS_DIR, 'expo-router-render.js'),
+  'expo-router/node/render.js':      path.join(SHIMS_DIR, 'expo-router-render.js'),
 };
 
-// Sub-path prefixes that must also be shimmed (e.g. expo-splash-screen/build/...)
+// Sub-path prefixes that resolve to the root shim
 const WEB_SHIM_PREFIXES = [
   'expo-constants/',
   'expo-splash-screen/',
@@ -30,66 +33,56 @@ const WEB_SHIM_PREFIXES = [
   'react-native-gesture-handler/',
 ];
 
+// ESLint / TypeScript node-only packages — empty stub on web
 const EMPTY_SHIM_MODULES = new Set([
   '@typescript-eslint/eslint-plugin',
   '@typescript-eslint/parser',
   'eslint-plugin-react',
   'eslint-plugin-react-hooks',
   'eslint',
+  '@expo/metro-config',
 ]);
 
-const EMPTY_SHIM_PATH = path.resolve(__dirname, 'shims/empty.js');
-const RN_SHIM_PATH = path.resolve(__dirname, 'shims/react-native.js');
-
-// Packages whose require('react-native') should use the web shim.
-// This covers expo-router's SSR/node bundling paths where the Babel
-// platform-guard transform corrupts react_native_1.Platform.OS into
-// the invalid `react_native_1.(typeof Platform...)` expression.
-const RN_SHIM_ORIGIN_PATTERNS = [
-  'expo-router',
-  'react-native-safe-area-context',
-];
+// ── expo-router origin pattern — modules that require react-native during SSR
+const EXPO_ROUTER_PATTERN = /[/\\]expo-router[/\\]/;
+const SAFE_AREA_PATTERN   = /[/\\]react-native-safe-area-context[/\\]/;
 
 // ── Custom resolver ──────────────────────────────────────────────────────────
 const originalResolver = config.resolver?.resolveRequest;
-
 config.resolver = config.resolver || {};
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (platform === 'web') {
-    // Shim react-native when required from expo-router or safe-area-context
-    // during SSR/node bundling. The Babel transform replaces Platform.OS
-    // with a typeof guard but corrupts property-access chains like
-    // react_native_1.Platform into react_native_1.(typeof Platform...)
-    // which is a syntax error. Using our stub avoids this transform entirely.
+    const origin = context.originModulePath || '';
+
+    // ── react-native: shim when required from expo-router or safe-area-context
+    // This prevents Babel's platform-guard from ever seeing Platform.OS in
+    // pre-compiled bundle code that uses the react_native_1 alias.
     if (moduleName === 'react-native') {
-      const origin = context.originModulePath || '';
-      const needsShim = RN_SHIM_ORIGIN_PATTERNS.some(p => origin.includes(p));
-      if (needsShim) {
-        return { filePath: RN_SHIM_PATH, type: 'sourceFile' };
+      if (EXPO_ROUTER_PATTERN.test(origin) || SAFE_AREA_PATTERN.test(origin)) {
+        return { filePath: RN_SHIM, type: 'sourceFile' };
       }
     }
 
-    for (const [shimKey, shimPath] of Object.entries(WEB_SHIMS)) {
-      if (moduleName === shimKey || moduleName.startsWith(shimKey + '/')) {
+    // ── Exact shims
+    for (const [key, shimPath] of Object.entries(WEB_SHIMS)) {
+      if (moduleName === key) {
         return { filePath: shimPath, type: 'sourceFile' };
       }
     }
 
-    // Catch any sub-path imports of shimmed packages
+    // ── Sub-path shims (e.g. expo-splash-screen/build/...)
     for (const prefix of WEB_SHIM_PREFIXES) {
       if (moduleName.startsWith(prefix)) {
-        // Route sub-paths of splash-screen/constants to their root shim
-        const root = prefix.slice(0, -1); // remove trailing slash
-        if (WEB_SHIMS[root]) {
-          return { filePath: WEB_SHIMS[root], type: 'sourceFile' };
-        }
-        return { filePath: EMPTY_SHIM_PATH, type: 'sourceFile' };
+        const root = prefix.slice(0, -1);
+        return { filePath: WEB_SHIMS[root] || EMPTY_SHIM, type: 'sourceFile' };
       }
     }
 
+    // ── ESLint / node-only tools → empty stub
     for (const pkg of EMPTY_SHIM_MODULES) {
       if (moduleName === pkg || moduleName.startsWith(pkg + '/')) {
-        return { filePath: EMPTY_SHIM_PATH, type: 'sourceFile' };
+        return { filePath: EMPTY_SHIM, type: 'sourceFile' };
       }
     }
   }
