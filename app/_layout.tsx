@@ -597,7 +597,11 @@ export default function RootLayout() {
           <LanguageProvider>
             <AuthProvider>
               <InAppChatBanner />
-              <Stack screenOptions={{ headerShown: false }}>
+              <Stack screenOptions={{
+  headerShown: false,
+  gestureEnabled: true,                 // يفعّل السحب من الحافة للرجوع على أندرويد
+  fullScreenGestureEnabled: true,       // يسمح بالسحب من أي مكان في الشاشة (وليس فقط الحافة)
+}}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 <Stack.Screen name="login" options={{ headerShown: false }} />
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

@@ -484,13 +484,32 @@ export default function StoreDetailScreen() {
               
              
               <View style={[s.headerActionsRight, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <Pressable style={s.headerBtn} onPress={() => id && toggleFav(id)}>
-                  <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={20} color={isFavorited ? colors.primary : '#111827'} />
-                </Pressable>
-                <Pressable style={s.headerBtn} onPress={handleShare}>
-                  <MaterialIcons name="share" size={18} color="#111827" />
-                </Pressable>
-              </View>
+  {/* زر واتساب */}
+  <Pressable 
+    style={s.headerBtn} 
+    onPress={() => {
+      const userName = user?.username || user?.email?.split('@')[0] || isAr ? 'عميل' : 'Customer';
+      const msg = isAr 
+        ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
+        : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
+      const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
+      if (phone) {
+        Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+      } else {
+        // إذا لم يكن هناك رقم، نفتح رابط المتجر العام
+        alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
+      }
+    }}
+  >
+    <MaterialIcons name="chat" size={18} color="#25D366" />
+  </Pressable>
+  <Pressable style={s.headerBtn} onPress={() => id && toggleFav(id)}>
+    <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={20} color={isFavorited ? colors.primary : '#111827'} />
+  </Pressable>
+  <Pressable style={s.headerBtn} onPress={handleShare}>
+    <MaterialIcons name="share" size={18} color="#111827" />
+  </Pressable>
+</View>
             </View>
           </View>
 
@@ -523,13 +542,42 @@ export default function StoreDetailScreen() {
           </View>
 
           
-          <View style={s.storeDetails}>
-            <Text style={s.storeNameTxt}>{storeName}</Text>
-            
-            <View style={s.locationRow}>
-              <MaterialIcons name="support-agent" size={16} color={colors.primary} />
-              <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
-            </View>
+         <View style={s.storeDetails}>
+  <Text style={s.storeNameTxt}>{storeName}</Text>
+  
+  {/* زر واتساب المميز */}
+  <Pressable
+    style={({ pressed }) => [s.whatsappBtn, { 
+      backgroundColor: '#25D366', 
+      opacity: pressed ? 0.85 : 1,
+      transform: [{ scale: pressed ? 0.97 : 1 }]
+    }]}
+    onPress={() => {
+      const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
+      const msg = isAr 
+        ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
+        : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
+      const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
+      if (phone) {
+        Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+      } else {
+        alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
+      }
+    }}
+  >
+    <MaterialIcons name="whatsapp" size={20} color="#fff" />
+    <Text style={s.whatsappBtnText}>
+      {isAr ? 'تواصل واتساب' : 'WhatsApp'}
+    </Text>
+  </Pressable>
+
+  {/* باقي المحتوى (الموقع، الوصف) */}
+  <View style={s.locationRow}>
+    <MaterialIcons name="support-agent" size={16} color={colors.primary} />
+    <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
+  </View>
+  {/* ... */}
+</View>
 
 
             {storeDesc ? (
@@ -797,6 +845,29 @@ export default function StoreDetailScreen() {
 }
 
 const s = StyleSheet.create({
+
+  whatsappBtn: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  backgroundColor: '#25D366',
+  paddingHorizontal: 20,
+  paddingVertical: 10,
+  borderRadius: 30,
+  marginTop: 8,
+  marginBottom: 4,
+  shadowColor: '#25D366',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.3,
+  shadowRadius: 8,
+  elevation: 5,
+},
+whatsappBtnText: {
+  color: '#fff',
+  fontSize: 14,
+  fontWeight: '700',
+},
   container: { flex: 1 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
 

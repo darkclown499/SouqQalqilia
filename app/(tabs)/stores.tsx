@@ -16,7 +16,7 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth, getSupabaseClient } from '@/template';
 import {
   fetchAllActiveStores, fetchAllStoreRatings,
-  checkStoreIsOpen, Store,
+  checkStoreIsOpen, Store, fetchFeaturedStores,  // ← أضف fetchFeaturedStores
 } from '@/services/storesService';
 import {
   fetchStoreCategories,
@@ -24,6 +24,28 @@ import {
 } from '@/services/storeCategoriesService';
 import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
 import { FontSize, Radius, Spacing } from '@/constants/theme';
+
+// ── Get featured stores (from service or fallback to top-rated) ────────────
+async function getFeaturedStores(): Promise<Store[]> {
+  try {
+    // حاول جلب المتاجر المميزة من الخدمة
+    const { data } = await fetchFeaturedStores();
+    if (data && data.length > 0) return data;
+  } catch (_) {}
+  
+  // إذا لم توجد متاجر مميزة، ارجع قائمة فارغة (سيتم التعامل معها لاحقاً)
+  return [];
+}
+
+// ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
 
 // ── Screen width ──────────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -167,6 +189,148 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 2.5 VIP STORE CARD (فخم)
+// ─────────────────────────────────────────────────────────────────────────────
+function VIPStoreCard({ store, rating, isAr, onPress }: any) {
+  const isOpen = checkStoreIsOpen(store);
+  const name = isAr ? (store.name_ar || store.name) : store.name;
+  const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
+
+  return (
+    <Pressable 
+      style={({ pressed }) => [vip.card, { transform: [{ scale: pressed ? 0.97 : 1 }] }]} 
+      onPress={onPress}
+    >
+      <LinearGradient
+        colors={['#FFD700', '#F59E0B', '#D97706']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={vip.goldBorder}
+      >
+        <View style={vip.inner}>
+          <Image source={{ uri: bannerImage }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <LinearGradient
+            colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.85)']}
+            locations={[0, 0.5, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+          
+          {/* شارة VIP */}
+          <View style={vip.vipBadge}>
+            <MaterialIcons name="stars" size={12} color="#FFD700" />
+            <Text style={vip.vipBadgeText}>VIP</Text>
+          </View>
+
+          {/* المحتوى */}
+          <View style={vip.content}>
+            <View style={vip.logoWrap}>
+              <Image source={{ uri: store.logo_url }} style={vip.logo} contentFit="cover" />
+            </View>
+            <Text style={vip.name} numberOfLines={1}>{name}</Text>
+            <Text style={vip.address} numberOfLines={1}>{store.address || (isAr ? 'قلقيلية' : 'Qalqilya')}</Text>
+            
+            <View style={vip.bottomRow}>
+              <View style={vip.statusBadge}>
+                <View style={[vip.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
+                <Text style={[vip.statusText, { color: isOpen ? '#22C55E' : '#EF4444' }]}>
+                  {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+                </Text>
+              </View>
+              {rating?.avg > 0 && (
+                <View style={vip.ratingWrap}>
+                  <MaterialIcons name="star" size={14} color="#FFD700" />
+                  <Text style={vip.ratingText}>{rating.avg.toFixed(1)}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
+    </Pressable>
+  );
+}
+
+// ── VIP Stores Strip ──────────────────────────────────────────────────────
+function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
+  const [shuffledStores, setShuffledStores] = useState<Store[]>([]);
+  
+  useEffect(() => {
+    setShuffledStores(shuffleArray(stores));
+  }, [stores]);
+
+  if (shuffledStores.length === 0) return null;
+
+  return (
+    <View style={vip.stripWrap}>
+      <View style={[vip.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <LinearGradient colors={['#FFD700', '#F59E0B']} style={vip.headerAccent} />
+        <Text style={vip.headerTitle}>
+          {isAr ? '🏆 مقترحات من سوق قلقيلية' : '🏆 Souq Qalqilya Picks'}
+        </Text>
+        <View style={vip.headerLine} />
+      </View>
+      
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[vip.scrollContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+      >
+        {shuffledStores.map((store) => (
+          <VIPStoreCard
+            key={store.id}
+            store={store}
+            rating={ratings[store.id] ?? { avg: 0 }}
+            isAr={isAr}
+            onPress={() => onStorePress(store.id)}
+          />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ── VIP Styles ──────────────────────────────────────────────────────────────
+const vip = StyleSheet.create({
+  stripWrap: { marginBottom: 24, marginTop: 4 },
+  headerRow: { alignItems: 'center', gap: 8, paddingHorizontal: 16, marginBottom: 14 },
+  headerAccent: { width: 4, height: 24, borderRadius: 2 },
+  headerTitle: { fontSize: 18, fontWeight: '900', color: '#1A1A1A', letterSpacing: -0.3 },
+  headerLine: { flex: 1, height: 1, backgroundColor: '#F3F4F6', marginLeft: 8 },
+  scrollContent: { paddingHorizontal: 16, gap: 14 },
+  card: { width: 200, height: 240, borderRadius: 18, overflow: 'hidden' },
+  goldBorder: { flex: 1, padding: 2, borderRadius: 18 },
+  inner: { flex: 1, borderRadius: 16, overflow: 'hidden', position: 'relative' },
+  vipBadge: {
+    position: 'absolute', top: 10, right: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 5,
+  },
+  vipBadgeText: { color: '#FFD700', fontSize: 10, fontWeight: '800' },
+  content: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 14, zIndex: 2 },
+  logoWrap: {
+    width: 70, height: 70, borderRadius: 35,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+    borderWidth: 2, borderColor: '#FFD700',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
+    marginBottom: 8,
+  },
+  logo: { width: '100%', height: '100%' },
+  name: { color: '#fff', fontSize: 15, fontWeight: '800', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  address: { color: 'rgba(255,255,255,0.7)', fontSize: 11, textAlign: 'center', marginTop: 2 },
+  bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, fontWeight: '700' },
+  ratingWrap: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+  ratingText: { color: '#FFD700', fontSize: 11, fontWeight: '700' },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 3. PREMIUM STORE CARD
 // ─────────────────────────────────────────────────────────────────────────────
 function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
@@ -202,22 +366,53 @@ function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. CATEGORY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
-function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress }: any) {
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. CATEGORY BLOCK (أفقي مع 4 متاجر)
+// ─────────────────────────────────────────────────────────────────────────────
+function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featuredIds }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
+  const [showAll, setShowAll] = useState(false);
+  const displayStores = showAll ? stores : stores.slice(0, 4);
+  const hasMore = stores.length > 4;
+
+  // ترتيب المتاجر بحيث المميزة أولاً
+  const sortedStores = useMemo(() => {
+    const featured = stores.filter((s: any) => featuredIds.has(s.id));
+    const others = stores.filter((s: any) => !featuredIds.has(s.id));
+    return [...featured, ...others];
+  }, [stores, featuredIds]);
+
+  const finalStores = showAll ? sortedStores : sortedStores.slice(0, 4);
+
   return (
     <View style={s.categoryContainer}>
-      <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{catName}</Text>
-      <View style={s.gridContainer}>
-        {stores.map((store: any) => (
+      <View style={[s.catHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{catName}</Text>
+        {hasMore && (
+          <Pressable onPress={() => setShowAll(!showAll)} hitSlop={6}>
+            <Text style={[s.catMoreText, { color: '#B91C1C' }]}>
+              {showAll ? (isAr ? 'عرض أقل' : 'Show Less') : (isAr ? 'عرض المزيد' : 'View More')}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+      
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[s.catGridHorizontal, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+      >
+        {finalStores.map((store: any) => (
           <StoreGridCard 
             key={store.id} 
             store={store} 
             rating={ratings[store.id] ?? { avg: 0 }} 
             isAr={isAr} 
+            isFeatured={featuredIds.has(store.id)}
             onPress={() => onStorePress(store.id)} 
           />
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -255,12 +450,18 @@ function RegisterStoreCTA({ isAr, isRTL, onPress }: {
   );
 }
 
-function StoreGridCard({ store, rating, isAr, onPress }: any) {
+function StoreGridCard({ store, rating, isAr, isFeatured, onPress }: any) {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
   
   return (
-    <Pressable style={s.gridCard} onPress={onPress}>
+    <Pressable style={[s.gridCard, isFeatured && s.gridCardFeatured]} onPress={onPress}>
+      {isFeatured && (
+        <View style={s.featuredBadge}>
+          <MaterialIcons name="stars" size={10} color="#FFD700" />
+          <Text style={s.featuredBadgeText}>VIP</Text>
+        </View>
+      )}
       <View style={s.logoWrap}>
         <Image source={{ uri: store.logo_url }} style={s.logoImg} contentFit="contain" />
       </View>
@@ -280,6 +481,7 @@ function StoreGridCard({ store, rating, isAr, onPress }: any) {
 // MAIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 export default function StoresScreen() {
+  const [featuredStoreIds, setFeaturedStoreIds] = useState<Set<string>>(new Set());
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors } = useTheme();
@@ -331,27 +533,31 @@ export default function StoresScreen() {
     }, [user?.id])
   );
 
-  useEffect(() => {
-    // 1. تعيين البنرات الثابتة
-    const localBanners = [
-  { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
-  { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
-  { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
-  { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
-];
-    setBanners(localBanners);
+ useEffect(() => {
+  const localBanners = [
+    { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
+    { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
+    { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
+    { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
+  ];
+  setBanners(shuffleArray(localBanners));
 
-    // 2. جلب باقي البيانات (المتاجر، التقييمات، والتصنيفات) من قاعدة البيانات
-    Promise.all([
-      fetchAllActiveStores(),
-      fetchAllStoreRatings(),
-      fetchStoreCategories(),
-    ]).then(([storesRes, ratingsMap, catsRes]) => {
-      setStores(storesRes.data);
-      setRatings(ratingsMap);
-      setStoreCategories(catsRes.data);
-    }).finally(() => setLoading(false));
-  }, []);
+  Promise.all([
+    fetchAllActiveStores(),
+    fetchAllStoreRatings(),
+    fetchStoreCategories(),
+  ]).then(([storesRes, ratingsMap, catsRes]) => {
+    setStores(storesRes.data);
+    setRatings(ratingsMap);
+    setStoreCategories(catsRes.data);
+
+    // ── استخراج الـ is_featured من البيانات ──
+    const featuredIds = storesRes.data
+      .filter((store: any) => store.is_featured === true)
+      .map((store: any) => store.id);
+    setFeaturedStoreIds(new Set(featuredIds));
+  }).finally(() => setLoading(false));
+}, []);
 
   const handleSaveName = useCallback(async () => {
     const trimmed = editName.trim();
@@ -690,7 +896,47 @@ const cta = StyleSheet.create({
   sub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
 });
 
-const s = StyleSheet.create({
+const s = StyleSheet.create(catHeaderRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 12,
+},
+catMoreText: {
+  fontSize: 13,
+  fontWeight: '700',
+},
+catGridHorizontal: {
+  paddingHorizontal: 2,
+  gap: 12,
+},
+gridCardFeatured: {
+  borderColor: '#FFD700',
+  borderWidth: 2,
+  shadowColor: '#FFD700',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.2,
+  shadowRadius: 6,
+  elevation: 4,
+},
+featuredBadge: {
+  position: 'absolute',
+  top: 4,
+  right: 4,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 2,
+  backgroundColor: '#FFD700',
+  paddingHorizontal: 6,
+  paddingVertical: 2,
+  borderRadius: 8,
+  zIndex: 5,
+},
+featuredBadgeText: {
+  color: '#1A1A1A',
+  fontSize: 8,
+  fontWeight: '800',
+},{
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 15 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

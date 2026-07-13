@@ -32,6 +32,15 @@ const MAX_RECENTLY_VIEWED = 6;
 const SEARCH_HISTORY_KEY = 'search_history_v1';
 const MAX_SEARCH_HISTORY = 8;
 
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 async function loadSearchHistory(): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
@@ -105,14 +114,14 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   const shimmer = React.useRef(new Animated.Value(0.35)).current;
 
   React.useEffect(() => {
-    setLoading(true);
-    fetchFeaturedStores().then(({ data }) => {
-      setStores(data);
-      setLoading(false);
-    }).catch(() => {
-      setLoading(false);
-    });
-  }, []);
+  setLoading(true);
+  fetchFeaturedStores().then(({ data }) => {
+    setStores(shuffleArray(data)); // ← ترتيب عشوائي
+    setLoading(false);
+  }).catch(() => {
+    setLoading(false);
+  });
+}, []);
 
   // نبضة هادية أثناء التحميل (shimmer)
   React.useEffect(() => {
@@ -497,19 +506,18 @@ export default function HomeScreen() {
   }, [selectedCategory, sortBy, appliedArea, appliedMaxPrice, appliedCondition, load]);
 
   useEffect(() => {
-    if (!getBannersCache('home')) {
-      fetchActiveBanners('home').then(({ data }) => {
-        if (data.length > 0) { setBannersCache(data, 'home'); setBanners(data); }
-      });
-    } else {
-      setBanners(getBannersCache('home') ?? []);
-    }
-    if (!_interstitialsCache) {
-      fetchActiveInterstitials().then(({ data }) => {
-        if (data.length > 0) { _interstitialsCache = data; setInterstitials(data); }
-      });
-    }
-  }, []);
+  if (!getBannersCache('home')) {
+    fetchActiveBanners('home').then(({ data }) => {
+      if (data.length > 0) { 
+        setBannersCache(data, 'home'); 
+        setBanners(shuffleArray(data)); // ← ترتيب عشوائي
+      }
+    });
+  } else {
+    setBanners(shuffleArray(getBannersCache('home') ?? [])); // ← ترتيب عشوائي
+  }
+  // ... باقي الكود
+}, []);
 
   useEffect(() => {
     if (banners.length <= 1) return;
@@ -926,8 +934,8 @@ export default function HomeScreen() {
             
             {/* ── زر AI بالتصميم الجديد المميز ── */}
             <Pressable style={[styles.headerIconBtn, { backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' }]} onPress={() => router.push('/ai-support')} hitSlop={6}>
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900', fontStyle: 'italic', textShadowColor: 'rgba(0,0,0,0.2)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>AI</Text>
-            </Pressable>
+  <MaterialIcons name="android" size={24} color="#fff" />
+</Pressable>
           </View>
         </View>
 
