@@ -1,2 +1,15 @@
-// shims/empty.js — safe empty stub for node-only packages on web/SSR
-module.exports = {};
+module.exports = {
+  getBuildTimeServerManifestAsync: async () => ({
+    htmlPrefix: '',
+    routeNode: {
+      type: 'layout',
+      route: '',
+      children: [], 
+      screens: {},
+      initialRouteName: undefined,
+    },
+    apiRoutes: [],
+    assets: [],
+  }),
+  renderAsync: async () => '<html><body></body></html>',
+};

@@ -12,6 +12,7 @@ const WEB_SHIMS = {
   'expo-splash-screen': path.resolve(__dirname, 'shims/expo-splash-screen.js'),
   'expo-web-browser': path.resolve(__dirname, 'shims/expo-web-browser.js'),
   'react-native-gesture-handler': path.resolve(__dirname, 'shims/react-native-gesture-handler.js'),
+  'expo-router/node/render': path.resolve(__dirname, 'shims/empty.js'),
 };
 
 // Node-only packages that must never enter the web bundle.
@@ -24,8 +25,8 @@ const EMPTY_SHIM_MODULES = new Set([
   'eslint',
 ]);
 
+
 const EMPTY_SHIM_PATH = path.resolve(__dirname, 'shims/empty.js');
-const EXPO_ROUTER_RENDER_SHIM = path.resolve(__dirname, 'shims/expo-router-render.js');
 
 // ── Custom resolver ──────────────────────────────────────────────────────────
 const originalResolver = config.resolver?.resolveRequest;
@@ -34,15 +35,6 @@ config.resolver = config.resolver || {};
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Only apply shims for the web / Node SSR platform
   if (platform === 'web') {
-    // 0. Shim the pre-bundled expo-router SSR render entry that embeds native modules
-    if (
-      moduleName === 'expo-router/node/render' ||
-      moduleName === 'expo-router/node/render.js' ||
-      moduleName.includes('expo-router/node/render')
-    ) {
-      return { filePath: EXPO_ROUTER_RENDER_SHIM, type: 'sourceFile' };
-    }
-
     // 1. Exact-match or prefix-match against WEB_SHIMS
     for (const [shimKey, shimPath] of Object.entries(WEB_SHIMS)) {
       if (moduleName === shimKey || moduleName.startsWith(shimKey + '/')) {
