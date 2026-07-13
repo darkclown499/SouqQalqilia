@@ -61,7 +61,6 @@ function ProductCard({
           </View>
         )}
         
-        {/* Floating Cart Button (Red Circle) اذا شفت هاي الرسالة اعرف اني انتكت في حياتي والتعب علي ولله */}
         {!unavailable ? (
           <Pressable style={[pc.addCircle, { backgroundColor: colors.primary, shadowColor: colors.primary }]} onPress={onAdd} hitSlop={8}>
             <MaterialIcons name="shopping-bag" size={18} color="#fff" />
@@ -170,14 +169,13 @@ function ProductSection({
 
   return (
     <View style={ps.wrap}>
-      {/* عنوان القسم */}
       <View style={[ps.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <Text style={[ps.title, { textAlign: isRTL ? 'right' : 'left' }]}>
           {label}
         </Text>
       </View>
 
-      {/* شبكة المنتجات */}
+
       <View style={[ps.grid, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         {visibleProducts.map(item => (
           <ProductCard 
@@ -192,11 +190,9 @@ function ProductSection({
             disabled={!isOpen}
           />
         ))}
-        {/* موازنة الفراغ إذا كان العدد فردياً */}
         {visibleProducts.length % 2 !== 0 ? <View style={{ width: '48%' }} /> : null}
       </View>
 
-      {/* زر عرض المزيد */}
       {hasMore && (
         <Pressable 
           style={[ps.moreBtn, { borderColor: colors.primary, backgroundColor: `${colors.primary}10` }]} 
@@ -479,14 +475,14 @@ export default function StoreDetailScreen() {
             )}
             <LinearGradient colors={['rgba(0,0,0,0.4)', 'transparent', 'transparent']} style={StyleSheet.absoluteFill} />
             
-            {/* أزرار الهيدر (الرجوع + المشاركة + المفضلة) */}
+            
             <View style={[s.headerOverlay, { paddingTop: insets.top + 10, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              {/* زر الرجوع */}
+              
               <Pressable style={s.headerBtn} onPress={() => router.back()}>
                 <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#111827" />
               </Pressable>
               
-              {/* أزرار الإجراءات */}
+             
               <View style={[s.headerActionsRight, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
                 <Pressable style={s.headerBtn} onPress={() => id && toggleFav(id)}>
                   <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={20} color={isFavorited ? colors.primary : '#111827'} />
@@ -498,9 +494,8 @@ export default function StoreDetailScreen() {
             </View>
           </View>
 
-          {/* التداخل (الشعار + الشارات العائمة كقطرة)    */}
+      
           <View style={s.overlapWrapper}>
-            {/* شارة ساعات العمل (يمين) */}
             <View style={[s.sideBadge, { right: 16 }]}>
               <View style={[s.modernPill, { borderColor: colors.primary }]}>
                 <MaterialIcons name="access-time" size={14} color={colors.primary} />
@@ -508,7 +503,7 @@ export default function StoreDetailScreen() {
               </View>
             </View>
 
-            {/* الشعار في المنتصف */}
+  
             <View style={s.logoWrap}>
               {store.logo_url ? (
                 <Image source={{ uri: store.logo_url }} style={s.mainLogo} contentFit="cover" />
@@ -517,7 +512,6 @@ export default function StoreDetailScreen() {
               )}
             </View>
 
-            {/* شارة حالة المتجر (يسار) */}
             <View style={[s.sideBadge, { left: 16 }]}>
               <View style={[s.modernPill, { borderColor: isOpen ? '#16A34A' : colors.textMuted }]}>
                 <View style={[s.statusDot, { backgroundColor: isOpen ? '#16A34A' : colors.textMuted }]} />
@@ -528,7 +522,7 @@ export default function StoreDetailScreen() {
             </View>
           </View>
 
-          {/* تفاصيل المتجر والأزرار (بعد تنظيف الأيقونات) */}
+          
           <View style={s.storeDetails}>
             <Text style={s.storeNameTxt}>{storeName}</Text>
             
@@ -537,12 +531,12 @@ export default function StoreDetailScreen() {
               <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
             </View>
 
-            {/* عرض وصف المتجر إن وُجد لملء الفراغ بشكل أنيق */}
+
             {storeDesc ? (
               <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
             ) : null}
           </View>
-        </View> {/* This closing tag was added */}
+        </View>
 
         {products.length === 0 ? (
           <View style={s.emptyWrap}>
