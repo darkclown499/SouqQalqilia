@@ -10,7 +10,7 @@ const WEB_SHIMS = {
   'expo-splash-screen': path.resolve(__dirname, 'shims/expo-splash-screen.js'),
   'expo-web-browser': path.resolve(__dirname, 'shims/expo-web-browser.js'),
   'react-native-gesture-handler': path.resolve(__dirname, 'shims/react-native-gesture-handler.js'),
-  'expo-router/node/render': path.resolve(__dirname, 'shims/empty.js'),
+  'expo-router/node/render': path.resolve(__dirname, 'shims/expo-router-render.js'),
 };
 
 const EMPTY_SHIM_MODULES = new Set([
@@ -22,14 +22,36 @@ const EMPTY_SHIM_MODULES = new Set([
 ]);
 
 const EMPTY_SHIM_PATH = path.resolve(__dirname, 'shims/empty.js');
+const RN_SHIM_PATH = path.resolve(__dirname, 'shims/react-native.js');
+
+// Packages whose require('react-native') should use the web shim.
+// This covers expo-router's SSR/node bundling paths where the Babel
+// platform-guard transform corrupts react_native_1.Platform.OS into
+// the invalid `react_native_1.(typeof Platform...)` expression.
+const RN_SHIM_ORIGIN_PATTERNS = [
+  'expo-router',
+  'react-native-safe-area-context',
+];
 
 // ── Custom resolver ──────────────────────────────────────────────────────────
 const originalResolver = config.resolver?.resolveRequest;
 
 config.resolver = config.resolver || {};
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  // الحماية الأساسية: تأكيد تطبيق الاستبدال فقط على الويب (Web) وليس الموبايل
   if (platform === 'web') {
+    // Shim react-native when required from expo-router or safe-area-context
+    // during SSR/node bundling. The Babel transform replaces Platform.OS
+    // with a typeof guard but corrupts property-access chains like
+    // react_native_1.Platform into react_native_1.(typeof Platform...)
+    // which is a syntax error. Using our stub avoids this transform entirely.
+    if (moduleName === 'react-native') {
+      const origin = context.originModulePath || '';
+      const needsShim = RN_SHIM_ORIGIN_PATTERNS.some(p => origin.includes(p));
+      if (needsShim) {
+        return { filePath: RN_SHIM_PATH, type: 'sourceFile' };
+      }
+    }
+
     for (const [shimKey, shimPath] of Object.entries(WEB_SHIMS)) {
       if (moduleName === shimKey || moduleName.startsWith(shimKey + '/')) {
         return { filePath: shimPath, type: 'sourceFile' };
@@ -43,7 +65,6 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     }
   }
 
-  // السماح للموبايل بقراءة الملفات الأصلية بدون أي تدخل
   if (originalResolver) {
     return originalResolver(context, moduleName, platform);
   }

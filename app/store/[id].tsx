@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
@@ -541,6 +542,7 @@ export default function StoreDetailScreen() {
               <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
             ) : null}
           </View>
+        </View> {/* This closing tag was added */}
 
         {products.length === 0 ? (
           <View style={s.emptyWrap}>
