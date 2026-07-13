@@ -140,10 +140,16 @@ const pc = StyleSheet.create({
 
 // ── Product Section Styles ──
 const ps = StyleSheet.create({
-  wrap: { marginBottom: 12 },
+  wrap: { marginBottom: 20 },
   header: { paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
   title: { fontSize: 18, fontWeight: '900', color: '#111827' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
+  moreBtn: { 
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginHorizontal: 16, marginTop: 4, paddingVertical: 10,
+    borderRadius: 12, borderWidth: 1, borderStyle: 'dashed',
+  },
+  moreBtnText: { fontSize: 14, fontWeight: '800', marginHorizontal: 4 },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,18 +163,22 @@ function ProductSection({
   onAdd: (p: StoreProduct) => void; onRemove: (p: StoreProduct) => void;
   isAr: boolean; isRTL: boolean; colors: any; isOpen: boolean;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const hasMore = products.length > 6;
+  const visibleProducts = isExpanded ? products : products.slice(0, 6);
+
   return (
     <View style={ps.wrap}>
-      {/* Section header (Title on right, no dot) */}
+      {/* عنوان القسم */}
       <View style={[ps.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <Text style={[ps.title, { textAlign: isRTL ? 'right' : 'left' }]}>
           {label}
         </Text>
       </View>
 
-      {/* 2-column grid */}
+      {/* شبكة المنتجات */}
       <View style={[ps.grid, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        {products.map(item => (
+        {visibleProducts.map(item => (
           <ProductCard 
             key={item.id} 
             product={item} 
@@ -181,9 +191,28 @@ function ProductSection({
             disabled={!isOpen}
           />
         ))}
-        {/* Odd count spacer */}
-        {products.length % 2 !== 0 ? <View style={{ width: '48%' }} /> : null}
+        {/* موازنة الفراغ إذا كان العدد فردياً */}
+        {visibleProducts.length % 2 !== 0 ? <View style={{ width: '48%' }} /> : null}
       </View>
+
+      {/* زر عرض المزيد */}
+      {hasMore && (
+        <Pressable 
+          style={[ps.moreBtn, { borderColor: colors.primary, backgroundColor: `${colors.primary}10` }]} 
+          onPress={() => setIsExpanded(!isExpanded)}
+        >
+          <Text style={[ps.moreBtnText, { color: colors.primary }]}>
+            {isExpanded 
+              ? (isAr ? 'عرض أقل' : 'Show Less') 
+              : (isAr ? 'عرض المزيد' : 'View More')}
+          </Text>
+          <MaterialIcons 
+            name={isExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} 
+            size={20} 
+            color={colors.primary} 
+          />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -448,9 +477,24 @@ export default function StoreDetailScreen() {
               <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surface }]} />
             )}
             <LinearGradient colors={['rgba(0,0,0,0.4)', 'transparent', 'transparent']} style={StyleSheet.absoluteFill} />
-            <Pressable style={[s.fabBtn, { top: insets.top + 10, right: isRTL ? 16 : undefined, left: isRTL ? undefined : 16 }]} onPress={() => router.back()}>
-              <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={26} color="#fff" />
-            </Pressable>
+            
+            {/* أزرار الهيدر (الرجوع + المشاركة + المفضلة) */}
+            <View style={[s.headerOverlay, { paddingTop: insets.top + 10, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              {/* زر الرجوع */}
+              <Pressable style={s.headerBtn} onPress={() => router.back()}>
+                <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#111827" />
+              </Pressable>
+              
+              {/* أزرار الإجراءات */}
+              <View style={[s.headerActionsRight, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                <Pressable style={s.headerBtn} onPress={() => id && toggleFav(id)}>
+                  <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={20} color={isFavorited ? colors.primary : '#111827'} />
+                </Pressable>
+                <Pressable style={s.headerBtn} onPress={handleShare}>
+                  <MaterialIcons name="share" size={18} color="#111827" />
+                </Pressable>
+              </View>
+            </View>
           </View>
 
           {/* التداخل (الشعار + الشارات العائمة كقطرة)    */}
@@ -486,24 +530,17 @@ export default function StoreDetailScreen() {
           {/* تفاصيل المتجر والأزرار (بعد تنظيف الأيقونات) */}
           <View style={s.storeDetails}>
             <Text style={s.storeNameTxt}>{storeName}</Text>
+            
             <View style={s.locationRow}>
-              <MaterialIcons name="support-agent" size={16} color="#38BDF8" />
+              <MaterialIcons name="support-agent" size={16} color={colors.primary} />
               <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
             </View>
 
-            <View style={[s.actionsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              {/* زر المشاركة */}
-              <Pressable style={[s.shareCircle, { backgroundColor: colors.primary, shadowColor: colors.primary }]} onPress={handleShare}>
-                <MaterialIcons name="share" size={20} color="#fff" />
-              </Pressable>
-
-              {/* المفضلة */}
-              <Pressable style={s.favCircle} onPress={() => id && toggleFav(id)}>
-                <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={22} color={isFavorited ? '#E11D48' : '#9CA3AF'} />
-              </Pressable>
-            </View>
+            {/* عرض وصف المتجر إن وُجد لملء الفراغ بشكل أنيق */}
+            {storeDesc ? (
+              <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
+            ) : null}
           </View>
-        </View>
 
         {products.length === 0 ? (
           <View style={s.emptyWrap}>
@@ -791,10 +828,24 @@ const s = StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   locationTxt: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
 
-  actionsRow: { alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 16, width: '100%', paddingHorizontal: 20 },
-  shareCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#BE123C', alignItems: 'center', justifyContent: 'center', shadowColor: '#BE123C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
-  favCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#E5E7EB' },
+  // تنسيقات أزرار الهيدر الجديدة
+  headerOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, zIndex: 20
+  },
+  headerActionsRight: { alignItems: 'center', gap: 10 },
+  headerBtn: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3
+  },
 
+  // تنسيقات تفاصيل المتجر الجديدة
+  storeDescTxt: { 
+    fontSize: 13, color: '#6B7280', textAlign: 'center', 
+    marginTop: 10, paddingHorizontal: 32, lineHeight: 20 
+  },
   closedOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.42)',
