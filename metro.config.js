@@ -1,8 +1,16 @@
 // metro.config.js
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
+const os = require('os');
 
 const config = getDefaultConfig(__dirname);
+
+// ── Custom Babel transformer ─────────────────────────────────────────────────
+// Wraps Expo's upstream transformer to patch out the platform-guard Babel
+// transform for pre-compiled expo-router build files, preventing the
+// malformed `react_native_1.(typeof Platform...)` syntax error.
+config.transformer = config.transformer || {};
+config.transformer.babelTransformerPath = path.resolve(__dirname, 'metro-transformer.js');
 
 // ── Web/SSR shims ────────────────────────────────────────────────────────────
 const WEB_SHIMS = {
