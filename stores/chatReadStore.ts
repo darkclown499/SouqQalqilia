@@ -2,6 +2,7 @@
 /**
  * chatReadStore — Local-First Read State with Timestamp Fencing + Cold-Start Persistence
  *
+ * 
  * ─── WHY TIMESTAMP FENCING? ────────────────────────────────────────────────
  * The old approach compared server `unread_count` integers:
  *   • serverUnread (8) > entry.unreadAtRead (7) → clear entry → UI shows 8  ❌
