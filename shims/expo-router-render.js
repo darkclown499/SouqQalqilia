@@ -9,16 +9,48 @@ const noop = () => {};
 const noopAsync = () => Promise.resolve(null);
 
 // @expo/cli calls getBuildTimeServerManifestAsync to discover routes for
-// static HTML export. Return the minimal shape it expects so the export
-// pipeline doesn't crash when it receives our shim instead of the real bundle.
+// static HTML export, then iterates the result with iterateScreens which
+// calls Object.values(node.children) — so every RouteNode must have
+// children as a plain object (never null/undefined).
+//
+// The minimal safe RouteNode shape:
+//   { route: string, contextKey: string, children: {}, entryPoints: [],
+//     type: 'route', loadRoute: () => ({}), dynamic: null, generated: false }
 async function getBuildTimeServerManifestAsync() {
   return {
-    // Empty route list — no static pages are pre-rendered via SSR
+    // Expo CLI iterates htmlRoutes to pre-render each route to HTML.
+    // Return an empty array so no pages are rendered — the SPA shell is enough.
     htmlRoutes: [],
-    // Expo CLI may also read these fields
+
+    // These may also be iterated — keep as empty arrays, not null.
     staticRoutes: [],
     apiRoutes: [],
-    // initialRouteNode and other optional fields are omitted safely
+
+    // Some Expo CLI versions access these fields on the manifest object.
+    // Provide safe empty-object/array defaults so Object.values() never
+    // receives null or undefined.
+    screens: {},
+    initialRouteNode: {
+      route: '',
+      contextKey: './',
+      children: {},          // <— must be {} not null/undefined
+      entryPoints: [],
+      type: 'route',
+      loadRoute: () => ({}),
+      dynamic: null,
+      generated: false,
+    },
+    // Flat map used by some Expo CLI versions
+    routeTree: {
+      route: '',
+      contextKey: './',
+      children: {},
+      entryPoints: [],
+      type: 'route',
+      loadRoute: () => ({}),
+      dynamic: null,
+      generated: false,
+    },
   };
 }
 
