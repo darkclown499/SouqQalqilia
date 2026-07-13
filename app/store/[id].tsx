@@ -28,6 +28,7 @@ const HALF_LOGO = LOGO_SIZE / 2;
 interface CartItem { product: StoreProduct; qty: number }
 type OrderType = 'delivery' | 'pickup';
 
+
 const ORDER_LABELS: Record<OrderType, { ar: string; en: string; icon: string }> = {
   delivery: { ar: 'توصيل للمنزل', en: 'Delivery', icon: 'delivery-dining' },
   pickup:   { ar: 'استلام من المتجر', en: 'Pickup', icon: 'shopping-bag' },
