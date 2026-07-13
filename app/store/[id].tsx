@@ -1,4 +1,3 @@
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
@@ -26,7 +25,6 @@ const BANNER_H = 240;
 const LOGO_SIZE = 84;
 const HALF_LOGO = LOGO_SIZE / 2;
 
-// ── Cart types ────────────────────────────────────────────────────────────────
 interface CartItem { product: StoreProduct; qty: number }
 type OrderType = 'delivery' | 'pickup';
 
@@ -35,9 +33,6 @@ const ORDER_LABELS: Record<OrderType, { ar: string; en: string; icon: string }> 
   pickup:   { ar: 'استلام من المتجر', en: 'Pickup', icon: 'shopping-bag' },
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PRODUCT CARD (Orgada-style clean layout)
-// ─────────────────────────────────────────────────────────────────────────────
 function ProductCard({
   product, qty, onAdd, onRemove, isAr, isRTL, colors, disabled,
 }: {
@@ -51,7 +46,6 @@ function ProductCard({
 
   return (
     <View style={[pc.card, { opacity: unavailable ? 0.6 : 1 }]}>
-      {/* Product Image */}
       <View style={pc.imgWrap}>
         {product.image_url ? (
           <Image source={{ uri: product.image_url }} style={pc.img} contentFit="contain" transition={200} />
@@ -61,7 +55,6 @@ function ProductCard({
           </View>
         )}
         
-        {/* Floating Cart Button (Red Circle) اذا شفت هاي الرسالة اعرف اني انتكت في حياتي والتعب علي ولله */}
         {!unavailable ? (
           <Pressable style={[pc.addCircle, { backgroundColor: colors.primary, shadowColor: colors.primary }]} onPress={onAdd} hitSlop={8}>
             <MaterialIcons name="shopping-bag" size={18} color="#fff" />
@@ -77,7 +70,6 @@ function ProductCard({
         ) : null}
       </View>
 
-      {/* Product Details */}
       <View style={[pc.body, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
         <Text style={[pc.name, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
           {name}
@@ -88,12 +80,12 @@ function ProductCard({
           </Text>
         ) : null}
         
-        {/* Price Row */}
         <View style={[pc.priceRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <Text style={pc.priceLabel}>{isAr ? 'السعر:' : 'Price:'}</Text>
           <Text style={[pc.price, { color: colors.primary }]}>
             {product.price > 0 ? `${product.price}` : (isAr ? 'مجاني' : 'Free')}
-            {product.price > 0 && <Text style={pc.priceUnit}> ₪</Text>}
+            {/* التعديل المصلح هنا: تحويل من الشرط المختصر لشرط ثلاثي يمنع إرجاع قيمة بوليان داخل النص */}
+            {product.price > 0 ? <Text style={pc.priceUnit}> ₪</Text> : null}
           </Text>
         </View>
       </View>
@@ -114,7 +106,7 @@ const pc = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
-    overflow: 'visible', // ضروري للزر العائم
+    overflow: 'visible',
   },
   imgWrap: { width: '100%', height: 110, padding: 10, position: 'relative', borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   img: { width: '100%', height: '100%' },
@@ -126,7 +118,6 @@ const pc = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3, shadowRadius: 6, elevation: 4, zIndex: 10,
   },
-  price: { fontSize: 15, fontWeight: '900' },
   addCircleCheck: { position: 'absolute', top: 6, right: 6, backgroundColor: '#fff', width: 12, height: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   qtyBadge: { position: 'absolute', top: -6, right: -6, backgroundColor: '#111827', minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   qtyBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
@@ -139,7 +130,6 @@ const pc = StyleSheet.create({
   priceUnit: { fontSize: 11, fontWeight: '700' },
 });
 
-// ── Product Section Styles ──
 const ps = StyleSheet.create({
   wrap: { marginBottom: 20 },
   header: { paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
@@ -153,9 +143,6 @@ const ps = StyleSheet.create({
   moreBtnText: { fontSize: 14, fontWeight: '800', marginHorizontal: 4 },
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PRODUCT SECTION (Grouped by category)
-// ─────────────────────────────────────────────────────────────────────────────
 function ProductSection({
   label, products, cart, onAdd, onRemove, isAr, isRTL, colors, isOpen,
 }: {
@@ -170,14 +157,12 @@ function ProductSection({
 
   return (
     <View style={ps.wrap}>
-      {/* عنوان القسم */}
       <View style={[ps.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <Text style={[ps.title, { textAlign: isRTL ? 'right' : 'left' }]}>
           {label}
         </Text>
       </View>
 
-      {/* شبكة المنتجات */}
       <View style={[ps.grid, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         {visibleProducts.map(item => (
           <ProductCard 
@@ -192,11 +177,9 @@ function ProductSection({
             disabled={!isOpen}
           />
         ))}
-        {/* موازنة الفراغ إذا كان العدد فردياً */}
         {visibleProducts.length % 2 !== 0 ? <View style={{ width: '48%' }} /> : null}
       </View>
 
-      {/* زر عرض المزيد */}
       {hasMore && (
         <Pressable 
           style={[ps.moreBtn, { borderColor: colors.primary, backgroundColor: `${colors.primary}10` }]} 
@@ -218,11 +201,6 @@ function ProductSection({
   );
 }
 
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MAIN SCREEN
-// ─────────────────────────────────────────────────────────────────────────────
 export default function StoreDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -241,7 +219,6 @@ export default function StoreDetailScreen() {
   const isFavorited = favoriteIds.has(id ?? '');
   const [shareLoading, setShareLoading] = useState(false);
 
-  // ── Cart state ──────────────────────────────────────────────────────────────
   const [cart, setCart] = useState<Record<string, CartItem>>({});
   const [cartVisible, setCartVisible] = useState(false);
   const [orderNote, setOrderNote] = useState('');
@@ -254,7 +231,6 @@ export default function StoreDetailScreen() {
   const cartTotal = useMemo(() => cartItems.reduce((s, i) => s + i.product.price * i.qty, 0), [cartItems]);
   const cartCount = useMemo(() => cartItems.reduce((s, i) => s + i.qty, 0), [cartItems]);
 
-  // ── Group products by category_label_ar ──────────────────────────────────
   const groupedProducts = useMemo(() => {
     const map = new Map<string, StoreProduct[]>();
     const uncategorized: StoreProduct[] = [];
@@ -278,10 +254,8 @@ export default function StoreDetailScreen() {
     return result;
   }, [products, isAr]);
 
-  // ── Load data ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id) {
-      // No id means invalid/malformed deep link — stop loading immediately
       setLoading(false);
       return;
     }
@@ -470,7 +444,6 @@ export default function StoreDetailScreen() {
         contentContainerStyle={{ paddingBottom: cartCount > 0 && isOpen ? 116 : 48 }}
       >
         <View style={s.heroContainer}>
-          {/* الغلاف العلوي */}
           <View style={[s.bannerWrap, { height: 240, backgroundColor: colors.surface }]}>
             {store.banner_url ? (
               <Image source={{ uri: store.banner_url }} style={StyleSheet.absoluteFill} contentFit="contain" />
@@ -479,14 +452,11 @@ export default function StoreDetailScreen() {
             )}
             <LinearGradient colors={['rgba(0,0,0,0.4)', 'transparent', 'transparent']} style={StyleSheet.absoluteFill} />
             
-            {/* أزرار الهيدر (الرجوع + المشاركة + المفضلة) */}
             <View style={[s.headerOverlay, { paddingTop: insets.top + 10, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              {/* زر الرجوع */}
               <Pressable style={s.headerBtn} onPress={() => router.back()}>
                 <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#111827" />
               </Pressable>
               
-              {/* أزرار الإجراءات */}
               <View style={[s.headerActionsRight, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
                 <Pressable style={s.headerBtn} onPress={() => id && toggleFav(id)}>
                   <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={20} color={isFavorited ? colors.primary : '#111827'} />
@@ -498,9 +468,7 @@ export default function StoreDetailScreen() {
             </View>
           </View>
 
-          {/* التداخل (الشعار + الشارات العائمة كقطرة)    */}
           <View style={s.overlapWrapper}>
-            {/* شارة ساعات العمل (يمين) */}
             <View style={[s.sideBadge, { right: 16 }]}>
               <View style={[s.modernPill, { borderColor: colors.primary }]}>
                 <MaterialIcons name="access-time" size={14} color={colors.primary} />
@@ -508,7 +476,6 @@ export default function StoreDetailScreen() {
               </View>
             </View>
 
-            {/* الشعار في المنتصف */}
             <View style={s.logoWrap}>
               {store.logo_url ? (
                 <Image source={{ uri: store.logo_url }} style={s.mainLogo} contentFit="cover" />
@@ -517,7 +484,6 @@ export default function StoreDetailScreen() {
               )}
             </View>
 
-            {/* شارة حالة المتجر (يسار) */}
             <View style={[s.sideBadge, { left: 16 }]}>
               <View style={[s.modernPill, { borderColor: isOpen ? '#16A34A' : colors.textMuted }]}>
                 <View style={[s.statusDot, { backgroundColor: isOpen ? '#16A34A' : colors.textMuted }]} />
@@ -528,8 +494,6 @@ export default function StoreDetailScreen() {
             </View>
           </View>
 
-          {/* تفاصيل المتجر والأزرار (بعد تنظيف الأيقونات) */}
-         {/* تفاصيل المتجر */}
           <View style={s.storeDetails}>
             <Text style={s.storeNameTxt}>{storeName}</Text>
             
@@ -807,11 +771,9 @@ export default function StoreDetailScreen() {
 const s = StyleSheet.create({
   container: { flex: 1 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-
   heroContainer: { paddingBottom: 24 },
   bannerWrap: { width: '100%', position: 'relative' },
   fabBtn: { position: 'absolute', zIndex: 10, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  
   overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -50, zIndex: 10 },
   sideBadge: { position: 'absolute', top: 50, alignItems: 'center' },
   modernPill: {
@@ -823,16 +785,12 @@ const s = StyleSheet.create({
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 8 },
   pillText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-  
   logoWrap: { width: 130, height: 130, borderRadius: 65, borderWidth: 4, borderColor: '#fff', backgroundColor: '#fff', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 6 },
   mainLogo: { width: '100%', height: '100%' },
-
   storeDetails: { marginTop: 12, alignItems: 'center' },
   storeNameTxt: { fontSize: 24, fontWeight: '900', color: '#111827', marginBottom: 4 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   locationTxt: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
-
-  // تنسيقات أزرار الهيدر الجديدة
   headerOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0,
     justifyContent: 'space-between', alignItems: 'center',
@@ -844,8 +802,6 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3
   },
-
-  // تنسيقات تفاصيل المتجر الجديدة
   storeDescTxt: { 
     fontSize: 13, color: '#6B7280', textAlign: 'center', 
     marginTop: 10, paddingHorizontal: 32, lineHeight: 20 
@@ -861,7 +817,6 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
   },
   closedPillText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-
   menuWrap: { marginTop: 8 },
   menuHeaderRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -869,14 +824,12 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
   },
   menuHeaderText: { fontSize: 17, fontWeight: '800', flex: 1 },
-
   emptyWrap: {
     alignItems: 'center', paddingTop: 60, gap: 14, paddingHorizontal: 32,
   },
   emptyIllus: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
   emptySub: { fontSize: 14, textAlign: 'center', lineHeight: 21 },
-
   cartFab: { position: 'absolute', bottom: 24, left: 16, right: 16 },
   cartFabInner: {
     flexDirection: 'row', alignItems: 'center',
