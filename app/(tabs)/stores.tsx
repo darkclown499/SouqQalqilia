@@ -92,10 +92,22 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   }, [displayBanners.length]);
 
   useEffect(() => {
-    startAuto();
-    return () => { if (autoRef.current) clearInterval(autoRef.current); };
-  }, [startAuto]);
+    // 1. تعيين البنرات
+    const localBanners = [
+      { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
+      { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
+      { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
+      { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
+    ];
+    setBanners(localBanners);
+    setLoading(false);
 
+    // 2. تشغيل الأوتو (Auto Slide)
+    startAuto();
+    
+    // 3. تنظيف عند الخروج
+    return () => { if (autoRef.current) clearInterval(autoRef.current); };
+  }, []); // [] تضمن تشغيل الكود مرة واحدة فقط عند فتح الشاشة
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
     setActiveIdx(Math.max(0, Math.min(idx, displayBanners.length - 1)));
