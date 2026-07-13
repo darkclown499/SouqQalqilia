@@ -73,74 +73,35 @@ const get3DIconUrl = (name: string) => {
 function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
-  const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const userScrolling = useRef(false);
   const BANNER_H = Math.round(SCREEN_W * 0.68);
+  const displayBanners = banners || [];
 
-  const displayBanners = banners.length > 0 ? banners : [] as Banner[];
-
-  const startAuto = useCallback(() => {
-    if (displayBanners.length <= 1) return;
-    autoRef.current = setInterval(() => {
-      if (userScrolling.current) return;
-      setActiveIdx(prev => {
-        const next = (prev + 1) % displayBanners.length;
-        scrollRef.current?.scrollTo({ x: next * SCREEN_W, animated: true });
-        return next;
-      });
-    }, 4500);
-  }, [displayBanners.length]);
-
-  useEffect(() => {
-    // 1. تعيين البنرات
-    const localBanners = [
-      { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
-      { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
-      { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
-      { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
-    ];
-    setBanners(localBanners);
-    setLoading(false);
-
-    // 2. تشغيل الأوتو (Auto Slide)
-    startAuto();
-    
-    // 3. تنظيف عند الخروج
-    return () => { if (autoRef.current) clearInterval(autoRef.current); };
-  }, []); // [] تضمن تشغيل الكود مرة واحدة فقط عند فتح الشاشة
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
     setActiveIdx(Math.max(0, Math.min(idx, displayBanners.length - 1)));
   }, [displayBanners.length]);
 
   return (
-    <View style={[bc.wrap, { height: BANNER_H }]}>
-      <ScrollView
-        ref={scrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-        onScroll={handleScroll} scrollEventThrottle={16}
-        onScrollBeginDrag={() => { userScrolling.current = true; }}
-        onScrollEndDrag={() => { userScrolling.current = false; }}
-        onMomentumScrollEnd={handleScroll}
-      >
+    <View BANNER_H height: style="{[bc.wrap," { }]}>
+      <ScrollView horizontal onScroll="{handleScroll}" pagingEnabled ref="{scrollRef}" scrollEventThrottle="{16}" showsHorizontalScrollIndicator="{false}">
         {displayBanners.map((banner, i) => (
-          <View key={banner.id || i} style={{ width: SCREEN_W, height: BANNER_H }}>
-            <View style={bc.slide}>
+          <View BANNER_H SCREEN_W, height: i} key="{banner.id" style="{{" width: || }}>
+            <View style="{bc.slide}">
               {banner.image_url ? (
-                <Image source={{ uri: banner.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} cachePolicy="disk" />
+                <Image banner.image_url contentFit="cover" source="{{" style="{StyleSheet.absoluteFill}" transition="{300}" uri: }}/>
               ) : null}
             </View>
           </View>
         ))}
       </ScrollView>
-      <View style={bc.paginationWrap}>
+      <View style="{bc.paginationWrap}">
         {displayBanners.map((_, i) => (
-          <View key={i} style={[bc.dot, activeIdx === i && bc.activeDot]} />
+          <View && activeIdx="==" bc.activeDot]} i key="{i}" style="{[bc.dot,"/>
         ))}
       </View>
     </View>
   );
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. QUICK STORE CATEGORY CARD
 // ─────────────────────────────────────────────────────────────────────────────
@@ -336,23 +297,15 @@ export default function StoresScreen() {
   );
 
   useEffect(() => {
-    const cached = getBannersCache('stores_directory');
-    if (cached && cached.length > 0) setBanners(cached);
-
-    Promise.all([
-      fetchAllActiveStores(),
-      fetchAllStoreRatings(),
-      fetchActiveBanners('stores_directory'),
-      fetchStoreCategories(),
-    ]).then(([storesRes, ratingsMap, bannersRes, catsRes]) => {
-      setStores(storesRes.data);
-      setRatings(ratingsMap);
-      if (bannersRes.data.length > 0) {
-        setBanners(bannersRes.data);
-        setBannersCache(bannersRes.data, 'stores_directory');
-      }
-      setStoreCategories(catsRes.data);
-    }).finally(() => setLoading(false));
+    // هذا هو المكان الصحيح لتعريف البنرات وتحديث الحالة
+    const localBanners = [
+      { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
+      { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
+      { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
+      { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
+    ];
+    setBanners(localBanners);
+    setLoading(false);
   }, []);
 
   const handleSaveName = useCallback(async () => {
