@@ -453,7 +453,7 @@ export default function StoreDetailScreen() {
             </Pressable>
           </View>
 
-          {/* التداخل (الشعار + الشارات العائمة كقطرة) */}
+          {/* التداخل (الشعار + الشارات العائمة كقطرة)    */}
           <View style={s.overlapWrapper}>
             {/* شارة ساعات العمل (يمين) */}
             <View style={[s.sideBadge, { right: 16 }]}>
