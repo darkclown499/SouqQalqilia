@@ -35,7 +35,7 @@ const ORDER_LABELS: Record<OrderType, { ar: string; en: string; icon: string }> 
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PREMIUM PRODUCT CARD (Talabat-style)
+// PRODUCT CARD (Orgada-style clean layout)
 // ─────────────────────────────────────────────────────────────────────────────
 function ProductCard({
   product, qty, onAdd, onRemove, isAr, isRTL, colors, disabled,
@@ -49,108 +49,52 @@ function ProductCard({
   const unavailable = disabled || !product.is_available;
 
   return (
-    <View style={[pc.card, { backgroundColor: '#fff', opacity: unavailable ? 0.56 : 1 }]}>
-      {/* Product image — top half */}
+    <View style={[pc.card, { opacity: unavailable ? 0.6 : 1 }]}>
+      {/* Product Image */}
       <View style={pc.imgWrap}>
         {product.image_url ? (
-          <Image
-            source={{ uri: product.image_url }}
-            style={pc.img}
-            contentFit="cover"
-            transition={200}
-            cachePolicy="disk"
-          />
+          <Image source={{ uri: product.image_url }} style={pc.img} contentFit="contain" transition={200} />
         ) : (
-          <View style={[pc.imgFallback, { backgroundColor: '#F3F4F6' }]}>
-            <MaterialIcons name="fastfood" size={28} color="#D1D5DB" />
+          <View style={[pc.imgFallback, { backgroundColor: '#F9FAFB' }]}>
+            <MaterialIcons name="fastfood" size={32} color="#D1D5DB" />
           </View>
         )}
-        {/* Unavailable tag */}
-        {!product.is_available ? (
-          <View style={pc.unavailableTag}>
-            <Text style={pc.unavailableText}>{isAr ? 'نفذ' : 'N/A'}</Text>
-          </View>
+        
+        {/* Floating Cart Button (Red Circle) */}
+        {!unavailable ? (
+          <Pressable style={pc.addCircle} onPress={onAdd} hitSlop={8}>
+            <MaterialIcons name="shopping-bag" size={18} color="#fff" />
+            <View style={pc.addCircleCheck}>
+              <MaterialIcons name="check" size={8} color="#BE123C" />
+            </View>
+            {qty > 0 && (
+              <View style={pc.qtyBadge}>
+                <Text style={pc.qtyBadgeText}>{qty}</Text>
+              </View>
+            )}
+          </Pressable>
         ) : null}
       </View>
 
-      {/* Card body */}
+      {/* Product Details */}
       <View style={[pc.body, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-        <Text
-          style={[pc.name, { color: '#111827', textAlign: isRTL ? 'right' : 'left' }]}
-          numberOfLines={2}
-        >
+        <Text style={[pc.name, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
           {name}
         </Text>
         {desc ? (
-          <Text
-            style={[pc.desc, { color: '#9CA3AF', textAlign: isRTL ? 'right' : 'left' }]}
-            numberOfLines={1}
-          >
+          <Text style={[pc.desc, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
             {desc}
           </Text>
         ) : null}
-      </View>
-
-      {/* Price row + add button */}
-      <View style={[pc.footer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <Text style={[pc.price, { color: colors.primary }]}>
-          {product.price > 0 ? `${product.price}₪` : (isAr ? 'مجاني' : 'Free')}
-        </Text>
-
-        {!unavailable ? (
-         qty > 0 ? (
-            /* Qty controls */
-            <View style={[pc.qtyRow, { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' }]}>
-              {/* زر الناقص (أحمر) */}
-              <Pressable 
-                onPress={onRemove} 
-                hitSlop={8}
-                style={{
-                  width: 32, height: 32, borderRadius: 16,
-                  backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#EF4444',
-                  alignItems: 'center', justifyContent: 'center'
-                }}
-              >
-                <MaterialIcons name="remove" size={18} color="#EF4444" />
-              </Pressable>
-
-              {/* كمية المنتج */}
-              <Text style={{ fontSize: 16, fontWeight: '800', marginHorizontal: 8, color: '#111827' }}>
-                {qty}
-              </Text>
-
-              {/* زر الزائد (أخضر) */}
-              <Pressable 
-                onPress={onAdd} 
-                hitSlop={8}
-                style={{
-                  width: 32, height: 32, borderRadius: 16,
-                  backgroundColor: '#DCFCE7', borderWidth: 1, borderColor: '#22c55e',
-                  alignItems: 'center', justifyContent: 'center'
-                }}
-              >
-                <MaterialIcons name="add" size={18} color="#22c55e" />
-              </Pressable>
-            </View>
-          ) : (
-            /* + button only */
-            <Pressable 
-              onPress={onAdd} 
-              hitSlop={8}
-              style={{
-                width: 32, height: 32, borderRadius: 16,
-                backgroundColor: '#DCFCE7', borderWidth: 1, borderColor: '#22c55e',
-                alignItems: 'center', justifyContent: 'center'
-              }}
-            >
-              <MaterialIcons name="add" size={18} color="#22c55e" />
-            </Pressable>
-          )
-        ) : (
-          <View style={pc.closedTag}>
-            <Text style={pc.closedTagText}>{isAr ? 'مغلق' : 'Closed'}</Text>
-          </View>
-        )}
+        
+        {/* Price Row */}
+        <View style={[pc.priceRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <Text style={pc.priceLabel}>{isAr ? 'السعر:' : 'Price:'}</Text>
+          <Text style={pc.price}>
+            {product.price > 0 ? `${product.price}` : (isAr ? 'مجاني' : 'Free')}
+            {product.price > 0 && <Text style={pc.priceUnit}> ₪</Text>}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -159,58 +103,59 @@ function ProductCard({
 const pc = StyleSheet.create({
   card: {
     width: '48%',
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 14,
-    elevation: 2,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    overflow: 'visible', // ضروري للزر العائم
   },
-  imgWrap: { width: '100%', height: 120, backgroundColor: '#F3F4F6', position: 'relative' },
-  img: { width: '100%', height: 120 },
-  imgFallback: { width: '100%', height: 120, alignItems: 'center', justifyContent: 'center' },
-  unavailableTag: {
-    position: 'absolute', top: 8, right: 8,
-    backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 8,
-    paddingHorizontal: 7, paddingVertical: 3,
-  },
-  unavailableText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  body: { paddingHorizontal: 9, paddingTop: 9, paddingBottom: 4, gap: 4, minHeight: 62 },
-  name: { fontSize: 13, fontWeight: '700', lineHeight: 17 },
-  desc: { fontSize: 11, lineHeight: 15 },
-  footer: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 9, paddingBottom: 10, paddingTop: 4,
-  },
-  price: { fontSize: 14, fontWeight: '800' },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  qtyMinus: {
-    width: 24, height: 24, borderRadius: 12,
-    backgroundColor: '#FEE2E2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  qtyBadge: {
-    minWidth: 22, height: 22, borderRadius: 11,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5,
-  },
-  qtyBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  imgWrap: { width: '100%', height: 110, padding: 10, position: 'relative', borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  img: { width: '100%', height: '100%' },
+  imgFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   addCircle: {
-    width: 28, height: 28, borderRadius: 14,
+    position: 'absolute', bottom: -12, left: 12, // يطفو في الأسفل على اليسار
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: '#BE123C',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18, shadowRadius: 4, elevation: 3,
+    shadowColor: '#BE123C', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 6, elevation: 4, zIndex: 10,
   },
-  closedTag: {
-    backgroundColor: '#F3F4F6', borderRadius: 20,
-    paddingHorizontal: 9, paddingVertical: 4,
-  },
-  closedTagText: { fontSize: 11, fontWeight: '700', color: '#6B7280' },
+  addCircleCheck: { position: 'absolute', top: 6, right: 6, backgroundColor: '#fff', width: 12, height: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  qtyBadge: { position: 'absolute', top: -6, right: -6, backgroundColor: '#111827', minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  qtyBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  body: { paddingHorizontal: 12, paddingTop: 16, paddingBottom: 12, gap: 4 },
+  name: { fontSize: 13, fontWeight: '800', lineHeight: 18, color: '#111827' },
+  desc: { fontSize: 10, lineHeight: 14, minHeight: 28, color: '#6B7280' },
+  priceRow: { alignItems: 'center', gap: 4, marginTop: 4 },
+  priceLabel: { fontSize: 11, color: '#9CA3AF' },
+  price: { fontSize: 15, fontWeight: '900', color: '#BE123C' },
+  priceUnit: { fontSize: 11, fontWeight: '700' },
+});
+
+// ── Product Section Styles ──
+const ps = StyleSheet.create({
+  wrap: { marginBottom: 12 },
+  header: { paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
+  title: { fontSize: 18, fontWeight: '900', color: '#111827' },
+  grid: { flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
+});
+
+// ── Product Section Styles ──
+const ps = StyleSheet.create({
+  wrap: { marginBottom: 12 },
+  header: { paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
+  title: { fontSize: 18, fontWeight: '900', color: '#111827' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PRODUCT SECTION (grouped by category)
+// PRODUCT SECTION (Grouped by category)
 // ─────────────────────────────────────────────────────────────────────────────
 function ProductSection({
   label, products, cart, onAdd, onRemove, isAr, isRTL, colors, isOpen,
@@ -222,10 +167,9 @@ function ProductSection({
 }) {
   return (
     <View style={ps.wrap}>
-      {/* Section header */}
+      {/* Section header (Title on right, no dot) */}
       <View style={[ps.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <View style={[ps.headerDot, { backgroundColor: colors.primary }]} />
-        <Text style={[ps.title, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
+        <Text style={[ps.title, { textAlign: isRTL ? 'right' : 'left' }]}>
           {label}
         </Text>
       </View>
@@ -233,9 +177,9 @@ function ProductSection({
       {/* 2-column grid */}
       <View style={[ps.grid, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         {products.map(item => (
-          <ProductCard
-            key={item.id}
-            product={item}
+          <ProductCard 
+            key={item.id} 
+            product={item} 
             qty={cart[item.id]?.qty ?? 0}
             onAdd={() => onAdd(item)}
             onRemove={() => onRemove(item)}
@@ -252,19 +196,51 @@ function ProductSection({
   );
 }
 
+// ── Product Card Styles ──
+const pc = StyleSheet.create({
+  card: {
+    width: '48%',
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    overflow: 'visible', // ضروري للزر العائم
+  },
+  imgWrap: { width: '100%', height: 110, padding: 10, position: 'relative', borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  img: { width: '100%', height: '100%' },
+  imgFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
+  addCircle: {
+    position: 'absolute', bottom: -12, left: 12, // يطفو في الأسفل على اليسار
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: '#BE123C',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#BE123C', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 6, elevation: 4, zIndex: 10,
+  },
+  addCircleCheck: { position: 'absolute', top: 6, right: 6, backgroundColor: '#fff', width: 12, height: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  qtyBadge: { position: 'absolute', top: -6, right: -6, backgroundColor: '#111827', minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  qtyBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  body: { paddingHorizontal: 12, paddingTop: 16, paddingBottom: 12, gap: 4 },
+  name: { fontSize: 13, fontWeight: '800', lineHeight: 18, color: '#111827' },
+  desc: { fontSize: 10, lineHeight: 14, minHeight: 28, color: '#6B7280' },
+  priceRow: { alignItems: 'center', gap: 4, marginTop: 4 },
+  priceLabel: { fontSize: 11, color: '#9CA3AF' },
+  price: { fontSize: 15, fontWeight: '900', color: '#BE123C' },
+  priceUnit: { fontSize: 11, fontWeight: '700' },
+});
+
+// ── Product Section Styles ──
 const ps = StyleSheet.create({
-  wrap: { marginBottom: 8 },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 16, paddingVertical: 14,
-  },
-  headerDot: { width: 4, height: 22, borderRadius: 2, flexShrink: 0 },
-  title: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, flex: 1 },
-  grid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16, gap: 0,
-  },
+  wrap: { marginBottom: 12 },
+  header: { paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
+  title: { fontSize: 18, fontWeight: '900', color: '#111827' },
+  grid: { flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -529,205 +505,99 @@ export default function StoreDetailScreen() {
         contentContainerStyle={{ paddingBottom: cartCount > 0 && isOpen ? 116 : 48 }}
       >
         {/* ═══════════════════════════════════════════════════════════
-            SECTION 1 — FULL-BLEED BANNER (edge to edge, under status bar)
+            SECTION 1 & 2 — ORGADA STYLE HERO
         ═══════════════════════════════════════════════════════════ */}
-        <View style={[s.bannerWrap, { height: BANNER_H }]}>
-          {store.banner_url ? (
-            <Image
-              source={{ uri: store.banner_url }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              transition={200}
-              cachePolicy="disk"
-            />
-          ) : store.logo_url ? (
-            <Image
-              source={{ uri: store.logo_url }}
-              style={[StyleSheet.absoluteFill, { opacity: 0.35 }]}
-              contentFit="cover"
-            />
-          ) : (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.primary }]} />
-          )}
+        <View style={s.heroContainer}>
+          {/* الغلاف العلوي */}
+          <View style={[s.bannerWrap, { height: 240 }]}>
+            {store.banner_url ? (
+              <Image source={{ uri: store.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
+            ) : (
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.primary }]} />
+            )}
+            <LinearGradient colors={['rgba(0,0,0,0.5)', 'transparent', 'rgba(0,0,0,0.1)']} style={StyleSheet.absoluteFill} />
+            <Pressable style={[s.fabBtn, { top: insets.top + 10, right: isRTL ? 16 : undefined, left: isRTL ? undefined : 16 }]} onPress={() => router.back()}>
+              <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={26} color="#fff" />
+            </Pressable>
+          </View>
 
-          {/* Gradient overlay — bottom fade */}
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.55)']}
-            style={[StyleSheet.absoluteFill, { top: '40%' }]}
-          />
+          {/* التداخل (الشعار + الشارات العائمة) */}
+          <View style={s.overlapWrapper}>
+            {/* الشارات اليمين (ساعات العمل + سعر التوصيل) */}
+            <View style={[s.sideBadge, { right: 16 }]}>
+              <View style={[s.pill, { backgroundColor: '#BE123C', alignSelf: 'flex-end' }]}>
+                <Text style={s.pillText}>{hoursLabel || '01:00 - 10:30'}</Text>
+                <MaterialIcons name="access-time" size={12} color="#fff" style={{ marginLeft: 4 }} />
+              </View>
+              <View style={s.infoBox}>
+                <Text style={s.infoBoxTitle}>{isAr ? 'سعر التوصيل\nلموقعك الحالي' : 'Delivery Price'}</Text>
+                <View style={s.infoBoxCircleGray}>
+                  <Text style={s.infoBoxValGray}>9</Text>
+                  <Text style={s.infoBoxUnitGray}>₪</Text>
+                </View>
+              </View>
+            </View>
 
-          {/* ── Back button (absolute, safe-area aware) ── */}
-          <Pressable
-            style={[s.fabBtn, { top: insets.top + 10, left: isRTL ? undefined : 16, right: isRTL ? 16 : undefined }]}
-            onPress={() => router.back()}
-            hitSlop={8}
-          >
-            <MaterialIcons
-              name={isRTL ? 'chevron-right' : 'chevron-left'}
-              size={22}
-              color="#fff"
-            />
-          </Pressable>
-
-          {/* ── Share button (absolute, safe-area aware) ── */}
-          <Pressable
-            style={[s.fabBtn, { top: insets.top + 10, right: isRTL ? undefined : 16, left: isRTL ? 16 : undefined, opacity: shareLoading ? 0.6 : 1 }]}
-            onPress={handleShare}
-            hitSlop={8}
-            disabled={shareLoading}
-          >
-            {shareLoading
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <MaterialIcons name="share" size={20} color="#fff" />}
-          </Pressable>
-        </View>
-
-        {/* ═══════════════════════════════════════════════════════════
-            SECTION 2 — OVERLAPPING STORE INFO CARD (PREMIUM DESIGN)
-        ═══════════════════════════════════════════════════════════ */}
-        <View style={[s.infoCard, { backgroundColor: colors.surface }]}>
-
-          {/* Circular logo — overlaps banner (With 3D Shadow) */}
-          <View style={s.logoWrap}>
-            <View style={[s.logoCircle, {
-              borderColor: isOpen ? '#22c55e' : '#D1D5DB',
-              backgroundColor: colors.surfaceTint,
-              // إضافة الظل للوجو
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.15,
-              shadowRadius: 8,
-              elevation: 6,
-            }]}>
+            {/* الشعار في المنتصف */}
+            <View style={s.logoWrap}>
               {store.logo_url ? (
-                <Image
-                  source={{ uri: store.logo_url }}
-                  style={s.logoImg}
-                  contentFit="cover"
-                  transition={200}
-                />
+                <Image source={{ uri: store.logo_url }} style={s.mainLogo} contentFit="cover" />
               ) : (
-                <MaterialIcons name="storefront" size={36} color={colors.primary} />
+                <MaterialIcons name="storefront" size={40} color={colors.primary} />
               )}
             </View>
+
+            {/* الشارات اليسار (حالة المتجر + زمن التوصيل) */}
+            <View style={[s.sideBadge, { left: 16 }]}>
+              <View style={[s.pill, { backgroundColor: isOpen ? '#84CC16' : '#9CA3AF', alignSelf: 'flex-start' }]}>
+                <Text style={s.pillText}>{isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}</Text>
+              </View>
+              <View style={s.infoBox}>
+                <Text style={s.infoBoxTitle}>{isAr ? 'الزمن المقدر\nلوصول الطلبية' : 'Est. Time'}</Text>
+                <View style={s.infoBoxCircleRed}>
+                  <Text style={s.infoBoxValRed}>30-40</Text>
+                  <Text style={s.infoBoxUnitRed}>{isAr ? 'دقيقة' : 'min'}</Text>
+                </View>
+              </View>
+            </View>
           </View>
 
-          {/* Store name (Bigger and Bolder) */}
-          <Text style={[s.storeName, { color: colors.textPrimary, fontSize: 22, fontWeight: '900', marginTop: 4, marginBottom: 2 }]}>
-            {storeName}
-          </Text>
-
-          {/* Address */}
-          {store.address ? (
-            <View style={[s.centerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <MaterialIcons name="location-on" size={14} color={colors.textMuted} />
-              <Text style={[s.addrText, { color: colors.textMuted, fontSize: 13 }]} numberOfLines={1}>
-                {store.address}
-              </Text>
-            </View>
-          ) : null}
-
-          {/* Status + hours + rating badges row */}
-          <View style={[s.badgesRow, { flexDirection: isRTL ? 'row-reverse' : 'row', marginTop: 12 }]}>
-            {/* Open/Closed pill */}
-            <View style={[s.statusPill, { backgroundColor: isOpen ? '#DCFCE7' : '#F3F4F6' }]}>
-              <View style={[s.statusDot, { backgroundColor: isOpen ? '#16a34a' : '#9CA3AF' }]} />
-              <Text style={[s.statusText, { color: isOpen ? '#15803d' : '#6B7280' }]}>
-                {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
-              </Text>
+          {/* تفاصيل المتجر والأزرار */}
+          <View style={s.storeDetails}>
+            <Text style={s.storeNameTxt}>{storeName}</Text>
+            <View style={s.locationRow}>
+              <MaterialIcons name="support-agent" size={16} color="#38BDF8" />
+              <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
             </View>
 
-            {/* Hours badge */}
-            {hoursLabel ? (
-              <View style={[s.infoBadge, { backgroundColor: colors.surfaceTint }]}>
-                <MaterialIcons name="access-time" size={12} color={colors.textMuted} />
-                <Text style={[s.infoBadgeText, { color: colors.textSecondary }]}>{hoursLabel}</Text>
-              </View>
-            ) : null}
-
-            {/* Rating badge */}
-            {rating.avg > 0 ? (
-              <View style={[s.infoBadge, { backgroundColor: '#FFFBEB' }]}>
-                <Text style={{ fontSize: 11 }}>⭐</Text>
-                <Text style={[s.infoBadgeText, { color: '#92400E', fontWeight: '800' }]}>
-                  {rating.avg.toFixed(1)}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          {/* Action icon row (Revamped for Conversion) */}
-          <View style={[s.actionRow, { flexDirection: isRTL ? 'row-reverse' : 'row', gap: 10, marginTop: 16 }]}>
-            
-            {/* WhatsApp quick contact (Primary Button) */}
-            {(store.whatsapp || store.owner_whatsapp || store.phone) ? (
-              <Pressable
-                style={{ 
-                  flex: 1, 
-                  backgroundColor: '#22c55e', 
-                  borderRadius: 12, 
-                  flexDirection: isRTL ? 'row-reverse' : 'row', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  paddingVertical: 12, 
-                  gap: 8,
-                  shadowColor: '#22c55e',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.2,
-                  shadowRadius: 4,
-                  elevation: 2
-                }}
-                onPress={() => {
-                  const phone = (store.whatsapp || store.owner_whatsapp || store.phone || '').replace(/\D/g, '');
-                  Linking.openURL(`https://wa.me/${phone}`).catch(() => {});
-                }}
-              >
-                <MaterialIcons name="chat" size={20} color="#fff" />
-                <Text style={{ color: '#fff', fontSize: 15, fontWeight: 'bold' }}>
-                  {isAr ? 'تواصل مع المتجر' : 'Contact Store'}
-                </Text>
+            <View style={[s.actionsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              {/* زر المشاركة */}
+              <Pressable style={s.shareCircle} onPress={handleShare}>
+                <MaterialIcons name="share" size={20} color="#fff" />
               </Pressable>
-            ) : null}
 
-            {/* Favorite (Circle) */}
-            <Pressable
-              style={[s.actionCircle, {
-                width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center',
-                backgroundColor: isFavorited ? '#FEE2E2' : colors.surfaceTint,
-                borderWidth: 1,
-                borderColor: isFavorited ? '#EF4444' : colors.borderLight,
-              }]}
-              onPress={() => id && toggleFav(id)}
-            >
-              <MaterialIcons
-                name={isFavorited ? 'favorite' : 'favorite-border'}
-                size={22}
-                color={isFavorited ? '#EF4444' : colors.textMuted}
-              />
-            </Pressable>
+              {/* خدمات المتجر */}
+              <View style={[s.servicesPill, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                <View style={s.serviceItem}>
+                  <MaterialIcons name="moped" size={22} color="#6B7280" />
+                  <View style={s.checkMark}><MaterialIcons name="check" size={10} color="#fff" /></View>
+                </View>
+                <View style={s.serviceItem}>
+                  <MaterialIcons name="shopping-bag" size={22} color="#6B7280" />
+                  <View style={s.checkMark}><MaterialIcons name="check" size={10} color="#fff" /></View>
+                </View>
+                <View style={s.serviceItem}>
+                  <MaterialIcons name="restaurant" size={22} color="#6B7280" />
+                  <View style={s.checkMark}><MaterialIcons name="check" size={10} color="#fff" /></View>
+                </View>
+              </View>
 
-            {/* Share (Circle) */}
-            <Pressable
-              style={[s.actionCircle, { 
-                width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center',
-                backgroundColor: colors.surfaceTint, borderWidth: 1, borderColor: colors.borderLight, opacity: shareLoading ? 0.6 : 1 
-              }]}
-              onPress={handleShare}
-              disabled={shareLoading}
-            >
-              {shareLoading
-                ? <ActivityIndicator size="small" color={colors.textMuted} />
-                : <MaterialIcons name="share" size={22} color={colors.textMuted} />}
-            </Pressable>
-
+              {/* المفضلة */}
+              <Pressable style={s.favCircle} onPress={() => id && toggleFav(id)}>
+                <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={22} color={isFavorited ? '#E11D48' : '#9CA3AF'} />
+              </Pressable>
+            </View>
           </View>
-
-          {/* Description */}
-          {storeDesc ? (
-            <Text style={[s.storeDesc, { color: colors.textSecondary, marginTop: 16 }]} numberOfLines={3}>
-              {storeDesc}
-            </Text>
-          ) : null}
         </View>
         {/* ═══════════════════════════════════════════════════════════
             SECTION 3 — MENU (Grouped vertically by category)
@@ -1003,12 +873,40 @@ const s = StyleSheet.create({
   container: { flex: 1 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
 
-  // ── Banner ──
-  bannerWrap: {
-    width: '100%',
-    position: 'relative',
-    backgroundColor: '#0A6E5C',
-  },
+  // ── Hero Section (Orgada Style) ──
+  heroContainer: { paddingBottom: 24 },
+  bannerWrap: { width: '100%', position: 'relative' },
+  fabBtn: { position: 'absolute', zIndex: 10, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  
+  overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -70, zIndex: 10 },
+  sideBadge: { position: 'absolute', top: 5, width: 105, alignItems: 'center' },
+  pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 8 },
+  pillText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  infoBox: { backgroundColor: '#fff', borderRadius: 16, paddingVertical: 12, paddingHorizontal: 4, width: '100%', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+  infoBoxTitle: { fontSize: 10, color: '#6B7280', textAlign: 'center', marginBottom: 8, fontWeight: '700', lineHeight: 14 },
+  
+  infoBoxCircleGray: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
+  infoBoxValGray: { fontSize: 18, fontWeight: '900', color: '#374151' },
+  infoBoxUnitGray: { fontSize: 9, color: '#374151', position: 'absolute', bottom: 6, right: 8 },
+  
+  infoBoxCircleRed: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#BE123C', alignItems: 'center', justifyContent: 'center' },
+  infoBoxValRed: { fontSize: 16, fontWeight: '900', color: '#fff' },
+  infoBoxUnitRed: { fontSize: 9, color: '#fff', marginTop: -2 },
+
+  logoWrap: { width: 130, height: 130, borderRadius: 65, borderWidth: 4, borderColor: '#fff', backgroundColor: '#fff', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 6 },
+  mainLogo: { width: '100%', height: '100%' },
+
+  storeDetails: { marginTop: 12, alignItems: 'center' },
+  storeNameTxt: { fontSize: 24, fontWeight: '900', color: '#111827', marginBottom: 4 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  locationTxt: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
+
+  actionsRow: { alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 16, width: '100%', paddingHorizontal: 20 },
+  shareCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#BE123C', alignItems: 'center', justifyContent: 'center', shadowColor: '#BE123C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
+  favCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#E5E7EB' },
+  servicesPill: { backgroundColor: '#F3F4F6', borderRadius: 24, paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', gap: 18 },
+  serviceItem: { position: 'relative' },
+  checkMark: { position: 'absolute', bottom: -4, right: -4, backgroundColor: '#16A34A', width: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#F3F4F6' },
 
   // Floating action buttons (back + share)
   fabBtn: {
@@ -1030,20 +928,6 @@ const s = StyleSheet.create({
   },
   closedPillText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 
-  // ── Overlapping store info card ──
-  infoCard: {
-    marginTop: -(HALF_LOGO + 20),   // pulls card up to overlap banner
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingBottom: 18,
-    paddingTop: 0,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 14,
-  },
 
   // Logo centered at the overlap point
   logoWrap: {
