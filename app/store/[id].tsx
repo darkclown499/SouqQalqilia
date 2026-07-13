@@ -62,10 +62,10 @@ function ProductCard({
         
         {/* Floating Cart Button (Red Circle) اذا شفت هاي الرسالة اعرف اني انتكت في حياتي والتعب علي ولله */}
         {!unavailable ? (
-          <Pressable style={pc.addCircle} onPress={onAdd} hitSlop={8}>
+          <Pressable style={[pc.addCircle, { backgroundColor: colors.primary, shadowColor: colors.primary }]} onPress={onAdd} hitSlop={8}>
             <MaterialIcons name="shopping-bag" size={18} color="#fff" />
             <View style={pc.addCircleCheck}>
-              <MaterialIcons name="check" size={8} color="#BE123C" />
+              <MaterialIcons name="check" size={8} color={colors.primary} />
             </View>
             {qty > 0 && (
               <View style={pc.qtyBadge}>
@@ -90,7 +90,7 @@ function ProductCard({
         {/* Price Row */}
         <View style={[pc.priceRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <Text style={pc.priceLabel}>{isAr ? 'السعر:' : 'Price:'}</Text>
-          <Text style={pc.price}>
+          <Text style={[pc.price, { color: colors.primary }]}>
             {product.price > 0 ? `${product.price}` : (isAr ? 'مجاني' : 'Free')}
             {product.price > 0 && <Text style={pc.priceUnit}> ₪</Text>}
           </Text>
@@ -441,13 +441,13 @@ export default function StoreDetailScreen() {
       >
         <View style={s.heroContainer}>
           {/* الغلاف العلوي */}
-          <View style={[s.bannerWrap, { height: 240 }]}>
+          <View style={[s.bannerWrap, { height: 240, backgroundColor: colors.surface }]}>
             {store.banner_url ? (
-              <Image source={{ uri: store.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
+              <Image source={{ uri: store.banner_url }} style={StyleSheet.absoluteFill} contentFit="contain" />
             ) : (
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.primary }]} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surface }]} />
             )}
-            <LinearGradient colors={['rgba(0,0,0,0.5)', 'transparent', 'rgba(0,0,0,0.1)']} style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={['rgba(0,0,0,0.4)', 'transparent', 'transparent']} style={StyleSheet.absoluteFill} />
             <Pressable style={[s.fabBtn, { top: insets.top + 10, right: isRTL ? 16 : undefined, left: isRTL ? undefined : 16 }]} onPress={() => router.back()}>
               <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={26} color="#fff" />
             </Pressable>
@@ -457,13 +457,13 @@ export default function StoreDetailScreen() {
           <View style={s.overlapWrapper}>
             {/* شارة ساعات العمل (يمين) */}
             <View style={[s.sideBadge, { right: 16 }]}>
-              <View style={[s.pill, { backgroundColor: '#BE123C' }]}>
-                <Text style={s.pillText}>{hoursLabel || '01:00 - 10:30'}</Text>
-                <MaterialIcons name="access-time" size={12} color="#fff" style={{ marginLeft: 4 }} />
+              <View style={[s.modernPill, { borderColor: colors.primary }]}>
+                <MaterialIcons name="access-time" size={14} color={colors.primary} />
+                <Text style={[s.modernPillText, { color: colors.primary, marginLeft: 4 }]}>{hoursLabel || '01:00 - 10:30'}</Text>
               </View>
             </View>
 
-            {/* الشعار في المنتصف (بدون المربعات القديمة) */}
+            {/* الشعار في المنتصف */}
             <View style={s.logoWrap}>
               {store.logo_url ? (
                 <Image source={{ uri: store.logo_url }} style={s.mainLogo} contentFit="cover" />
@@ -474,8 +474,11 @@ export default function StoreDetailScreen() {
 
             {/* شارة حالة المتجر (يسار) */}
             <View style={[s.sideBadge, { left: 16 }]}>
-              <View style={[s.pill, { backgroundColor: isOpen ? '#84CC16' : '#9CA3AF' }]}>
-                <Text style={s.pillText}>{isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}</Text>
+              <View style={[s.modernPill, { borderColor: isOpen ? '#16A34A' : colors.textMuted }]}>
+                <View style={[s.statusDot, { backgroundColor: isOpen ? '#16A34A' : colors.textMuted }]} />
+                <Text style={[s.modernPillText, { color: isOpen ? '#16A34A' : colors.textMuted, marginLeft: 4 }]}>
+                  {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+                </Text>
               </View>
             </View>
           </View>
@@ -490,7 +493,7 @@ export default function StoreDetailScreen() {
 
             <View style={[s.actionsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
               {/* زر المشاركة */}
-              <Pressable style={s.shareCircle} onPress={handleShare}>
+              <Pressable style={[s.shareCircle, { backgroundColor: colors.primary, shadowColor: colors.primary }]} onPress={handleShare}>
                 <MaterialIcons name="share" size={20} color="#fff" />
               </Pressable>
 
@@ -768,8 +771,15 @@ const s = StyleSheet.create({
   bannerWrap: { width: '100%', position: 'relative' },
   fabBtn: { position: 'absolute', zIndex: 10, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   
-  overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -40, zIndex: 10 },
-  sideBadge: { position: 'absolute', top: 24, alignItems: 'center' },
+  overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -50, zIndex: 10 },
+  sideBadge: { position: 'absolute', top: 50, alignItems: 'center' },
+  modernPill: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2
+  },
+  modernPillText: { fontSize: 12, fontWeight: '800' },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
   pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 8 },
   pillText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   
