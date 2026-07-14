@@ -763,6 +763,12 @@ export function checkStoreIsOpen(store: Pick<Store, 'opening_time' | 'closing_ti
 
 // ── Fetch up to 15 featured stores (shuffled client-side) ───────────────────
 export async function fetchFeaturedStores(): Promise<{ data: Store[]; error: string | null }> {
+  const USE_DUMMY_DATA = true; // ← أضف هذا
+
+  if (USE_DUMMY_DATA) {
+    return { data: DUMMY_STORES.filter(s => s.is_featured), error: null };
+  }
+
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('stores')
@@ -772,7 +778,6 @@ export async function fetchFeaturedStores(): Promise<{ data: Store[]; error: str
     .order('position', { ascending: true })
     .limit(15);
   if (error) return { data: [], error: error.message };
-  // Fisher-Yates shuffle on the client
   const arr = (data ?? []) as Store[];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
