@@ -376,9 +376,9 @@ function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
 function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featuredIds = new Set(), colors }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
   const [showAll, setShowAll] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const hasMore = stores.length > 4;
 
-  // ترتيب المتاجر بحيث المميزة أولاً
   const sortedStores = useMemo(() => {
     const featuredIdsSet = featuredIds ?? new Set();
     const featured = stores.filter((s: any) => featuredIdsSet.has(s.id));
@@ -386,12 +386,17 @@ function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featur
     return [...featured, ...others];
   }, [stores, featuredIds]);
 
-  // عرض 4 متاجر كحد أقصى في البداية
   const finalStores = showAll ? sortedStores : sortedStores.slice(0, 4);
 
-  // حساب عرض البطاقة (تقريباً 23% من الشاشة = 4 بطاقات)
-const { width } = Dimensions.get('window');
-const cardWidth = (width - 16 * 2 - 12 * 3) / 4; // padding 16, gap 12 بين 4 بطاقات
+  const { width } = Dimensions.get('window');
+  const cardWidth = (width - 16 * 2 - 12 * 3) / 4;
+
+  const onScroll = (event: any) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / (cardWidth + 12));
+    setCurrentIndex(index);
+  };
+
   return (
     <View style={s.categoryContainer}>
       <View style={[s.catHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -417,17 +422,23 @@ const cardWidth = (width - 16 * 2 - 12 * 3) / 4; // padding 16, gap 12 بين 4 
             isAr={isAr}
             isFeatured={featuredIds.has(item.id)}
             onPress={() => onStorePress(item.id)}
+            width={cardWidth}
           />
         )}
         showsHorizontalScrollIndicator={true}
-        contentContainerStyle={[s.catGridHorizontal, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          gap: 12,
+          flexDirection: isRTL ? 'row-reverse' : 'row',
+        }}
         snapToInterval={cardWidth + 12}
         decelerationRate="fast"
         initialNumToRender={4}
         maxToRenderPerBatch={4}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       />
 
-      {/* ── نقاط ترقيم (Pagination Dots) ── */}
       {finalStores.length > 1 && !showAll && (
         <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8 }}>
           {finalStores.map((_, idx) => (
@@ -437,8 +448,8 @@ const cardWidth = (width - 16 * 2 - 12 * 3) / 4; // padding 16, gap 12 بين 4 
                 width: 8,
                 height: 8,
                 borderRadius: 4,
-                backgroundColor: idx === 0 ? colors.primary : colors.border,
-                opacity: idx === 0 ? 1 : 0.4,
+                backgroundColor: idx === currentIndex ? colors.primary : colors.border,
+                opacity: idx === currentIndex ? 1 : 0.4,
               }}
             />
           ))}
@@ -447,7 +458,6 @@ const cardWidth = (width - 16 * 2 - 12 * 3) / 4; // padding 16, gap 12 بين 4 
     </View>
   );
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. REGISTER CTA BANNER
 // ─────────────────────────────────────────────────────────────────────────────
@@ -481,12 +491,12 @@ function RegisterStoreCTA({ isAr, isRTL, onPress }: {
   );
 }
 
-function StoreGridCard({ store, rating, isAr, isFeatured, onPress }: any) {
+function StoreGridCard({ store, rating, isAr, isFeatured, onPress, width }: any) {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
   
   return (
-    <Pressable style={[s.gridCard, isFeatured && s.gridCardFeatured]} onPress={onPress}>
+    <Pressable style={[s.gridCard, isFeatured && s.gridCardFeatured, { width }]} onPress={onPress}>
       {isFeatured && (
         <View style={s.featuredBadge}>
           <MaterialIcons name="stars" size={10} color="#FFD700" />
@@ -1016,11 +1026,20 @@ featuredBadgeText: {
   catTitle: { fontSize: 20, fontWeight: '900', marginBottom: 12 },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   gridCard: {
-    width: '48%', backgroundColor: '#fff', borderRadius: 16,
-    padding: 12, marginBottom: 16, alignItems: 'center',
-    borderWidth: 1, borderColor: '#F3F4F6',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
+  // width: '48%',  // ← علقها أو احذفها
+  backgroundColor: '#fff',
+  borderRadius: 16,
+  padding: 12,
+  marginBottom: 16,
+  alignItems: 'center',
+  borderWidth: 1,
+  borderColor: '#F3F4F6',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.05,
+  shadowRadius: 4,
+  elevation: 2,
+},
   logoWrap: { width: 70, height: 70, borderRadius: 35, overflow: 'hidden', marginBottom: 8, backgroundColor: '#F9FAFB' },
   logoImg: { width: '100%', height: '100%' },
   storeName: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
