@@ -389,10 +389,9 @@ function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featur
   // عرض 4 متاجر كحد أقصى في البداية
   const finalStores = showAll ? sortedStores : sortedStores.slice(0, 4);
 
-  // حساب عرض البطاقة (تقريباً 48% من الشاشة)
-  const { width } = Dimensions.get('window');
-  const cardWidth = (width - 16 * 2 - 12) / 2; // padding 16, gap 12
-
+  // حساب عرض البطاقة (تقريباً 23% من الشاشة = 4 بطاقات)
+const { width } = Dimensions.get('window');
+const cardWidth = (width - 16 * 2 - 12 * 3) / 4; // padding 16, gap 12 بين 4 بطاقات
   return (
     <View style={s.categoryContainer}>
       <View style={[s.catHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
