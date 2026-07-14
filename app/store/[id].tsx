@@ -893,12 +893,12 @@ whatsappBtnText: {
   fabBtn: { position: 'absolute', zIndex: 10, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   
   overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -50, zIndex: 10 },
-  sideBadge: { position: 'absolute', top: 50, alignItems: 'center' },
-  modernPill: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff',
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2
-  },
+sideBadge: { position: 'absolute', top: 25, alignItems: 'center' }, // ← هون التغيير
+modernPill: {
+  flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff',
+  paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5,
+  shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2
+},
   modernPillText: { fontSize: 12, fontWeight: '800' },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 8 },
