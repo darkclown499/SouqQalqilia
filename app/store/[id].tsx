@@ -596,10 +596,9 @@ export default function StoreDetailScreen() {
            {storeDesc ? (
               <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
             ) : null}
-          </View> {/* closes storeDetails */} 
-        </View> {/* closes overlapWrapper */} 
-      </View> {/* closes bannerWrap */} 
-    </View> {/* closes heroContainer */} 
+          </View>{/* closes headerOverlay */}
+        </View>{/* closes bannerWrap */}
+      </View>{/* closes heroContainer */}
 
     {/* ── PRODUCTS ── */}
     {products.length === 0 ? (
