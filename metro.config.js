@@ -11,8 +11,6 @@ config.resolver = {
     if (platform === 'web') {
       const shimModules = [
         'expo-constants',
-        'expo-splash-screen',
-        'expo-modules-core',
         'expo-notifications',
       ];
 
