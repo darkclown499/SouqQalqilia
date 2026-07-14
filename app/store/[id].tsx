@@ -20,6 +20,7 @@ import { checkStoreIsOpen } from '@/services/storesService';
 import { Spacing, FontSize, Radius } from '@/constants/theme';
 import { Dimensions } from 'react-native';
 import { shortenUrl } from '@/utils/shortenUrl';
+import { getLocalCategories, LocalCategory } from '@/services/localCategoriesService';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const BANNER_H = 240;
@@ -236,6 +237,7 @@ export default function StoreDetailScreen() {
   const { ids: favoriteIds, toggle: toggleFav } = useFavoriteIds();
   const isFavorited = favoriteIds.has(id ?? '');
   const [shareLoading, setShareLoading] = useState(false);
+  const [customCategories, setCustomCategories] = useState<LocalCategory[]>([]);
 
   // ── Cart state ──────────────────────────────────────────────────────────────
   const [cart, setCart] = useState<Record<string, CartItem>>({});
@@ -252,58 +254,80 @@ export default function StoreDetailScreen() {
 
   // ── Group products by category_label_ar ──────────────────────────────────
   const groupedProducts = useMemo(() => {
-    const map = new Map<string, StoreProduct[]>();
-    const uncategorized: StoreProduct[] = [];
+  const map = new Map<string, StoreProduct[]>();
+  
+  // 1. المنتجات حسب التصنيفات المخصصة
+  for (const cat of customCategories) {
+    const catName = isAr ? cat.name_ar : cat.name;
+    const items = products.filter(p => p.custom_category_id === cat.id);
+    if (items.length > 0) {
+      map.set(catName, items);
+    }
+  }
 
-    for (const p of products) {
-      const label = isAr
-        ? (p.category_label_ar || p.category_label || '')
-        : (p.category_label || p.category_label_ar || '');
-      if (label) {
-        if (!map.has(label)) map.set(label, []);
+  // 2. المنتجات التي لها تصنيف قديم (category_label) ولكن ليست في customCategories
+  for (const p of products) {
+    if (p.custom_category_id) continue;
+    const label = isAr
+      ? (p.category_label_ar || p.category_label || '')
+      : (p.category_label || p.category_label_ar || '');
+    if (label) {
+      if (!map.has(label)) {
+        map.set(label, []);
+      }
+      // تجنب التكرار
+      const existingItems = map.get(label) || [];
+      if (!existingItems.some(item => item.id === p.id)) {
         map.get(label)!.push(p);
-      } else {
-        uncategorized.push(p);
       }
     }
-    const result: { label: string; items: StoreProduct[] }[] = [];
-    map.forEach((items, label) => result.push({ label, items }));
-    if (uncategorized.length > 0) {
-      result.push({ label: isAr ? 'منتجات أخرى' : 'Other Products', items: uncategorized });
-    }
-    return result;
-  }, [products, isAr]);
+  }
+
+  // 3. المنتجات بدون تصنيف
+  const uncategorized = products.filter(p => 
+    !p.custom_category_id && 
+    !(isAr ? (p.category_label_ar || p.category_label || '') : (p.category_label || p.category_label_ar || ''))
+  );
+  
+  const result: { label: string; items: StoreProduct[] }[] = [];
+  map.forEach((items, label) => result.push({ label, items }));
+  if (uncategorized.length > 0) {
+    result.push({ label: isAr ? 'منتجات أخرى' : 'Other Products', items: uncategorized });
+  }
+  return result;
+}, [products, customCategories, isAr]);
 
   // ── Load data ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!id) {
-      // No id means invalid/malformed deep link — stop loading immediately
-      setLoading(false);
-      return;
-    }
-    getSupabaseClient()
-      .from('stores').select('views_count').eq('id', id).single()
-      .then(({ data }) => {
-        if (data) {
-          getSupabaseClient().from('stores')
-            .update({ views_count: (data.views_count ?? 0) + 1 })
-            .eq('id', id).then(() => {}).catch(() => {});
-        }
-      }).catch(() => {});
-
-    Promise.all([
-      getSupabaseClient().from('stores').select('*').eq('id', id).single(),
-      fetchStoreProducts(id),
-      fetchStoreRating(id),
-    ]).then(([storeRes, productsRes, ratingRes]) => {
-      if (storeRes.data) {
-        setStore(storeRes.data);
-        setIsOpen(checkStoreIsOpen(storeRes.data));
+  if (!id) {
+    setLoading(false);
+    return;
+  }
+  getSupabaseClient()
+    .from('stores').select('views_count').eq('id', id).single()
+    .then(({ data }) => {
+      if (data) {
+        getSupabaseClient().from('stores')
+          .update({ views_count: (data.views_count ?? 0) + 1 })
+          .eq('id', id).then(() => {}).catch(() => {});
       }
-      setProducts(productsRes.data);
-      setRating(ratingRes);
-    }).finally(() => setLoading(false));
-  }, [id]);
+    }).catch(() => {});
+
+  Promise.all([
+    getSupabaseClient().from('stores').select('*').eq('id', id).single(),
+    fetchStoreProducts(id),
+    fetchStoreRating(id),
+    getLocalCategories(id), // ← أضف هذا
+  ]).then(([storeRes, productsRes, ratingRes, categoriesRes]) => {
+    if (storeRes.data) {
+      setStore(storeRes.data);
+      setIsOpen(checkStoreIsOpen(storeRes.data));
+    }
+    setProducts(productsRes.data);
+    setRating(ratingRes);
+    setCustomCategories(categoriesRes); // ← أضف هذا
+  }).finally(() => setLoading(false));
+}, [id]);
 
   useEffect(() => {
     if (!store) return;

@@ -17,6 +17,17 @@ import {
 } from '@/services/storeCategoriesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+import {
+  getLocalCategories,
+  addLocalCategory,
+  deleteLocalCategory,
+  LocalCategory,
+} from '@/services/localCategoriesService';
+
+const [customCategories, setCustomCategories] = useState<LocalCategory[]>([]);
+const [showCategoryForm, setShowCategoryForm] = useState(false);
+const [newCategoryName, setNewCategoryName] = useState('');
+const [newCategoryNameAr, setNewCategoryNameAr] = useState('');
 
 // ── Add/Edit Product Modal ────────────────────────────────────────────────────
 interface ProductForm {
@@ -58,12 +69,14 @@ const DEFAULT_PRODUCT_CATEGORIES = ['قسم عام', 'عروض', 'منتجات �
 
 function ProductModal({
   visible, onClose, onSave, storeId, editProduct, storeCategoryNameAr, isAr, isRTL, colors,
+  customCategories,
 }: {
   visible: boolean; onClose: () => void;
   onSave: (product: StoreProduct) => void;
   storeId: string;
   editProduct: StoreProduct | null;
   storeCategoryNameAr: string;
+  customCategories: LocalCategory[];
   isAr: boolean; isRTL: boolean; colors: any;
 }) {
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
@@ -125,21 +138,20 @@ function ProductModal({
     setSaving(true);
     try {
       const supabase = getSupabaseClient();
-      const payload = {
-        store_id: storeId,
-        // Use Arabic as canonical — English mirrors it for DB compatibility
-        name: form.name_ar.trim(),
-        name_ar: form.name_ar.trim(),
-        description: form.description_ar.trim(),
-        description_ar: form.description_ar.trim(),
-        price: parseFloat(form.price) || 0,
-        category_label: form.category_label_ar,
-        category_label_ar: form.category_label_ar,
-        image_url: form.image_url,
-        is_available: form.is_available,
-        position: parseInt(form.position) || 0,
-      };
-
+     const payload = {
+  store_id: storeId,
+  name: form.name_ar.trim(),
+  name_ar: form.name_ar.trim(),
+  description: form.description_ar.trim(),
+  description_ar: form.description_ar.trim(),
+  price: parseFloat(form.price) || 0,
+  category_label: form.category_label_ar,
+  category_label_ar: form.category_label_ar,
+  custom_category_id: customCategories.find(c => (isAr ? c.name_ar : c.name) === form.category_label_ar)?.id || null, // ← أضف هذا
+  image_url: form.image_url,
+  is_available: form.is_available,
+  position: parseInt(form.position) || 0,
+};
       let result;
       if (editProduct) {
         const { data, error } = await supabase
@@ -253,27 +265,34 @@ function ProductModal({
                   {catError ? 'التصنيف مطلوب *' : 'تصنيف المنتج *'}
                 </Text>
                 <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={[pm.chipsScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-                >
-                  {chips.map(chip => {
-                    const selected = form.category_label_ar === chip;
-                    return (
-                      <Pressable
-                        key={chip}
-                        style={[pm.chip, {
-                          backgroundColor: selected ? colors.primary : colors.background,
-                          borderColor: selected ? colors.primary : (catError ? '#EF4444' : colors.border),
-                        }]}
-                        onPress={() => { setForm(f => ({ ...f, category_label_ar: chip })); setCatError(false); }}
-                      >
-                        {selected ? <MaterialIcons name="check" size={13} color="#fff" /> : null}
-                        <Text style={[pm.chipText, { color: selected ? '#fff' : colors.textPrimary }]}>{chip}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={[pm.chipsScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+>
+  {customCategories.length === 0 ? (
+    <Text style={{ color: colors.textMuted, fontSize: FontSize.sm, paddingVertical: 8 }}>
+      {isAr ? '⚠️ لا توجد تصنيفات. أضف تصنيفاً أولاً في لوحة التحكم.' : '⚠️ No categories. Add one in dashboard first.'}
+    </Text>
+  ) : (
+    customCategories.map(cat => {
+      const catName = isAr ? cat.name_ar : cat.name;
+      const selected = form.category_label_ar === catName;
+      return (
+        <Pressable
+          key={cat.id}
+          style={[pm.chip, {
+            backgroundColor: selected ? colors.primary : colors.background,
+            borderColor: selected ? colors.primary : (catError ? '#EF4444' : colors.border),
+          }]}
+          onPress={() => { setForm(f => ({ ...f, category_label_ar: catName })); setCatError(false); }}
+        >
+          {selected ? <MaterialIcons name="check" size={13} color="#fff" /> : null}
+          <Text style={[pm.chipText, { color: selected ? '#fff' : colors.textPrimary }]}>{catName}</Text>
+        </Pressable>
+      );
+    })
+  )}
+</ScrollView>
               </View>
 
               {/* ── Price ── */}
@@ -462,6 +481,57 @@ export default function StoreDashboardScreen() {
   const textAlign = isRTL ? 'right' as const : 'left' as const;
   const rtl = isRTL ? 'row-reverse' as const : 'row' as const;
 
+    // ── Custom categories state ──
+  const [customCategories, setCustomCategories] = useState<LocalCategory[]>([]);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryNameAr, setNewCategoryNameAr] = useState('');
+
+  // ── Add custom category ──
+  const handleAddCategory = async () => {
+    if (!store?.id || !newCategoryName.trim() || !newCategoryNameAr.trim()) {
+      showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'الاسم مطلوب' : 'Name is required');
+      return;
+    }
+    const newCat = await addLocalCategory(
+      store.id,
+      newCategoryName.trim(),
+      newCategoryNameAr.trim(),
+      'category',
+      '#6B7280'
+    );
+    if (newCat) {
+      setCustomCategories([...customCategories, newCat]);
+      setNewCategoryName('');
+      setNewCategoryNameAr('');
+      setShowCategoryForm(false);
+      showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم إضافة التصنيف' : 'Category added');
+    }
+  };
+
+  // ── Delete custom category ──
+  const handleDeleteCategory = (id: string) => {
+    showAlert(
+      isAr ? 'تأكيد الحذف' : 'Confirm Delete',
+      isAr ? 'هل تريد حذف هذا التصنيف؟' : 'Delete this category?',
+      [
+        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isAr ? 'حذف' : 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (store?.id) {
+              const success = await deleteLocalCategory(store.id, id);
+              if (success) {
+                setCustomCategories(customCategories.filter(c => c.id !== id));
+              }
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const loadData = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -489,7 +559,11 @@ export default function StoreDashboardScreen() {
     } finally { setLoading(false); }
   }, [user]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+  if (store?.id) {
+    getLocalCategories(store.id).then(setCustomCategories);
+  }
+}, [store?.id]);
 
   const handleDeleteProduct = useCallback((product: StoreProduct) => {
     showAlert(
@@ -647,6 +721,64 @@ export default function StoreDashboardScreen() {
       {/* ── Overview tab ── */}
       {activeTab === 'overview' ? (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.tabContent}>
+        {/* ── إدارة التصنيفات المخصصة ── */}
+<View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: Spacing.md }]}>
+  <View style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center' }}>
+    <Text style={[s.catBadgeText, { color: colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' }]}>
+      {isAr ? 'تصنيفات المتجر المخصصة' : 'Custom Categories'}
+    </Text>
+    <Pressable onPress={() => setShowCategoryForm(!showCategoryForm)} style={{ flexDirection: rtl, alignItems: 'center', gap: 4 }}>
+      <MaterialIcons name={showCategoryForm ? 'remove-circle-outline' : 'add-circle-outline'} size={22} color={colors.primary} />
+      <Text style={{ color: colors.primary, fontSize: FontSize.sm, fontWeight: '600' }}>
+        {showCategoryForm ? (isAr ? 'إلغاء' : 'Cancel') : (isAr ? 'إضافة' : 'Add')}
+      </Text>
+    </Pressable>
+  </View>
+
+  {showCategoryForm && (
+    <View style={{ gap: 8, marginTop: 8 }}>
+      <TextInput
+        style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
+        placeholder={isAr ? 'الاسم (عربي)' : 'Name (Arabic)'}
+        placeholderTextColor={colors.textMuted}
+        value={newCategoryNameAr}
+        onChangeText={setNewCategoryNameAr}
+      />
+      <TextInput
+        style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
+        placeholder={isAr ? 'الاسم (إنجليزي)' : 'Name (English)'}
+        placeholderTextColor={colors.textMuted}
+        value={newCategoryName}
+        onChangeText={setNewCategoryName}
+      />
+      <Pressable
+        style={[pm.saveBtn, { backgroundColor: colors.primary, paddingVertical: 10, borderRadius: Radius.lg }]}
+        onPress={handleAddCategory}
+      >
+        <Text style={{ color: '#fff', fontWeight: '700' }}>{isAr ? 'حفظ التصنيف' : 'Save Category'}</Text>
+      </Pressable>
+    </View>
+  )}
+
+  {customCategories.length === 0 ? (
+    <Text style={{ color: colors.textMuted, fontSize: FontSize.sm, marginTop: 8, textAlign }}>
+      {isAr ? 'لا توجد تصنيفات مخصصة بعد' : 'No custom categories yet'}
+    </Text>
+  ) : (
+    <View style={{ marginTop: 8, gap: 6 }}>
+      {customCategories.map(cat => (
+        <View key={cat.id} style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
+          <Text style={{ color: colors.textPrimary, fontSize: FontSize.sm }}>
+            {isAr ? cat.name_ar : cat.name}
+          </Text>
+          <Pressable onPress={() => handleDeleteCategory(cat.id)} hitSlop={8}>
+            <MaterialIcons name="delete-outline" size={18} color="#EF4444" />
+          </Pressable>
+        </View>
+      ))}
+    </View>
+  )}
+</View>
           {/* Store info card */}
           <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {/* Store category badge */}
@@ -771,6 +903,7 @@ export default function StoreDashboardScreen() {
           storeId={store.id}
           editProduct={editingProduct}
           storeCategoryNameAr={storeCategory?.name_ar || storeCategory?.name || ''}
+          customCategories={customCategories}
           isAr={isAr}
           isRTL={isRTL}
           colors={colors}
