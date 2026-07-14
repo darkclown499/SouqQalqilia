@@ -24,7 +24,6 @@ const _initCardW = (_initW - _initHPad * 2 - _initCardGap) / 2;
 const _initImgH = Math.max(130, Math.min(Math.round(_initCardW * 0.75), 200));
 const _initCardInfoH = 92;
 const _initRowH = _initImgH + _initCardInfoH + _initCardGap;
-let _interstitialsCache: InterstitialAd[] | null = null;
 
 const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
 const MAX_RECENTLY_VIEWED = 6;
@@ -44,7 +43,10 @@ async function loadSearchHistory(): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
     return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  } catch (e) {
+    console.warn('loadSearchHistory error:', e);
+    return [];
+  }
 }
 
 async function saveSearchHistory(query: string, current: string[]): Promise<string[]> {
@@ -52,11 +54,18 @@ async function saveSearchHistory(query: string, current: string[]): Promise<stri
     const deduped = [query, ...current.filter(q => q !== query)].slice(0, MAX_SEARCH_HISTORY);
     await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(deduped));
     return deduped;
-  } catch { return current; }
+  } catch (e) {
+    console.warn('saveSearchHistory error:', e);
+    return current;
+  }
 }
 
 async function clearSearchHistory(): Promise<void> {
-  try { await AsyncStorage.removeItem(SEARCH_HISTORY_KEY); } catch { /* ignore */ }
+  try {
+    await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
+  } catch (e) {
+    console.warn('clearSearchHistory error:', e);
+  }
 }
 
 async function addToRecentlyViewed(ad: Ad): Promise<void> {
@@ -65,7 +74,9 @@ async function addToRecentlyViewed(ad: Ad): Promise<void> {
     const existing: Ad[] = raw ? JSON.parse(raw) : [];
     const updated = [ad, ...existing.filter(a => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED);
     await AsyncStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
-  } catch { /* ignore */ }
+  } catch (e) {
+    console.warn('addToRecentlyViewed error:', e);
+  }
 }
 
 async function removeFromRecentlyViewed(adId: string): Promise<void> {
@@ -74,14 +85,19 @@ async function removeFromRecentlyViewed(adId: string): Promise<void> {
     const existing: Ad[] = raw ? JSON.parse(raw) : [];
     const updated = existing.filter(a => a.id !== adId);
     await AsyncStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
-  } catch { /* ignore */ }
+  } catch (e) {
+    console.warn('removeFromRecentlyViewed error:', e);
+  }
 }
 
 async function loadRecentlyViewed(): Promise<Ad[]> {
   try {
     const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
     return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  } catch (e) {
+    console.warn('loadRecentlyViewed error:', e);
+    return [];
+  }
 }
 
 import { useRouter } from 'expo-router';
@@ -111,15 +127,29 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   const flatListRef = React.useRef<FlatList>(null);
   const scrollIndex = React.useRef(0);
   const shimmer = React.useRef(new Animated.Value(0.35)).current;
+  const isMounted = React.useRef(true);
+
+  React.useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   React.useEffect(() => {
     setLoading(true);
-    fetchFeaturedStores().then(({ data }) => {
-      setStores(shuffleArray(data));
-      setLoading(false);
-    }).catch(() => {
-      setLoading(false);
-    });
+    const controller = new AbortController();
+    fetchFeaturedStores({ signal: controller.signal })
+      .then(({ data }) => {
+        if (isMounted.current) {
+          setStores(shuffleArray(data));
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        if (isMounted.current) setLoading(false);
+        console.warn('fetchFeaturedStores error:', err);
+      });
+    return () => controller.abort();
   }, []);
 
   React.useEffect(() => {
@@ -148,6 +178,102 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
 
   if (!loading && stores.length === 0) return null;
 
+  const renderStoreItem = useCallback(({ item: store }: { item: StoreType }) => {
+    const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
+    const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
+    const statusColor = isOpen ? '#10B981' : '#EF4444';
+
+    return (
+      <Pressable
+        onPress={() => {
+          if (Platform.OS !== 'web') {
+            try {
+              const H = require('expo-haptics');
+              H.impactAsync(H.ImpactFeedbackStyle.Light);
+            } catch (_) {}
+          }
+          onPress(store.id);
+        }}
+        style={({ pressed }) => ({
+          width: 150, height: 200, borderRadius: 18,
+          backgroundColor: colors.surface,
+          shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.16, shadowRadius: 16, elevation: 6,
+          transform: [{ scale: pressed ? 0.96 : 1 }],
+        })}
+      >
+        <View style={{
+          flex: 1, borderRadius: 18, overflow: 'hidden',
+          borderWidth: 1.4, borderColor: 'rgba(245,158,11,0.3)',
+        }}>
+          <Image
+            source={{ uri: bannerImage }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+          />
+
+          <LinearGradient
+            colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.78)']}
+            locations={[0, 0.55, 1]}
+            style={StyleSheet.absoluteFillObject}
+          />
+
+          <LinearGradient
+            colors={['#FFD966', '#F59E0B']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              position: 'absolute', top: 12,
+              ...(isRTL ? { left: 12 } : { right: 12 }),
+              borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3,
+              flexDirection: 'row', alignItems: 'center', gap: 2, zIndex: 2,
+              shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 4, elevation: 3,
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 8 }}>★</Text>
+            <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.3 }}>VIP</Text>
+          </LinearGradient>
+
+          <View style={{
+            position: 'absolute', bottom: 10,
+            ...(isRTL ? { right: 10 } : { left: 10 }),
+            flexDirection: 'row', alignItems: 'center', gap: 4,
+            backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 20,
+            paddingHorizontal: 7, paddingVertical: 3, zIndex: 2,
+          }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusColor }} />
+            <Text style={{ color: '#fff', fontSize: 8, fontWeight: '700' }}>
+              {isAr ? (isOpen ? 'مفتوح' : 'مغلق') : (isOpen ? 'Open' : 'Closed')}
+            </Text>
+          </View>
+
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12 }}>
+            <View style={{
+              width: 74, height: 74, borderRadius: 37,
+              backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
+              shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 8,
+            }}>
+              <View style={{
+                width: 68, height: 68, borderRadius: 34,
+                borderWidth: 2, borderColor: statusColor,
+                overflow: 'hidden', backgroundColor: '#fff',
+              }}>
+                <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+              </View>
+            </View>
+
+            <Text style={{
+              color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center',
+              marginTop: 10,
+              textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
+            }} numberOfLines={1}>
+              {isAr ? (store.name_ar || store.name) : store.name}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  }, [colors, isAr, isRTL, onPress]);
+
   return (
     <View style={{ marginBottom: 28, marginTop: 8 }}>
       <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', gap: 8, marginBottom: 16, paddingHorizontal: 16 }}>
@@ -173,96 +299,8 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
           snapToAlignment="start"
           decelerationRate="fast"
           contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}
-          renderItem={({ item: store }) => {
-            const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
-            const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
-            const statusColor = isOpen ? '#10B981' : '#EF4444';
-
-            return (
-              <Pressable
-                onPress={() => {
-                  if (Platform.OS !== 'web') { try { const H = require('expo-haptics'); H.impactAsync(H.ImpactFeedbackStyle.Light); } catch (_) {} }
-                  onPress(store.id);
-                }}
-                style={({ pressed }) => ({
-                  width: 150, height: 200, borderRadius: 18,
-                  backgroundColor: colors.surface,
-                  shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.16, shadowRadius: 16, elevation: 6,
-                  transform: [{ scale: pressed ? 0.96 : 1 }],
-                })}
-              >
-                <View style={{
-                  flex: 1, borderRadius: 18, overflow: 'hidden',
-                  borderWidth: 1.4, borderColor: 'rgba(245,158,11,0.3)',
-                }}>
-                  <Image
-                    source={{ uri: bannerImage }}
-                    style={StyleSheet.absoluteFillObject}
-                    contentFit="cover"
-                  />
-
-                  <LinearGradient
-                    colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.78)']}
-                    locations={[0, 0.55, 1]}
-                    style={StyleSheet.absoluteFillObject}
-                  />
-
-                  <LinearGradient
-                    colors={['#FFD966', '#F59E0B']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={{
-                      position: 'absolute', top: 12,
-                      ...(isRTL ? { left: 12 } : { right: 12 }),
-                      borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3,
-                      flexDirection: 'row', alignItems: 'center', gap: 2, zIndex: 2,
-                      shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 4, elevation: 3,
-                    }}
-                  >
-                    <Text style={{ color: '#fff', fontSize: 8 }}>★</Text>
-                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.3 }}>VIP</Text>
-                  </LinearGradient>
-
-                  <View style={{
-                    position: 'absolute', bottom: 10,
-                    ...(isRTL ? { right: 10 } : { left: 10 }),
-                    flexDirection: 'row', alignItems: 'center', gap: 4,
-                    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 20,
-                    paddingHorizontal: 7, paddingVertical: 3, zIndex: 2,
-                  }}>
-                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusColor }} />
-                    <Text style={{ color: '#fff', fontSize: 8, fontWeight: '700' }}>
-                      {isAr ? (isOpen ? 'مفتوح' : 'مغلق') : (isOpen ? 'Open' : 'Closed')}
-                    </Text>
-                  </View>
-
-                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12 }}>
-                    <View style={{
-                      width: 74, height: 74, borderRadius: 37,
-                      backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
-                      shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 8,
-                    }}>
-                      <View style={{
-                        width: 68, height: 68, borderRadius: 34,
-                        borderWidth: 2, borderColor: statusColor,
-                        overflow: 'hidden', backgroundColor: '#fff',
-                      }}>
-                        <Image source={{ uri: store.logo_url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-                      </View>
-                    </View>
-
-                    <Text style={{
-                      color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center',
-                      marginTop: 10,
-                      textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
-                    }} numberOfLines={1}>
-                      {isAr ? (store.name_ar || store.name) : store.name}
-                    </Text>
-                  </View>
-                </View>
-              </Pressable>
-            );
-          }}
+          renderItem={renderStoreItem}
+          keyExtractor={(item) => item.id}
         />
       )}
     </View>
@@ -373,7 +411,7 @@ export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [recentlyViewed, setRecentlyViewed] = useState<Ad[]>([]);
   const [featuredIndex, setFeaturedIndex] = useState(0);
-  const [banners, setBanners] = useState<Banner[]>(() => getBannersCache('home') ?? []);
+  const [banners, setBanners] = useState<Banner[]>([]);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
 
   const [filterVisible, setFilterVisible] = useState(false);
@@ -386,11 +424,13 @@ export default function HomeScreen() {
   const [appliedCondition, setAppliedCondition] = useState<Condition>(null);
 
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
-  const [interstitials, setInterstitials] = useState<InterstitialAd[]>(_interstitialsCache ?? []);
+  const [interstitials, setInterstitials] = useState<InterstitialAd[]>([]);
   const [activeInterstitial, setActiveInterstitial] = useState<InterstitialAd | null>(null);
   const [interstitialVisible, setInterstitialVisible] = useState(false);
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   const [totalAdsCount, setTotalAdsCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [isApplyingFilter, setIsApplyingFilter] = useState(false);
 
   const [notifModalVisible, setNotifModalVisible] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState<Array<{
@@ -401,6 +441,9 @@ export default function HomeScreen() {
     createdAt: string;
   }>>([]);
   const [notifLoading, setNotifLoading] = useState(false);
+
+  // Request ID to handle race conditions for main data loading
+  const requestIdRef = useRef(0);
 
   const fetchUnreadMessages = useCallback(async () => {
     if (!user) return;
@@ -452,69 +495,110 @@ export default function HomeScreen() {
 
   const activeFilterCount = [appliedArea, appliedMaxPrice !== undefined ? '1' : null, appliedCondition].filter(Boolean).length;
   const isAr = language === 'ar';
+  const appTitle = useMemo(() => isAr ? 'سوق قلقيلية' : 'Souq Qalqilya', [isAr]);
 
+  // Online status
   useEffect(() => {
     NetInfo.fetch().then(s => setIsOnline(s.isConnected !== false));
     const unsub = NetInfo.addEventListener(s => setIsOnline(s.isConnected !== false));
     return unsub;
   }, []);
 
+  // Load recent and search history
   useEffect(() => {
     loadRecentlyViewed().then(setRecentlyViewed);
     loadSearchHistory().then(setSearchHistory);
   }, []);
 
+  // Count total ads
   useEffect(() => {
     getSupabaseClient()
       .from('ads')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'active')
       .then(({ count }) => { if (count !== null) setTotalAdsCount(count); })
-      .catch(() => {});
+      .catch((e) => console.warn('totalAdsCount error:', e));
   }, []);
 
+  // Blocked ids
   useEffect(() => {
-    if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
+    if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids))).catch(console.warn);
   }, [user?.id]);
 
   useEffect(() => {
     const unsub = subscribeToBlockChanges(() => {
-      if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
+      if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids))).catch(console.warn);
     });
     return unsub;
   }, [user?.id]);
 
+  // Main data loading with race condition prevention
   useEffect(() => {
+    const currentRequestId = ++requestIdRef.current;
+    setError(null);
     load({
       categoryId: selectedCategory ?? undefined,
       location: appliedArea ?? undefined,
       maxPrice: appliedMaxPrice,
       condition: appliedCondition ?? undefined,
       sortBy,
+    }).then(() => {
+      // Only clear error if this request is still the latest
+      if (currentRequestId === requestIdRef.current) {
+        setError(null);
+      }
+    }).catch((err) => {
+      if (currentRequestId === requestIdRef.current) {
+        setError(err.message || 'Failed to load listings');
+      }
     });
   }, [selectedCategory, sortBy, appliedArea, appliedMaxPrice, appliedCondition, load]);
 
+  // Banners
   useEffect(() => {
     const cached = getBannersCache('home');
     if (cached && cached.length > 0) {
       setBanners(cached);
       return;
     }
-    fetchActiveBanners('home').then(({ data }) => {
-      if (data.length > 0) {
-        const shuffled = shuffleArray(data);
-        setBannersCache(shuffled, 'home');
-        setBanners(shuffled);
-      }
-    });
+    const controller = new AbortController();
+    fetchActiveBanners('home', { signal: controller.signal })
+      .then(({ data }) => {
+        if (data.length > 0) {
+          const shuffled = shuffleArray(data);
+          setBannersCache(shuffled, 'home');
+          setBanners(shuffled);
+        }
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        console.warn('fetchActiveBanners error:', err);
+      });
+    return () => controller.abort();
   }, []);
 
+  // Auto-rotate banners
   useEffect(() => {
     if (banners.length <= 1) return;
     const timer = setInterval(() => setFeaturedIndex(i => (i + 1) % banners.length), 3500);
     return () => clearInterval(timer);
   }, [banners.length]);
 
+  // Fetch interstitials
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchActiveInterstitials({ signal: controller.signal })
+      .then(({ data }) => {
+        if (data.length > 0) setInterstitials(data);
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        console.warn('fetchActiveInterstitials error:', err);
+      });
+    return () => controller.abort();
+  }, []);
+
+  // Interstitial timer
   useEffect(() => {
     if (interstitials.length === 0 || interstitialShown.current) return;
     const check = setInterval(() => {
@@ -532,7 +616,6 @@ export default function HomeScreen() {
   }, [interstitials]);
 
   const displayName = user?.username || user?.email?.split('@')[0] || '';
-  const appTitle = isAr ? 'سوق قلقيلية' : 'Souq Qalqilya';
 
   const filteredAds = useMemo(() => ads.filter(ad => !blockedIds.has(ad.user_id)), [ads, blockedIds]);
   const feedRows = useMemo(() => buildFeedRows(filteredAds, numColumns), [filteredAds, numColumns]);
@@ -550,13 +633,14 @@ export default function HomeScreen() {
   }, [loadingMore, hasMore, selectedCategory, appliedArea, appliedMaxPrice, appliedCondition, sortBy, loadMore]);
 
   const handleRefresh = useCallback(() => {
+    setError(null);
     load({
       categoryId: selectedCategory ?? undefined,
       location: appliedArea ?? undefined,
       maxPrice: appliedMaxPrice,
       condition: appliedCondition ?? undefined,
       sortBy,
-    });
+    }).catch((err) => setError(err.message || 'Failed to refresh'));
   }, [load, selectedCategory, appliedArea, appliedMaxPrice, appliedCondition, sortBy]);
 
   const handleCategoryPress = useCallback((id: string | null) => {
@@ -572,10 +656,14 @@ export default function HomeScreen() {
 
   const handleApplyFilters = useCallback(() => {
     const parsedMax = draftMaxPrice.trim() ? parseFloat(draftMaxPrice) : undefined;
+    setIsApplyingFilter(true);
+    // Simulate applying (or we can just set states; the loading will be handled by the data effect)
     setAppliedArea(draftArea);
     setAppliedMaxPrice(isNaN(parsedMax as number) ? undefined : parsedMax);
     setAppliedCondition(draftCondition);
     setFilterVisible(false);
+    // Reset loading state after a short delay (actual load will happen via useEffect)
+    setTimeout(() => setIsApplyingFilter(false), 300);
   }, [draftMaxPrice, draftArea, draftCondition]);
 
   const handleClearFilters = useCallback(() => {
@@ -606,13 +694,26 @@ export default function HomeScreen() {
     try {
       await AsyncStorage.removeItem(RECENTLY_VIEWED_KEY);
       setRecentlyViewed([]);
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.warn('handleClearAllRecent error:', e);
+    }
   }, []);
 
   const handleSearchHistoryChipPress = useCallback((query: string) => {
     saveSearchHistory(query, searchHistory).then(setSearchHistory);
-    router.push({ pathname: '/search', params: { q: query } } as any);
-  }, [searchHistory, router]);
+    // Pass filters to search page
+    router.push({
+      pathname: '/search',
+      params: {
+        q: query,
+        category: selectedCategory || '',
+        location: appliedArea || '',
+        maxPrice: appliedMaxPrice?.toString() || '',
+        condition: appliedCondition || '',
+        sort: sortBy,
+      }
+    } as any);
+  }, [searchHistory, router, selectedCategory, appliedArea, appliedMaxPrice, appliedCondition, sortBy]);
 
   const handleClearSearchHistory = useCallback(async () => {
     await clearSearchHistory();
@@ -654,17 +755,27 @@ export default function HomeScreen() {
     router.push(`/store/${storeId}` as any);
   }, [router]);
 
-  const featuredStoresNode = (
+  const featuredStoresNode = useMemo(() => (
     <FeaturedStoresStrip
       isAr={isAr}
       isRTL={isRTL}
       colors={colors}
       onPress={handleFeaturedStorePress}
     />
-  );
+  ), [isAr, isRTL, colors, handleFeaturedStorePress]);
 
   const ListHeader = useMemo(() => (
     <>
+      {error ? (
+        <View style={[styles.errorBanner, { backgroundColor: colors.error + '20', borderColor: colors.error }]}>
+          <MaterialIcons name="error-outline" size={18} color={colors.error} />
+          <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+          <Pressable onPress={() => setError(null)} hitSlop={8}>
+            <MaterialIcons name="close" size={18} color={colors.error} />
+          </Pressable>
+        </View>
+      ) : null}
+
       {currentBanner ? (
         <Pressable
           style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md }]}
@@ -766,36 +877,38 @@ export default function HomeScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
-          contentContainerStyle={[styles.catContent, { flexDirection: 'row', paddingHorizontal: hPad }]}
+          contentContainerStyle={[
+            styles.catContent,
+            {
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              paddingHorizontal: hPad,
+            }
+          ]}
         >
-          <View style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}>
-            <Pressable
-              style={[styles.catChip, selectedCategory === null
-                ? { backgroundColor: colors.primary, borderColor: colors.primary }
-                : { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}
-              onPress={() => handleCategoryPress(null)}
-            >
-              <MaterialIcons name="apps" size={14} color={selectedCategory === null ? '#fff' : colors.textMuted} />
-              <Text style={[styles.catChipText, { color: selectedCategory === null ? '#fff' : colors.textSecondary, fontWeight: selectedCategory === null ? '700' : '500' }]}>{t.all}</Text>
-            </Pressable>
-          </View>
+          <Pressable
+            style={[styles.catChip, selectedCategory === null
+              ? { backgroundColor: colors.primary, borderColor: colors.primary }
+              : { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}
+            onPress={() => handleCategoryPress(null)}
+          >
+            <MaterialIcons name="apps" size={14} color={selectedCategory === null ? '#fff' : colors.textMuted} />
+            <Text style={[styles.catChipText, { color: selectedCategory === null ? '#fff' : colors.textSecondary, fontWeight: selectedCategory === null ? '700' : '500' }]}>{t.all}</Text>
+          </Pressable>
           {(isRTL ? [...categories].reverse() : categories).map(cat => {
             const isSelected = selectedCategory === cat.id;
             return (
-              <View key={cat.id} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}>
-                <Pressable
-                  style={[styles.catChip, isSelected
-                    ? { backgroundColor: cat.color, borderColor: cat.color }
-                    : { backgroundColor: cat.color + '12', borderColor: cat.color + '45' }]}
-                  onPress={() => handleCategoryPress(cat.id === selectedCategory ? null : cat.id)}
-                >
-                  <MaterialIcons name={cat.icon as any} size={14} color={isSelected ? '#fff' : cat.color} />
-                  <Text style={[styles.catChipText, { color: isSelected ? '#fff' : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>
-                    {getCategoryName(cat, language)}
-                  </Text>
-                </Pressable>
-              </View>
+              <Pressable
+                key={cat.id}
+                style={[styles.catChip, isSelected
+                  ? { backgroundColor: cat.color, borderColor: cat.color }
+                  : { backgroundColor: cat.color + '12', borderColor: cat.color + '45' }]}
+                onPress={() => handleCategoryPress(cat.id === selectedCategory ? null : cat.id)}
+              >
+                <MaterialIcons name={cat.icon as any} size={14} color={isSelected ? '#fff' : cat.color} />
+                <Text style={[styles.catChipText, { color: isSelected ? '#fff' : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>
+                  {getCategoryName(cat, language)}
+                </Text>
+              </Pressable>
             );
           })}
         </ScrollView>
@@ -857,7 +970,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, setSortBy]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, setSortBy, error, hPad, isAr]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -925,7 +1038,19 @@ export default function HomeScreen() {
         <Animated.View style={{ height: searchHeight, opacity: searchOpacity, overflow: 'hidden' }}>
           <Pressable
             style={[styles.searchBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.96)', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-            onPress={() => router.push('/search')}
+            onPress={() => {
+              // Pass current filters to search
+              router.push({
+                pathname: '/search',
+                params: {
+                  category: selectedCategory || '',
+                  location: appliedArea || '',
+                  maxPrice: appliedMaxPrice?.toString() || '',
+                  condition: appliedCondition || '',
+                  sort: sortBy,
+                }
+              } as any);
+            }}
           >
             <View style={[styles.searchIconWrap, { backgroundColor: colors.primary + '22' }]}>
               <MaterialIcons name="search" size={16} color={isDark ? 'rgba(255,255,255,0.7)' : colors.primary} />
@@ -1153,9 +1278,19 @@ export default function HomeScreen() {
               keyboardType="numeric"
             />
 
-            <Pressable style={[fStyles.applyBtn, { backgroundColor: colors.primary }]} onPress={handleApplyFilters}>
-              <MaterialIcons name="check" size={18} color="#fff" />
-              <Text style={fStyles.applyBtnText}>{isAr ? 'تطبيق الفلاتر' : 'Apply Filters'}</Text>
+            <Pressable
+              style={[fStyles.applyBtn, { backgroundColor: colors.primary, opacity: isApplyingFilter ? 0.7 : 1 }]}
+              onPress={handleApplyFilters}
+              disabled={isApplyingFilter}
+            >
+              {isApplyingFilter ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <MaterialIcons name="check" size={18} color="#fff" />
+                  <Text style={fStyles.applyBtnText}>{isAr ? 'تطبيق الفلاتر' : 'Apply Filters'}</Text>
+                </>
+              )}
             </Pressable>
           </View>
         </View>
@@ -1536,6 +1671,13 @@ const styles = StyleSheet.create({
   },
   headerStatText: { fontSize: 11, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
   sectionAccent: { width: 4, height: 20, borderRadius: 2 },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: Spacing.lg, marginVertical: Spacing.sm,
+    padding: 12, borderRadius: Radius.md, borderWidth: 1,
+    gap: 8,
+  },
+  errorText: { flex: 1, fontSize: FontSize.sm, fontWeight: '500' },
 });
 
 // ── Notification Modal Styles ─────────────────────────────────────────────────
