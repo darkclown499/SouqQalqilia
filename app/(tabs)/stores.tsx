@@ -2,7 +2,7 @@ import React, {
   useEffect, useState, useCallback, useRef, useMemo,
 } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, Dimensions,
+  View, Text, StyleSheet, ScrollView, Pressable, Dimensions, FlatList,
   ActivityIndicator, Modal, TextInput, Platform, NativeScrollEvent,
   NativeSyntheticEvent, Image as RNImage, Linking
 } from 'react-native';
@@ -24,7 +24,6 @@ import {
 } from '@/services/storeCategoriesService';
 import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
 import { FontSize, Radius, Spacing } from '@/constants/theme';
-import { Dimensions, FlatList } from 'react-native';
 
 // ── Get featured stores (from service or fallback to top-rated) ────────────
 async function getFeaturedStores(): Promise<Store[]> {
