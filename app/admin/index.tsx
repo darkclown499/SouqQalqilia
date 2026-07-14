@@ -31,6 +31,8 @@ import { useCategories } from '@/hooks/useCategories';
 import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 import { getSupabaseClient } from '@/template';
+import { fetchAllActiveStores } from '@/services/storesService';
+import { fetchAllActiveAds } from '@/services/adsService';
 
 // ── Analytics Stats Component ──────────────────────────────────────────────
 interface AnalyticsStats {
@@ -38,52 +40,66 @@ interface AnalyticsStats {
   wau: number;
   mau: number;
   trend: { date: string; count: number }[];
+  totalVisits: number;
+  totalUsers: number;
+  activeAds: number;
+  activeStores: number;
 }
 
 function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+}, []);
 
   const fetchStats = useCallback(async () => {
-    try {
-      const supabase = getSupabaseClient();
-      const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const supabase = getSupabaseClient();
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      // DAU — unique devices today
-      const [dauRes, wauRes, mauRes] = await Promise.all([
-        supabase.from('app_visits').select('device_id').gte('visited_at', todayStart),
-        supabase.from('app_visits').select('device_id').gte('visited_at', weekAgo),
-        supabase.from('app_visits').select('device_id').gte('visited_at', monthAgo),
-      ]);
+    // ── Fetch all stats in parallel ──
+    const [dauRes, wauRes, mauRes, totalVisitsRes, usersRes, activeAdsRes, activeStoresRes] = await Promise.all([
+      supabase.from('app_visits').select('device_id').gte('visited_at', todayStart),
+      supabase.from('app_visits').select('device_id').gte('visited_at', weekAgo),
+      supabase.from('app_visits').select('device_id').gte('visited_at', monthAgo),
+      supabase.from('app_visits').select('id', { count: 'exact', head: true }),
+      supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
+      supabase.from('ads').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+      supabase.from('stores').select('id', { count: 'exact', head: true }).eq('is_active', true),
+    ]);
 
-      const uniqueSet = (rows: any[]) => new Set(rows.map((r: any) => r.device_id)).size;
-      const dau = uniqueSet(dauRes.data ?? []);
-      const wau = uniqueSet(wauRes.data ?? []);
-      const mau = uniqueSet(mauRes.data ?? []);
+    // ── Compute ──
+    const uniqueSet = (rows: any[]) => new Set(rows.map((r: any) => r.device_id)).size;
+    const dau = uniqueSet(dauRes.data ?? []);
+    const wau = uniqueSet(wauRes.data ?? []);
+    const mau = uniqueSet(mauRes.data ?? []);
+    const totalVisits = totalVisitsRes.count ?? 0;
+    const totalUsers = usersRes.count ?? 0;
+    const activeAds = activeAdsRes.count ?? 0;
+    const activeStores = activeStoresRes.count ?? 0;
 
-      // Trend: last 7 days daily unique devices
-      const trendMap: Record<string, Set<string>> = {};
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-        const key = d.toISOString().slice(0, 10);
-        trendMap[key] = new Set();
-      }
-      (wauRes.data ?? []).forEach((row: any) => {
-        const day = row.visited_at ? String(row.visited_at).slice(0, 10) : null;
-        if (day && trendMap[day]) trendMap[day].add(row.device_id);
-      });
-      const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
-
-      setStats({ dau, wau, mau, trend });
-      setLastUpdated(new Date());
-    } catch { /* silent */ } finally {
-      setLoading(false);
+    // ── Trend ──
+    const trendMap: Record<string, Set<string>> = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      trendMap[key] = new Set();
     }
-  }, []);
+    (wauRes.data ?? []).forEach((row: any) => {
+      const day = row.visited_at ? String(row.visited_at).slice(0, 10) : null;
+      if (day && trendMap[day]) trendMap[day].add(row.device_id);
+    });
+    const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
+
+    setStats({ dau, wau, mau, trend, totalVisits, totalUsers, activeAds, activeStores });
+    setLastUpdated(new Date());
+  } catch { /* silent */ } finally {
+    setLoading(false);
+  }
+}, []);
 
   // Only poll while the analytics tab is actively visible (W4 fix)
   useFocusEffect(
@@ -142,7 +158,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         </Pressable>
       </View>
 
-      {/* Stats cards row */}
+           {/* Stats cards row */}
       <View style={anS.statsRow}>
         {/* DAU */}
         <View style={[anS.statCard, { backgroundColor: colors.surface, borderColor: colors.primary + '30' }]}>
@@ -187,6 +203,37 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         </View>
       </View>
 
+      {/* ── Extra Stats Row (إحصائيات إضافية) ── */}
+      <View style={[anS.extraStatsRow, { gap: Spacing.sm }]}>
+        <View style={[anS.statCardSmall, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <MaterialIcons name="storefront" size={18} color={colors.primary} />
+          <Text style={[anS.statValueSmall, { color: colors.textPrimary }]}>{stats?.activeStores ?? 0}</Text>
+          <Text style={[anS.statLabelSmall, { color: colors.textSecondary }]}>
+            {isAr ? 'متاجر نشطة' : 'Active Stores'}
+          </Text>
+        </View>
+        <View style={[anS.statCardSmall, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <MaterialIcons name="campaign" size={18} color={colors.accent} />
+          <Text style={[anS.statValueSmall, { color: colors.textPrimary }]}>{stats?.activeAds ?? 0}</Text>
+          <Text style={[anS.statLabelSmall, { color: colors.textSecondary }]}>
+            {isAr ? 'إعلانات نشطة' : 'Active Ads'}
+          </Text>
+        </View>
+        <View style={[anS.statCardSmall, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <MaterialIcons name="people" size={18} color="#8B5CF6" />
+          <Text style={[anS.statValueSmall, { color: colors.textPrimary }]}>{stats?.totalUsers ?? 0}</Text>
+          <Text style={[anS.statLabelSmall, { color: colors.textSecondary }]}>
+            {isAr ? 'مستخدمين مسجلين' : 'Registered Users'}
+          </Text>
+        </View>
+        <View style={[anS.statCardSmall, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <MaterialIcons name="visibility" size={18} color={colors.textMuted} />
+          <Text style={[anS.statValueSmall, { color: colors.textPrimary }]}>{stats?.totalVisits ?? 0}</Text>
+          <Text style={[anS.statLabelSmall, { color: colors.textSecondary }]}>
+            {isAr ? 'إجمالي الزيارات' : 'Total Visits'}
+          </Text>
+        </View>
+      </View>
       {/* Trend Chart */}
       <View style={[anS.chartCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={[anS.chartHeader, { borderBottomColor: colors.borderLight }]}>
@@ -272,6 +319,31 @@ const anS = StyleSheet.create({
   statValue: { fontSize: 28, fontWeight: '800', letterSpacing: -1 },
   statLabel: { fontSize: 10, fontWeight: '700', textAlign: 'center', lineHeight: 14 },
   statPeriod: { fontSize: 9, fontWeight: '500', textAlign: 'center' },
+  extraStatsRow: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: Spacing.sm, 
+    justifyContent: 'space-between' 
+  },
+  statCardSmall: {
+    flex: 1, 
+    minWidth: '45%', 
+    borderRadius: Radius.lg, 
+    borderWidth: 1,
+    padding: Spacing.sm, 
+    alignItems: 'center', 
+    gap: 4,
+  },
+  statValueSmall: { 
+    fontSize: FontSize.lg, 
+    fontWeight: '800' 
+  },
+  statLabelSmall: { 
+    fontSize: FontSize.xs, 
+    fontWeight: '600', 
+    textAlign: 'center' 
+  },
+
   chartCard: {
     borderRadius: Radius.xl, borderWidth: 1,
     overflow: 'hidden',

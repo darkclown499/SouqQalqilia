@@ -662,6 +662,15 @@ return (
       <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
         <BannerCarousel banners={banners} isRTL={isRTL} />
 
+        {/* ── قسم VIP العلوي ── */}
+<VIPStoresStrip 
+  stores={stores.filter(s => featuredStoreIds.has(s.id))} 
+  ratings={ratings} 
+  isAr={isAr} 
+  isRTL={isRTL} 
+  onStorePress={(id: string) => router.push(`/store/${id}` as any)} 
+/>
+
 
         {ownerStore !== undefined && ownerStore !== null && (
           <Pressable

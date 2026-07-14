@@ -17,6 +17,8 @@ const VIP_OFFERS = [
     storeName: 'الراعي الرسمي',
     title: 'مهرجان تحطيم الأسعار - خصومات تصل لـ 70% على كل الأقسام!',
     image: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?q=80&w=1000&auto=format&fit=crop',
+    productId: 'ad-001',  // ← معرف المنتج (رابط للصفحة الداخلية)
+    storeId: 'store-001',
     url: 'whatsapp://send?phone=+970590000000&text=مرحبا، شفت عرض الـ VIP بسوق قلقيلية وبدي أستفسر!' // 👈 رابط واتساب مع رسالة جاهزة
   },
   {
@@ -80,6 +82,24 @@ export default function OffersScreen() {
       console.error("حدث خطأ أثناء فتح الرابط:", error);
     }
   };
+
+  // 🌟 دالة معالجة النقر على العرض (تقرر إما تروح للمنتج أو تفتح رابط خارجي)
+const handleOfferPress = (offer: any) => {
+  // 1. أولوية أولى: إذا كان العرض يحتوي على productId، اذهب لصفحة المنتج
+  if (offer.productId) {
+    router.push(`/ad/${offer.productId}` as any);
+    return;
+  }
+  
+  // 2. ثانياً: إذا كان العرض يحتوي على url، افتحه (واتساب أو متصفح)
+  if (offer.url) {
+    handleOpenLink(offer.url);
+    return;
+  }
+  
+  // 3. إذا لم يوجد شيء، لا تفعل شيئاً
+  console.warn('لا يوجد رابط أو productId لهذا العرض');
+};
 
   useEffect(() => {
     const interval = setInterval(() => {
