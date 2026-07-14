@@ -376,8 +376,8 @@ function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
 function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featuredIds = new Set(), colors }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
   const [showAll, setShowAll] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const hasMore = stores.length > 4;
+  const router = useRouter();
 
   const sortedStores = useMemo(() => {
     const featuredIdsSet = featuredIds ?? new Set();
@@ -386,75 +386,44 @@ function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featur
     return [...featured, ...others];
   }, [stores, featuredIds]);
 
-  const finalStores = showAll ? sortedStores : sortedStores.slice(0, 4);
+  const displayStores = showAll ? sortedStores : sortedStores.slice(0, 4);
 
-  const { width } = Dimensions.get('window');
-  const cardWidth = (width - 16 * 2 - 12 * 3) / 4;
-
-  const onScroll = (event: any) => {
-    const offsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(offsetX / (cardWidth + 12));
-    setCurrentIndex(index);
+  const handleViewAll = () => {
+    // إما تفتح صفحة منفصلة أو تعرض الكل
+    // router.push(`/category/${cat.slug || cat.id}` as any);
+    setShowAll(!showAll); // ← خيار عرض الكل في نفس المكان
   };
 
   return (
     <View style={s.categoryContainer}>
       <View style={[s.catHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{catName}</Text>
+        <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+          {catName}
+        </Text>
         {hasMore && (
-          <Pressable onPress={() => setShowAll(!showAll)} hitSlop={6}>
+          <Pressable onPress={handleViewAll} hitSlop={6}>
             <Text style={[s.catMoreText, { color: colors.primary }]}>
-              {showAll ? (isAr ? 'عرض أقل' : 'Show Less') : (isAr ? 'عرض المزيد' : 'View More')}
+              {showAll ? (isAr ? 'عرض أقل' : 'Show Less') : (isAr ? 'عرض الكل' : 'View All')}
             </Text>
           </Pressable>
         )}
       </View>
 
       <FlatList
-        horizontal
-        data={finalStores}
+        data={displayStores}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <StoreGridCard
-            key={item.id}
+          <StoreVerticalCard
             store={item}
-            rating={ratings[item.id] ?? { avg: 0 }}
+            rating={ratings[item.id] ?? { avg: 0, count: 0 }}
             isAr={isAr}
-            isFeatured={featuredIds.has(item.id)}
             onPress={() => onStorePress(item.id)}
-            width={cardWidth}
           />
         )}
-        showsHorizontalScrollIndicator={true}
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          gap: 12,
-          flexDirection: isRTL ? 'row-reverse' : 'row',
-        }}
-        snapToInterval={cardWidth + 12}
-        decelerationRate="fast"
-        initialNumToRender={4}
-        maxToRenderPerBatch={4}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={false}
+        contentContainerStyle={{ paddingBottom: 4 }}
       />
-
-      {finalStores.length > 1 && !showAll && (
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8 }}>
-          {finalStores.map((_, idx) => (
-            <View
-              key={idx}
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: idx === currentIndex ? colors.primary : colors.border,
-                opacity: idx === currentIndex ? 1 : 0.4,
-              }}
-            />
-          ))}
-        </View>
-      )}
     </View>
   );
 }
@@ -490,6 +459,164 @@ function RegisterStoreCTA({ isAr, isRTL, onPress }: {
     </Pressable>
   );
 }
+
+// ── VERTICAL STORE CARD (مثل الصورة الثانية) ──
+function StoreVerticalCard({ store, rating, isAr, onPress }: any) {
+  const isOpen = checkStoreIsOpen(store);
+  const name = isAr ? (store.name_ar || store.name) : store.name;
+  const address = store.address || (isAr ? 'قلقيلية' : 'Qalqilya');
+
+  return (
+    <Pressable
+      style={({ pressed }) => [svc.card, { opacity: pressed ? 0.9 : 1 }]}
+      onPress={onPress}
+    >
+      {/* صورة المتجر (كخلفية أو جنب) */}
+      <View style={svc.imageWrap}>
+        {store.banner_url || store.logo_url ? (
+          <Image
+            source={{ uri: store.banner_url || store.logo_url }}
+            style={svc.image}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <View style={svc.imagePlaceholder}>
+            <MaterialIcons name="storefront" size={32} color="#D1D5DB" />
+          </View>
+        )}
+        {/* شارة VIP */}
+        {store.is_featured && (
+          <View style={svc.vipBadge}>
+            <MaterialIcons name="stars" size={10} color="#FFD700" />
+            <Text style={svc.vipBadgeText}>VIP</Text>
+          </View>
+        )}
+      </View>
+
+      {/* المعلومات */}
+      <View style={svc.infoWrap}>
+        <View style={svc.headerRow}>
+          <Text style={svc.name} numberOfLines={1}>{name}</Text>
+          <View style={[svc.statusBadge, { backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2' }]}>
+            <View style={[svc.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
+            <Text style={[svc.statusText, { color: isOpen ? '#16A34A' : '#DC2626' }]}>
+              {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={svc.address} numberOfLines={1}>
+          <MaterialIcons name="location-on" size={12} color="#9CA3AF" />
+          {address}
+        </Text>
+
+        <View style={svc.footerRow}>
+          <View style={svc.ratingWrap}>
+            <MaterialIcons name="star" size={14} color="#F59E0B" />
+            <Text style={svc.ratingText}>{rating?.avg?.toFixed(1) ?? '0.0'}</Text>
+            <Text style={svc.ratingCount}>({rating?.count ?? 0})</Text>
+          </View>
+          <Text style={svc.hours}>
+            <MaterialIcons name="access-time" size={12} color="#9CA3AF" />
+            {store.opening_time} - {store.closing_time}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+// ── Styles للبطاقة العمودية ──
+const svc = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    alignItems: 'center',
+  },
+  imageWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#F9FAFB',
+    marginRight: 12,
+    position: 'relative',
+  },
+  image: { width: '100%', height: '100%' },
+  imagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  vipBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  vipBadgeText: {
+    color: '#FFD700',
+    fontSize: 8,
+    fontWeight: '800',
+  },
+  infoWrap: { flex: 1, gap: 4 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  name: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
+    flex: 1,
+    marginRight: 8,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    flexShrink: 0,
+  },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, fontWeight: '700' },
+  address: { fontSize: 12, color: '#6B7280', lineHeight: 16 },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  ratingWrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  ratingText: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  ratingCount: { fontSize: 11, color: '#9CA3AF' },
+  hours: { fontSize: 11, color: '#9CA3AF' },
+});
+
+
+
 
 function StoreGridCard({ store, rating, isAr, isFeatured, onPress, width }: any) {
   const isOpen = checkStoreIsOpen(store);
@@ -844,7 +971,7 @@ return (
     ratings={ratings}
     isAr={isAr}
     isRTL={isRTL}
-    colors={colors}  // ← أضف هذا
+    colors={colors}
     featuredIds={featuredStoreIds}
     onStorePress={(id: string) => router.push(`/store/${id}` as any)}
   />
@@ -948,48 +1075,6 @@ const cta = StyleSheet.create({
 });
 
 const s = StyleSheet.create({
-  catHeaderRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: 12,
-},
-catMoreText: {
-  fontSize: 13,
-  fontWeight: '700',
-},
-catGridHorizontal: {
-  paddingHorizontal: 2,
-  gap: 12,
-  alignItems: 'center', // ← ضروري لتوسيط البطاقات عمودياً
-},
-gridCardFeatured: {
-  borderColor: '#FFD700',
-  borderWidth: 2,
-  shadowColor: '#FFD700',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.2,
-  shadowRadius: 6,
-  elevation: 4,
-},
-featuredBadge: {
-  position: 'absolute',
-  top: 4,
-  right: 4,
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 2,
-  backgroundColor: '#FFD700',
-  paddingHorizontal: 6,
-  paddingVertical: 2,
-  borderRadius: 8,
-  zIndex: 5,
-},
-featuredBadgeText: {
-  color: '#1A1A1A',
-  fontSize: 8,
-  fontWeight: '800',
-},
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 15 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -1022,24 +1107,74 @@ featuredBadgeText: {
   floatingButtonsWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', zIndex: 100 },
   supportFab: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 },
   scrollTopFab: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
-  categoryContainer: { paddingHorizontal: 16, marginBottom: 20 },
-  catTitle: { fontSize: 20, fontWeight: '900', marginBottom: 12 },
+
+  // ── أنماط التصنيفات الجديدة ──
+  categoryContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 20,
+  },
+  catHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  catTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#111827',
+  },
+  catMoreText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  catGridHorizontal: {
+    paddingHorizontal: 2,
+    gap: 12,
+    alignItems: 'center',
+  },
+  gridCardFeatured: {
+    borderColor: '#FFD700',
+    borderWidth: 2,
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  featuredBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    zIndex: 5,
+  },
+  featuredBadgeText: {
+    color: '#1A1A1A',
+    fontSize: 8,
+    fontWeight: '800',
+  },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   gridCard: {
-  // width: '48%',  // ← علقها أو احذفها
-  backgroundColor: '#fff',
-  borderRadius: 16,
-  padding: 12,
-  marginBottom: 16,
-  alignItems: 'center',
-  borderWidth: 1,
-  borderColor: '#F3F4F6',
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.05,
-  shadowRadius: 4,
-  elevation: 2,
-},
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
   logoWrap: { width: 70, height: 70, borderRadius: 35, overflow: 'hidden', marginBottom: 8, backgroundColor: '#F9FAFB' },
   logoImg: { width: '100%', height: '100%' },
   storeName: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
