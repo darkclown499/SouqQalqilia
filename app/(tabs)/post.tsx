@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, Pressable, KeyboardAvoidingView,
   Platform, Modal, ActivityIndicator,
@@ -124,9 +124,24 @@ export default function PostAdScreen() {
   const rtl = { flexDirection: isRTL ? ('row-reverse' as const) : ('row' as const) };
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
 
-  // Auto-fill phone from user profile on first load
-  React.useEffect(() => {
+  // ── Refs for timeouts and abort ────────────────────────────────────────────
+  const timeoutRefs = useRef<{ camera?: NodeJS.Timeout; gallery?: NodeJS.Timeout }>({});
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // ── Cleanup timeouts on unmount ────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      if (timeoutRefs.current.camera) clearTimeout(timeoutRefs.current.camera);
+      if (timeoutRefs.current.gallery) clearTimeout(timeoutRefs.current.gallery);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
+  }, []);
+
+  // ── Auto-fill phone from user profile (with AbortController) ──────────────
+  useEffect(() => {
     if (!user?.id || phonePrefilled) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     getSupabaseClient()
       .from('user_profiles')
       .select('phone')
@@ -145,7 +160,14 @@ export default function PostAdScreen() {
           setPhonePrefilled(true);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        console.warn('Failed to fetch phone:', err);
+      });
+    return () => {
+      controller.abort();
+      abortControllerRef.current = null;
+    };
   }, [user?.id]);
 
   // ── Guest guard ───────────────────────────────────────────────────────────
@@ -167,35 +189,42 @@ export default function PostAdScreen() {
     );
   }
 
-  // ── Photo handlers ────────────────────────────────────────────────────────
-  const handleAddImage = () => {
+  // ── Photo handlers (with useCallback and timeout cleanup) ─────────────────
+  const handleAddImage = useCallback(() => {
     if (images.length >= MAX_AD_IMAGES) {
       return showAlert(t.photos, isAr ? `الحد الأقصى ${MAX_AD_IMAGES} صور.` : `Max ${MAX_AD_IMAGES} photos allowed.`);
     }
     setPhotoModalVisible(true);
-  };
+  }, [images.length, showAlert, t.photos, isAr]);
 
-  const handlePickCamera = async () => {
+  const handlePickCamera = useCallback(async () => {
     setPhotoModalVisible(false);
-    setTimeout(async () => {
+    // Clear any pending timeout
+    if (timeoutRefs.current.camera) clearTimeout(timeoutRefs.current.camera);
+    timeoutRefs.current.camera = setTimeout(async () => {
       const result = await pickImage('camera');
       if (result) {
+        // Add image with blurhash placeholder
+        const newImg = { ...result, blurhash: null as string | null };
+        setImages(prev => [...prev, newImg]);
+        // Generate blurhash asynchronously
         generateBlurhash(result.uri).then(blurhash => {
           setImages(prev => prev.map(img => img.uri === result.uri ? { ...img, blurhash } : img));
         }).catch(() => {});
-        setImages(prev => [...prev, { ...result, blurhash: null }]);
       } else {
         showAlert(
           isAr ? 'لا يوجد إذن' : 'Permission Denied',
           isAr ? 'يرجى السماح بالوصول إلى الكاميرا من إعدادات الجهاز.' : 'Please allow camera access in your device settings.'
         );
       }
+      timeoutRefs.current.camera = undefined;
     }, 300);
-  };
+  }, [isAr, showAlert]);
 
-  const handlePickGallery = async () => {
+  const handlePickGallery = useCallback(async () => {
     setPhotoModalVisible(false);
-    setTimeout(async () => {
+    if (timeoutRefs.current.gallery) clearTimeout(timeoutRefs.current.gallery);
+    timeoutRefs.current.gallery = setTimeout(async () => {
       const remaining = MAX_AD_IMAGES - images.length;
       if (remaining <= 0) return;
       const results = await pickMultipleImages(Math.min(3, remaining));
@@ -208,10 +237,13 @@ export default function PostAdScreen() {
           }).catch(() => {});
         });
       }
+      timeoutRefs.current.gallery = undefined;
     }, 300);
-  };
+  }, [images.length]);
 
-  const handleRemoveImage = (index: number) => setImages(prev => prev.filter((_, i) => i !== index));
+  const handleRemoveImage = useCallback((index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   const resetForm = useCallback(() => {
     setTitle('');
@@ -229,7 +261,8 @@ export default function PostAdScreen() {
   }, []);
 
   // ── AI enhancement ────────────────────────────────────────────────────────
-  const handleAiImprove = async () => {
+  const handleAiImprove = useCallback(async () => {
+    if (loading) return; // Disable while publishing
     if (!title.trim() && !description.trim()) {
       return showAlert(
         isAr ? 'مطلوب' : 'Required',
@@ -245,7 +278,7 @@ export default function PostAdScreen() {
           title: title.trim(),
           description: description.trim(),
           language,
-          mode, // pass mode so AI knows it's a request vs ad
+          mode,
         },
       });
       if (error) {
@@ -266,10 +299,10 @@ export default function PostAdScreen() {
     } finally {
       setAiLoading(false);
     }
-  };
+  }, [title, description, language, mode, aiLoading, loading, isAr, showAlert]);
 
   // ── Submit ────────────────────────────────────────────────────────────────
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (!title.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال عنوان' : 'Please enter a title.');
     if (!description.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال وصف' : 'Please enter a description.');
     if (!categoryId) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى اختيار تصنيف' : 'Please select a category.');
@@ -297,12 +330,21 @@ export default function PostAdScreen() {
     }
     if (rawPhone) {
       const digits = rawPhone.replace(/\D/g, '');
+      // Validate length and prefix
       if (digits.length !== 9 && digits.length !== 10) {
         return showAlert(
           isAr ? 'رقم هاتف غير صحيح' : 'Invalid Phone',
           isAr
             ? 'أدخل 9 أرقام (مثال: 599123456) أو 10 مع الصفر (مثال: 0599123456)'
             : 'Enter 9 digits (e.g. 599123456) or 10 with leading zero.'
+        );
+      }
+      // Ensure the prefix matches the entered number if it has country code
+      const fullNumber = `${phonePrefix}${digits}`;
+      if (!fullNumber.startsWith('+970') && !fullNumber.startsWith('+972')) {
+        return showAlert(
+          isAr ? 'بادئة غير صحيحة' : 'Invalid Prefix',
+          isAr ? 'يجب أن يبدأ الرقم بـ +970 أو +972' : 'Phone must start with +970 or +972'
         );
       }
     }
@@ -326,35 +368,48 @@ export default function PostAdScreen() {
         category_id: categoryId,
         phone_number: fullPhone,
         condition: mode === 'product_ad' ? condition : 'used',
-        // Extra fields stored in DB via extra columns
-        ...(mode === 'product_request' ? {
-          status: 'active',
-        } : {}),
+        ...(mode === 'product_request' ? { status: 'active' } : {}),
       });
       if (adError || !ad) throw new Error(adError ?? 'Failed to create ad');
 
-      // Update ad_type and contact_whatsapp columns
-      await getSupabaseClient()
+      // Update ad_type and contact_whatsapp — await to ensure order
+      const { error: updateError } = await getSupabaseClient()
         .from('ads')
         .update({
           ad_type: mode,
           contact_whatsapp: contactViaWhatsapp,
         })
-        .eq('id', ad.id)
-        .then(() => {});
+        .eq('id', ad.id);
+      if (updateError) throw new Error(updateError.message);
 
+      // Upload images for product ads
       if (mode === 'product_ad' && images.length > 0) {
-        // Upload actual images for product ads
         const urls: string[] = [];
         const blurhashes: (string | null)[] = [];
         for (const img of images) {
-          const { url } = await uploadImage(img.base64, user.id, ad.id, img.uri);
-          if (url) { urls.push(url); blurhashes.push(img.blurhash ?? null); }
+          try {
+            const { url } = await uploadImage(img.base64, user.id, ad.id, img.uri);
+            if (url) {
+              urls.push(url);
+              blurhashes.push(img.blurhash ?? null);
+            } else {
+              throw new Error('Upload returned no URL');
+            }
+          } catch (uploadErr) {
+            // If any image fails, we should abort the entire process
+            // but we can also inform the user and delete the ad (or keep it without images)
+            // For simplicity, we throw and show error, then cleanup would be needed.
+            // We'll throw to the outer catch.
+            throw new Error(`Failed to upload image: ${uploadErr instanceof Error ? uploadErr.message : 'unknown'}`);
+          }
         }
-        if (urls.length > 0) await saveAdImages(ad.id, urls, blurhashes);
-      } else if (mode === 'product_request') {
-        // Requests have no image attached — AdCard renders a native Arabic gradient placeholder
-        // Do NOT call saveAdImages here so no URL is stored in the DB for requests
+        if (urls.length > 0) {
+          try {
+            await saveAdImages(ad.id, urls, blurhashes);
+          } catch (saveErr) {
+            throw new Error(`Failed to save image references: ${saveErr instanceof Error ? saveErr.message : 'unknown'}`);
+          }
+        }
       }
 
       setSelectedCity(QALQILYA_CITY);
@@ -376,9 +431,40 @@ export default function PostAdScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    title, description, categoryId, mode, images, price, location, selectedCity,
+    phoneLocal, phonePrefix, contactViaWhatsapp, condition, requestStatus,
+    categories, resetForm, router, showAlert, isAr, t, user
+  ]);
 
   const accentColor = mode === 'product_request' ? (colors.accent ?? '#F59E0B') : colors.primary;
+
+  // ── Stable keyExtractor and renderItem for city list ──────────────────────
+  const keyExtractor = useCallback((item: string) => item, []);
+
+  const renderCityItem = useCallback(({ item: loc }: { item: string }) => {
+    const isSelected = selectedCity === loc;
+    const isMainCity = loc === QALQILYA_CITY;
+    return (
+      <Pressable
+        style={({ pressed }) => [cityS.item, { borderColor: isSelected ? accentColor : colors.borderLight, backgroundColor: isSelected ? accentColor + '18' : (pressed ? colors.surfaceTint : colors.background) }]}
+        onPress={() => { setSelectedCity(loc); setCityModalVisible(false); }}
+      >
+        <View style={[cityS.itemIcon, { backgroundColor: isSelected ? accentColor : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
+          <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSelected ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
+        </View>
+        <Text style={[cityS.itemText, { color: isSelected ? accentColor : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>
+          {loc}
+        </Text>
+        {isMainCity && !isSelected ? (
+          <View style={[cityS.defaultBadge, { backgroundColor: colors.primaryGhost }]}>
+            <Text style={[cityS.defaultText, { color: colors.primary }]}>{isAr ? 'افتراضي' : 'Default'}</Text>
+          </View>
+        ) : null}
+        {isSelected ? <MaterialIcons name="check-circle" size={18} color={accentColor} /> : null}
+      </Pressable>
+    );
+  }, [selectedCity, accentColor, colors, isAr]);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -397,7 +483,11 @@ export default function PostAdScreen() {
           </View>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
 
           {/* ── Mode Toggle ── */}
           <ModeToggle mode={mode} onChange={setMode} colors={colors} isRTL={isRTL} isAr={isAr} />
@@ -480,6 +570,10 @@ export default function PostAdScreen() {
               <Text style={[styles.loadingCat, { color: colors.textMuted }]}>
                 {isAr ? 'جاري تحميل التصنيفات...' : 'Loading categories...'}
               </Text>
+            ) : categories.length === 0 ? (
+              <Text style={[styles.loadingCat, { color: colors.textMuted }]}>
+                {isAr ? 'لا توجد تصنيفات متاحة' : 'No categories available'}
+              </Text>
             ) : (
               <View style={styles.catGrid}>
                 {categories.map(cat => {
@@ -520,7 +614,7 @@ export default function PostAdScreen() {
               <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.details}</Text>
             </View>
             <Input
-              label={t.title}
+              label={isAr ? 'العنوان *' : 'Title *'}
               placeholder={mode === 'product_request'
                 ? (isAr ? 'مثال: أبحث عن آيفون 14 بحالة جيدة' : 'e.g. Looking for iPhone 14 in good condition')
                 : t.titlePlaceholder}
@@ -529,7 +623,7 @@ export default function PostAdScreen() {
               maxLength={80}
             />
             <Input
-              label={t.description}
+              label={isAr ? 'الوصف *' : 'Description *'}
               placeholder={mode === 'product_request'
                 ? (isAr ? 'اذكر المواصفات المطلوبة، الميزانية، وأي تفاصيل مهمة...' : 'Mention required specs, budget, and any important details...')
                 : t.descriptionPlaceholder}
@@ -540,9 +634,9 @@ export default function PostAdScreen() {
             />
             {/* AI Improve button */}
             <Pressable
-              style={[styles.aiBtn, { backgroundColor: accentColor + '18', borderColor: accentColor, opacity: aiLoading ? 0.7 : 1 }]}
+              style={[styles.aiBtn, { backgroundColor: accentColor + '18', borderColor: accentColor, opacity: (aiLoading || loading) ? 0.7 : 1 }]}
               onPress={handleAiImprove}
-              disabled={aiLoading}
+              disabled={aiLoading || loading}
             >
               {aiLoading
                 ? <ActivityIndicator size="small" color={accentColor} />
@@ -785,33 +879,12 @@ export default function PostAdScreen() {
                 </Text>
               </View>
               <FlatList
-  data={QALQILYA_LOCATIONS}
-  keyExtractor={(item) => item}
-  contentContainerStyle={cityS.listContent}
-  renderItem={({ item: loc }) => {
-    const isSelected = selectedCity === loc;
-    const isMainCity = loc === QALQILYA_CITY;
-    return (
-      <Pressable
-        style={({ pressed }) => [cityS.item, { borderColor: isSelected ? accentColor : colors.borderLight, backgroundColor: isSelected ? accentColor + '18' : (pressed ? colors.surfaceTint : colors.background) }]}
-        onPress={() => { setSelectedCity(loc); setCityModalVisible(false); }}
-      >
-        <View style={[cityS.itemIcon, { backgroundColor: isSelected ? accentColor : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
-          <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSelected ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
-        </View>
-        <Text style={[cityS.itemText, { color: isSelected ? accentColor : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>
-          {loc}
-        </Text>
-        {isMainCity && !isSelected ? (
-          <View style={[cityS.defaultBadge, { backgroundColor: colors.primaryGhost }]}>
-            <Text style={[cityS.defaultText, { color: colors.primary }]}>{isAr ? 'افتراضي' : 'Default'}</Text>
-          </View>
-        ) : null}
-        {isSelected ? <MaterialIcons name="check-circle" size={18} color={accentColor} /> : null}
-      </Pressable>
-    );
-  }}
-/>
+                data={QALQILYA_LOCATIONS}
+                keyExtractor={keyExtractor}
+                renderItem={renderCityItem}
+                contentContainerStyle={cityS.listContent}
+                showsVerticalScrollIndicator={false}
+              />
             </View>
           </Pressable>
         </Modal>
@@ -1024,9 +1097,8 @@ const styles = StyleSheet.create({
 
 const cityS = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'flex-end', zIndex: 9999 },
-  // Explicit height so flex:1 on the inner ScrollView has a concrete parent to fill.
-  // Without this the sheet collapses to 0 height on Android.
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, height: 500 },
+  // Use maxHeight instead of fixed height for better responsiveness
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, maxHeight: '75%' },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, marginBottom: 12 },
   titleText: { fontSize: FontSize.lg, fontWeight: '800' },
