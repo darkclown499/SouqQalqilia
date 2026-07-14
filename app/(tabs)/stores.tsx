@@ -176,12 +176,11 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2.5 VIP STORE CARD (فخم) + AUTO-SCROLL
+// 2.5 VIP STORE CARD (فخم) - ✅ استخدم logo_url مع contentFit="contain"
 // ─────────────────────────────────────────────────────────────────────────────
 function VIPStoreCard({ store, rating, isAr, onPress }: any) {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
-  const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
 
   return (
     <Pressable 
@@ -195,7 +194,12 @@ function VIPStoreCard({ store, rating, isAr, onPress }: any) {
         style={vip.goldBorder}
       >
         <View style={vip.inner}>
-          <Image source={{ uri: bannerImage }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          {/* ✅ استخدم logo_url فقط مع contentFit="contain" */}
+          <Image 
+            source={{ uri: store.logo_url }} 
+            style={StyleSheet.absoluteFill} 
+            contentFit="contain"
+          />
           <LinearGradient
             colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.85)']}
             locations={[0, 0.5, 1]}
@@ -235,69 +239,58 @@ function VIPStoreCard({ store, rating, isAr, onPress }: any) {
   );
 }
 
-// ── VIP Stores Strip with Smooth Auto-Scroll ──────────────────────────────
+// ── VIP Stores Strip with INFINITE Auto-Scroll ──────────────────────────
+// ✅ تم إزالة أحداث اللمس، واستخدام بيانات مكررة، وتمرير مستمر
 function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
-  const [shuffledStores, setShuffledStores] = useState<Store[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(0);
-  const isPaused = useRef(false);
   const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const CARD_WIDTH = 214; // 200 + 14 gap
-  
-  useEffect(() => {
-    setShuffledStores(shuffleArray(stores));
+  const CARD_WIDTH = 214;
+
+  // ✅ 1. تكرار البيانات (3 نسخ) لتبدو لا نهائية
+  const repeatedStores = useMemo(() => {
+    if (stores.length === 0) return [];
+    return [...stores, ...stores, ...stores];
   }, [stores]);
 
-  // ── Smooth Auto-Scroll ──
+  // ✅ 2. التمرير التلقائي المستمر (بدون توقف عند اللمس)
   useEffect(() => {
-    if (shuffledStores.length <= 1) return;
-    
+    if (repeatedStores.length === 0) return;
+
     const startAutoScroll = () => {
       if (autoScrollTimer.current) clearInterval(autoScrollTimer.current);
       autoScrollTimer.current = setInterval(() => {
-        if (isPaused.current || shuffledStores.length === 0) return;
-        
-        // Calculate next offset
+        if (repeatedStores.length === 0) return;
+
         let nextOffset = scrollX.current + CARD_WIDTH;
-        const maxOffset = (shuffledStores.length - 1) * CARD_WIDTH;
-        
-        // If reached the end, loop smoothly back to start
+        const maxOffset = (repeatedStores.length - 1) * CARD_WIDTH;
+
+        // إذا وصلنا للنهاية، نعود للبداية بدون حركة مفاجئة
         if (nextOffset > maxOffset) {
           nextOffset = 0;
+          flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
         }
-        
+
         scrollX.current = nextOffset;
         flatListRef.current?.scrollToOffset({
           offset: nextOffset,
           animated: true,
         });
-      }, 3000); // 3 seconds between scrolls
+      }, 2000); // كل 2 ثانية
     };
-    
+
     startAutoScroll();
     return () => {
       if (autoScrollTimer.current) clearInterval(autoScrollTimer.current);
     };
-  }, [shuffledStores]);
+  }, [repeatedStores]);
 
-  // ── Pause on touch ──
-  const handleTouchStart = () => {
-    isPaused.current = true;
-  };
-
-  const handleTouchEnd = () => {
-    // Resume after a short delay
-    setTimeout(() => {
-      isPaused.current = false;
-    }, 2000);
-  };
-
-  // ── Track scroll position ──
+  // ✅ 3. تتبع موضع التمرير
   const handleScroll = (event: any) => {
     scrollX.current = event.nativeEvent.contentOffset.x;
   };
 
-  if (shuffledStores.length === 0) return null;
+  if (stores.length === 0) return null;
 
   return (
     <View style={vip.stripWrap}>
@@ -308,12 +301,12 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
         </Text>
         <View style={vip.headerLine} />
       </View>
-      
+
       <FlatList
         ref={flatListRef}
         horizontal
-        data={shuffledStores}
-        keyExtractor={(item) => item.id}
+        data={repeatedStores}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
         renderItem={({ item }) => (
           <VIPStoreCard
             store={item}
@@ -328,14 +321,12 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
         decelerationRate="fast"
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onScrollBeginDrag={handleTouchStart}
-        onScrollEndDrag={handleTouchEnd}
+        // ✅ تم حذف: onTouchStart, onTouchEnd, onScrollBeginDrag, onScrollEndDrag
       />
     </View>
   );
 }
+
 // ── VIP Styles ──────────────────────────────────────────────────────────────
 const vip = StyleSheet.create({
   stripWrap: { marginBottom: 32, marginTop: 4 },
@@ -431,25 +422,20 @@ const psc = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. CATEGORY BLOCK (أفقي مع 4 متاجر)
+// 4. CATEGORY BLOCK - ✅ عرض أول 4 متاجر بدون ترتيب VIP
 // ─────────────────────────────────────────────────────────────────────────────
-function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featuredIds = new Set(), colors }: any) {
+function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, colors }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
   const [showAll, setShowAll] = useState(false);
   const hasMore = stores.length > 4;
   const router = useRouter();
 
-  const sortedStores = useMemo(() => {
-    const featuredIdsSet = featuredIds ?? new Set();
-    const featured = stores.filter((s: any) => featuredIdsSet.has(s.id));
-    const others = stores.filter((s: any) => !featuredIdsSet.has(s.id));
-    return [...featured, ...others];
-  }, [stores, featuredIds]);
-
-  const displayStores = showAll ? sortedStores : sortedStores.slice(0, 4);
+  // ✅ عرض أول 4 متاجر مباشرة (بدون ترتيب VIP)
+  const displayStores = useMemo(() => {
+    return showAll ? stores : stores.slice(0, 4);
+  }, [stores, showAll]);
 
   const handleViewAll = () => {
-    // Navigate to category page with slug
     const slug = cat.slug || cat.id;
     router.push(`/category/${slug}` as any);
   };
@@ -754,7 +740,6 @@ export default function StoresScreen() {
       fetchAllStoreRatings(),
       fetchStoreCategories(),
     ]).then(([storesRes, ratingsMap, catsRes]) => {
-      // ── عشوائية العرض ──
       const shuffledStores = shuffleArray(storesRes.data);
       setStores(shuffledStores);
       setRatings(ratingsMap);
@@ -1002,7 +987,6 @@ export default function StoresScreen() {
               isAr={isAr}
               isRTL={isRTL}
               colors={colors}
-              featuredIds={featuredStoreIds}
               onStorePress={(id: string) => router.push(`/store/${id}` as any)}
             />
           ))
