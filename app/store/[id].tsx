@@ -596,9 +596,11 @@ export default function StoreDetailScreen() {
             {storeDesc ? (
               <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
             ) : null}
-          </View>{/* end heroContainer */}
+          </View>{/* closes headerOverlay */}
+        </View>{/* closes bannerWrap */}
+      </View>{/* closes heroContainer */}
 
-          {/* ── PRODUCTS ── */}
+      {/* ── PRODUCTS ── */}
           {products.length === 0 ? (
             <View style={s.emptyWrap}>
               <View style={[s.emptyIllus, { backgroundColor: colors.primaryGhost }]}>
