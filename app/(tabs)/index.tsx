@@ -13,6 +13,7 @@ import { useAuth, getSupabaseClient } from '@/template';
 import { trackEvent } from '@/services/analyticsService';
 import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 // expo-haptics is native-only; imported dynamically to avoid web/SSR bundling errors
 
 // Dimensions are now computed reactively via useResponsive() inside the component.
@@ -934,7 +935,7 @@ export default function HomeScreen() {
             
             {/* ── زر AI بالتصميم الجديد المميز ── */}
             <Pressable style={[styles.headerIconBtn, { backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' }]} onPress={() => router.push('/ai-support')} hitSlop={6}>
-  <MaterialIcons name="android" size={24} color="#fff" />
+  <MaterialCommunityIcons name="robot" size={24} color="#fff" />
 </Pressable>
           </View>
         </View>

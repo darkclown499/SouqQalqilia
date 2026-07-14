@@ -176,11 +176,13 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2.5 VIP STORE CARD (فخم) - ✅ استخدم logo_url مع contentFit="contain"
+// 2.5 VIP STORE CARD (فخم) - ✅ الخلفية = الوجو (الشعار)
 // ─────────────────────────────────────────────────────────────────────────────
 function VIPStoreCard({ store, rating, isAr, onPress }: any) {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
+  // ✅ الخلفية = الوجو (الشعار) فقط
+  const backgroundImage = store.logo_url;
 
   return (
     <Pressable 
@@ -194,12 +196,13 @@ function VIPStoreCard({ store, rating, isAr, onPress }: any) {
         style={vip.goldBorder}
       >
         <View style={vip.inner}>
-          {/* ✅ استخدم logo_url فقط مع contentFit="contain" */}
+          {/* ✅ الخلفية: صورة الوجو */}
           <Image 
-            source={{ uri: store.logo_url }} 
+            source={{ uri: backgroundImage }} 
             style={StyleSheet.absoluteFill} 
-            contentFit="contain"
+            contentFit="cover"
           />
+          {/* التدرج الشفاف لتحسين رؤية النص */}
           <LinearGradient
             colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.85)']}
             locations={[0, 0.5, 1]}
@@ -212,6 +215,7 @@ function VIPStoreCard({ store, rating, isAr, onPress }: any) {
           </View>
 
           <View style={vip.content}>
+            {/* ✅ الوجو الأكبر حجماً */}
             <View style={vip.logoWrap}>
               <Image source={{ uri: store.logo_url }} style={vip.logo} contentFit="cover" />
             </View>
@@ -349,15 +353,24 @@ const vip = StyleSheet.create({
   vipBadgeText: { color: '#FFD700', fontSize: 10, fontWeight: '800' },
   content: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 14, zIndex: 2 },
   logoWrap: {
-    width: 70, height: 70, borderRadius: 35,
+    width: 85,
+    height: 85,
+    borderRadius: 42.5,
     backgroundColor: '#fff',
     overflow: 'hidden',
-    borderWidth: 2, borderColor: '#FFD700',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
+    borderWidth: 2,
+    borderColor: '#FFD700',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
     marginBottom: 8,
   },
-  logo: { width: '100%', height: '100%' },
+  logo: {
+    width: '100%',
+    height: '100%',
+  },
   name: { color: '#fff', fontSize: 15, fontWeight: '800', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   address: { color: 'rgba(255,255,255,0.7)', fontSize: 11, textAlign: 'center', marginTop: 2 },
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
