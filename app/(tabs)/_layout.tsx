@@ -5,12 +5,13 @@ import { Platform, View, StyleSheet, Text, Pressable } from 'react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming,
 } from 'react-native-reanimated';
+import * as Notifications from 'expo-notifications'; // <-- ADDED
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useConversations } from '@/hooks/useChat';
 import { trackEvent } from '@/services/analyticsService';
-import { useAuth } from '@/template';
-import { useMemo, useCallback } from 'react';
+import { useAuth, getSupabaseClient } from '@/template'; // <-- ADDED getSupabaseClient
+import { useMemo, useCallback, useEffect } from 'react'; // <-- ADDED useEffect
 
 /** Receives unreadCount as prop — no hook calls inside */
 function UnreadBadge({ count }: { count: number }) {
@@ -124,6 +125,58 @@ export default function TabLayout() {
       </View>
     );
   }, [colors, postAnimStyle, animatePost]);
+
+  // ─── NEW: Register push notifications ──────────────────────────────────────
+  const registerForPushNotifications = useCallback(async () => {
+    // Only proceed if user is logged in and on native platform (not web)
+    if (!user || Platform.OS === 'web') return;
+
+    try {
+      // 1. Request permission
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        console.warn('[Push] Permission not granted.');
+        return;
+      }
+
+      // 2. Get Expo push token
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1', // Replace with your EAS project ID
+      });
+      const token = tokenData.data;
+      if (!token) {
+        console.warn('[Push] No token received.');
+        return;
+      }
+
+      console.log('[Push] ✅ Expo Push Token:', token);
+
+      // 3. Save token to user profile in Supabase
+      const supabase = getSupabaseClient();
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ expo_push_token: token })
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('[Push] Failed to save token:', error.message);
+      } else {
+        console.log('[Push] ✅ Token saved to database.');
+      }
+    } catch (e: any) {
+      console.error('[Push] registerForPushNotifications error:', e?.message ?? e);
+    }
+  }, [user]);
+
+  // Run once when user becomes available
+  useEffect(() => {
+    registerForPushNotifications();
+  }, [registerForPushNotifications]);
 
   return (
     <Tabs

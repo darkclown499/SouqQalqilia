@@ -133,7 +133,6 @@
           "backgroundColor": "#0A6E5C"
         }
       ],
-
       "expo-camera",
       [
         "expo-notifications",
