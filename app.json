@@ -110,11 +110,6 @@
         }
       ]
     },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/plankton-logo.png"
-    },
     "plugins": [
       "expo-router",
       "./plugins/withProductionManifest",
