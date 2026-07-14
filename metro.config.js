@@ -6,33 +6,31 @@ const config = getDefaultConfig(__dirname);
 config.resolver = {
   ...config.resolver,
   resolveRequest: (context, moduleName, platform) => {
-    // قائمة الوحدات التي تحتاج إلى shim
-    const shimModules = [
-      'expo-constants',
-      'expo-splash-screen',
-      'expo-web-browser',
-      'react-native-gesture-handler',
-      'expo-modules-core',
-      'expo-notifications',
-    ];
+    // Only shim native-only modules during web bundling.
+    // On android/ios these modules must resolve to their real implementations.
+    if (platform === 'web') {
+      const shimModules = [
+        'expo-constants',
+        'expo-splash-screen',
+        'expo-modules-core',
+        'expo-notifications',
+      ];
 
-    // إذا كان الطلب لوحدة أصلية، أعيد توجيهها إلى shim
-    if (shimModules.includes(moduleName)) {
-      try {
-        return {
-          filePath: require.resolve(`./shims/${moduleName}.js`),
-          type: 'sourceFile',
-        };
-      } catch (e) {
-        // إذا لم يكن هناك shim محدد، استخدم shim عام
-        return {
-          filePath: require.resolve('./shims/empty.js'),
-          type: 'sourceFile',
-        };
+      if (shimModules.includes(moduleName)) {
+        try {
+          return {
+            filePath: require.resolve(`./shims/${moduleName}.js`),
+            type: 'sourceFile',
+          };
+        } catch (e) {
+          return {
+            filePath: require.resolve('./shims/empty.js'),
+            type: 'sourceFile',
+          };
+        }
       }
     }
 
-    // استخدم الحل الافتراضي للوحدات الأخرى
     return context.resolveRequest(context, moduleName, platform);
   },
 };
