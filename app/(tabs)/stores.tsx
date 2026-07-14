@@ -70,9 +70,9 @@ function isNameInvalid(name: string): boolean {
 const get3DIconUrl = (name: string) => {
   const base = 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/';
   switch (name) {
-    case 'الكل': return base + 'Star/3D/star_3d.png'; // استخدمنا أيقونة النجمة المضمونة
+    case 'الكل': return base + 'Star/3D/star_3d.png';
     case 'العروض': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif';
-    case 'زينة وهدايا': return base + 'Party%20popper/3D/party_popper_3d.png'; // أيقونة المفرقعات المضمونة
+    case 'زينة وهدايا': return base + 'Party%20popper/3D/party_popper_3d.png';
     case 'ألعاب وترفيه': return base + 'Video%20game/3D/video_game_3d.png';
     case 'مأكولات وحلويات': return base + 'Hamburger/3D/hamburger_3d.png';
     case 'إلكترونيات': return base + 'Mobile%20phone/3D/mobile_phone_3d.png';
@@ -85,10 +85,14 @@ const get3DIconUrl = (name: string) => {
     case 'أثاث': return base + 'Couch%20and%20lamp/3D/couch_and_lamp_3d.png';
     case 'رياضة': return base + 'Soccer%20ball/3D/soccer_ball_3d.png';
     case 'عقارات': return base + 'House/3D/house_3d.png';
+    
+    // ── التصنيفات الجديدة ──
+    case 'خضروات وفواكه': return base + 'Apple/3D/apple_3d.png';
+    case 'مستحضرات تجميل': return base + 'Lipstick/3D/lipstick_3d.png';
+    
     default: return base + 'Convenience%20store/3D/convenience_store_3d.png';
   }
 };
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. BANNER CAROUSEL
 // ─────────────────────────────────────────────────────────────────────────────
@@ -663,14 +667,6 @@ return (
       <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
         <BannerCarousel banners={banners} isRTL={isRTL} />
 
-        {/* ── قسم VIP العلوي ── */}
-<VIPStoresStrip 
-  stores={stores.filter(s => featuredStoreIds.has(s.id))} 
-  ratings={ratings} 
-  isAr={isAr} 
-  isRTL={isRTL} 
-  onStorePress={(id: string) => router.push(`/store/${id}` as any)} 
-/>
 
 
         {ownerStore !== undefined && ownerStore !== null && (
@@ -767,6 +763,14 @@ return (
     </ScrollView>
   </View>
 )}
+ {/* ── مقترحات من سوق قلقيلية (VIP) ── */}
+  <VIPStoresStrip 
+    stores={stores.filter(s => featuredStoreIds.has(s.id))} 
+    ratings={ratings} 
+    isAr={isAr} 
+    isRTL={isRTL} 
+    onStorePress={(id: string) => router.push(`/store/${id}` as any)} 
+  />
 
         {loading ? (
           <View style={s.loadingWrap}>
