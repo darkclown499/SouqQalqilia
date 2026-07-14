@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,6 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
 // ─── Category Detail Screen ────────────────────────────────────────────────
 export default function CategoryDetailScreen() {
-  // Get slug from URL: /category/مأكولات-وحلويات
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -39,15 +38,13 @@ export default function CategoryDetailScreen() {
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
   const { numColumns, hPad, cardGap, cardWidth: CARD_WIDTH } = useResponsive();
 
-  // Ads
   const { ads, loading: adsLoading, load: loadAds } = useAds();
 
-  // State
   const [category, setCategory] = useState<StoreCategory | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ── 1. Load category & stores by slug ──
+  // ── Load category & stores ──
   useEffect(() => {
     if (!slug) return;
 
@@ -55,12 +52,10 @@ export default function CategoryDetailScreen() {
 
     Promise.all([fetchStoreCategories(), fetchAllActiveStores()])
       .then(([catsRes, storesRes]) => {
-        // Find category by slug
         const found = catsRes.data.find((c: StoreCategory) => c.slug === slug);
         setCategory(found || null);
 
         if (found) {
-          // Filter stores by category_id
           const filtered = storesRes.data.filter(
             (s: Store) =>
               s.store_category_id === found.id ||
@@ -78,19 +73,19 @@ export default function CategoryDetailScreen() {
       .finally(() => setLoading(false));
   }, [slug]);
 
-  // ── 2. Load ads for this category ──
+  // ── Load ads ──
   useEffect(() => {
     if (category?.id) {
       loadAds({ categoryId: category.id });
     }
   }, [category?.id, loadAds]);
 
-  // ── 3. Navigate to store ──
+  // ── Navigate ──
   const handleStorePress = (storeId: string) => {
     router.push(`/store/${storeId}` as any);
   };
 
-  // ── 4. Render Store Card ──
+  // ── Render Store Card ──
   const renderStore = ({ item }: { item: Store }) => {
     const name = isAr ? item.name_ar || item.name : item.name;
     const isOpen = checkStoreIsOpen(item);
@@ -100,7 +95,11 @@ export default function CategoryDetailScreen() {
       <Pressable
         style={({ pressed }) => [
           styles.storeCard,
-          { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            opacity: pressed ? 0.85 : 1,
+          },
         ]}
         onPress={() => handleStorePress(item.id)}
       >
@@ -120,7 +119,6 @@ export default function CategoryDetailScreen() {
           {item.address || (isAr ? 'قلقيلية' : 'Qalqilya')}
         </Text>
 
-        {/* Status & Hours */}
         <View style={styles.storeMeta}>
           <View style={[styles.statusBadge, { backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2' }]}>
             <View style={[styles.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
@@ -133,11 +131,12 @@ export default function CategoryDetailScreen() {
           </Text>
         </View>
 
-        {/* WhatsApp */}
         {wa && (
           <Pressable
             style={styles.waBtn}
-            onPress={() => Linking.openURL(`https://wa.me/${wa.replace(/[^0-9]/g, '')}`).catch(() => {})}
+            onPress={() =>
+              Linking.openURL(`https://wa.me/${wa.replace(/[^0-9]/g, '')}`).catch(() => {})
+            }
           >
             <Text style={styles.waEmoji}>💬</Text>
             <Text style={styles.waText}>{isAr ? 'واتساب' : 'WhatsApp'}</Text>
@@ -147,7 +146,7 @@ export default function CategoryDetailScreen() {
     );
   };
 
-  // ── 5. Render Ad ──
+  // ── Render Ad ──
   const renderAd = useCallback(
     ({ item }: any) => (
       <View style={styles.adWrapper}>
@@ -162,7 +161,7 @@ export default function CategoryDetailScreen() {
     [favIds, user, toggleFav, CARD_WIDTH]
   );
 
-  // ── 6. Loading ──
+  // ── Loading ──
   if (loading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -171,7 +170,7 @@ export default function CategoryDetailScreen() {
     );
   }
 
-  // ── 7. Category not found ──
+  // ── Category not found ──
   if (!category) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -192,7 +191,7 @@ export default function CategoryDetailScreen() {
     );
   }
 
-  // ── 8. Main UI ──
+  // ── Main UI ──
   const categoryName = isAr ? category.name_ar || category.name : category.name;
 
   return (
@@ -214,28 +213,61 @@ export default function CategoryDetailScreen() {
         numColumns={numColumns}
         key={numColumns}
         renderItem={renderAd}
-        contentContainerStyle={[styles.listContent, { paddingHorizontal: hPad }]}
-        columnWrapperStyle={numColumns > 1 ? { gap: cardGap, marginBottom: cardGap } : undefined}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingHorizontal: hPad }, // ✅ الأنماط الديناميكية هنا
+        ]}
+        columnWrapperStyle={
+          numColumns > 1 ? { gap: cardGap, marginBottom: cardGap } : undefined
+        }
         showsVerticalScrollIndicator={false}
         refreshing={adsLoading}
         onRefresh={() => category.id && loadAds({ categoryId: category.id })}
         ListHeaderComponent={
           stores.length > 0 ? (
-            <View style={[styles.storesSection, { backgroundColor: colors.surface }]}>
-              <View style={[styles.storesHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View
+              style={[
+                styles.storesSection,
+                {
+                  backgroundColor: colors.surface,
+                  marginHorizontal: -hPad, // ✅ ديناميكي
+                  paddingHorizontal: hPad, // ✅ ديناميكي
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.storesHeader,
+                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
+                ]}
+              >
                 <View style={[styles.storesIconWrap, { backgroundColor: colors.primaryGhost }]}>
                   <Text style={styles.storesIcon}>🏪</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
-                    style={[styles.storesTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
+                    style={[
+                      styles.storesTitle,
+                      {
+                        color: colors.textPrimary,
+                        textAlign: isRTL ? 'right' : 'left',
+                      },
+                    ]}
                   >
                     {isAr ? `متاجر ${categoryName}` : `Stores in ${categoryName}`}
                   </Text>
                   <Text
-                    style={[styles.storesSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}
+                    style={[
+                      styles.storesSub,
+                      {
+                        color: colors.textMuted,
+                        textAlign: isRTL ? 'right' : 'left',
+                      },
+                    ]}
                   >
-                    {isAr ? `${stores.length} متجر` : `${stores.length} store${stores.length !== 1 ? 's' : ''}`}
+                    {isAr
+                      ? `${stores.length} متجر`
+                      : `${stores.length} store${stores.length !== 1 ? 's' : ''}`}
                   </Text>
                 </View>
               </View>
@@ -285,6 +317,7 @@ function checkStoreIsOpen(store: Store): boolean {
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────
+// ✅ تم إزالة الخصائص التي تعتمد على `hPad` من هنا، وتم نقلها إلى JSX
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
@@ -322,15 +355,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
 
-  listContent: { paddingVertical: Spacing.md, paddingBottom: 40 },
+  // ✅ لم تعد تحتوي على paddingHorizontal، سنضيفها في JSX
+  listContent: {
+    paddingVertical: Spacing.md,
+    paddingBottom: 40,
+  },
 
   // Stores Section
   storesSection: {
     marginBottom: Spacing.md,
     paddingVertical: Spacing.md,
     borderRadius: Radius.lg,
-    marginHorizontal: -hPad,
-    paddingHorizontal: hPad,
+    // marginHorizontal و paddingHorizontal يتم تعيينهما في JSX
   },
   storesHeader: {
     alignItems: 'center',
