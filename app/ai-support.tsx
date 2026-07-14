@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, Pressable,
   KeyboardAvoidingView, Platform, ActivityIndicator, Linking, Animated,
@@ -78,7 +78,7 @@ function TypingIndicator({ color }: { color: string }) {
 }
 
 // ── Human Support Card ────────────────────────────────────────────────────────
-function HumanSupportCard({ isAr, colors }: { isAr: boolean; colors: any }) {
+const HumanSupportCard = React.memo(function HumanSupportCard({ isAr, colors }: { isAr: boolean; colors: any }) {
   const openWhatsApp = () => {
     const msg = encodeURIComponent(
       isAr ? 'مرحباً، أحتاج للمساعدة في سوق قلقيلية' : 'Hello, I need help with Souq Qalqilya'
@@ -138,7 +138,7 @@ function HumanSupportCard({ isAr, colors }: { isAr: boolean; colors: any }) {
       </Pressable>
     </View>
   );
-}
+});
 
 const hsStyles = StyleSheet.create({
   card: {
@@ -191,23 +191,47 @@ export default function AiSupportScreen() {
   const [loading, setLoading] = useState(false);
   const turnCountRef = useRef(0);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  // Refs to avoid race conditions and memory leaks
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Keep messagesRef in sync with state
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const quickPrompts = isAr ? QUICK_PROMPTS_AR : QUICK_PROMPTS_EN;
 
+  // ── Scroll to bottom with cleanup ──────────────────────────────────────────
   const scrollToBottom = useCallback(() => {
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      listRef.current?.scrollToEnd({ animated: true });
+      scrollTimeoutRef.current = null;
+    }, 80);
   }, []);
 
   useEffect(() => {
     if (messages.length > 0) scrollToBottom();
-  }, [messages.length]);
+    // Cleanup timeout on unmount
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+        scrollTimeoutRef.current = null;
+      }
+    };
+  }, [messages.length, scrollToBottom]);
 
+  // ── Send message (using messagesRef to avoid closure issues) ──────────────
   const sendMessage = useCallback(async (userText: string) => {
     const trimmed = userText.trim();
     if (!trimmed || loading) return;
 
+    // Generate unique ID
+    const uid = `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
     const userMsg: ChatMessage = {
-      id: `u_${Date.now()}`,
+      id: uid,
       role: 'user',
       content: trimmed,
       timestamp: new Date(),
@@ -218,7 +242,9 @@ export default function AiSupportScreen() {
     setLoading(true);
     turnCountRef.current += 1;
 
-    const history = [...messages, userMsg]
+    // Use messagesRef.current to get the latest messages
+    const currentMessages = messagesRef.current;
+    const history = [...currentMessages, userMsg]
       .filter(m => m.role === 'user' || m.role === 'assistant')
       .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
@@ -239,7 +265,7 @@ export default function AiSupportScreen() {
       const { reply, shouldHandoff } = data as { reply: string; shouldHandoff: boolean };
 
       const assistantMsg: ChatMessage = {
-        id: `a_${Date.now()}`,
+        id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         role: 'assistant',
         content: reply,
         timestamp: new Date(),
@@ -248,15 +274,16 @@ export default function AiSupportScreen() {
 
       if (shouldHandoff) {
         setMessages(prev => [...prev, {
-          id: `h_${Date.now()}`,
+          id: `h_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           role: 'handoff',
           content: '',
           timestamp: new Date(),
         }]);
       }
-    } catch {
+    } catch (err) {
+      console.error('AI Support error:', err);
       setMessages(prev => [...prev, {
-        id: `e_${Date.now()}`,
+        id: `e_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         role: 'assistant',
         content: isAr
           ? 'عذراً، حدث خطأ. يرجى المحاولة مرة أخرى أو التواصل مع الدعم البشري.'
@@ -266,7 +293,7 @@ export default function AiSupportScreen() {
     } finally {
       setLoading(false);
     }
-  }, [messages, loading, isAr]);
+  }, [loading, isAr]);
 
   const handleSend = useCallback(() => sendMessage(input), [sendMessage, input]);
   const handleQuickPrompt = useCallback((p: string) => sendMessage(p), [sendMessage]);
@@ -274,6 +301,33 @@ export default function AiSupportScreen() {
     sendMessage(isAr ? 'أريد التواصل مع دعم بشري' : 'I want to speak with human support');
   }, [sendMessage, isAr]);
 
+  // ── Memoized footer component ──────────────────────────────────────────────
+  const footerComponent = useMemo(() => {
+    if (!loading) return null;
+    return (
+      <View style={[
+        styles.msgRow,
+        isAr ? styles.msgRowUser : styles.msgRowOther,
+        { flexDirection: isAr ? 'row-reverse' : 'row' },
+      ]}>
+        {!isAr ? (
+          <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
+            <MaterialIcons name="robot" size={16} color="#fff" />
+          </View>
+        ) : null}
+        <View style={[styles.bubble, { backgroundColor: colors.surface, ...Shadow.xs }]}>
+          <TypingIndicator color={colors.primary} />
+        </View>
+        {isAr ? (
+          <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
+            <MaterialIcons name="robot" size={16} color="#fff" />
+          </View>
+        ) : null}
+      </View>
+    );
+  }, [loading, isAr, colors]);
+
+  // ── Render message ──────────────────────────────────────────────────────────
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     if (item.role === 'handoff') {
       return (
@@ -284,12 +338,16 @@ export default function AiSupportScreen() {
     }
 
     const isUser = item.role === 'user';
+    // Determine alignment based on RTL
+    const isUserAlignedRight = isAr ? !isUser : isUser;
+
     return (
       <View style={[
         styles.msgRow,
-        isUser
-          ? (isAr ? styles.msgRowOther : styles.msgRowUser)
-          : (isAr ? styles.msgRowUser : styles.msgRowOther),
+        {
+          flexDirection: isAr ? 'row-reverse' : 'row',
+          justifyContent: isUserAlignedRight ? 'flex-end' : 'flex-start',
+        },
       ]}>
         {!isUser ? (
           <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
@@ -352,8 +410,8 @@ export default function AiSupportScreen() {
           </Pressable>
 
           <View style={[styles.headerAvatarWrap, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-              <MaterialIcons name="robot" size={22} color="#fff" />
-        </View>
+            <MaterialIcons name="robot" size={22} color="#fff" />
+          </View>
 
           <View style={{ flex: 1 }}>
             <Text style={[styles.headerTitle, { textAlign: isAr ? 'right' : 'left' }]}>
@@ -383,9 +441,9 @@ export default function AiSupportScreen() {
               styles.welcomeCard,
               { backgroundColor: isDark ? colors.surface : colors.surfaceTint, borderColor: colors.border },
             ]}>
-             <View style={[styles.welcomeIconWrap, { backgroundColor: colors.primary }]}>
+              <View style={[styles.welcomeIconWrap, { backgroundColor: colors.primary }]}>
                 <MaterialIcons name="robot" size={40} color="#fff" />
-                 </View>
+              </View>
               <Text style={[styles.welcomeTitle, { color: colors.textPrimary }]}>
                 {isAr ? 'أهلاً بك في مساعد سوق قلقيلية' : 'Welcome to Souq Qalqilya Assistant'}
               </Text>
@@ -445,21 +503,7 @@ export default function AiSupportScreen() {
             showsVerticalScrollIndicator={false}
             onContentSizeChange={scrollToBottom}
             keyboardShouldPersistTaps="handled"
-            ListFooterComponent={
-              loading ? (
-                <View style={[
-                  styles.msgRow,
-                  isAr ? styles.msgRowUser : styles.msgRowOther,
-                ]}>
-                  <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
-                    <MaterialIcons name="robot" size={16} color="#fff" />
-                    </View>
-                  <View style={[styles.bubble, { backgroundColor: colors.surface, ...Shadow.xs }]}>
-                    <TypingIndicator color={colors.primary} />
-                  </View>
-                </View>
-              ) : null
-            }
+            ListFooterComponent={footerComponent}
           />
         )}
 
@@ -500,6 +544,7 @@ export default function AiSupportScreen() {
             ]}
             onPress={handleSend}
             disabled={!canSend}
+            accessibilityLabel={isAr ? 'إرسال' : 'Send'}
           >
             {loading
               ? <ActivityIndicator color="#fff" size="small" />
@@ -615,6 +660,8 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     fontWeight: '600',
     lineHeight: 22,
+    maxWidth: '80%',
+    flexWrap: 'wrap',
   },
 
   // ── Messages ─────────────────────────────────────────────────────────────
@@ -647,17 +694,17 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   textInput: {
-  flex: 1,
-  minHeight: 46,
-  maxHeight: 110,
-  borderWidth: 1.5,
-  borderRadius: Radius.xl,
-  paddingHorizontal: Spacing.md,
-  paddingVertical: 11,
-  fontSize: FontSize.md,
-  lineHeight: 20,
-  backgroundColor: 'transparent', // عدل القيمة لـ transparent
-},
+    flex: 1,
+    minHeight: 46,
+    maxHeight: 110,
+    borderWidth: 1.5,
+    borderRadius: Radius.xl,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 11,
+    fontSize: FontSize.md,
+    lineHeight: 20,
+    backgroundColor: 'transparent',
+  },
   sendBtn: {
     width: 46, height: 46, borderRadius: 23,
     alignItems: 'center', justifyContent: 'center',
