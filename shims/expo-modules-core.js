@@ -1,12 +1,12 @@
 // shims/expo-modules-core.js
 // هذا الملف يحل مشكلة requireOptionalNativeModule
 
-// محاكاة الكائن المطلوب من expo-modules-core
+// ✅ تأكد من وجود الكائن في الـ global
 if (typeof global === 'undefined') {
   global = {};
 }
 
-// تأكد من وجود requireOptionalNativeModule
+// ✅ أضف الدالة المطلوبة
 global.requireOptionalNativeModule = function(moduleName) {
   try {
     // حاول تحميل الوحدة الأصلية
@@ -18,7 +18,7 @@ global.requireOptionalNativeModule = function(moduleName) {
   }
 };
 
-// تصدير الكائنات الأساسية
+// ✅ تأكد من أن الدالة موجودة أيضاً كـ export
 module.exports = {
   requireOptionalNativeModule: global.requireOptionalNativeModule,
   NativeModulesProxy: {},
@@ -27,3 +27,6 @@ module.exports = {
   CodedError: class CodedError extends Error {},
   UnavailabilityError: class UnavailabilityError extends Error {},
 };
+
+// ✅ أيضاً تأكد من أنها موجودة كـ default export
+module.exports.default = module.exports;
