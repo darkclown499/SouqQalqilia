@@ -369,7 +369,7 @@ function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. CATEGORY BLOCK (أفقي مع 4 متاجر)
 // ─────────────────────────────────────────────────────────────────────────────
-function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featuredIds }: any) {
+function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featuredIds = new Set() }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
   const [showAll, setShowAll] = useState(false);
   const displayStores = showAll ? stores : stores.slice(0, 4);
@@ -377,8 +377,9 @@ function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featur
 
   // ترتيب المتاجر بحيث المميزة أولاً
   const sortedStores = useMemo(() => {
-    const featured = stores.filter((s: any) => featuredIds.has(s.id));
-    const others = stores.filter((s: any) => !featuredIds.has(s.id));
+    const featuredIdsSet = featuredIds ?? new Set();
+    const featured = stores.filter((s: any) => featuredIdsSet.has(s.id));
+    const others = stores.filter((s: any) => !featuredIdsSet.has(s.id));
     return [...featured, ...others];
   }, [stores, featuredIds]);
 
@@ -795,18 +796,19 @@ return (
           </View>
         ) : (
           <>
-            {displayedGroups.map(group => (
-              <CategoryBlock
-                key={group.cat.id}
-                cat={group.cat}
-                stores={group.stores}
-                ratings={ratings}
-                isAr={isAr}
-                isRTL={isRTL}
-                colors={colors}
-                onStorePress={(id: string) => router.push(`/store/${id}` as any)}
-              />
-            ))}
+       {displayedGroups.map(group => (
+  <CategoryBlock
+    key={group.cat.id}
+    cat={group.cat}
+    stores={group.stores}
+    ratings={ratings}
+    isAr={isAr}
+    isRTL={isRTL}
+    colors={colors}
+    featuredIds={featuredStoreIds}  // ← أضف هذا السطر
+    onStorePress={(id: string) => router.push(`/store/${id}` as any)}
+  />
+))}
           </>
         )}
       </ScrollView>
