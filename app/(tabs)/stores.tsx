@@ -235,19 +235,20 @@ function VIPStoreCard({ store, rating, isAr, onPress }: any) {
   );
 }
 
-// ── VIP Stores Strip with Auto-Scroll ─────────────────────────────────────
+// ── VIP Stores Strip with Smooth Auto-Scroll ──────────────────────────────
 function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
   const [shuffledStores, setShuffledStores] = useState<Store[]>([]);
   const flatListRef = useRef<FlatList>(null);
-  const scrollIndex = useRef(0);
+  const scrollX = useRef(0);
   const isPaused = useRef(false);
   const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const CARD_WIDTH = 214; // 200 + 14 gap
   
   useEffect(() => {
     setShuffledStores(shuffleArray(stores));
   }, [stores]);
 
-  // ── Auto-Scroll ──
+  // ── Smooth Auto-Scroll ──
   useEffect(() => {
     if (shuffledStores.length <= 1) return;
     
@@ -255,12 +256,22 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
       if (autoScrollTimer.current) clearInterval(autoScrollTimer.current);
       autoScrollTimer.current = setInterval(() => {
         if (isPaused.current || shuffledStores.length === 0) return;
-        scrollIndex.current = (scrollIndex.current + 1) % shuffledStores.length;
-        flatListRef.current?.scrollToIndex({
-          index: scrollIndex.current,
+        
+        // Calculate next offset
+        let nextOffset = scrollX.current + CARD_WIDTH;
+        const maxOffset = (shuffledStores.length - 1) * CARD_WIDTH;
+        
+        // If reached the end, loop smoothly back to start
+        if (nextOffset > maxOffset) {
+          nextOffset = 0;
+        }
+        
+        scrollX.current = nextOffset;
+        flatListRef.current?.scrollToOffset({
+          offset: nextOffset,
           animated: true,
         });
-      }, 3500);
+      }, 3000); // 3 seconds between scrolls
     };
     
     startAutoScroll();
@@ -275,7 +286,15 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
   };
 
   const handleTouchEnd = () => {
-    isPaused.current = false;
+    // Resume after a short delay
+    setTimeout(() => {
+      isPaused.current = false;
+    }, 2000);
+  };
+
+  // ── Track scroll position ──
+  const handleScroll = (event: any) => {
+    scrollX.current = event.nativeEvent.contentOffset.x;
   };
 
   if (shuffledStores.length === 0) return null;
@@ -305,8 +324,10 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
         )}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[vip.scrollContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-        snapToInterval={214} // card width 200 + gap 14
+        snapToInterval={CARD_WIDTH}
         decelerationRate="fast"
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         onScrollBeginDrag={handleTouchStart}
@@ -315,7 +336,6 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
     </View>
   );
 }
-
 // ── VIP Styles ──────────────────────────────────────────────────────────────
 const vip = StyleSheet.create({
   stripWrap: { marginBottom: 32, marginTop: 4 },
