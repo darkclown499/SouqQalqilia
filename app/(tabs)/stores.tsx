@@ -24,6 +24,7 @@ import {
 } from '@/services/storeCategoriesService';
 import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
 import { FontSize, Radius, Spacing } from '@/constants/theme';
+import { Dimensions, FlatList } from 'react-native';
 
 // ── Get featured stores (from service or fallback to top-rated) ────────────
 async function getFeaturedStores(): Promise<Store[]> {
@@ -373,10 +374,9 @@ function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. CATEGORY BLOCK (أفقي مع 4 متاجر)
 // ─────────────────────────────────────────────────────────────────────────────
-function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featuredIds = new Set() }: any) {
+function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featuredIds = new Set(), colors }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
   const [showAll, setShowAll] = useState(false);
-  const displayStores = showAll ? stores : stores.slice(0, 4);
   const hasMore = stores.length > 4;
 
   // ترتيب المتاجر بحيث المميزة أولاً
@@ -387,7 +387,12 @@ function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featur
     return [...featured, ...others];
   }, [stores, featuredIds]);
 
+  // عرض 4 متاجر كحد أقصى في البداية
   const finalStores = showAll ? sortedStores : sortedStores.slice(0, 4);
+
+  // حساب عرض البطاقة (تقريباً 48% من الشاشة)
+  const { width } = Dimensions.get('window');
+  const cardWidth = (width - 16 * 2 - 12) / 2; // padding 16, gap 12
 
   return (
     <View style={s.categoryContainer}>
@@ -395,29 +400,52 @@ function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featur
         <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{catName}</Text>
         {hasMore && (
           <Pressable onPress={() => setShowAll(!showAll)} hitSlop={6}>
-            <Text style={[s.catMoreText, { color: '#B91C1C' }]}>
+            <Text style={[s.catMoreText, { color: colors.primary }]}>
               {showAll ? (isAr ? 'عرض أقل' : 'Show Less') : (isAr ? 'عرض المزيد' : 'View More')}
             </Text>
           </Pressable>
         )}
       </View>
-      
-      <ScrollView
+
+      <FlatList
         horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[s.catGridHorizontal, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-      >
-        {finalStores.map((store: any) => (
-          <StoreGridCard 
-            key={store.id} 
-            store={store} 
-            rating={ratings[store.id] ?? { avg: 0 }} 
-            isAr={isAr} 
-            isFeatured={featuredIds.has(store.id)}
-            onPress={() => onStorePress(store.id)} 
+        data={finalStores}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <StoreGridCard
+            key={item.id}
+            store={item}
+            rating={ratings[item.id] ?? { avg: 0 }}
+            isAr={isAr}
+            isFeatured={featuredIds.has(item.id)}
+            onPress={() => onStorePress(item.id)}
           />
-        ))}
-      </ScrollView>
+        )}
+        showsHorizontalScrollIndicator={true}
+        contentContainerStyle={[s.catGridHorizontal, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+        snapToInterval={cardWidth + 12}
+        decelerationRate="fast"
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+      />
+
+      {/* ── نقاط ترقيم (Pagination Dots) ── */}
+      {finalStores.length > 1 && !showAll && (
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8 }}>
+          {finalStores.map((_, idx) => (
+            <View
+              key={idx}
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: idx === 0 ? colors.primary : colors.border,
+                opacity: idx === 0 ? 1 : 0.4,
+              }}
+            />
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -800,7 +828,7 @@ return (
           </View>
         ) : (
           <>
-       {displayedGroups.map(group => (
+   {displayedGroups.map(group => (
   <CategoryBlock
     key={group.cat.id}
     cat={group.cat}
@@ -808,8 +836,8 @@ return (
     ratings={ratings}
     isAr={isAr}
     isRTL={isRTL}
-    colors={colors}
-    featuredIds={featuredStoreIds}  // ← أضف هذا السطر
+    colors={colors}  // ← أضف هذا
+    featuredIds={featuredStoreIds}
     onStorePress={(id: string) => router.push(`/store/${id}` as any)}
   />
 ))}
@@ -925,6 +953,7 @@ catMoreText: {
 catGridHorizontal: {
   paddingHorizontal: 2,
   gap: 12,
+  alignItems: 'center', // ← ضروري لتوسيط البطاقات عمودياً
 },
 gridCardFeatured: {
   borderColor: '#FFD700',
