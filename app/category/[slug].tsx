@@ -85,24 +85,27 @@ export default function CategoryDetailScreen() {
     router.push(`/store/${storeId}` as any);
   };
 
-  // ── Render Store Card (Grid) ──
-  const renderStore = ({ item }: { item: Store }) => {
-    const name = isAr ? item.name_ar || item.name : item.name;
-    const isOpen = checkStoreIsOpen(item);
-    const wa = item.whatsapp || item.phone;
+ // ── Render Store Card (Grid) ──
+const renderStore = ({ item }: { item: Store }) => {
+  const name = isAr ? item.name_ar || item.name : item.name;
+  const isOpen = checkStoreIsOpen(item);
+  const wa = item.whatsapp || item.phone;
+  const isVIP = item.is_featured === true || (item as any).is_vip === true; // ✅ التحقق من VIP
 
-    return (
-      <Pressable
-        style={({ pressed }) => [
-          styles.storeCard,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-            opacity: pressed ? 0.85 : 1,
-          },
-        ]}
-        onPress={() => handleStorePress(item.id)}
-      >
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.storeCard,
+        {
+          backgroundColor: colors.surface,
+          borderColor: isVIP ? '#FFD700' : colors.border, // ✅ إطار ذهبي لـ VIP
+          opacity: pressed ? 0.85 : 1,
+        },
+      ]}
+      onPress={() => handleStorePress(item.id)}
+    >
+      {/* حاوية الشعار مع شارة VIP */}
+      <View style={styles.logoWrapper}>
         {item.logo_url ? (
           <Image source={{ uri: item.logo_url }} style={styles.storeLogo} contentFit="cover" />
         ) : (
@@ -111,40 +114,49 @@ export default function CategoryDetailScreen() {
           </View>
         )}
 
-        <Text style={[styles.storeName, { color: colors.textPrimary }]} numberOfLines={2}>
-          {name}
-        </Text>
-
-        <Text style={[styles.storeAddress, { color: colors.textMuted }]} numberOfLines={1}>
-          {item.address || (isAr ? 'قلقيلية' : 'Qalqilya')}
-        </Text>
-
-        <View style={styles.storeMeta}>
-          <View style={[styles.statusBadge, { backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2' }]}>
-            <View style={[styles.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
-            <Text style={[styles.statusText, { color: isOpen ? '#16A34A' : '#DC2626' }]}>
-              {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
-            </Text>
+        {/* ✅ شارة VIP (تظهر فقط إذا كان المتجر VIP) */}
+        {isVIP && (
+          <View style={styles.vipBadge}>
+            <MaterialIcons name="stars" size={10} color="#FFD700" />
+            <Text style={styles.vipBadgeText}>VIP</Text>
           </View>
-          <Text style={[styles.hoursText, { color: colors.textMuted }]}>
-            {item.opening_time} - {item.closing_time}
+        )}
+      </View>
+
+      <Text style={[styles.storeName, { color: colors.textPrimary }]} numberOfLines={2}>
+        {name}
+      </Text>
+
+      <Text style={[styles.storeAddress, { color: colors.textMuted }]} numberOfLines={1}>
+        {item.address || (isAr ? 'قلقيلية' : 'Qalqilya')}
+      </Text>
+
+      <View style={styles.storeMeta}>
+        <View style={[styles.statusBadge, { backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2' }]}>
+          <View style={[styles.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
+          <Text style={[styles.statusText, { color: isOpen ? '#16A34A' : '#DC2626' }]}>
+            {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
           </Text>
         </View>
+        <Text style={[styles.hoursText, { color: colors.textMuted }]}>
+          {item.opening_time} - {item.closing_time}
+        </Text>
+      </View>
 
-        {wa && (
-          <Pressable
-            style={styles.waBtn}
-            onPress={() =>
-              Linking.openURL(`https://wa.me/${wa.replace(/[^0-9]/g, '')}`).catch(() => {})
-            }
-          >
-            <Text style={styles.waEmoji}>💬</Text>
-            <Text style={styles.waText}>{isAr ? 'واتساب' : 'WhatsApp'}</Text>
-          </Pressable>
-        )}
-      </Pressable>
-    );
-  };
+      {wa && (
+        <Pressable
+          style={styles.waBtn}
+          onPress={() =>
+            Linking.openURL(`https://wa.me/${wa.replace(/[^0-9]/g, '')}`).catch(() => {})
+          }
+        >
+          <Text style={styles.waEmoji}>💬</Text>
+          <Text style={styles.waText}>{isAr ? 'واتساب' : 'WhatsApp'}</Text>
+        </Pressable>
+      )}
+    </Pressable>
+  );
+};
 
   // ── Render Ad (Horizontal Strip) ──
   const renderAdStrip = useCallback(() => {
@@ -327,15 +339,12 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     paddingBottom: 40,
   },
-
-  // ✅ Grid columns with 2 per row
   columnWrapper: {
     justifyContent: 'space-between',
     gap: 12,
     marginBottom: 12,
   },
 
-  // ✅ Ad Strip (Horizontal) - optional header
   adStrip: {
     marginBottom: Spacing.md,
     paddingVertical: 8,
@@ -348,15 +357,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // ✅ Store Card - responsive 2-column grid
+  // ✅ Store Card - 2-column grid
   storeCard: {
-    width: '48%', // ✅ responsive: 2 columns per row
+    width: '48%',
     borderRadius: Radius.xl,
     borderWidth: 1.5,
     padding: Spacing.md,
     alignItems: 'center',
     gap: 4,
     ...Shadow.xs,
+  },
+
+  // ✅ الأنماط الخاصة بالشعار وشارة VIP (جديدة)
+  logoWrapper: {
+    position: 'relative',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginBottom: 4,
   },
   storeLogo: { width: 56, height: 56, borderRadius: 28 },
   storeLogoPlaceholder: {
@@ -367,6 +385,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   storeLogoEmoji: { fontSize: 26 },
+
+  vipBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FFD700',
+  },
+  vipBadgeText: {
+    color: '#FFD700',
+    fontSize: 8,
+    fontWeight: '800',
+  },
+
   storeName: { fontSize: FontSize.sm, fontWeight: '700', textAlign: 'center', lineHeight: 18 },
   storeAddress: { fontSize: 10, textAlign: 'center' },
 
