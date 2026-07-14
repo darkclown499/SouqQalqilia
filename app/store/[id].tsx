@@ -507,26 +507,7 @@ export default function StoreDetailScreen() {
               </Pressable>
               
              
-              <View style={[s.headerActionsRight, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-  {/* زر واتساب */}
-  <Pressable 
-    style={s.headerBtn} 
-    onPress={() => {
-      const userName = user?.username || user?.email?.split('@')[0] || isAr ? 'عميل' : 'Customer';
-      const msg = isAr 
-        ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
-        : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
-      const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
-      if (phone) {
-        Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-      } else {
-        // إذا لم يكن هناك رقم، نفتح رابط المتجر العام
-        alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
-      }
-    }}
-  >
-    <MaterialIcons name="whatsapp" size={18} color="#25D366" />
-  </Pressable>
+             <View style={[s.headerActionsRight, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
   <Pressable style={s.headerBtn} onPress={() => id && toggleFav(id)}>
     <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={20} color={isFavorited ? colors.primary : '#111827'} />
   </Pressable>
@@ -534,8 +515,7 @@ export default function StoreDetailScreen() {
     <MaterialIcons name="share" size={18} color="#111827" />
   </Pressable>
 </View>
-            </View>
-          </View>
+
 
       
           <View style={s.overlapWrapper}>
@@ -569,31 +549,41 @@ export default function StoreDetailScreen() {
          <View style={s.storeDetails}>
   <Text style={s.storeNameTxt}>{storeName}</Text>
   
-  {/* زر واتساب المميز */}
-  <Pressable
-    style={({ pressed }) => [s.whatsappBtn, { 
-      backgroundColor: '#25D366', 
-      opacity: pressed ? 0.85 : 1,
-      transform: [{ scale: pressed ? 0.97 : 1 }]
-    }]}
-    onPress={() => {
-      const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
-      const msg = isAr 
-        ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
-        : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
-      const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
-      if (phone) {
-        Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-      } else {
-        alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
-      }
-    }}
+  {/* زر واتساب المميز - بتأثير 3D وتدرج */}
+<Pressable
+  style={({ pressed }) => [
+    s.whatsappBtn,
+    {
+      opacity: pressed ? 0.9 : 1,
+      transform: [{ scale: pressed ? 0.96 : 1 }],
+    },
+  ]}
+  onPress={() => {
+    const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
+    const msg = isAr 
+      ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
+      : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
+    const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
+    if (phone) {
+      Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+    } else {
+      alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
+    }
+  }}
+>
+  <LinearGradient
+    colors={['#25D366', '#128C7E']}
+    start={{ x: 0, y: 0 }}
+    end={{ x: 1, y: 0 }}
+    style={[s.whatsappGradient, { borderRadius: 30 }]}
   >
-    <MaterialIcons name="whatsapp" size={20} color="#fff" />
+    <MaterialIcons name="whatsapp" size={26} color="#fff" style={{ marginRight: 8 }} />
     <Text style={s.whatsappBtnText}>
-      {isAr ? 'تواصل واتساب' : 'WhatsApp'}
+      {isAr ? 'تواصل مع المتجر' : 'Contact Store'}
     </Text>
-  </Pressable>
+    <MaterialIcons name="arrow-forward" size={20} color="#fff" style={{ marginLeft: 4 }} />
+  </LinearGradient>
+</Pressable>
 
   {/* باقي المحتوى (الموقع، الوصف) */}
   <View style={s.locationRow}>
@@ -863,27 +853,29 @@ export default function StoreDetailScreen() {
 
 const s = StyleSheet.create({
 
-  whatsappBtn: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 8,
-  backgroundColor: '#25D366',
-  paddingHorizontal: 20,
-  paddingVertical: 10,
-  borderRadius: 30,
+whatsappBtn: {
   marginTop: 8,
   marginBottom: 4,
   shadowColor: '#25D366',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.3,
-  shadowRadius: 8,
-  elevation: 5,
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.4,
+  shadowRadius: 12,
+  elevation: 8,
+},
+whatsappGradient: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 24,
+  paddingVertical: 14,
+  borderRadius: 30,
+  gap: 4,
 },
 whatsappBtnText: {
   color: '#fff',
-  fontSize: 14,
-  fontWeight: '700',
+  fontSize: 16,
+  fontWeight: '800',
+  letterSpacing: 0.5,
 },
   container: { flex: 1 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
@@ -893,7 +885,7 @@ whatsappBtnText: {
   fabBtn: { position: 'absolute', zIndex: 10, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   
   overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -50, zIndex: 10 },
-sideBadge: { position: 'absolute', top: 25, alignItems: 'center' }, // ← هون التغيير
+sideBadge: { position: 'absolute', top: 20, alignItems: 'center' },
 modernPill: {
   flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff',
   paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5,
