@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -85,7 +85,7 @@ export default function CategoryDetailScreen() {
     router.push(`/store/${storeId}` as any);
   };
 
-  // ── Render Store Card ──
+  // ── Render Store Card (Grid) ──
   const renderStore = ({ item }: { item: Store }) => {
     const name = isAr ? item.name_ar || item.name : item.name;
     const isOpen = checkStoreIsOpen(item);
@@ -146,20 +146,34 @@ export default function CategoryDetailScreen() {
     );
   };
 
-  // ── Render Ad ──
-  const renderAd = useCallback(
-    ({ item }: any) => (
-      <View style={styles.adWrapper}>
-        <AdCard
-          ad={item}
-          width={CARD_WIDTH}
-          isFavorited={favIds.has(item.id)}
-          onFavoritePress={user ? toggleFav : undefined}
+  // ── Render Ad (Horizontal Strip) ──
+  const renderAdStrip = useCallback(() => {
+    if (ads.length === 0) return null;
+
+    return (
+      <View style={styles.adStrip}>
+        <FlatList
+          horizontal
+          data={ads}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={[styles.adWrapper, { width: CARD_WIDTH }]}>
+              <AdCard
+                ad={item}
+                width={CARD_WIDTH}
+                isFavorited={favIds.has(item.id)}
+                onFavoritePress={user ? toggleFav : undefined}
+              />
+            </View>
+          )}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.adScrollContent}
+          snapToInterval={CARD_WIDTH + 12}
+          decelerationRate="fast"
         />
       </View>
-    ),
-    [favIds, user, toggleFav, CARD_WIDTH]
-  );
+    );
+  }, [ads, favIds, user, toggleFav, CARD_WIDTH]);
 
   // ── Loading ──
   if (loading) {
@@ -207,95 +221,50 @@ export default function CategoryDetailScreen() {
         <Text style={styles.storeCount}>{stores.length}</Text>
       </View>
 
+      {/* ✅ Main FlatList: Stores as primary content */}
       <FlatList
-        data={ads}
+        data={stores}
         keyExtractor={(item) => item.id}
-        numColumns={numColumns}
-        key={numColumns}
-        renderItem={renderAd}
+        numColumns={2}
+        key="stores-grid"
+        renderItem={renderStore}
         contentContainerStyle={[
           styles.listContent,
-          { paddingHorizontal: hPad }, // ✅ الأنماط الديناميكية هنا
+          { paddingHorizontal: hPad },
         ]}
-        columnWrapperStyle={
-          numColumns > 1 ? { gap: cardGap, marginBottom: cardGap } : undefined
-        }
+        columnWrapperStyle={styles.columnWrapper}
         showsVerticalScrollIndicator={false}
-        refreshing={adsLoading}
-        onRefresh={() => category.id && loadAds({ categoryId: category.id })}
-        ListHeaderComponent={
-          stores.length > 0 ? (
-            <View
-              style={[
-                styles.storesSection,
-                {
-                  backgroundColor: colors.surface,
-                  marginHorizontal: -hPad, // ✅ ديناميكي
-                  paddingHorizontal: hPad, // ✅ ديناميكي
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.storesHeader,
-                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                ]}
-              >
-                <View style={[styles.storesIconWrap, { backgroundColor: colors.primaryGhost }]}>
-                  <Text style={styles.storesIcon}>🏪</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.storesTitle,
-                      {
-                        color: colors.textPrimary,
-                        textAlign: isRTL ? 'right' : 'left',
-                      },
-                    ]}
-                  >
-                    {isAr ? `متاجر ${categoryName}` : `Stores in ${categoryName}`}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.storesSub,
-                      {
-                        color: colors.textMuted,
-                        textAlign: isRTL ? 'right' : 'left',
-                      },
-                    ]}
-                  >
-                    {isAr
-                      ? `${stores.length} متجر`
-                      : `${stores.length} store${stores.length !== 1 ? 's' : ''}`}
-                  </Text>
-                </View>
-              </View>
-
-              <FlatList
-                horizontal
-                data={stores}
-                keyExtractor={(item) => item.id}
-                renderItem={renderStore}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={[
-                  styles.storesScroll,
-                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                ]}
-                snapToInterval={160}
-                decelerationRate="fast"
-              />
-            </View>
-          ) : null
-        }
+        refreshing={loading}
+        onRefresh={() => {
+          // Re-fetch logic if needed
+          setLoading(true);
+          Promise.all([fetchStoreCategories(), fetchAllActiveStores()])
+            .then(([catsRes, storesRes]) => {
+              const found = catsRes.data.find((c: StoreCategory) => c.slug === slug);
+              if (found) {
+                const filtered = storesRes.data.filter(
+                  (s: Store) =>
+                    s.store_category_id === found.id ||
+                    s.category_id === found.id
+                );
+                setStores(filtered);
+              } else {
+                setStores([]);
+              }
+            })
+            .finally(() => setLoading(false));
+        }}
+        ListHeaderComponent={renderAdStrip}
         ListEmptyComponent={
-          !adsLoading ? (
-            <EmptyState
-              icon="search-off"
-              title={isAr ? 'لا توجد إعلانات' : 'No ads in this category'}
-              subtitle={isAr ? 'حاول مرة أخرى لاحقاً' : 'Try again later'}
-            />
-          ) : null
+          <EmptyState
+            icon="store-off"
+            title={isAr ? 'لا توجد متاجر' : 'No stores'}
+            subtitle={
+              isAr
+                ? 'لا توجد متاجر في هذا التصنيف حالياً'
+                : 'No stores in this category at the moment'
+            }
+          />
         }
       />
     </View>
@@ -317,7 +286,6 @@ function checkStoreIsOpen(store: Store): boolean {
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────
-// ✅ تم إزالة الخصائص التي تعتمد على `hPad` من هنا، وتم نقلها إلى JSX
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
@@ -355,43 +323,34 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
 
-  // ✅ لم تعد تحتوي على paddingHorizontal، سنضيفها في JSX
   listContent: {
     paddingVertical: Spacing.md,
     paddingBottom: 40,
   },
 
-  // Stores Section
-  storesSection: {
-    marginBottom: Spacing.md,
-    paddingVertical: Spacing.md,
-    borderRadius: Radius.lg,
-    // marginHorizontal و paddingHorizontal يتم تعيينهما في JSX
-  },
-  storesHeader: {
-    alignItems: 'center',
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  storesIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  storesIcon: { fontSize: 22 },
-  storesTitle: { fontSize: FontSize.md, fontWeight: '700' },
-  storesSub: { fontSize: FontSize.xs, marginTop: 2 },
-
-  storesScroll: {
-    gap: Spacing.md,
-    paddingVertical: 4,
+  // ✅ Grid columns with 2 per row
+  columnWrapper: {
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
   },
 
-  // Store Card
+  // ✅ Ad Strip (Horizontal) - optional header
+  adStrip: {
+    marginBottom: Spacing.md,
+    paddingVertical: 8,
+  },
+  adScrollContent: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  adWrapper: {
+    flex: 1,
+  },
+
+  // ✅ Store Card - responsive 2-column grid
   storeCard: {
-    width: 150,
+    width: '48%', // ✅ responsive: 2 columns per row
     borderRadius: Radius.xl,
     borderWidth: 1.5,
     padding: Spacing.md,
@@ -443,6 +402,5 @@ const styles = StyleSheet.create({
   waEmoji: { fontSize: 12 },
   waText: { fontSize: 11, fontWeight: '700', color: '#25D366' },
 
-  adWrapper: { flex: 1 },
   emptyText: { fontSize: 16, fontWeight: '500', textAlign: 'center', marginTop: 12 },
 });
