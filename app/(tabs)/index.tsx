@@ -14,10 +14,8 @@ import { trackEvent } from '@/services/analyticsService';
 import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-// expo-haptics is native-only; imported dynamically to avoid web/SSR bundling errors
 
-// Dimensions are now computed reactively via useResponsive() inside the component.
-// Snapshot used only for getItemLayout estimation (close enough; recalculates on resize).
+// expo-haptics is native-only; imported dynamically to avoid web/SSR bundling errors
 import { Dimensions as _RNDims } from 'react-native';
 const _initW = _RNDims.get('window').width;
 const _initHPad = _initW < 375 ? 12 : Spacing.lg;
@@ -115,16 +113,15 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   const shimmer = React.useRef(new Animated.Value(0.35)).current;
 
   React.useEffect(() => {
-  setLoading(true);
-  fetchFeaturedStores().then(({ data }) => {
-    setStores(shuffleArray(data)); // ← ترتيب عشوائي
-    setLoading(false);
-  }).catch(() => {
-    setLoading(false);
-  });
-}, []);
+    setLoading(true);
+    fetchFeaturedStores().then(({ data }) => {
+      setStores(shuffleArray(data));
+      setLoading(false);
+    }).catch(() => {
+      setLoading(false);
+    });
+  }, []);
 
-  // نبضة هادية أثناء التحميل (shimmer)
   React.useEffect(() => {
     if (!loading) return;
     const loop = Animated.loop(
@@ -137,13 +134,12 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     return () => loop.stop();
   }, [loading]);
 
-  // التمرير التلقائي (Auto-Scroll)
   React.useEffect(() => {
     if (stores.length <= 1) return;
     const timer = setInterval(() => {
       scrollIndex.current = (scrollIndex.current + 1) % stores.length;
       flatListRef.current?.scrollToOffset({
-        offset: scrollIndex.current * 164, // عرض الكرت 150 + الفراغ 14
+        offset: scrollIndex.current * 164,
         animated: true,
       });
     }, 3500);
@@ -211,7 +207,6 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
                     style={StyleSheet.absoluteFillObject}
                   />
 
-                  {/* شارة VIP بتدرج ذهبي */}
                   <LinearGradient
                     colors={['#FFD966', '#F59E0B']}
                     start={{ x: 0, y: 0 }}
@@ -228,7 +223,6 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
                     <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.3 }}>VIP</Text>
                   </LinearGradient>
 
-                  {/* شارة مفتوح / مغلق */}
                   <View style={{
                     position: 'absolute', bottom: 10,
                     ...(isRTL ? { right: 10 } : { left: 10 }),
@@ -242,7 +236,6 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
                     </Text>
                   </View>
 
-                  {/* المحتوى في المنتصف تماماً */}
                   <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12 }}>
                     <View style={{
                       width: 74, height: 74, borderRadius: 37,
@@ -275,6 +268,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
     </View>
   );
 }
+
 const fs = StyleSheet.create({
   wrapper: { marginBottom: Spacing.lg },
   labelRow: {
@@ -335,7 +329,6 @@ const QALQILYA_LOCATIONS = [
   'عزبة الأشقر', 'واد الرشا', 'المدور',
 ];
 
-// Tablet/desktop: 3 or 4 columns → triplet/quad rows
 type FeedRow = {
   type: 'pair' | 'triple' | 'quad';
   ads: Ad[];
@@ -348,7 +341,7 @@ function buildFeedRows(ads: Ad[], numCols: number): FeedRow[] {
   while (i < ads.length) {
     const chunk = ads.slice(i, i + numCols);
     const type = numCols === 4 ? 'quad' : numCols === 3 ? 'triple' : 'pair';
-    rows.push({ type, ads: chunk, id: chunk[0].id });
+    rows.push({ type, ads: chunk, id: chunk[0]?.id || `row-${i}` });
     i += numCols;
   }
   return rows;
@@ -358,7 +351,7 @@ export default function HomeScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const searchHeight = scrollY.interpolate({
     inputRange: [0, 60],
-    outputRange: [48, 0], // 48 هو ارتفاع مربع البحث
+    outputRange: [48, 0],
     extrapolate: 'clamp',
   });
   const searchOpacity = scrollY.interpolate({
@@ -383,7 +376,6 @@ export default function HomeScreen() {
   const [banners, setBanners] = useState<Banner[]>(() => getBannersCache('home') ?? []);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
 
-  // ── Filter state ─────────────────────────────────────────────────────────
   const [filterVisible, setFilterVisible] = useState(false);
   const [areaPickerVisible, setAreaPickerVisible] = useState(false);
   const [draftArea, setDraftArea] = useState<string | null>(null);
@@ -400,7 +392,6 @@ export default function HomeScreen() {
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   const [totalAdsCount, setTotalAdsCount] = useState(0);
 
-  // ── Notification bell state ───────────────────────────────────────────────
   const [notifModalVisible, setNotifModalVisible] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState<Array<{
     id: string;
@@ -429,16 +420,13 @@ export default function HomeScreen() {
         .order('created_at', { ascending: false });
 
       if (data) {
-        // فلترة الرسائل للحصول على آخر رسالة لكل محادثة فقط
         const uniqueConversationsMap = new Map();
         data.forEach(m => {
           if (!uniqueConversationsMap.has(m.conversation_id)) {
             uniqueConversationsMap.set(m.conversation_id, m);
           }
         });
-
         const latestMessages = Array.from(uniqueConversationsMap.values());
-        
         setUnreadMessages(latestMessages.map((m: any) => ({
           id: m.id,
           conversationId: m.conversation_id,
@@ -454,11 +442,11 @@ export default function HomeScreen() {
     }
   }, [user]);
 
-
   const handleBellPress = useCallback(() => {
     setNotifModalVisible(true);
     fetchUnreadMessages();
   }, [fetchUnreadMessages]);
+
   const appStartTime = useRef(Date.now());
   const interstitialShown = useRef(false);
 
@@ -507,18 +495,19 @@ export default function HomeScreen() {
   }, [selectedCategory, sortBy, appliedArea, appliedMaxPrice, appliedCondition, load]);
 
   useEffect(() => {
-  if (!getBannersCache('home')) {
+    const cached = getBannersCache('home');
+    if (cached && cached.length > 0) {
+      setBanners(cached);
+      return;
+    }
     fetchActiveBanners('home').then(({ data }) => {
-      if (data.length > 0) { 
-        setBannersCache(data, 'home'); 
-        setBanners(shuffleArray(data)); // ← ترتيب عشوائي
+      if (data.length > 0) {
+        const shuffled = shuffleArray(data);
+        setBannersCache(shuffled, 'home');
+        setBanners(shuffled);
       }
     });
-  } else {
-    setBanners(shuffleArray(getBannersCache('home') ?? [])); // ← ترتيب عشوائي
-  }
-  // ... باقي الكود
-}, []);
+  }, []);
 
   useEffect(() => {
     if (banners.length <= 1) return;
@@ -630,16 +619,12 @@ export default function HomeScreen() {
     setSearchHistory([]);
   }, []);
 
-  // ── Reactive row height for getItemLayout (W1 fix) ───────────────────────────
-  // Derived from live useResponsive() values so it adapts correctly on rotation,
-  // tablet split-screen, and desktop resizing — not stale from module load time.
   const rowHeight = useMemo(() => {
     const cw = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
     const imgH = Math.max(130, Math.min(Math.round(cw * 0.75), 200));
     return imgH + _initCardInfoH + _initCardGap;
   }, [cardWidth, cardWidthLg, isTablet, isDesktop]);
 
-  // Card width depends on number of columns
   const activeCardWidth = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
 
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
@@ -657,7 +642,6 @@ export default function HomeScreen() {
             />
           </View>
         ))}
-        {/* Fill empty cells to maintain grid alignment */}
         {Array.from({ length: numColumns - cols }).map((_, i) => (
           <View key={`empty-${i}`} style={styles.adWrapper} />
         ))}
@@ -681,7 +665,6 @@ export default function HomeScreen() {
 
   const ListHeader = useMemo(() => (
     <>
-      {/* ── BANNER ── */}
       {currentBanner ? (
         <Pressable
           style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md }]}
@@ -716,12 +699,8 @@ export default function HomeScreen() {
           ) : null}
         </Pressable>
       ) : null}
-      {/* ── FEATURED STORES STRIP: rendered as a stable component reference ──
-           NOT inlined here to prevent remounting the auto-scroll interval
-           every time filteredAds.length or other dependencies change. ── */}
       {featuredStoresNode}
 
-      {/* ── RECENTLY VIEWED ── */}
       {recentlyViewed.length > 0 ? (
         <View style={styles.recentSection}>
           <View style={[styles.sectionHeaderRow, { flexDirection: isAr ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
@@ -774,7 +753,6 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* ── CATEGORIES ── */}
       <View style={[styles.sectionHeaderRow, { flexDirection: isAr ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
         <View style={[styles.sectionAccent, { backgroundColor: colors.primary }]} />
         <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }]}>{t.categories}</Text>
@@ -823,7 +801,6 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
-      {/* ── SEARCH HISTORY CHIPS ── */}
       {searchHistory.length > 0 ? (
         <View style={[styles.historySection, { paddingHorizontal: hPad }]}>
           <View style={[styles.historyHeaderRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
@@ -851,7 +828,6 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* ── LISTINGS HEADER ── */}
       <View style={[styles.listingsHeader, { flexDirection: isAr ? 'row-reverse' : 'row', borderTopColor: colors.borderLight, paddingHorizontal: hPad }]}>
         <View style={[styles.sectionAccent, { backgroundColor: colors.accent }]} />
         <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }]}>{isAr ? 'جميع الإعلانات' : 'All Listings'}</Text>
@@ -887,7 +863,6 @@ export default function HomeScreen() {
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* ── HEADER ── */}
       <View style={[styles.header, { backgroundColor: colors.primary, overflow: 'hidden' }]}>
-        {/* Decorative circles */}
         <View style={styles.headerDeco1} pointerEvents="none" />
         <View style={styles.headerDeco2} pointerEvents="none" />
 
@@ -910,20 +885,23 @@ export default function HomeScreen() {
           </View>
 
           <View style={[styles.headerActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            {/* زر الفلتر */}
             <Pressable
               style={[styles.headerIconBtn, activeFilterCount > 0 && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
               onPress={handleOpenFilter}
               hitSlop={6}
             >
-              <MaterialIcons name="tune" size={20} color="#fff" />
+              <MaterialCommunityIcons name="filter-variant" size={20} color="#fff" />
               {activeFilterCount > 0 ? (
                 <View style={styles.filterDot}>
                   <Text style={styles.filterDotText}>{activeFilterCount}</Text>
                 </View>
               ) : null}
             </Pressable>
+
+            {/* زر الإشعارات */}
             <Pressable style={styles.headerIconBtn} onPress={handleBellPress} hitSlop={6}>
-              <MaterialIcons name="notifications" size={20} color="#fff" />
+              <MaterialCommunityIcons name="bell" size={20} color="#fff" />
               {unreadMessages.length > 0 && !notifModalVisible ? (
                 <View style={styles.filterDot}>
                   <Text style={styles.filterDotText}>
@@ -932,17 +910,18 @@ export default function HomeScreen() {
                 </View>
               ) : null}
             </Pressable>
-            
-            {/* ── زر AI بالتصميم الجديد المميز ── */}
-            <Pressable style={[styles.headerIconBtn, { backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' }]} onPress={() => router.push('/ai-support')} hitSlop={6}>
-  <MaterialCommunityIcons name="robot" size={24} color="#fff" />
-</Pressable>
+
+            {/* زر AI / الروبوت */}
+            <Pressable
+              style={[styles.headerIconBtn, { backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' }]}
+              onPress={() => router.push('/ai-support')}
+              hitSlop={6}
+            >
+              <MaterialCommunityIcons name="robot" size={24} color="#fff" />
+            </Pressable>
           </View>
         </View>
 
-        {/* ── تم حذف الإحصائيات لتوفير المساحة ── */}
-
-        {/* ── مربع البحث مع تأثير الإخفاء التدريجي (Animated) ── */}
         <Animated.View style={{ height: searchHeight, opacity: searchOpacity, overflow: 'hidden' }}>
           <Pressable
             style={[styles.searchBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.96)', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
@@ -960,10 +939,8 @@ export default function HomeScreen() {
             </View>
           </Pressable>
         </Animated.View>
-
       </View>
 
-      {/* ── OFFLINE BANNER ── */}
       {!isOnline ? (
         <View style={styles.offlineBanner}>
           <MaterialIcons name="wifi-off" size={15} color="#92400E" />
@@ -973,7 +950,6 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* ── CONTENT ── */}
       {loading && ads.length === 0 ? (
         <SkeletonHomeFeed />
       ) : (
@@ -1050,7 +1026,6 @@ export default function HomeScreen() {
           <View style={[nStyles.sheet, { backgroundColor: colors.surface }]}>
             <View style={[nStyles.handle, { backgroundColor: colors.border }]} />
 
-            {/* Modal Header */}
             <View style={[nStyles.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
               <View style={[nStyles.titleIcon, { backgroundColor: colors.primaryGhost }]}>
                 <MaterialIcons name="notifications" size={20} color={colors.primary} />
@@ -1063,7 +1038,6 @@ export default function HomeScreen() {
               </Pressable>
             </View>
 
-            {/* Content */}
             {notifLoading ? (
               <View style={nStyles.loadingWrap}>
                 <ActivityIndicator color={colors.primary} />
@@ -1241,7 +1215,8 @@ export default function HomeScreen() {
           </View>
         </View>
       ) : null}
-    <FloatingOffersButton />
+
+      <FloatingOffersButton />
     </View>
   );
 }
@@ -1509,7 +1484,6 @@ const styles = StyleSheet.create({
   },
   adWrapper: { flex: 1 },
 
-  // ── Load More button ──
   loadMoreBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, marginBottom: 8, marginTop: 4,
@@ -1528,7 +1502,6 @@ const styles = StyleSheet.create({
   },
   endOfListText: { fontSize: FontSize.sm, fontWeight: '500' },
 
-  // ── Search history ──
   historySection: { marginBottom: Spacing.lg },
   historyHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.sm },
   clearHistoryBtn: {
@@ -1544,7 +1517,6 @@ const styles = StyleSheet.create({
   },
   historyChipText: { fontSize: FontSize.xs, fontWeight: '600', maxWidth: 130 },
 
-  // ── Header enhancements ─────────────────────────────────────────────────────
   headerDeco1: {
     position: 'absolute', width: 220, height: 220, borderRadius: 110,
     backgroundColor: 'rgba(255,255,255,0.07)', top: -85, right: -55,
