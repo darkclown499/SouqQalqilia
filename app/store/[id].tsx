@@ -525,7 +525,7 @@ export default function StoreDetailScreen() {
       }
     }}
   >
-    <MaterialIcons name="chat" size={18} color="#25D366" />
+    <MaterialIcons name="whatsapp" size={18} color="#25D366" />
   </Pressable>
   <Pressable style={s.headerBtn} onPress={() => id && toggleFav(id)}>
     <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={20} color={isFavorited ? colors.primary : '#111827'} />
@@ -597,7 +597,7 @@ export default function StoreDetailScreen() {
 
   {/* باقي المحتوى (الموقع، الوصف) */}
   <View style={s.locationRow}>
-    <MaterialIcons name="support-agent" size={16} color={colors.primary} />
+    <MaterialIcons name="place" size={16} color={colors.primary} />
     <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
   </View>
 </View>
