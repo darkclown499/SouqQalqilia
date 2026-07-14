@@ -2,7 +2,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
-  ActivityIndicator, Modal, Linking, Platform, Share, TextInput
+  ActivityIndicator, Modal, Linking, Platform, Share, TextInput,
+  RefreshControl
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -233,9 +234,40 @@ export default function StoreDetailScreen() {
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [rating, setRating] = useState({ avg: 0, count: 0 });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [isOpen, setIsOpen] = useState(true);
   const { ids: favoriteIds, toggle: toggleFav } = useFavoriteIds();
   const isFavorited = favoriteIds.has(id ?? '');
+    // ── دالة جلب البيانات (للاستخدام في التحميل الأول والتحديث) ──
+  const fetchData = useCallback(async () => {
+    if (!id) return;
+    try {
+      const [storeRes, productsRes, ratingRes, categoriesRes] = await Promise.all([
+        getSupabaseClient().from('stores').select('*').eq('id', id).single(),
+        fetchStoreProducts(id),
+        fetchStoreRating(id),
+        getLocalCategories(id),
+      ]);
+      if (storeRes.data) {
+        setStore(storeRes.data);
+        setIsOpen(checkStoreIsOpen(storeRes.data));
+      }
+      setProducts(productsRes.data);
+      setRating(ratingRes);
+      setCustomCategories(categoriesRes);
+    } catch (error) {
+      console.error("Error fetching store data:", error);
+    }
+  }, [id]);
+
+    // ── دالة التحديث بالسحب (Pull-to-Refresh) ──
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }, [fetchData]);
+
+
   const [shareLoading, setShareLoading] = useState(false);
   const [customCategories, setCustomCategories] = useState<LocalCategory[]>([]);
 
@@ -296,38 +328,27 @@ export default function StoreDetailScreen() {
   }
   return result;
 }, [products, customCategories, isAr]);
-
   // ── Load data ────────────────────────────────────────────────────────────
   useEffect(() => {
-  if (!id) {
-    setLoading(false);
-    return;
-  }
-  getSupabaseClient()
-    .from('stores').select('views_count').eq('id', id).single()
-    .then(({ data }) => {
-      if (data) {
-        getSupabaseClient().from('stores')
-          .update({ views_count: (data.views_count ?? 0) + 1 })
-          .eq('id', id).then(() => {}).catch(() => {});
-      }
-    }).catch(() => {});
-
-  Promise.all([
-    getSupabaseClient().from('stores').select('*').eq('id', id).single(),
-    fetchStoreProducts(id),
-    fetchStoreRating(id),
-    getLocalCategories(id), // ← أضف هذا
-  ]).then(([storeRes, productsRes, ratingRes, categoriesRes]) => {
-    if (storeRes.data) {
-      setStore(storeRes.data);
-      setIsOpen(checkStoreIsOpen(storeRes.data));
+    if (!id) {
+      setLoading(false);
+      return;
     }
-    setProducts(productsRes.data);
-    setRating(ratingRes);
-    setCustomCategories(categoriesRes); // ← أضف هذا
-  }).finally(() => setLoading(false));
-}, [id]);
+    setLoading(true);
+    // تحديث عدد المشاهدات (يتم في الخلفية)
+    getSupabaseClient()
+      .from('stores').select('views_count').eq('id', id).single()
+      .then(({ data }) => {
+        if (data) {
+          getSupabaseClient().from('stores')
+            .update({ views_count: (data.views_count ?? 0) + 1 })
+            .eq('id', id).then(() => {}).catch(() => {});
+        }
+      }).catch(() => {});
+
+    // جلب البيانات الأساسية باستخدام fetchData
+    fetchData().finally(() => setLoading(false));
+  }, [id, fetchData]);
 
   useEffect(() => {
     if (!store) return;
@@ -488,6 +509,14 @@ export default function StoreDetailScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: cartCount > 0 && isOpen ? 116 : 48 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
                 <View style={s.heroContainer}>
           {/* الغلاف العلوي */}
