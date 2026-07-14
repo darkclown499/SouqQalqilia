@@ -116,12 +116,15 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   React.useEffect(() => {
   setLoading(true);
   fetchFeaturedStores().then(({ data }) => {
-    setStores(shuffleArray(data)); // ← ترتيب عشوائي
+    // إزالة التكرار بناءً على id
+    const uniqueStores = data.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+    setStores(shuffleArray(uniqueStores));
     setLoading(false);
   }).catch(() => {
     setLoading(false);
   });
 }, []);
+
 
   // نبضة هادية أثناء التحميل (shimmer)
   React.useEffect(() => {
