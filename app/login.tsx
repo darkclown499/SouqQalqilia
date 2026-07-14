@@ -49,7 +49,7 @@ export default function LoginScreen() {
   // iOS: show phone + email tabs, default = phone
   // Android: show only email (Google is the "fast" option)
   // Web: email only
-  const showPhoneTab = Platform.OS === 'ios';
+  const showPhoneTab = true; // ← يظهر على جميع المنصات (iOS + Android)
   const showGoogleBtn = Platform.OS !== 'web'; // Android only renders it, iOS skips the block
   const defaultTab: MainTab = Platform.OS === 'ios' ? 'phone' : 'email';
 
