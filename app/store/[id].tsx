@@ -582,8 +582,54 @@ export default function StoreDetailScreen() {
             {storeDesc ? (
               <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
             ) : null}
-          {/* Closing tag for View s.heroContainer moved here */}
-          </View> 
+          </View>{/* end heroContainer */}
+
+          {/* ── PRODUCTS ── */}
+          {products.length === 0 ? (
+            <View style={s.emptyWrap}>
+              <View style={[s.emptyIllus, { backgroundColor: colors.primaryGhost }]}>
+                <MaterialIcons name="fastfood" size={36} color={colors.primary} />
+              </View>
+              <Text style={[s.emptyTitle, { color: colors.textPrimary }]}>
+                {isAr ? 'لا توجد منتجات بعد' : 'No products yet'}
+              </Text>
+              <Text style={[s.emptySub, { color: colors.textSecondary }]}>
+                {isAr ? 'تابع هذا المتجر لمعرفة العروض القادمة' : 'Follow this store for upcoming offers'}
+              </Text>
+            </View>
+          ) : (
+            <View style={s.menuWrap}>
+              {/* Header */}
+              <View style={[s.menuHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
+                <MaterialIcons name="restaurant-menu" size={20} color={colors.primary} />
+                <Text style={[s.menuHeaderText, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
+                  {isAr ? 'قائمة المنتجات' : 'Products'}
+                </Text>
+                {!isOpen ? (
+                  <View style={[s.closedPill, { borderColor: colors.textMuted }]}>
+                    <Text style={[s.closedPillText, { fontSize: 11 }]}>
+                      {isAr ? 'المتجر مغلق' : 'Closed'}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {groupedProducts.map(({ label, items }) => (
+                <ProductSection
+                  key={label}
+                  label={label}
+                  products={items}
+                  cart={cart}
+                  onAdd={addToCart}
+                  onRemove={removeFromCart}
+                  isAr={isAr}
+                  isRTL={isRTL}
+                  colors={colors}
+                  isOpen={isOpen}
+                />
+              ))}
+            </View>
+          )}
         </ScrollView>
 
       {cartCount > 0 && isOpen ? (
