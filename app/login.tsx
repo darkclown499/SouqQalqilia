@@ -325,6 +325,12 @@ export default function LoginScreen() {
 
   // ── Email: Login ───────────────────────────────────────────────────────────
   const handleLogin = async () => {
+    console.error('Login error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+// واعرض رسالة ودية للمستخدم
+const friendlyError = mapAuthError(error);
+if (friendlyError) {
+  showAlert(t.loginFailed, friendlyError);
+}
     if (!email.trim() || !password) return showAlert(t.missingFields, t.fillAllFields);
     if (!isValidEmail(email)) return showAlert(isAr ? 'بريد غير صحيح' : 'Invalid Email', isAr ? 'أدخل بريداً إلكترونياً صحيحاً' : 'Enter a valid email address');
     if (operationLoading || isSubmittingRef.current) return;
@@ -332,7 +338,6 @@ export default function LoginScreen() {
     try {
       const { error, user: u } = await signInWithPassword(email.trim().toLowerCase(), password);
       if (error) {
-                showAlert("تفاصيل الخطأ الفعلي", JSON.stringify(error, Object.getOwnPropertyNames(error)));
         if (error.includes('Failed to load user profile')) {
           router.replace('/(tabs)');
           return;

@@ -56,7 +56,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchStats = useCallback(async () => {
-    setLoading(false); return; // إيقاف التحميل فوراً
     try {
       const supabase = getSupabaseClient();
       const now = new Date();
@@ -971,31 +970,35 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
   const [inShowAfter, setInShowAfter] = useState('60');
   const [inSaving, setInSaving] = useState(false);
 
-  const loadData = useCallback(async () => {
-    setLoading(false); return; // السطر المسؤول عن إيقاف التحميل اللانهائي وفتح التصميم
-    
-    setLoading(true);
+ const loadData = useCallback(async () => {
+  setLoading(true);
+  try {
     if (tab === 'stores') {
       const { data } = await adminFetchAllStores();
-      setStores(data || []);
+      setStores(data);
     } else if (tab === 'ads') {
       const { data } = await adminFetchAllAds();
-      setAds(data || []);
+      setAds(data);
     } else if (tab === 'users') {
       const { data } = await adminFetchAllUsers();
-      setUsers(data || []);
+      setUsers(data);
     } else if (tab === 'banners') {
       const { data } = await fetchAllBanners();
-      setBanners(data || []);
+      setBanners(data);
     } else if (tab === 'analytics') {
+      // analytics tab handles its own loading
       setLoading(false);
       return;
     } else {
       const { data } = await fetchAllInterstitials();
-      setInterstitials(data || []);
+      setInterstitials(data);
     }
+  } catch (err) {
+    console.error('loadData error:', err);
+  } finally {
     setLoading(false);
-  }, [tab]);
+  }
+}, [tab]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
