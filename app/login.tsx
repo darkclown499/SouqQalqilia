@@ -329,7 +329,7 @@ export default function LoginScreen() {
     try {
       const { error, user: u } = await signInWithPassword(email.trim().toLowerCase(), password);
       if (error) {
-                console.log("تفاصيل الخطأ الفعلي:", error);
+                showAlert("تفاصيل الخطأ الفعلي", JSON.stringify(error, Object.getOwnPropertyNames(error)));
         if (error.includes('Failed to load user profile')) {
           router.replace('/(tabs)');
           return;
