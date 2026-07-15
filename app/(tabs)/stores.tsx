@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router'; // ✅ useFocusEffect مستورد
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
@@ -24,7 +24,8 @@ import {
 } from '@/services/storeCategoriesService';
 import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
 import { FontSize, Radius, Spacing } from '@/constants/theme';
-import { trackPageView } from '@/services/analyticsService'; // ✅ استيراد تتبع الصفحات
+import { trackPageView } from '@/services/analyticsService';
+import NetInfo from '@react-native-community/netinfo';
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
 function shuffleArray<T>(array: T[]): T[] {
@@ -80,9 +81,9 @@ const get3DIconUrl = (name: string) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. BANNER CAROUSEL
+// 1. BANNER CAROUSEL (مع تحسين المؤقت)
 // ─────────────────────────────────────────────────────────────────────────────
-function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean }) {
+const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRTL: boolean }) => {
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -90,22 +91,30 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
   const BANNER_H = Math.round(SCREEN_W * 0.68);
   const displayBanners = banners || [];
 
-  const startAuto = useCallback(() => {
-    if (displayBanners.length <= 1) return;
-    autoRef.current = setInterval(() => {
-      if (userScrolling.current) return;
-      setActiveIdx(prev => {
-        const next = (prev + 1) % displayBanners.length;
-        scrollRef.current?.scrollTo({ x: next * SCREEN_W, animated: true });
-        return next;
-      });
-    }, 4500);
-  }, [displayBanners.length]);
+  // حفظ startAuto في ref لتجنب إعادة إنشاء المؤقت
+  const startAutoRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    if (displayBanners.length <= 1) return;
+
+    const startAuto = () => {
+      if (autoRef.current) clearInterval(autoRef.current);
+      autoRef.current = setInterval(() => {
+        if (userScrolling.current) return;
+        setActiveIdx(prev => {
+          const next = (prev + 1) % displayBanners.length;
+          scrollRef.current?.scrollTo({ x: next * SCREEN_W, animated: true });
+          return next;
+        });
+      }, 4500);
+    };
+    startAutoRef.current = startAuto;
     startAuto();
-    return () => { if (autoRef.current) clearInterval(autoRef.current); };
-  }, [startAuto]);
+
+    return () => {
+      if (autoRef.current) clearInterval(autoRef.current);
+    };
+  }, [displayBanners.length]);
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
@@ -148,12 +157,12 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
       </View>
     </View>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. QUICK STORE CATEGORY CARD
+// 2. QUICK STORE CATEGORY CARD (مع memo)
 // ─────────────────────────────────────────────────────────────────────────────
-function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
+const QuickStoreCatCard = React.memo(({ cat, isAr, isSelected, onPress }: any) => {
   const nameAr = cat.name_ar || cat.name;
   const targetImageUrl = cat.image_url || get3DIconUrl(nameAr);
   const activeColor = cat.color || '#B91C1C';
@@ -174,15 +183,14 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
       </Text>
     </Pressable>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2.5 VIP STORE CARD (فخم) - ✅ الخلفية = الوجو (الشعار)
+// 3. VIP STORE CARD (مع memo)
 // ─────────────────────────────────────────────────────────────────────────────
-function VIPStoreCard({ store, rating, isAr, onPress }: any) {
+const VIPStoreCard = React.memo(({ store, rating, isAr, onPress }: any) => {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
-  // ✅ الخلفية = الوجو (الشعار) فقط
   const backgroundImage = store.logo_url;
 
   return (
@@ -197,13 +205,11 @@ function VIPStoreCard({ store, rating, isAr, onPress }: any) {
         style={vip.goldBorder}
       >
         <View style={vip.inner}>
-          {/* ✅ الخلفية: صورة الوجو */}
           <Image 
             source={{ uri: backgroundImage }} 
             style={StyleSheet.absoluteFill} 
             contentFit="cover"
           />
-          {/* التدرج الشفاف لتحسين رؤية النص */}
           <LinearGradient
             colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.85)']}
             locations={[0, 0.5, 1]}
@@ -216,7 +222,6 @@ function VIPStoreCard({ store, rating, isAr, onPress }: any) {
           </View>
 
           <View style={vip.content}>
-            {/* ✅ الوجو الأكبر حجماً */}
             <View style={vip.logoWrap}>
               <Image source={{ uri: store.logo_url }} style={vip.logo} contentFit="cover" />
             </View>
@@ -242,23 +247,20 @@ function VIPStoreCard({ store, rating, isAr, onPress }: any) {
       </LinearGradient>
     </Pressable>
   );
-}
+});
 
-// ── VIP Stores Strip with INFINITE Auto-Scroll ──────────────────────────
-// ✅ تم إزالة أحداث اللمس، واستخدام بيانات مكررة، وتمرير مستمر
-function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
+// ── VIP Stores Strip (مع تحسين المؤقت) ──────────────────────────────────────
+const VIPStoresStrip = React.memo(({ stores, ratings, isAr, isRTL, onStorePress }: any) => {
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(0);
   const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const CARD_WIDTH = 214;
+  const CARD_WIDTH = Math.min(214, SCREEN_W * 0.55);
 
-  // ✅ 1. تكرار البيانات (3 نسخ) لتبدو لا نهائية
   const repeatedStores = useMemo(() => {
     if (stores.length === 0) return [];
     return [...stores, ...stores, ...stores];
   }, [stores]);
 
-  // ✅ 2. التمرير التلقائي المستمر (بدون توقف عند اللمس)
   useEffect(() => {
     if (repeatedStores.length === 0) return;
 
@@ -267,10 +269,9 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
       autoScrollTimer.current = setInterval(() => {
         if (repeatedStores.length === 0) return;
 
-        let nextOffset = scrollX.current + CARD_WIDTH;
-        const maxOffset = (repeatedStores.length - 1) * CARD_WIDTH;
+        let nextOffset = scrollX.current + CARD_WIDTH + 14; // gap = 14
+        const maxOffset = (repeatedStores.length - 1) * (CARD_WIDTH + 14);
 
-        // إذا وصلنا للنهاية، نعود للبداية بدون حركة مفاجئة
         if (nextOffset > maxOffset) {
           nextOffset = 0;
           flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
@@ -281,7 +282,7 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
           offset: nextOffset,
           animated: true,
         });
-      }, 2000); // كل 2 ثانية
+      }, 2000);
     };
 
     startAutoScroll();
@@ -290,10 +291,9 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
     };
   }, [repeatedStores]);
 
-  // ✅ 3. تتبع موضع التمرير
-  const handleScroll = (event: any) => {
+  const handleScroll = useCallback((event: any) => {
     scrollX.current = event.nativeEvent.contentOffset.x;
-  };
+  }, []);
 
   if (stores.length === 0) return null;
 
@@ -322,15 +322,14 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
         )}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[vip.scrollContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-        snapToInterval={CARD_WIDTH}
+        snapToInterval={CARD_WIDTH + 14}
         decelerationRate="fast"
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        // ✅ تم حذف: onTouchStart, onTouchEnd, onScrollBeginDrag, onScrollEndDrag
       />
     </View>
   );
-}
+});
 
 // ── VIP Styles ──────────────────────────────────────────────────────────────
 const vip = StyleSheet.create({
@@ -340,7 +339,7 @@ const vip = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#1A1A1A', letterSpacing: -0.3 },
   headerLine: { flex: 1, height: 1, backgroundColor: '#F3F4F6', marginLeft: 8 },
   scrollContent: { paddingHorizontal: 16, gap: 14 },
-  card: { width: 200, height: 240, borderRadius: 18, overflow: 'hidden' },
+  card: { width: 200, height: 240, borderRadius: 18, overflow: 'hidden', marginHorizontal: 2 },
   goldBorder: { flex: 1, padding: 2, borderRadius: 18 },
   inner: { flex: 1, borderRadius: 16, overflow: 'hidden', position: 'relative' },
   vipBadge: {
@@ -383,9 +382,9 @@ const vip = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. PREMIUM STORE CARD
+// 4. PREMIUM STORE CARD (مع memo)
 // ─────────────────────────────────────────────────────────────────────────────
-function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
+const PremiumStoreCard = React.memo(({ store, rating, isAr, onPress }: any) => {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
 
@@ -413,11 +412,12 @@ function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
       </View>
     </Pressable>
   );
-}
+});
 
 const psc = StyleSheet.create({
   card: {
-    width: 170, backgroundColor: '#FFFFFF', borderRadius: 16,
+    width: Math.min(170, SCREEN_W * 0.45),
+    backgroundColor: '#FFFFFF', borderRadius: 16,
     marginRight: 12, marginLeft: 4, marginBottom: 8, overflow: 'hidden',
     borderWidth: 1, borderColor: '#F3F4F6',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
@@ -436,105 +436,9 @@ const psc = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. CATEGORY BLOCK - ✅ عرض أول 4 متاجر بدون ترتيب VIP
+// 5. STORE VERTICAL CARD (مع memo)
 // ─────────────────────────────────────────────────────────────────────────────
-function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, colors }: any) {
-  const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
-  const [showAll, setShowAll] = useState(false);
-  const hasMore = stores.length > 4;
-  const router = useRouter();
-
-  // ✅ عرض أول 4 متاجر مباشرة (بدون ترتيب VIP)
-  const displayStores = useMemo(() => {
-    return showAll ? stores : stores.slice(0, 4);
-  }, [stores, showAll]);
-
-  const handleViewAll = () => {
-    const slug = cat.slug || cat.id;
-    router.push(`/category/${slug}` as any);
-  };
-
-  return (
-    <View style={s.categoryContainer}>
-      <View style={[s.catHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
-          {catName}
-        </Text>
-        {hasMore && (
-          <Pressable onPress={handleViewAll} hitSlop={6}>
-            <Text style={[s.catMoreText, { color: colors.primary }]}>
-              {isAr ? 'عرض الكل' : 'View All'}
-            </Text>
-          </Pressable>
-        )}
-      </View>
-
-      <FlatList
-        data={displayStores}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <StoreVerticalCard
-            store={item}
-            rating={ratings[item.id] ?? { avg: 0, count: 0 }}
-            isAr={isAr}
-            onPress={() => onStorePress(item.id)}
-          />
-        )}
-        showsVerticalScrollIndicator={false}
-        scrollEnabled={false}
-        contentContainerStyle={{ paddingBottom: 4 }}
-      />
-    </View>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 5. REGISTER CTA BANNER
-// ─────────────────────────────────────────────────────────────────────────────
-function RegisterStoreCTA({ isAr, isRTL, onPress }: {
-  isAr: boolean; isRTL: boolean; onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [cta.wrap, { opacity: pressed ? 0.9 : 1 }]}
-      onPress={onPress}
-    >
-      <LinearGradient colors={['#B91C1C', '#991B1B', '#7F1D1D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cta.gradient}>
-        <View style={cta.deco1} />
-        <View style={cta.deco2} />
-        <View style={[cta.content, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          <View style={cta.iconWrap}>
-            <MaterialIcons name="storefront" size={26} color="#FFFFFF" />
-          </View>
-          <View style={[cta.textCol, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-            <Text style={[cta.title, { textAlign: isRTL ? 'right' : 'left' }]}>
-              {isAr ? 'سجّل متجرك معنا 🛒' : 'Register Your Store 🛒'}
-            </Text>
-            <Text style={[cta.sub, { textAlign: isRTL ? 'right' : 'left' }]}>
-              {isAr ? 'انضم وابدأ البيع عبر التطبيق اليوم' : 'Join and start selling today'}
-            </Text>
-          </View>
-          <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={24} color="rgba(255,255,255,0.9)" />
-        </View>
-      </LinearGradient>
-    </Pressable>
-  );
-}
-
-const cta = StyleSheet.create({
-  wrap: { marginHorizontal: 16, marginBottom: 20, borderRadius: 16, shadowColor: '#B91C1C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 3 },
-  gradient: { borderRadius: 16, overflow: 'hidden', padding: 16 },
-  deco1: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.06)', top: -40, right: -20 },
-  deco2: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -10, left: 30 },
-  content: { alignItems: 'center', gap: 12 },
-  iconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  textCol: { flex: 1, gap: 4 },
-  title: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
-  sub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
-});
-
-// ── VERTICAL STORE CARD ──
-function StoreVerticalCard({ store, rating, isAr, onPress }: any) {
+const StoreVerticalCard = React.memo(({ store, rating, isAr, onPress }: any) => {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
   const address = store.address || (isAr ? 'قلقيلية' : 'Qalqilya');
@@ -595,7 +499,7 @@ function StoreVerticalCard({ store, rating, isAr, onPress }: any) {
       </View>
     </Pressable>
   );
-}
+});
 
 const svc = StyleSheet.create({
   card: {
@@ -685,6 +589,105 @@ const svc = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 6. CATEGORY BLOCK (مع تحسينات الأداء)
+// ─────────────────────────────────────────────────────────────────────────────
+const CategoryBlock = React.memo(({ cat, stores, ratings, isAr, isRTL, onStorePress, colors }: any) => {
+  const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
+  const [showAll, setShowAll] = useState(false);
+  const hasMore = stores.length > 4;
+  const router = useRouter();
+
+  const displayStores = useMemo(() => {
+    return showAll ? stores : stores.slice(0, 4);
+  }, [stores, showAll]);
+
+  const handleViewAll = useCallback(() => {
+    const slug = cat.slug || cat.id;
+    router.push(`/category/${slug}` as any);
+  }, [cat, router]);
+
+  const renderItem = useCallback(({ item }: any) => (
+    <StoreVerticalCard
+      store={item}
+      rating={ratings[item.id] ?? { avg: 0, count: 0 }}
+      isAr={isAr}
+      onPress={() => onStorePress(item.id)}
+    />
+  ), [ratings, isAr, onStorePress]);
+
+  return (
+    <View style={s.categoryContainer}>
+      <View style={[s.catHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+          {catName}
+        </Text>
+        {hasMore && (
+          <Pressable onPress={handleViewAll} hitSlop={6}>
+            <Text style={[s.catMoreText, { color: colors.primary }]}>
+              {isAr ? 'عرض الكل' : 'View All'}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+
+      <FlatList
+        data={displayStores}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={false}
+        contentContainerStyle={{ paddingBottom: 4 }}
+      />
+    </View>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. REGISTER CTA BANNER
+// ─────────────────────────────────────────────────────────────────────────────
+function RegisterStoreCTA({ isAr, isRTL, onPress }: {
+  isAr: boolean; isRTL: boolean; onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [cta.wrap, { opacity: pressed ? 0.9 : 1 }]}
+      onPress={onPress}
+    >
+      <LinearGradient colors={['#B91C1C', '#991B1B', '#7F1D1D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cta.gradient}>
+        <View style={cta.deco1} />
+        <View style={cta.deco2} />
+        <View style={[cta.content, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={cta.iconWrap}>
+            <MaterialIcons name="storefront" size={26} color="#FFFFFF" />
+          </View>
+          <View style={[cta.textCol, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+            <Text style={[cta.title, { textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'سجّل متجرك معنا 🛒' : 'Register Your Store 🛒'}
+            </Text>
+            <Text style={[cta.sub, { textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'انضم وابدأ البيع عبر التطبيق اليوم' : 'Join and start selling today'}
+            </Text>
+          </View>
+          <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={24} color="rgba(255,255,255,0.9)" />
+        </View>
+      </LinearGradient>
+    </Pressable>
+  );
+}
+
+const cta = StyleSheet.create({
+  wrap: { marginHorizontal: 16, marginBottom: 20, borderRadius: 16, shadowColor: '#B91C1C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 3 },
+  gradient: { borderRadius: 16, overflow: 'hidden', padding: 16 },
+  deco1: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.06)', top: -40, right: -20 },
+  deco2: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -10, left: 30 },
+  content: { alignItems: 'center', gap: 12 },
+  iconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  textCol: { flex: 1, gap: 4 },
+  title: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
+  sub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 export default function StoresScreen() {
@@ -701,6 +704,7 @@ export default function StoresScreen() {
   const [ratings, setRatings] = useState<Record<string, { avg: number; count: number }>>({});
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [ownerStore, setOwnerStore] = useState<any>(undefined);
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -747,6 +751,7 @@ export default function StoresScreen() {
     }, [user?.id])
   );
 
+  // ── تحميل البيانات مع معالجة الأخطاء ──────────────────────────────────────
   useEffect(() => {
     const localBanners = [
       { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
@@ -756,11 +761,16 @@ export default function StoresScreen() {
     ];
     setBanners(shuffleArray(localBanners));
 
+    let isMounted = true;
+    setLoading(true);
+    setError(null);
+
     Promise.all([
       fetchAllActiveStores(),
       fetchAllStoreRatings(),
       fetchStoreCategories(),
     ]).then(([storesRes, ratingsMap, catsRes]) => {
+      if (!isMounted) return;
       const shuffledStores = shuffleArray(storesRes.data);
       setStores(shuffledStores);
       setRatings(ratingsMap);
@@ -770,7 +780,15 @@ export default function StoresScreen() {
         .filter((store: any) => store.is_featured === true)
         .map((store: any) => store.id);
       setFeaturedStoreIds(new Set(featuredIds));
-    }).finally(() => setLoading(false));
+      setLoading(false);
+    }).catch((err) => {
+      if (!isMounted) return;
+      console.error('Failed to load stores data:', err);
+      setError(isAr ? 'فشل تحميل المتاجر، يرجى المحاولة لاحقاً' : 'Failed to load stores, please try again');
+      setLoading(false);
+    });
+
+    return () => { isMounted = false; };
   }, []);
 
   const handleSaveName = useCallback(async () => {
@@ -822,6 +840,31 @@ export default function StoresScreen() {
     if (!selectedCatId) return filteredGroupedStores;
     return filteredGroupedStores.filter(g => g.cat.id === selectedCatId);
   }, [filteredGroupedStores, selectedCatId]);
+
+  const handleRetry = useCallback(() => {
+    // إعادة التحميل
+    setError(null);
+    setLoading(true);
+    Promise.all([
+      fetchAllActiveStores(),
+      fetchAllStoreRatings(),
+      fetchStoreCategories(),
+    ]).then(([storesRes, ratingsMap, catsRes]) => {
+      const shuffledStores = shuffleArray(storesRes.data);
+      setStores(shuffledStores);
+      setRatings(ratingsMap);
+      setStoreCategories(catsRes.data);
+      const featuredIds = shuffledStores
+        .filter((store: any) => store.is_featured === true)
+        .map((store: any) => store.id);
+      setFeaturedStoreIds(new Set(featuredIds));
+      setLoading(false);
+    }).catch((err) => {
+      console.error('Failed to load stores data:', err);
+      setError(isAr ? 'فشل تحميل المتاجر، يرجى المحاولة لاحقاً' : 'Failed to load stores, please try again');
+      setLoading(false);
+    });
+  }, [isAr]);
 
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
@@ -976,6 +1019,17 @@ export default function StoresScreen() {
           <View style={s.loadingWrap}>
             <ActivityIndicator color={colors.primary} size="large" />
             <Text style={[s.loadingText, { color: colors.textMuted }]}>{isAr ? 'جارٍ تحميل المتاجر...' : 'Loading stores...'}</Text>
+          </View>
+        ) : error ? (
+          <View style={[s.emptyWrap, { paddingTop: 40 }]}>
+            <View style={[s.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
+              <MaterialIcons name="error-outline" size={44} color={colors.error || '#EF4444'} />
+            </View>
+            <Text style={[s.emptyTitle, { color: colors.textPrimary }]}>{isAr ? 'حدث خطأ' : 'Error'}</Text>
+            <Text style={[s.emptySub, { color: colors.textMuted }]}>{error}</Text>
+            <Pressable style={[s.clearFilterBtn, { borderColor: colors.primary }]} onPress={handleRetry}>
+              <Text style={[s.clearFilterText, { color: colors.primary }]}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
+            </Pressable>
           </View>
         ) : displayedGroups.length === 0 ? (
           <View style={s.emptyWrap}>

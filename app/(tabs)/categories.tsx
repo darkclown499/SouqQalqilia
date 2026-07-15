@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -16,19 +16,57 @@ export default function CategoriesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { t, language } = useLanguage();
-  const { categories, loading } = useCategories();
+  const { categories, loading, error } = useCategories(); // ✅ إضافة error
   const { numColumns, hPad } = useResponsive();
 
-  const handlePress = useCallback((cat: any) => {
-    const localizedName = getCategoryName(cat, language);
-    router.push(`/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(localizedName)}`);
-  }, [language, router]);
+  // ✅ منع النقر المتكرر
+  const isNavigating = useRef(false);
 
-  const renderItem = useCallback(({ item }: any) => (
-    <View style={styles.cardWrapper}>
-      <CategoryCard category={item} onPress={handlePress} />
-    </View>
-  ), [handlePress]);
+  const handlePress = useCallback(
+    (cat: any) => {
+      if (isNavigating.current) return;
+      isNavigating.current = true;
+      const localizedName = getCategoryName(cat, language);
+      router
+        .push(
+          `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(
+            localizedName
+          )}`
+        )
+        .finally(() => {
+          isNavigating.current = false;
+        });
+    },
+    [language, router]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: any) => (
+      <View style={styles.cardWrapper}>
+        <CategoryCard category={item} onPress={handlePress} />
+      </View>
+    ),
+    [handlePress]
+  );
+
+  // ✅ عرض خطأ إذا فشل التحميل
+  if (error) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <View style={[styles.header, { backgroundColor: colors.primary }]}>
+          <View>
+            <Text style={styles.headerSub}>{t.browse}</Text>
+            <Text style={styles.subtitle}>{t.allCategories}</Text>
+          </View>
+        </View>
+        <View style={[styles.errorContainer, { backgroundColor: colors.error + '15' }]}>
+          <Text style={[styles.errorText, { color: colors.error }]}>
+            {t.errorLoadingCategories || 'حدث خطأ أثناء تحميل التصنيفات'}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -47,11 +85,14 @@ export default function CategoriesScreen() {
       ) : (
         <FlatList
           data={categories}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           numColumns={numColumns}
-          key={numColumns} /* force re-render when columns change */
+          key={numColumns} /* يحافظ على إعادة التصيير عند تغير الأعمدة */
           renderItem={renderItem}
-          contentContainerStyle={[styles.grid, { padding: hPad, gap: Spacing.md }]}
+          contentContainerStyle={[
+            styles.grid,
+            { paddingHorizontal: hPad, paddingVertical: Spacing.md, gap: Spacing.md },
+          ]}
           showsVerticalScrollIndicator={false}
           windowSize={5}
           maxToRenderPerBatch={12}
@@ -71,16 +112,53 @@ export default function CategoriesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl, paddingTop: Spacing.sm,
-    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.xl,
+    paddingTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
   },
-  headerSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.65)', fontWeight: '500', marginBottom: 2 },
-  subtitle: { fontSize: FontSize.xxl, fontWeight: '800', color: '#fff', letterSpacing: -0.4 },
+  headerSub: {
+    fontSize: FontSize.sm,
+    color: 'rgba(255,255,255,0.65)',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: FontSize.xxl,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.4,
+  },
   badge: {
     backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: Radius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
   },
-  badgeText: { color: '#fff', fontWeight: '700', fontSize: FontSize.lg },
-  grid: { padding: Spacing.lg, gap: Spacing.md },
-  cardWrapper: { flex: 1, padding: 4 },
+  badgeText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: FontSize.lg,
+  },
+  grid: {
+    // padding تم نقله إلى contentContainerStyle
+  },
+  cardWrapper: {
+    flex: 1,
+    // ✅ إزالة padding: 4 والاكتفاء بـ gap في grid
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    margin: Spacing.lg,
+    borderRadius: Radius.lg,
+  },
+  errorText: {
+    fontSize: FontSize.md,
+    textAlign: 'center',
+  },
 });

@@ -239,7 +239,10 @@ export default function RegisterStoreScreen() {
   }, [storeCategoryId, colors, rtl, textAlign, language]);
 
   const handleSubmit = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'يجب تسجيل الدخول أولاً' : 'Please login first');
+      return;
+    }
     const storeName = nameAr.trim();
     if (!storeName) return showAlert('مطلوب', 'يرجى إدخال اسم المتجر بالعربية');
     if (!storeCategoryId) return showAlert('مطلوب', 'يرجى اختيار نوع المتجر');
@@ -268,16 +271,18 @@ export default function RegisterStoreScreen() {
       let logoUrl = '';
       let bannerUrl = '';
 
-      // ✅ رفع الشعار مع التحقق من النجاح
+      // ✅ رفع الشعار مع التحقق من النجاح وتمرير sourceUri
       if (logoBase64 && logoUri) {
-        const res = await uploadImage(logoBase64, user.id, 'store-logo');
+        const res = await uploadImage(logoBase64, user.id, 'store-logo', logoUri);
+        if (res.error) throw new Error(res.error);
         if (!res.url) throw new Error('فشل رفع شعار المتجر');
         logoUrl = res.url;
       }
 
-      // ✅ رفع الغلاف مع التحقق من النجاح
+      // ✅ رفع الغلاف مع التحقق من النجاح وتمرير sourceUri
       if (bannerBase64 && bannerUri) {
-        const res = await uploadImage(bannerBase64, user.id, 'store-banner');
+        const res = await uploadImage(bannerBase64, user.id, 'store-banner', bannerUri);
+        if (res.error) throw new Error(res.error);
         if (!res.url) throw new Error('فشل رفع غلاف المتجر');
         bannerUrl = res.url;
       }

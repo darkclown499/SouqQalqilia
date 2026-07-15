@@ -16,6 +16,11 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const pluralize = (count: number, singular: string, plural: string): string => {
+  return count === 1 ? singular : plural;
+};
+
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -30,60 +35,62 @@ export default function MessagesScreen() {
   const conversationsRef = useRef<typeof conversations>([]);
   conversationsRef.current = conversations;
   const isFocusedRef = useRef(false);
-  // FIX: Track which conversation IDs have been marked read in the current session
   const markedReadSetRef = useRef<Set<string>>(new Set());
 
+  // ✅ تحسين: إضافة شرط isFocusedRef داخل الدالة
   const autoMarkAllUnread = useCallback(() => {
-    if (!user) return;
-    // Filter unread conversations that haven't been marked yet in this session
+    if (!user || !isFocusedRef.current) return;
+
     const unreadConvs = conversationsRef.current.filter(
       (c: any) => (c.unread_count ?? 0) > 0 && !markedReadSetRef.current.has(c.id)
     );
     if (unreadConvs.length === 0) return;
 
-    // Optimistic local update — badge clears instantly
+    // Optimistic local update
     unreadConvs.forEach((conv: any) => {
       markConversationRead(conv.id, conv.last_message_at ?? null);
       markedReadSetRef.current.add(conv.id);
     });
 
-    // DB writes — parallel, fire-and-forget with error logging
+    // DB writes – parallel, fire-and-forget
     Promise.all(
       unreadConvs.map((conv: any) =>
         markMessagesRead(conv.id, user.id).catch((err) => {
           console.warn(`Failed to mark conversation ${conv.id} as read:`, err);
         })
       )
-    ).then(() => {
-      triggerUnreadRefresh().catch((e) => console.warn('Unread refresh error:', e));
-    }).catch((e) => console.warn('Unread refresh error:', e));
+    )
+      .then(() => triggerUnreadRefresh().catch(console.warn))
+      .catch(console.warn);
   }, [user]);
 
-  // Trigger 1: tab gains focus
+  // ✅ دمج FocusEffect + useEffect في منطق واحد
   useFocusEffect(
     useCallback(() => {
       isFocusedRef.current = true;
       autoMarkAllUnread();
-      return () => { isFocusedRef.current = false; };
+      return () => {
+        isFocusedRef.current = false;
+      };
     }, [autoMarkAllUnread])
   );
 
-  // Trigger 2: conversations load/refresh while tab is focused
-  // FIX: Added proper dependencies; autoMarkAllUnread is stable
+  // ✅ useEffect إضافي فقط يُستدعى عند تغير المحادثات إذا كان التبويب نشطاً
   useEffect(() => {
     if (isFocusedRef.current && !loading) {
       autoMarkAllUnread();
     }
   }, [conversations, loading, autoMarkAllUnread]);
 
-  // ── Blocked IDs with AbortController ──────────────────────────────────────
+  // ── Blocked IDs with incremental update ─────────────────────────────────────
   useEffect(() => {
     if (!user) return;
     const controller = new AbortController();
     const fetch = async () => {
       try {
         const ids = await fetchBlockedIds({ signal: controller.signal });
-        setBlockedIds(new Set(ids));
+        // ✅ تحديث تدريجي بدلاً من استبدال Set بالكامل
+        setBlockedIds(prev => new Set([...prev, ...ids]));
       } catch (err: any) {
         if (err.name === 'AbortError') return;
         console.warn('Failed to fetch blocked IDs:', err);
@@ -98,8 +105,12 @@ export default function MessagesScreen() {
   useEffect(() => {
     if (!user) return;
     const unsub = subscribeToBlockChanges(() => {
-      // Re-fetch using AbortController internally (assume service handles it)
-      fetchBlockedIds().then(ids => setBlockedIds(new Set(ids))).catch(console.warn);
+      fetchBlockedIds()
+        .then(ids => {
+          // ✅ تحديث تدريجي (يعني نستبدل القائمة بالكامل هنا لأنها عملية إعادة تحميل كاملة)
+          setBlockedIds(new Set(ids));
+        })
+        .catch(console.warn);
     });
     return unsub;
   }, [user?.id]);
@@ -107,7 +118,8 @@ export default function MessagesScreen() {
   // ── Derived values ──────────────────────────────────────────────────────────
   const totalConvs = conversations.length;
   const isAr = language === 'ar';
-  const hasError = convError || error;
+  // ✅ تحويل convError إلى string بأمان
+  const hasError = convError ? String(convError) : error;
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleConvPress = useCallback((id: string) => {
@@ -196,7 +208,7 @@ export default function MessagesScreen() {
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
 
       {/* ── HEADER ── */}
-      <View style={[styles.header, { backgroundColor: colors.primary }]}>
+      <View style={[styles.header, { backgroundColor: colors.primary, paddingTop: insets.top + Spacing.sm }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerSub}>{isAr ? 'صندوق' : 'Your'}</Text>
           <Text style={styles.headerTitle}>{t.yourMessages}</Text>
@@ -204,12 +216,16 @@ export default function MessagesScreen() {
           <View style={[styles.statsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <View style={[styles.statPill, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
               <MaterialIcons name="chat-bubble" size={11} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.statPillText}>{totalConvs} {isAr ? 'محادثة' : 'chats'}</Text>
+              <Text style={styles.statPillText}>
+                {totalConvs} {isAr ? pluralize(totalConvs, 'محادثة', 'محادثات') : pluralize(totalConvs, 'chat', 'chats')}
+              </Text>
             </View>
             {unreadCount > 0 ? (
               <View style={[styles.statPill, { backgroundColor: '#F59E0B' }]}>
                 <MaterialIcons name="mark-chat-unread" size={11} color="#fff" />
-                <Text style={styles.statPillText}>{unreadCount} {isAr ? 'غير مقروءة' : 'unread'}</Text>
+                <Text style={styles.statPillText}>
+                  {unreadCount} {isAr ? pluralize(unreadCount, 'غير مقروءة', 'غير مقروءة') : pluralize(unreadCount, 'unread', 'unread')}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -244,7 +260,7 @@ export default function MessagesScreen() {
           totalConvs > 0 ? (
             <View style={[styles.listHeader, { backgroundColor: colors.surfaceTint, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
               <MaterialIcons name="sort" size={14} color={colors.textMuted} />
-              <Text style={[styles.listHeaderText, { color: colors.textMuted }]}>
+              <Text style={[styles.listHeaderText, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
                 {isAr ? 'الأحدث أولاً' : 'Most recent first'}
               </Text>
             </View>
@@ -285,7 +301,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.lg,
-    paddingTop: Math.max(Spacing.sm, 8), // FIX: use safe value (insets applied on container)
+    // ✅ paddingTop تم نقله إلى الداخل لاستخدام insets.top
+    // paddingTop: Math.max(Spacing.sm, 8),  // أزلنا هذا السطر
   },
   headerSub: {
     fontSize: FontSize.sm,

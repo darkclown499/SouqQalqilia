@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, Pressable, KeyboardAvoidingView,
   Platform, Modal, ActivityIndicator,
@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import NetInfo from '@react-native-community/netinfo';
 import { useAuth, useAlert } from '@/template';
 import { Button, Input } from '@/components';
 import { useCategories } from '@/hooks/useCategories';
@@ -36,10 +37,6 @@ const QALQILYA_LOCATIONS = [
   'فلامية', 'مغارة الضبعة', 'عزبة الطبيب', 'عزبة سلمان',
   'عزبة الأشقر', 'واد الرشا', 'المدور',
 ];
-
-// ── Auto-image banner for product requests ───────────────────────────────────
-// Requests use a native React Native placeholder rendered in AdCard.
-// No external URL is generated — we simply don't attach any image to request ads.
 
 // ── Mode toggle button ────────────────────────────────────────────────────────
 function ModeToggle({
@@ -177,7 +174,7 @@ export default function PostAdScreen() {
         <View style={[styles.guestHeader, { backgroundColor: colors.primary }]}>
           <Text style={[styles.guestHeaderTitle, textAlign]}>{t.createListing}</Text>
         </View>
-        <View style={styles.guestBody}>
+        <View style={[styles.guestBody, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <View style={[styles.guestIcon, { backgroundColor: colors.surfaceTint }]}>
             <MaterialIcons name="add-business" size={44} color={colors.primary} />
           </View>
@@ -199,15 +196,12 @@ export default function PostAdScreen() {
 
   const handlePickCamera = useCallback(async () => {
     setPhotoModalVisible(false);
-    // Clear any pending timeout
     if (timeoutRefs.current.camera) clearTimeout(timeoutRefs.current.camera);
     timeoutRefs.current.camera = setTimeout(async () => {
       const result = await pickImage('camera');
       if (result) {
-        // Add image with blurhash placeholder
         const newImg = { ...result, blurhash: null as string | null };
         setImages(prev => [...prev, newImg]);
-        // Generate blurhash asynchronously
         generateBlurhash(result.uri).then(blurhash => {
           setImages(prev => prev.map(img => img.uri === result.uri ? { ...img, blurhash } : img));
         }).catch(() => {});
@@ -255,14 +249,15 @@ export default function PostAdScreen() {
     setPhoneLocal('');
     setCondition('used');
     setPhonePrefix('+970');
-    setPhonePrefilled(false);
+    // ✅ لا نعيد تعيين phonePrefilled لتجنب إعادة جلب الرقم
+    // setPhonePrefilled(false);
     setRequestStatus('open');
     setContactViaWhatsapp(false);
   }, []);
 
   // ── AI enhancement ────────────────────────────────────────────────────────
   const handleAiImprove = useCallback(async () => {
-    if (loading) return; // Disable while publishing
+    if (loading) return;
     if (!title.trim() && !description.trim()) {
       return showAlert(
         isAr ? 'مطلوب' : 'Required',
@@ -303,6 +298,15 @@ export default function PostAdScreen() {
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
+    // ✅ التحقق من حالة الإنترنت قبل الإرسال
+    const netState = await NetInfo.fetch();
+    if (!netState.isConnected) {
+      return showAlert(
+        isAr ? 'لا يوجد اتصال' : 'No Internet',
+        isAr ? 'يرجى التحقق من اتصالك بالإنترنت ثم حاول مرة أخرى.' : 'Please check your internet connection and try again.'
+      );
+    }
+
     if (!title.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال عنوان' : 'Please enter a title.');
     if (!description.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال وصف' : 'Please enter a description.');
     if (!categoryId) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى اختيار تصنيف' : 'Please select a category.');
@@ -330,7 +334,6 @@ export default function PostAdScreen() {
     }
     if (rawPhone) {
       const digits = rawPhone.replace(/\D/g, '');
-      // Validate length and prefix
       if (digits.length !== 9 && digits.length !== 10) {
         return showAlert(
           isAr ? 'رقم هاتف غير صحيح' : 'Invalid Phone',
@@ -339,7 +342,6 @@ export default function PostAdScreen() {
             : 'Enter 9 digits (e.g. 599123456) or 10 with leading zero.'
         );
       }
-      // Ensure the prefix matches the entered number if it has country code
       const fullNumber = `${phonePrefix}${digits}`;
       if (!fullNumber.startsWith('+970') && !fullNumber.startsWith('+972')) {
         return showAlert(
@@ -351,14 +353,15 @@ export default function PostAdScreen() {
 
     setLoading(true);
     try {
+      // ✅ استدعاء supabase مرة واحدة
+      const supabase = getSupabaseClient();
+
       const rawPhoneLocal = phoneLocal.trim().replace(/^0/, '');
       const fullPhone = rawPhoneLocal ? `${phonePrefix}${rawPhoneLocal}` : '';
       const isCity = selectedCity === QALQILYA_CITY;
       const locationStr = mode === 'product_ad'
         ? `${isCity ? 'قلقيلية' : selectedCity}${location.trim() ? ` - ${location.trim()}` : ''}`
         : selectedCity;
-
-      const selectedCategory = categories.find(c => c.id === categoryId);
 
       const { data: ad, error: adError } = await createAd({
         title: title.trim(),
@@ -372,8 +375,7 @@ export default function PostAdScreen() {
       });
       if (adError || !ad) throw new Error(adError ?? 'Failed to create ad');
 
-      // Update ad_type and contact_whatsapp — await to ensure order
-      const { error: updateError } = await getSupabaseClient()
+      const { error: updateError } = await supabase
         .from('ads')
         .update({
           ad_type: mode,
@@ -382,10 +384,12 @@ export default function PostAdScreen() {
         .eq('id', ad.id);
       if (updateError) throw new Error(updateError.message);
 
-      // Upload images for product ads
+      // ── Upload images for product ads with improved error handling ──
       if (mode === 'product_ad' && images.length > 0) {
         const urls: string[] = [];
         const blurhashes: (string | null)[] = [];
+        const uploadErrors: string[] = [];
+
         for (const img of images) {
           try {
             const { url } = await uploadImage(img.base64, user.id, ad.id, img.uri);
@@ -393,16 +397,30 @@ export default function PostAdScreen() {
               urls.push(url);
               blurhashes.push(img.blurhash ?? null);
             } else {
-              throw new Error('Upload returned no URL');
+              uploadErrors.push('Upload returned no URL for one image');
             }
           } catch (uploadErr) {
-            // If any image fails, we should abort the entire process
-            // but we can also inform the user and delete the ad (or keep it without images)
-            // For simplicity, we throw and show error, then cleanup would be needed.
-            // We'll throw to the outer catch.
-            throw new Error(`Failed to upload image: ${uploadErr instanceof Error ? uploadErr.message : 'unknown'}`);
+            uploadErrors.push(`Failed to upload image: ${uploadErr instanceof Error ? uploadErr.message : 'unknown'}`);
           }
         }
+
+        if (urls.length === 0) {
+          // ❌ فشلت جميع الصور، نلغي الإعلان
+          await supabase.from('ads').delete().eq('id', ad.id);
+          throw new Error(isAr ? 'فشل رفع جميع الصور، تم إلغاء الإعلان.' : 'Failed to upload any images, ad was cancelled.');
+        }
+
+        if (uploadErrors.length > 0) {
+          // ⚠️ بعض الصور فشلت، نكمل مع الناجحة ونحذر المستخدم
+          console.warn('Some images failed to upload:', uploadErrors);
+          showAlert(
+            isAr ? 'تنبيه' : 'Warning',
+            isAr
+              ? `تم رفع ${urls.length} من أصل ${images.length} صورة. بعض الصور لم ترفع.`
+              : `Uploaded ${urls.length} out of ${images.length} images. Some images failed.`
+          );
+        }
+
         if (urls.length > 0) {
           try {
             await saveAdImages(ad.id, urls, blurhashes);
@@ -434,10 +452,13 @@ export default function PostAdScreen() {
   }, [
     title, description, categoryId, mode, images, price, location, selectedCity,
     phoneLocal, phonePrefix, contactViaWhatsapp, condition, requestStatus,
-    categories, resetForm, router, showAlert, isAr, t, user
+    resetForm, router, showAlert, isAr, t, user
   ]);
 
-  const accentColor = mode === 'product_request' ? (colors.accent ?? '#F59E0B') : colors.primary;
+  // ✅ استخدام useMemo لـ accentColor
+  const accentColor = useMemo(() => {
+    return mode === 'product_request' ? (colors.accent ?? '#F59E0B') : colors.primary;
+  }, [mode, colors]);
 
   // ── Stable keyExtractor and renderItem for city list ──────────────────────
   const keyExtractor = useCallback((item: string) => item, []);
@@ -492,11 +513,15 @@ export default function PostAdScreen() {
           {/* ── Mode Toggle ── */}
           <ModeToggle mode={mode} onChange={setMode} colors={colors} isRTL={isRTL} isAr={isAr} />
 
-          {/* ── Mode Info Banner ── */}
-          <View style={[styles.modeBanner, {
-            backgroundColor: mode === 'product_request' ? '#FEF3C7' : colors.primaryGhost,
-            borderColor: mode === 'product_request' ? '#F59E0B' : colors.primary + '44',
-          }]}>
+          {/* ── Mode Info Banner (✅ إصلاح RTL) ── */}
+          <View style={[
+            styles.modeBanner,
+            {
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              backgroundColor: mode === 'product_request' ? '#FEF3C7' : colors.primaryGhost,
+              borderColor: mode === 'product_request' ? '#F59E0B' : colors.primary + '44',
+            }
+          ]}>
             <MaterialIcons
               name={mode === 'product_request' ? 'shopping-cart' : 'sell'}
               size={16}
@@ -504,6 +529,7 @@ export default function PostAdScreen() {
             />
             <Text style={[styles.modeBannerText, {
               color: mode === 'product_request' ? '#92400E' : colors.primary,
+              textAlign: isRTL ? 'right' : 'left',
             }]}>
               {mode === 'product_request'
                 ? (isAr ? 'أنت تنشر طلب شراء — سيتواصل معك البائعون المهتمون.' : 'You are posting a buy request — interested sellers will contact you.')
@@ -549,7 +575,6 @@ export default function PostAdScreen() {
               </ScrollView>
             </View>
           ) : (
-            /* Auto-image notice for product_request */
             <View style={[styles.autoImgNote, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
               <MaterialIcons name="auto-awesome" size={16} color={colors.primary} />
               <Text style={[styles.autoImgText, { color: colors.textSecondary }]}>
@@ -632,7 +657,6 @@ export default function PostAdScreen() {
               multiline
               numberOfLines={4}
             />
-            {/* AI Improve button */}
             <Pressable
               style={[styles.aiBtn, { backgroundColor: accentColor + '18', borderColor: accentColor, opacity: (aiLoading || loading) ? 0.7 : 1 }]}
               onPress={handleAiImprove}
@@ -768,7 +792,6 @@ export default function PostAdScreen() {
               </View>
             </View>
           ) : (
-            /* Location for product_request (city only) */
             <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
               <View style={[styles.sectionHeader, rtl]}>
                 <MaterialIcons name="location-on" size={18} color={accentColor} />
@@ -833,19 +856,26 @@ export default function PostAdScreen() {
               </View>
             </View>
 
-            {/* WhatsApp toggle */}
+            {/* ✅ إصلاح RTL في whatsappRow */}
             <Pressable
-              style={[styles.whatsappRow, { borderColor: contactViaWhatsapp ? '#25D366' : colors.border, backgroundColor: contactViaWhatsapp ? '#25D36618' : colors.background }]}
+              style={[
+                styles.whatsappRow,
+                {
+                  flexDirection: isRTL ? 'row-reverse' : 'row',
+                  borderColor: contactViaWhatsapp ? '#25D366' : colors.border,
+                  backgroundColor: contactViaWhatsapp ? '#25D36618' : colors.background,
+                }
+              ]}
               onPress={() => setContactViaWhatsapp(v => !v)}
             >
               <View style={[styles.whatsappIcon, { backgroundColor: contactViaWhatsapp ? '#25D366' : colors.surfaceTint }]}>
                 <MaterialIcons name="chat" size={18} color={contactViaWhatsapp ? '#fff' : colors.textMuted} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.whatsappLabel, { color: contactViaWhatsapp ? '#15803D' : colors.textPrimary }]}>
+                <Text style={[styles.whatsappLabel, { color: contactViaWhatsapp ? '#15803D' : colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
                   {isAr ? 'التواصل عبر واتساب' : 'Contact via WhatsApp'}
                 </Text>
-                <Text style={[styles.whatsappSub, { color: colors.textMuted }]}>
+                <Text style={[styles.whatsappSub, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
                   {isAr ? 'يتيح للمهتمين التواصل معك مباشرة عبر واتساب' : 'Lets interested buyers contact you directly via WhatsApp'}
                 </Text>
               </View>
@@ -1097,7 +1127,6 @@ const styles = StyleSheet.create({
 
 const cityS = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'flex-end', zIndex: 9999 },
-  // Use maxHeight instead of fixed height for better responsiveness
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, maxHeight: '75%' },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, marginBottom: 12 },

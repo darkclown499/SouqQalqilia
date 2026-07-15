@@ -92,6 +92,9 @@ export async function pickMultipleImages(limit = 3): Promise<{ uri: string; base
   return processed;
 }
 
+/**
+ * Pick a single image from camera or gallery, compress it, and return { uri, base64 }.
+ */
 export async function pickImage(
   source: 'camera' | 'gallery' = 'gallery', 
   aspect: [number, number] = [4, 3]
@@ -100,7 +103,6 @@ export async function pickImage(
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') return null;
 
-    // تصحيح: استخدام launchCameraAsync
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       quality: 1,
@@ -129,7 +131,7 @@ export async function pickImage(
     quality: 1,
     base64: false,
     allowsEditing: true,
-    aspect: aspect, // تصحيح: استخدام المتغير aspect
+    aspect: aspect,
   });
 
   if (result.canceled || !result.assets[0]) return null;
@@ -153,6 +155,8 @@ export async function pickImage(
  *
  * Always returns a permanent PUBLIC URL (not a signed URL) so expo-image
  * disk cache entries never expire.
+ *
+ * @returns { url: string | null, blurhash: string | null, error: string | null }
  */
 export async function uploadImage(
   base64: string,
@@ -176,18 +180,25 @@ export async function uploadImage(
     }
   }
 
+  // Final validation: ensure we have base64 data
   if (!effectiveBase64) {
     return { url: null, blurhash: null, error: 'Image compression failed. Please try again.' };
   }
 
-  const byteCharacters = atob(effectiveBase64);
-  const byteNumbers = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  // ── Decode base64 to binary ────────────────────────────────────────────────
+  let byteArray: Uint8Array;
+  try {
+    const byteCharacters = atob(effectiveBase64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    byteArray = new Uint8Array(byteNumbers);
+  } catch (decodeError) {
+    return { url: null, blurhash: null, error: 'Invalid image data. Please try again.' };
   }
-  const byteArray = new Uint8Array(byteNumbers);
 
-  // Always use unique filename to bust CDN cache for avatar updates
+  // ── Upload ──────────────────────────────────────────────────────────────────
   const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const path = `${userId}/${uniqueSuffix}_${fileName}.jpg`;
 
@@ -201,7 +212,7 @@ export async function uploadImage(
     return { url: null, blurhash: null, error: error.message };
   }
 
-  // getPublicUrl returns a permanent URL (no expiry) — safe for disk cache keys
+  // ── Get public URL ──────────────────────────────────────────────────────────
   const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, blurhash: null, error: null };
 }

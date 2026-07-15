@@ -10,97 +10,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingOffersButton from '@/components/FloatingOffersButton';
 import { useAuth, getSupabaseClient } from '@/template';
-import { trackEvent, trackPageView } from '@/services/analyticsService'; // ✅ أضفنا trackPageView
+import { trackEvent, trackPageView } from '@/services/analyticsService';
 import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router'; // ✅ أضفنا useFocusEffect
-
-// expo-haptics is native-only; imported dynamically to avoid web/SSR bundling errors
-import { Dimensions as _RNDims } from 'react-native';
-const _initW = _RNDims.get('window').width;
-const _initHPad = _initW < 375 ? 12 : Spacing.lg;
-const _initCardGap = _initW < 375 ? 8 : 10;
-const _initCardW = (_initW - _initHPad * 2 - _initCardGap) / 2;
-const _initImgH = Math.max(130, Math.min(Math.round(_initCardW * 0.75), 200));
-const _initCardInfoH = 92;
-const _initRowH = _initImgH + _initCardInfoH + _initCardGap;
-
-const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
-const MAX_RECENTLY_VIEWED = 6;
-const SEARCH_HISTORY_KEY = 'search_history_v1';
-const MAX_SEARCH_HISTORY = 8;
-
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
-
-async function loadSearchHistory(): Promise<string[]> {
-  try {
-    const raw = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    console.warn('loadSearchHistory error:', e);
-    return [];
-  }
-}
-
-async function saveSearchHistory(query: string, current: string[]): Promise<string[]> {
-  try {
-    const deduped = [query, ...current.filter(q => q !== query)].slice(0, MAX_SEARCH_HISTORY);
-    await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(deduped));
-    return deduped;
-  } catch (e) {
-    console.warn('saveSearchHistory error:', e);
-    return current;
-  }
-}
-
-async function clearSearchHistory(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
-  } catch (e) {
-    console.warn('clearSearchHistory error:', e);
-  }
-}
-
-async function addToRecentlyViewed(ad: Ad): Promise<void> {
-  try {
-    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
-    const existing: Ad[] = raw ? JSON.parse(raw) : [];
-    const updated = [ad, ...existing.filter(a => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED);
-    await AsyncStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
-  } catch (e) {
-    console.warn('addToRecentlyViewed error:', e);
-  }
-}
-
-async function removeFromRecentlyViewed(adId: string): Promise<void> {
-  try {
-    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
-    const existing: Ad[] = raw ? JSON.parse(raw) : [];
-    const updated = existing.filter(a => a.id !== adId);
-    await AsyncStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
-  } catch (e) {
-    console.warn('removeFromRecentlyViewed error:', e);
-  }
-}
-
-async function loadRecentlyViewed(): Promise<Ad[]> {
-  try {
-    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    console.warn('loadRecentlyViewed error:', e);
-    return [];
-  }
-}
-
+import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { AdCard, EmptyState } from '@/components';
@@ -179,6 +93,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
 
   if (!loading && stores.length === 0) return null;
 
+  // ✅ useCallback مع dependencies صحيحة
   const renderStoreItem = useCallback(({ item: store }: { item: StoreType }) => {
     const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
     const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
@@ -308,47 +223,81 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   );
 }
 
-const fs = StyleSheet.create({
-  wrapper: { marginBottom: Spacing.lg },
-  labelRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
-    paddingHorizontal: Spacing.lg, marginBottom: Spacing.sm,
-  },
-  labelDot: { width: 4, height: 20, borderRadius: 2 },
-  labelText: { fontSize: FontSize.md + 1, fontWeight: '700', flex: 1 },
-  liveBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: Radius.full, paddingHorizontal: 9, paddingVertical: 4,
-  },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
-  liveText: { fontSize: 11, fontWeight: '700' },
-  listContent: {
-    paddingHorizontal: Spacing.lg, gap: 12, paddingRight: Spacing.xl,
-  },
-  card: {
-    width: 92, alignItems: 'center', gap: 6,
-    borderRadius: Radius.xl, borderWidth: 1,
-    padding: Spacing.sm, paddingTop: Spacing.md,
-  },
-  logoWrap: {
-    width: 58, height: 58, borderRadius: 29,
-    alignItems: 'center', justifyContent: 'center',
-    overflow: 'visible', position: 'relative',
-  },
-  logo: { width: 54, height: 54, borderRadius: 27 },
-  statusDot: {
-    position: 'absolute', bottom: 0, right: 0,
-    width: 12, height: 12, borderRadius: 6, borderWidth: 2,
-  },
-  storeName: {
-    fontSize: 11, fontWeight: '600', textAlign: 'center', lineHeight: 15,
-  },
-  closedBadge: {
-    backgroundColor: 'rgba(0,0,0,0.07)',
-    borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2,
-  },
-  closedBadgeText: { fontSize: 10, fontWeight: '700', color: '#6b7280' },
-});
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+async function loadSearchHistory(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn('loadSearchHistory error:', e);
+    return [];
+  }
+}
+
+async function saveSearchHistory(query: string, current: string[]): Promise<string[]> {
+  try {
+    const deduped = [query, ...current.filter(q => q !== query)].slice(0, MAX_SEARCH_HISTORY);
+    await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(deduped));
+    return deduped;
+  } catch (e) {
+    console.warn('saveSearchHistory error:', e);
+    return current;
+  }
+}
+
+async function clearSearchHistory(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
+  } catch (e) {
+    console.warn('clearSearchHistory error:', e);
+  }
+}
+
+async function addToRecentlyViewed(ad: Ad): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
+    const existing: Ad[] = raw ? JSON.parse(raw) : [];
+    const updated = [ad, ...existing.filter(a => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED);
+    await AsyncStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.warn('addToRecentlyViewed error:', e);
+  }
+}
+
+async function removeFromRecentlyViewed(adId: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
+    const existing: Ad[] = raw ? JSON.parse(raw) : [];
+    const updated = existing.filter(a => a.id !== adId);
+    await AsyncStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.warn('removeFromRecentlyViewed error:', e);
+  }
+}
+
+async function loadRecentlyViewed(): Promise<Ad[]> {
+  try {
+    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn('loadRecentlyViewed error:', e);
+    return [];
+  }
+}
+
+const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
+const MAX_RECENTLY_VIEWED = 6;
+const SEARCH_HISTORY_KEY = 'search_history_v1';
+const MAX_SEARCH_HISTORY = 8;
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'boosted';
 type Condition = 'new' | 'used' | null;
@@ -443,7 +392,6 @@ export default function HomeScreen() {
   }>>([]);
   const [notifLoading, setNotifLoading] = useState(false);
 
-  // Request ID to handle race conditions for main data loading
   const requestIdRef = useRef(0);
 
   const fetchUnreadMessages = useCallback(async () => {
@@ -498,7 +446,6 @@ export default function HomeScreen() {
   const isAr = language === 'ar';
   const appTitle = useMemo(() => isAr ? 'سوق قلقيلية' : 'Souq Qalqilya', [isAr]);
 
-  // ✅ تسجيل زيارة الصفحة الرئيسية
   useFocusEffect(
     useCallback(() => {
       trackPageView('home');
@@ -551,7 +498,6 @@ export default function HomeScreen() {
       condition: appliedCondition ?? undefined,
       sortBy,
     }).then(() => {
-      // Only clear error if this request is still the latest
       if (currentRequestId === requestIdRef.current) {
         setError(null);
       }
@@ -728,11 +674,12 @@ export default function HomeScreen() {
   const rowHeight = useMemo(() => {
     const cw = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
     const imgH = Math.max(130, Math.min(Math.round(cw * 0.75), 200));
-    return imgH + _initCardInfoH + _initCardGap;
+    return imgH + 92 + 10;
   }, [cardWidth, cardWidthLg, isTablet, isDesktop]);
 
   const activeCardWidth = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
 
+  // ✅ useCallback مع dependencies صحيحة
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
     const cols = item.ads.length;
     return (
@@ -755,7 +702,6 @@ export default function HomeScreen() {
     );
   }, [isRTL, favIds, user, toggleFav, handleAdView, cardGap, hPad, activeCardWidth, numColumns]);
 
-  const currentBanner = banners[featuredIndex] ?? banners[0];
   const handleFeaturedStorePress = useCallback((storeId: string) => {
     router.push(`/store/${storeId}` as any);
   }, [router]);
@@ -975,7 +921,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, setSortBy, error, hPad, isAr]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, setSortBy, error, hPad, isAr, currentBanner]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -1003,7 +949,6 @@ export default function HomeScreen() {
           </View>
 
           <View style={[styles.headerActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            {/* زر الفلتر */}
             <Pressable
               style={[styles.headerIconBtn, activeFilterCount > 0 && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
               onPress={handleOpenFilter}
@@ -1017,7 +962,6 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
 
-            {/* زر الإشعارات */}
             <Pressable style={styles.headerIconBtn} onPress={handleBellPress} hitSlop={6}>
               <MaterialCommunityIcons name="bell" size={20} color="#fff" />
               {unreadMessages.length > 0 && !notifModalVisible ? (
@@ -1029,7 +973,6 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
 
-            {/* زر AI / الروبوت */}
             <Pressable
               style={[styles.headerIconBtn, { backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' }]}
               onPress={() => router.push('/ai-support')}
@@ -1044,7 +987,6 @@ export default function HomeScreen() {
           <Pressable
             style={[styles.searchBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.96)', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
             onPress={() => {
-              // Pass current filters to search
               router.push({
                 pathname: '/search',
                 params: {

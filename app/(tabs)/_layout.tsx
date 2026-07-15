@@ -5,19 +5,21 @@ import { Platform, View, StyleSheet, Text, Pressable } from 'react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming,
 } from 'react-native-reanimated';
-import * as Notifications from 'expo-notifications'; // <-- ADDED
+import * as Notifications from 'expo-notifications';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useConversations } from '@/hooks/useChat';
-import { trackEvent } from '@/services/analyticsService';
-import { useAuth, getSupabaseClient } from '@/template'; // <-- ADDED getSupabaseClient
-import { useMemo, useCallback, useEffect } from 'react'; // <-- ADDED useEffect
+// ✅ تم حذف trackEvent لأنه غير مستخدم
+import { useAuth, getSupabaseClient } from '@/template';
+import { useMemo, useCallback, useEffect, useRef } from 'react'; // ✅ تم إضافة useRef
 
-/** Receives unreadCount as prop — no hook calls inside */
-function UnreadBadge({ count }: { count: number }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ تم إصلاح RTL في UnreadBadge بإضافة isRTL واستخدام left/right ديناميكياً
+// ─────────────────────────────────────────────────────────────────────────────
+function UnreadBadge({ count, isRTL }: { count: number; isRTL: boolean }) {
   if (count <= 0) return null;
   return (
-    <View style={badge.wrap}>
+    <View style={[badge.wrap, isRTL ? { left: -8 } : { right: -8 }]}>
       <Text style={badge.text}>{count > 99 ? '99+' : String(count)}</Text>
     </View>
   );
@@ -27,7 +29,6 @@ const badge = StyleSheet.create({
   wrap: {
     position: 'absolute',
     top: -5,
-    right: -8,
     backgroundColor: '#EF4444',
     borderRadius: 99,
     minWidth: 17,
@@ -52,11 +53,9 @@ export default function TabLayout() {
   const { t, language, isRTL } = useLanguage();
   const isAr = language === 'ar';
   const { user } = useAuth();
-  // Must be at TabLayout level so _globalRefreshUnread is always registered
-  // while the tab bar is visible — never inside a child component
   const { unreadCount } = useConversations();
 
-  // FIX: Memoize tabBarStyle to avoid recreating on every render
+  // ─── TabBar Style ───────────────────────────────────────────────────────────
   const tabBarStyle = useMemo(() => ({
     minHeight: Platform.select({ ios: insets.bottom + 62, android: insets.bottom + 62, default: 70 }),
     paddingTop: 8,
@@ -73,13 +72,13 @@ export default function TabLayout() {
     flexDirection: isRTL ? 'row-reverse' : 'row',
   }), [insets, colors, isRTL]);
 
+  // ─── Post Button Animation ──────────────────────────────────────────────────
   const postScale = useSharedValue(1);
   const postRotation = useSharedValue(0);
   const postAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: postScale.value }, { rotate: `${postRotation.value}deg` }],
   }));
 
-  // FIX: Memoize animatePost with useCallback
   const animatePost = useCallback(() => {
     postScale.value = withSequence(
       withSpring(0.85, { damping: 6, stiffness: 400 }),
@@ -92,7 +91,6 @@ export default function TabLayout() {
     );
   }, [postScale, postRotation]);
 
-  // FIX: Use Pressable with onPress instead of onTouchEnd
   const PostButton = useCallback((props: any) => {
     const focused = props.accessibilityState?.selected ?? false;
     return (
@@ -126,10 +124,13 @@ export default function TabLayout() {
     );
   }, [colors, postAnimStyle, animatePost]);
 
-  // ─── NEW: Register push notifications ──────────────────────────────────────
+  // ─── Push Notifications Registration ─────────────────────────────────────
+  // ✅ استخدام useRef لمنع تكرار التسجيل أثناء التركيب
+  const registeredRef = useRef(false);
+
   const registerForPushNotifications = useCallback(async () => {
-    // Only proceed if user is logged in and on native platform (not web)
     if (!user || Platform.OS === 'web') return;
+    if (registeredRef.current) return; // ✅ منع التسجيل المتكرر
 
     try {
       // 1. Request permission
@@ -146,7 +147,7 @@ export default function TabLayout() {
 
       // 2. Get Expo push token
       const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1', // Replace with your EAS project ID
+        projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1', // استبدل بمعرف المشروع الخاص بك
       });
       const token = tokenData.data;
       if (!token) {
@@ -164,12 +165,15 @@ export default function TabLayout() {
         .eq('id', user.id);
 
       if (error) {
-        console.error('[Push] Failed to save token:', error.message);
+        console.error('[Push] ❌ Failed to save token:', error.message);
+        // ✅ تسجيل الخطأ في نظام التحليلات لو كان موجوداً
+        // trackError('push_token_save_failed', { error: error.message, userId: user.id });
       } else {
         console.log('[Push] ✅ Token saved to database.');
+        registeredRef.current = true; // ✅ تم التسجيل بنجاح
       }
     } catch (e: any) {
-      console.error('[Push] registerForPushNotifications error:', e?.message ?? e);
+      console.error('[Push] ❌ registerForPushNotifications error:', e?.message ?? e);
     }
   }, [user]);
 
@@ -178,6 +182,7 @@ export default function TabLayout() {
     registerForPushNotifications();
   }, [registerForPushNotifications]);
 
+  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <Tabs
       screenOptions={{
@@ -218,7 +223,8 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconWithBadge}>
               <MaterialIcons name={focused ? 'chat' : 'chat-outline'} size={24} color={color} />
-              <UnreadBadge count={unreadCount} />
+              {/* ✅ تم تمرير isRTL إلى UnreadBadge */}
+              <UnreadBadge count={unreadCount} isRTL={isRTL} />
             </View>
           ),
         }}

@@ -11,6 +11,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming,
 } from 'react-native-reanimated';
+import NetInfo from '@react-native-community/netinfo'; // ✅ إضافة NetInfo
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { AdCard, Button, EmptyState } from '@/components';
 import { useMyAds } from '@/hooks/useAds';
@@ -53,15 +54,12 @@ function AnimatedSwitch({ value, onValueChange, colors }: {
   return (
     <Pressable onPress={handleToggle} hitSlop={8}>
       <Animated.View style={[switchS.track, trackStyle]}>
-        {/* Moon icon — left side (visible when ON/dark) */}
         <View style={switchS.iconLeft}>
           <MaterialIcons name="nightlight-round" size={13} color="rgba(255,255,255,0.85)" />
         </View>
-        {/* Sun icon — right side (visible when OFF/light) */}
         <View style={switchS.iconRight}>
           <MaterialIcons name="wb-sunny" size={13} color="#F59E0B" />
         </View>
-        {/* Thumb slides over the icons */}
         <Animated.View style={[switchS.thumb, thumbStyle]} />
       </Animated.View>
     </Pressable>
@@ -107,7 +105,6 @@ function FontScalePicker({ level, onChange, isRTL, colors }: {
         </View>
       </View>
 
-      {/* Preview text */}
       <View style={[fpS.previewBox, { backgroundColor: colors.background, borderColor: colors.borderLight }]}>
         <Text style={[fpS.previewText, { color: colors.textSecondary, fontSize: Math.round(14 * SCALE_MULT[level]) }]}>
           {isRTL ? 'مرحباً بك في سوق قلقيلية' : 'Welcome to Souq Qalqilya'}
@@ -117,7 +114,6 @@ function FontScalePicker({ level, onChange, isRTL, colors }: {
         </Text>
       </View>
 
-      {/* Segment buttons */}
       <View style={[fpS.btnRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderColor: colors.border, backgroundColor: colors.background }]}>
         {FONT_LEVELS.map((fl) => {
           const isSelected = fl.level === level;
@@ -246,15 +242,36 @@ export default function ProfileScreen() {
   const activeAds = useMemo(() => ads.filter(a => a.status === 'active' || a.status === 'featured'), [ads]);
   const soldAds = useMemo(() => ads.filter(a => a.status === 'sold'), [ads]);
 
-  // ── Quick actions (memoized) ──────────────────────────────────────────────
-  const quickActions = useMemo(() => [
-    { icon: 'edit', label: isRTL ? 'تعديل الملف' : 'Edit Profile', color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
-    { icon: 'person', label: isRTL ? 'ملفي العام' : 'My Page', color: '#7C3AED', bg: '#EDE9FE', onPress: () => user && router.push(`/seller/${user.id}` as any) },
-    { icon: 'add-circle-outline', label: isRTL ? 'نشر إعلان' : 'Post Ad', color: colors.primary, bg: colors.primaryGhost, onPress: () => router.push('/(tabs)/post') },
-    { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
-    // ✅ المسار الصحيح للإدارة: /admin (بدون /index)
-    ...(isAdmin ? [{ icon: 'admin-panel-settings', label: isRTL ? 'الإدارة' : 'Admin', color: '#D97706', bg: '#FEF3C7', onPress: () => router.push('/admin/index' as any) }] : []),
-  ], [isRTL, colors, isAdmin, router, user]);
+  // ── Quick actions (memoized) with fixed admin navigation ──────────────────
+  const quickActions = useMemo(() => {
+    const baseActions = [
+      { icon: 'edit', label: isRTL ? 'تعديل الملف' : 'Edit Profile', color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
+      { icon: 'person', label: isRTL ? 'ملفي العام' : 'My Page', color: '#7C3AED', bg: '#EDE9FE', onPress: () => user && router.push(`/seller/${user.id}` as any) },
+      { icon: 'add-circle-outline', label: isRTL ? 'نشر إعلان' : 'Post Ad', color: colors.primary, bg: colors.primaryGhost, onPress: () => router.push('/(tabs)/post') },
+      { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
+    ];
+    if (isAdmin) {
+      baseActions.push({
+        icon: 'admin-panel-settings',
+        label: isRTL ? 'الإدارة' : 'Admin',
+        color: '#D97706',
+        bg: '#FEF3C7',
+        onPress: () => {
+          try {
+            // ✅ استخدام المسار الصحيح مع معالجة الأخطاء
+            router.push('/admin' as any);
+          } catch (err) {
+            console.error('Admin navigation error:', err);
+            showAlert(
+              isRTL ? 'خطأ' : 'Error',
+              isRTL ? 'تعذر فتح لوحة الإدارة، حاول مرة أخرى.' : 'Could not open admin panel, please try again.'
+            );
+          }
+        }
+      });
+    }
+    return baseActions;
+  }, [isRTL, colors, isAdmin, router, user, showAlert]);
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
   const loadBlockedUsers = useCallback(async () => {
@@ -385,8 +402,18 @@ export default function ProfileScreen() {
     }
   }, [user, showAlert]);
 
+  // ✅ التحقق من الاتصال قبل حفظ الملف الشخصي
   const handleSaveProfile = useCallback(async () => {
     if (!user) return;
+    // Check internet connection
+    const netState = await NetInfo.fetch();
+    if (!netState.isConnected) {
+      return showAlert(
+        isRTL ? 'لا يوجد اتصال' : 'No Internet',
+        isRTL ? 'يرجى التحقق من اتصالك بالإنترنت.' : 'Please check your internet connection.'
+      );
+    }
+
     const trimmedName = editName.trim();
     if (!trimmedName) {
       return showAlert(isRTL ? 'مطلوب' : 'Required', isRTL ? 'يرجى إدخال اسم المستخدم' : 'Please enter a display name.');
@@ -549,7 +576,6 @@ export default function ProfileScreen() {
         const admin = await checkIsAdmin();
         if (!signal.aborted) setIsAdmin(admin);
 
-        // Fetch owner store
         const supabase = getSupabaseClient();
         const { data: storeData } = await supabase
           .from('stores')
@@ -558,7 +584,6 @@ export default function ProfileScreen() {
           .maybeSingle();
         if (!signal.aborted) setOwnerStore(storeData as any);
 
-        // Load profile data
         const { data: profileData } = await supabase
           .from('user_profiles')
           .select('avatar_url, banner_url, phone, is_verified, push_token')
@@ -566,7 +591,6 @@ export default function ProfileScreen() {
           .single();
 
         if (!signal.aborted && profileData) {
-          // Google photo sync
           if (!profileData.avatar_url) {
             try {
               const { data: { user: freshUser } } = await supabase.auth.getUser();
@@ -585,7 +609,6 @@ export default function ProfileScreen() {
           setCurrentPushToken(profileData.push_token ?? null);
         }
 
-        // Load blocked users
         await loadBlockedUsers();
       } catch (err) {
         if (!signal.aborted) console.error('Profile load error:', err);
@@ -657,7 +680,7 @@ export default function ProfileScreen() {
           <Text style={styles.guestHeroSub}>{t.notSignedInSub}</Text>
         </View>
         <View style={styles.guestBody}>
-          <Pressable style={[styles.guestLoginBtn, { backgroundColor: colors.primary }]} onPress={() => router.push('/login')}>
+          <Pressable style={[styles.guestLoginBtn, { backgroundColor: colors.primary, flexDirection: isRTL ? 'row-reverse' : 'row' }]} onPress={() => router.push('/login')}>
             <MaterialIcons name="login" size={20} color="#fff" />
             <Text style={styles.guestLoginText}>{t.signInRegister}</Text>
           </Pressable>
@@ -665,6 +688,13 @@ export default function ProfileScreen() {
       </View>
     );
   }
+
+  // ── Helper to reset edit fields when canceling ───────────────────────────
+  const handleCancelEdit = useCallback(() => {
+    setEditName(user?.username || '');
+    setEditPhone(user?.phone || '');
+    setEditMode(false);
+  }, [user]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -730,11 +760,11 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* ── OWNER STORE CARD ── */}
+          {/* ── OWNER STORE CARD (مع إصلاح RTL) ── */}
           {ownerStore !== undefined && (
             ownerStore === null ? (
               <Pressable
-                style={styles.storeCtaCard}
+                style={[styles.storeCtaCard, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
                 onPress={() => router.push('/register-store' as any)}
               >
                 <View style={[styles.storeCtaIcon, { backgroundColor: colors.primary }]}>
@@ -752,7 +782,7 @@ export default function ProfileScreen() {
               </Pressable>
             ) : ownerStore.is_approved ? (
               <Pressable
-                style={styles.storeCtaCard}
+                style={[styles.storeCtaCard, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
                 onPress={() => router.push('/store-dashboard' as any)}
               >
                 <View style={[styles.storeCtaIcon, { backgroundColor: colors.primary }]}>
@@ -773,7 +803,7 @@ export default function ProfileScreen() {
               </Pressable>
             ) : (
               <Pressable
-                style={[styles.storeCtaCard, { borderColor: '#F59E0B' }]}
+                style={[styles.storeCtaCard, { borderColor: '#F59E0B', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
                 onPress={() => router.push('/store-dashboard' as any)}
               >
                 <View style={[styles.storeCtaIcon, { backgroundColor: '#F59E0B' }]}>
@@ -792,8 +822,8 @@ export default function ProfileScreen() {
             )
           )}
 
-          {/* ── QUICK ACTIONS ── */}
-          <View style={[styles.actionsRow, { backgroundColor: colors.surface }]}>
+          {/* ── QUICK ACTIONS (مع إصلاح RTL) ── */}
+          <View style={[styles.actionsRow, { backgroundColor: colors.surface, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             {quickActions.map((a) => (
               <Pressable
                 key={a.label}
@@ -816,7 +846,7 @@ export default function ProfileScreen() {
                   <MaterialIcons name="edit" size={16} color={colors.primary} />
                 </View>
                 <Text style={[styles.editCardTitle, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>{t.editProfile}</Text>
-                <Pressable onPress={() => setEditMode(false)} hitSlop={8}><MaterialIcons name="close" size={20} color={colors.textMuted} /></Pressable>
+                <Pressable onPress={handleCancelEdit} hitSlop={8}><MaterialIcons name="close" size={20} color={colors.textMuted} /></Pressable>
               </View>
 
               {/* Banner upload row */}
@@ -876,7 +906,7 @@ export default function ProfileScreen() {
               </View>
 
               <View style={[styles.editBtns, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <Pressable style={[styles.editCancelBtn, { borderColor: colors.border }]} onPress={() => setEditMode(false)}>
+                <Pressable style={[styles.editCancelBtn, { borderColor: colors.border }]} onPress={handleCancelEdit}>
                   <Text style={[styles.editCancelText, { color: colors.textSecondary }]}>{t.cancel}</Text>
                 </Pressable>
                 <Pressable style={[styles.editSaveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]} onPress={handleSaveProfile} disabled={saving}>
@@ -915,7 +945,6 @@ export default function ProfileScreen() {
           {/* ═══════════════════════ MY LISTINGS TAB ═══════════════════════ */}
           {activeTab === 'listings' ? (
             <View style={styles.listingsSection}>
-              {/* Post new button */}
               <Pressable
                 style={[styles.postNewBtn, { backgroundColor: colors.primary }]}
                 onPress={() => router.push('/(tabs)/post')}
@@ -963,7 +992,6 @@ export default function ProfileScreen() {
                   right={<AnimatedSwitch value={isDark} onValueChange={toggleTheme} colors={colors} />}
                 />
 
-                {/* ── FONT SIZE PICKER ── */}
                 <FontScalePicker
                   level={fontScaleLevel}
                   onChange={setFontScaleLevel}
@@ -1009,7 +1037,6 @@ export default function ProfileScreen() {
               <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <SectionHeader icon="support-agent" label={isRTL ? 'مركز المساعدة' : 'Help Center'} color="#0A6E5C" bg={colors.primaryGhost} />
 
-                {/* ── AI SUPPORT CHAT ── */}
                 <View style={[styles.waWrap, { borderBottomColor: colors.borderLight }]}>
                   <Pressable
                     style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1, backgroundColor: colors.primary }]}
@@ -1030,7 +1057,6 @@ export default function ProfileScreen() {
                   </Pressable>
                 </View>
 
-                {/* WhatsApp */}
                 <View style={[styles.waWrap, { borderBottomColor: colors.borderLight }]}>
                   <Pressable style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1 }]} onPress={handleWhatsApp}>
                     <View style={styles.waIconBadge}><MaterialIcons name="support-agent" size={26} color="#fff" /></View>
@@ -1110,7 +1136,6 @@ export default function ProfileScreen() {
                     bg="#FEF3C7"
                   />
 
-                  {/* Token status row */}
                   <View style={[ptStyles.tokenRow, { backgroundColor: colors.background, borderColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
                     <MaterialIcons
                       name={currentPushToken ? 'vpn-key' : 'warning'}
@@ -1124,7 +1149,6 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
 
-                  {/* Test button */}
                   <Pressable
                     style={({ pressed }) => [
                       ptStyles.testBtn,
@@ -1165,7 +1189,6 @@ export default function ProfileScreen() {
                     </Text>
                   </Pressable>
 
-                  {/* Hint */}
                   <Text style={[ptStyles.hint, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
                     {isRTL
                       ? 'يرسل إشعاراً لهذا الجهاز عبر Expo Push API للتحقق من FCM/APNs قبل الرفع للمتاجر'
@@ -1297,7 +1320,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   storeCtaCard: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', // ✅ تم تعديل RTL داخل JSX
+    alignItems: 'center',
     backgroundColor: '#ffffff',
     padding: 16,
     borderRadius: 16,
