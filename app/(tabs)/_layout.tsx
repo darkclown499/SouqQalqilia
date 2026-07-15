@@ -8,7 +8,6 @@ import Animated, {
 import * as Notifications from 'expo-notifications';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-// ✅ تم إزالة useConversations لأن تبويب الرسائل قد حُذف
 import { useAuth, getSupabaseClient } from '@/template';
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 
@@ -119,9 +118,10 @@ export default function TabLayout() {
       console.log('[Push] ✅ Expo Push Token:', token);
 
       const supabase = getSupabaseClient();
+      // ✅ تم التصحيح: استخدم `push_token` بدلاً من `expo_push_token`
       const { error } = await supabase
         .from('user_profiles')
-        .update({ expo_push_token: token })
+        .update({ push_token: token })
         .eq('id', user.id);
 
       if (error) {
@@ -173,7 +173,6 @@ export default function TabLayout() {
           tabBarButton: PostButton,
         }}
       />
-      {/* ✅ تم حذف تبويب "messages" نهائياً */}
       <Tabs.Screen
         name="stores"
         options={{

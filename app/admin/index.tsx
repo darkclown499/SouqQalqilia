@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useFocusEffect } from 'expo-router';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
-  ActivityIndicator, Modal, ScrollView,
+  ActivityIndicator, Modal, ScrollView, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -54,7 +54,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchStats = useCallback(async () => {
-    // Cancel any in-flight request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -68,7 +67,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      // ── Fetch all stats in parallel ──
       const [dauRes, wauRes, mauRes, totalVisitsRes, usersRes, activeAdsRes, activeStoresRes] = await Promise.all([
         supabase.from('app_visits').select('device_id').gte('visited_at', todayStart),
         supabase.from('app_visits').select('device_id').gte('visited_at', weekAgo),
@@ -81,7 +79,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
 
       if (controller.signal.aborted) return;
 
-      // ── Compute ──
       const uniqueSet = (rows: any[]) => new Set(rows.map((r: any) => r.device_id)).size;
       const dau = uniqueSet(dauRes.data ?? []);
       const wau = uniqueSet(wauRes.data ?? []);
@@ -91,7 +88,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       const activeAds = activeAdsRes.count ?? 0;
       const activeStores = activeStoresRes.count ?? 0;
 
-      // ── Trend ──
       const trendMap: Record<string, Set<string>> = {};
       for (let i = 6; i >= 0; i--) {
         const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
@@ -934,6 +930,7 @@ export default function AdminScreen() {
   const [interstitials, setInterstitials] = useState<InterstitialAd[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [adSearch, setAdSearch] = useState('');
 
   const [showStoreForm, setShowStoreForm] = useState(false);
@@ -975,36 +972,74 @@ export default function AdminScreen() {
   const [inShowAfter, setInShowAfter] = useState('60');
   const [inSaving, setInSaving] = useState(false);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const loadData = useCallback(async (showLoading = true) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    if (showLoading) setLoading(true);
+    setRefreshing(false);
+
     try {
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          controller.abort();
+          reject(new Error('TIMEOUT'));
+        }, 15000);
+      });
+
+      let dataPromise;
       if (tab === 'stores') {
-        const { data } = await adminFetchAllStores();
-        setStores(data);
+        dataPromise = adminFetchAllStores({ signal: controller.signal });
       } else if (tab === 'ads') {
-        const { data } = await adminFetchAllAds();
-        setAds(data);
+        dataPromise = adminFetchAllAds({ signal: controller.signal });
       } else if (tab === 'users') {
-        const { data } = await adminFetchAllUsers();
-        setUsers(data);
+        dataPromise = adminFetchAllUsers({ signal: controller.signal });
       } else if (tab === 'banners') {
-        const { data } = await fetchAllBanners();
-        setBanners(data);
+        dataPromise = fetchAllBanners({ signal: controller.signal });
       } else if (tab === 'analytics') {
-        setLoading(false);
+        // Analytics tab handles its own loading
+        if (showLoading) setLoading(false);
         return;
       } else {
-        const { data } = await fetchAllInterstitials();
-        setInterstitials(data);
+        dataPromise = fetchAllInterstitials({ signal: controller.signal });
       }
-    } catch (err) {
-      console.error('loadData error:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [tab]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+      const result = await Promise.race([dataPromise, timeoutPromise]);
+      const { data } = result as any;
+      if (controller.signal.aborted) return;
+
+      if (tab === 'stores') setStores(data);
+      else if (tab === 'ads') setAds(data);
+      else if (tab === 'users') setUsers(data);
+      else if (tab === 'banners') setBanners(data);
+      else setInterstitials(data);
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message === 'TIMEOUT') {
+        showAlert(
+          isAr ? 'خطأ في التحميل' : 'Loading Error',
+          isAr ? 'انتهت المهلة، حاول مرة أخرى' : 'Request timed out, please retry'
+        );
+      } else {
+        console.error('loadData error:', err);
+        showAlert(isAr ? 'خطأ' : 'Error', err?.message || (isAr ? 'فشل تحميل البيانات' : 'Failed to load data'));
+      }
+    } finally {
+      if (!controller.signal.aborted && tab !== 'analytics') {
+        if (showLoading) setLoading(false);
+      }
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+    }
+  }, [tab, isAr, showAlert]);
+
+  useEffect(() => {
+    loadData(true);
+  }, [loadData]);
 
   const filteredAds = useMemo(() => {
     if (!adSearch.trim()) return ads;
@@ -1016,6 +1051,11 @@ export default function AdminScreen() {
     );
   }, [ads, adSearch]);
 
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadData(false);
+  }, [loadData]);
+
   // ── Ad handlers ──
   const handleDeleteAd = useCallback((adId: string, title: string) => {
     showAlert(t.deleteAd, `"${title}"`, [
@@ -1024,7 +1064,7 @@ export default function AdminScreen() {
         text: t.delete, style: 'destructive', onPress: async () => {
           const { error } = await adminDeleteAd(adId);
           if (error) showAlert('Error', error);
-          else loadData();
+          else loadData(false);
         },
       },
     ]);
@@ -1038,14 +1078,14 @@ export default function AdminScreen() {
   const handleSaveAdEdit = useCallback(async (id: string, updates: any) => {
     const { error } = await adminUpdateAd(id, updates);
     if (error) showAlert('Error', error);
-    else loadData();
+    else loadData(false);
   }, [showAlert, loadData]);
 
   const handleToggleFeatured = useCallback(async (ad: Ad) => {
     const isFeatured = ad.status === 'featured';
     const { error } = await adminSetAdFeatured(ad.id, !isFeatured);
     if (error) showAlert('Error', error);
-    else loadData();
+    else loadData(false);
   }, [showAlert, loadData]);
 
   const handleToggleBoost = useCallback((ad: Ad) => {
@@ -1059,7 +1099,7 @@ export default function AdminScreen() {
           onPress: async () => {
             const { error } = await adminBoostAd(ad.id, !isBoosted);
             if (error) { showAlert('Error', error); return; }
-            loadData();
+            loadData(false);
             if (!isBoosted) {
               try {
                 const supabase = getSupabaseClient();
@@ -1091,7 +1131,7 @@ export default function AdminScreen() {
         onPress: async () => {
           const { error } = await adminSetUserBlocked(u.id, !isBlocked);
           if (error) showAlert('Error', error);
-          else loadData();
+          else loadData(false);
         },
       },
     ]);
@@ -1109,7 +1149,7 @@ export default function AdminScreen() {
           onPress: async () => {
             const { error } = await adminSetUserVerified(u.id, makeVerified);
             if (error) showAlert('Error', error);
-            else loadData();
+            else loadData(false);
           },
         },
       ]
@@ -1128,7 +1168,7 @@ export default function AdminScreen() {
           onPress: async () => {
             const { error } = await adminSetUserAdmin(u.id, makeAdmin);
             if (error) showAlert('Error', error);
-            else loadData();
+            else loadData(false);
           },
         },
       ]
@@ -1197,7 +1237,7 @@ export default function AdminScreen() {
     setStSaving(false);
     if (error) { showAlert('Error', error); return; }
     setShowStoreForm(false);
-    loadData();
+    loadData(false);
   }, [stName, stNameAr, stDesc, stDescAr, stLogoUrl, stPhone, stWhatsapp, stAddress, stCategoryId, stores.length, editingStore, isAr, showAlert, loadData]);
 
   const handleDeleteStore = useCallback((id: string, name: string) => {
@@ -1210,7 +1250,7 @@ export default function AdminScreen() {
           text: t.delete, style: 'destructive', onPress: async () => {
             const { error } = await adminDeleteStore(id);
             if (error) showAlert('Error', error);
-            else loadData();
+            else loadData(false);
           },
         },
       ]
@@ -1251,7 +1291,7 @@ export default function AdminScreen() {
     setBnSaving(false);
     if (error) { showAlert('Error', error); return; }
     setShowBannerForm(false);
-    loadData();
+    loadData(false);
   }, [bnTitle, bnSubtitle, bnImageUrl, bnLinkUrl, editingBanner, bnPlacement, isAr, showAlert, loadData]);
 
   const handleDeleteBanner = useCallback((id: string) => {
@@ -1261,7 +1301,7 @@ export default function AdminScreen() {
         text: t.delete, style: 'destructive', onPress: async () => {
           const { error } = await deleteBanner(id);
           if (error) showAlert('Error', error);
-          else loadData();
+          else loadData(false);
         },
       },
     ]);
@@ -1306,7 +1346,7 @@ export default function AdminScreen() {
     setInSaving(false);
     if (error) { showAlert('Error', error); return; }
     setShowInterForm(false);
-    loadData();
+    loadData(false);
   }, [inTitle, inMediaUrl, inMediaType, inDuration, inSkipAfter, inShowAfter, interstitials.length, editingInter, isAr, showAlert, loadData]);
 
   const handleDeleteInter = useCallback((id: string) => {
@@ -1316,7 +1356,7 @@ export default function AdminScreen() {
         text: t.delete, style: 'destructive', onPress: async () => {
           const { error } = await deleteInterstitial(id);
           if (error) showAlert('Error', error);
-          else loadData();
+          else loadData(false);
         },
       },
     ]);
@@ -1531,7 +1571,7 @@ export default function AdminScreen() {
         </Pressable>
         <Pressable
           style={[styles.actionBtn, { backgroundColor: item.is_active ? colors.borderLight : colors.successLight }]}
-          onPress={() => toggleBannerActive(item.id, !item.is_active).then(() => loadData())}
+          onPress={() => toggleBannerActive(item.id, !item.is_active).then(() => loadData(false))}
         >
           <MaterialIcons name={item.is_active ? 'visibility-off' : 'visibility'} size={14} color={item.is_active ? colors.textMuted : colors.success} />
           <Text style={[styles.actionBtnText, { color: item.is_active ? colors.textMuted : colors.success }]}>{t.toggleBanner}</Text>
@@ -1585,7 +1625,7 @@ export default function AdminScreen() {
         </Pressable>
         <Pressable
           style={[styles.actionBtn, { backgroundColor: item.is_active ? colors.borderLight : colors.successLight }]}
-          onPress={() => updateInterstitial(item.id, { is_active: !item.is_active }).then(() => loadData())}
+          onPress={() => updateInterstitial(item.id, { is_active: !item.is_active }).then(() => loadData(false))}
         >
           <MaterialIcons name={item.is_active ? 'visibility-off' : 'visibility'} size={14} color={item.is_active ? colors.textMuted : colors.success} />
           <Text style={[styles.actionBtnText, { color: item.is_active ? colors.textMuted : colors.success }]}>{t.toggleBanner}</Text>
@@ -1835,6 +1875,7 @@ export default function AdminScreen() {
     </View>
   ), [colors, isAr, inTitle, inMediaUrl, inMediaType, inDuration, inSkipAfter, inShowAfter, inSaving, editingInter, t, handleSaveInter]);
 
+  // ── Render main ──
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       <BroadcastModal
@@ -1912,6 +1953,14 @@ export default function AdminScreen() {
           renderItem={renderAdItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
           ListHeaderComponent={
             <View style={[styles.searchBarWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <MaterialIcons name="search" size={18} color={colors.textMuted} />
@@ -1944,6 +1993,14 @@ export default function AdminScreen() {
           renderItem={renderUserItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
           ListEmptyComponent={
             <View style={styles.center}>
               <MaterialIcons name="people" size={44} color={colors.textMuted} />
@@ -1952,7 +2009,18 @@ export default function AdminScreen() {
           }
         />
       ) : tab === 'banners' ? (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: Spacing.md, paddingBottom: 48, gap: Spacing.md }}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ padding: Spacing.md, paddingBottom: 48, gap: Spacing.md }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
+        >
           <View style={{ borderRadius: Radius.xl, borderWidth: 1.5, borderColor: colors.primary + '40', overflow: 'hidden' }}>
             <View style={{ backgroundColor: colors.primaryGhost, padding: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
               <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
@@ -2038,6 +2106,14 @@ export default function AdminScreen() {
           renderItem={renderInterItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
           ListHeaderComponent={
             <>
               <View style={[styles.interHint, { backgroundColor: colors.primaryGhost, borderColor: colors.primary + '30' }]}>
@@ -2112,7 +2188,7 @@ export default function AdminScreen() {
                   </Pressable>
                   <Pressable
                     style={[styles.actionBtn, { backgroundColor: item.is_active ? colors.borderLight : colors.successLight }]}
-                    onPress={() => adminUpdateStore(item.id, { is_active: !item.is_active }).then(() => loadData())}
+                    onPress={() => adminUpdateStore(item.id, { is_active: !item.is_active }).then(() => loadData(false))}
                   >
                     <MaterialIcons name={item.is_active ? 'visibility-off' : 'visibility'} size={14} color={item.is_active ? colors.textMuted : colors.success} />
                     <Text style={[styles.actionBtnText, { color: item.is_active ? colors.textMuted : colors.success }]}>
@@ -2129,6 +2205,14 @@ export default function AdminScreen() {
           }}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
           ListHeaderComponent={
             <>
               <Pressable

@@ -25,21 +25,31 @@ export async function checkIsAdmin(): Promise<boolean> {
   return data?.is_admin === true;
 }
 
-/** Fetch all ads (admin only) — ordered by serial_number */
-export async function adminFetchAllAds(): Promise<{ data: Ad[]; error: string | null }> {
+/**
+ * Admin fetch all ads with AbortSignal support
+ */
+export async function adminFetchAllAds(opts?: { signal?: AbortSignal }): Promise<{ data: Ad[]; error: string | null }> {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('ads')
-    .select(`
-      *,
-      categories(id, name, name_ar, icon, color),
-      ad_images(id, url, position),
-      user_profiles(username, email, phone)
-    `)
-    .neq('status', 'deleted')
-    .order('serial_number', { ascending: false });
-  if (error) return { data: [], error: error.message };
-  return { data: data as Ad[], error: null };
+  try {
+    const { data, error } = await supabase
+      .from('ads')
+      .select(`
+        *,
+        categories(id, name, name_ar, icon, color),
+        ad_images(id, url, position),
+        user_profiles(username, email, phone)
+      `)
+      .neq('status', 'deleted')
+      .order('serial_number', { ascending: false })
+      .abortSignal(opts?.signal);
+    if (error) return { data: [], error: error.message };
+    return { data: data as Ad[], error: null };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      return { data: [], error: 'aborted' };
+    }
+    return { data: [], error: err?.message || 'Failed to fetch ads' };
+  }
 }
 
 /** Admin delete any ad */
@@ -88,15 +98,25 @@ export async function adminBoostAd(adId: string, boost: boolean, days = 7): Prom
   return { error: error ? error.message : null };
 }
 
-/** Fetch all users (admin only) */
-export async function adminFetchAllUsers(): Promise<{ data: UserProfile[]; error: string | null }> {
+/**
+ * Admin fetch all users with AbortSignal support
+ */
+export async function adminFetchAllUsers(opts?: { signal?: AbortSignal }): Promise<{ data: UserProfile[]; error: string | null }> {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .order('email', { ascending: true });
-  if (error) return { data: [], error: error.message };
-  return { data: data as UserProfile[], error: null };
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .order('email', { ascending: true })
+      .abortSignal(opts?.signal);
+    if (error) return { data: [], error: error.message };
+    return { data: data as UserProfile[], error: null };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      return { data: [], error: 'aborted' };
+    }
+    return { data: [], error: err?.message || 'Failed to fetch users' };
+  }
 }
 
 /** Admin block/unblock user */

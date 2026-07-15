@@ -2,18 +2,19 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
   KeyboardAvoidingView, Platform, Linking, Modal, ActivityIndicator,
-  FlatList,
+  FlatList, RefreshControl,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import Animated, {
-  useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming,
+  useSharedValue, useAnimatedStyle, withSpring, withTiming,
 } from 'react-native-reanimated';
 import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
-import { AdCard, Button, EmptyState } from '@/components';
+import { AdCard } from '@/components';
 import { useMyAds } from '@/hooks/useAds';
 import { updateAdStatus } from '@/services/adsService';
 import { checkIsAdmin } from '@/services/adminService';
@@ -209,7 +210,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout, refreshSession } = useAuth();
   const { showAlert } = useAlert();
-  const { colors, isDark, toggleTheme, fontScaleLevel, setFontScaleLevel, fontSize } = useTheme();
+  const { colors, isDark, toggleTheme, fontScaleLevel, setFontScaleLevel } = useTheme();
   const { t, language, setLanguage, isRTL } = useLanguage();
   const { ads, loading, load } = useMyAds();
 
@@ -234,6 +235,8 @@ export default function ProfileScreen() {
   const [testPushLoading, setTestPushLoading] = useState(false);
   const [testPushResult, setTestPushResult] = useState<'idle' | 'success' | 'error' | 'no_token'>('idle');
   const [currentPushToken, setCurrentPushToken] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // ── Memoized computed values ─────────────────────────────────────────────
   const isPhoneUser = useMemo(() => (user?.email ?? '').includes('@sms.souqqalqilya.local'), [user?.email]);
@@ -257,13 +260,23 @@ export default function ProfileScreen() {
         label: isRTL ? 'الإدارة' : 'Admin',
         color: '#D97706',
         bg: '#FEF3C7',
-        onPress: () => router.push('/admin'), // ✅ التعديل هنا
+        onPress: () => {
+          try {
+            router.push('/admin');
+          } catch (err) {
+            console.error('Navigation to admin failed:', err);
+            showAlert(
+              isRTL ? 'خطأ' : 'Error',
+              isRTL ? 'تعذر فتح صفحة الإدارة، حاول مرة أخرى.' : 'Could not open admin page, please try again.'
+            );
+          }
+        },
       });
     }
     return baseActions;
   }, [isRTL, colors, isAdmin, router, user, showAlert]);
 
-  // ── Callbacks (جميعها قبل أي return) ─────────────────────────────────────
+  // ── Callbacks ─────────────────────────────────────────────────────────────
   const loadBlockedUsers = useCallback(async () => {
     try {
       const ids = await fetchBlockedIds();
@@ -326,7 +339,7 @@ export default function ProfileScreen() {
           onPress: async () => {
             try {
               await updateAdStatus(adId, 'deleted');
-              load();
+              await load();
             } catch (err) {
               console.error('Delete ad error:', err);
               showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'فشل حذف الإعلان' : 'Failed to delete listing');
@@ -344,7 +357,7 @@ export default function ProfileScreen() {
         text: t.confirm, onPress: async () => {
           try {
             await updateAdStatus(adId, 'sold');
-            load();
+            await load();
           } catch (err) {
             console.error('Mark sold error:', err);
             showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'فشل التحديث' : 'Update failed');
@@ -551,14 +564,13 @@ export default function ProfileScreen() {
 
   const openLink = useCallback((url: string) => Linking.openURL(url).catch(() => {}), []);
 
-  // ── Helper to reset edit fields when canceling ───────────────────────────
   const handleCancelEdit = useCallback(() => {
     setEditName(user?.username || '');
     setEditPhone(user?.phone || '');
     setEditMode(false);
   }, [user]);
 
-  // ── Main useEffect with AbortController ──────────────────────────────────
+  // ── تحميل البيانات مع AbortController ──────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
     const controller = new AbortController();
@@ -623,7 +635,7 @@ export default function ProfileScreen() {
     return unsub;
   }, [loadBlockedUsers]);
 
-  // ── Render functions ──────────────────────────────────────────────────────
+  // ── Render ad item ────────────────────────────────────────────────────────
   const renderAdItem = useCallback(({ item: ad }: { item: any }) => (
     <View style={styles.adRow}>
       <AdCard ad={ad} />
@@ -661,7 +673,19 @@ export default function ProfileScreen() {
     </View>
   ), [colors, isRTL, router, handleMarkSold, t, handleDeleteAd]);
 
-  // ── Guest View (بعد جميع الـ Hooks) ─────────────────────────────────────
+  // ── Refresh (Pull-to-refresh) ─────────────────────────────────────────────
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } catch (err) {
+      console.error('Refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
+
+  // ── Guest View ────────────────────────────────────────────────────────────
   if (!user) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -684,17 +708,24 @@ export default function ProfileScreen() {
     );
   }
 
-  // ── باقي الـ return مع المحتوى الرئيسي ──────────────────────────────────
+  // ── Main UI ──────────────────────────────────────────────────────────────
   return (
     <View style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
         >
-          {/* ── HERO ── */}
+          {/* HERO */}
           <View style={[styles.hero, { backgroundColor: colors.primary }]}>
-            {/* Avatar */}
             <Pressable style={styles.avatarWrap} onPress={handlePickAvatar} disabled={avatarLoading}>
               {avatarUrl ? (
                 <Image source={{ uri: avatarUrl }} style={styles.avatarImg} contentFit="cover" transition={200} />
@@ -712,7 +743,6 @@ export default function ProfileScreen() {
               </View>
             </Pressable>
 
-            {/* Name + badges */}
             <Text style={styles.heroName}>{displayName}</Text>
             <Text style={styles.heroEmail}>{displayEmail}</Text>
 
@@ -731,7 +761,6 @@ export default function ProfileScreen() {
               ) : null}
             </View>
 
-            {/* Stats row */}
             <View style={[styles.statsRow, { backgroundColor: 'rgba(0,0,0,0.18)' }]}>
               {[
                 { num: activeAds.length, label: t.active, icon: 'storefront' },
@@ -749,7 +778,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* ── OWNER STORE CARD ── */}
+          {/* OWNER STORE CARD */}
           {ownerStore !== undefined && (
             ownerStore === null ? (
               <Pressable
@@ -811,7 +840,7 @@ export default function ProfileScreen() {
             )
           )}
 
-          {/* ── QUICK ACTIONS ── */}
+          {/* QUICK ACTIONS */}
           <View style={[styles.actionsRow, { backgroundColor: colors.surface, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             {quickActions.map((a) => (
               <Pressable
@@ -827,7 +856,7 @@ export default function ProfileScreen() {
             ))}
           </View>
 
-          {/* ── EDIT PROFILE ── */}
+          {/* EDIT PROFILE */}
           {editMode ? (
             <View style={[styles.editCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={[styles.editCardHead, { borderBottomColor: colors.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -838,7 +867,6 @@ export default function ProfileScreen() {
                 <Pressable onPress={handleCancelEdit} hitSlop={8}><MaterialIcons name="close" size={20} color={colors.textMuted} /></Pressable>
               </View>
 
-              {/* Banner upload row */}
               <Pressable
                 style={[styles.bannerEditRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderColor: colors.border, backgroundColor: colors.background }]}
                 onPress={handlePickBanner}
@@ -858,7 +886,6 @@ export default function ProfileScreen() {
                 <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.textMuted} />
               </Pressable>
 
-              {/* Avatar row */}
               <Pressable style={[styles.avatarEditRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderColor: colors.border, backgroundColor: colors.background }]} onPress={handlePickAvatar} disabled={avatarLoading}>
                 {avatarUrl ? (
                   <Image source={{ uri: avatarUrl }} style={styles.avatarSmall} contentFit="cover" />
@@ -906,7 +933,7 @@ export default function ProfileScreen() {
             </View>
           ) : null}
 
-          {/* ── TAB SWITCHER ── */}
+          {/* TAB SWITCHER */}
           <View style={[styles.tabBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {[
               { key: 'listings', icon: 'storefront', label: isRTL ? 'إعلاناتي' : 'My Listings', count: ads.length },
@@ -931,7 +958,7 @@ export default function ProfileScreen() {
             })}
           </View>
 
-          {/* ═══════════════════════ MY LISTINGS TAB ═══════════════════════ */}
+          {/* LISTINGS TAB */}
           {activeTab === 'listings' ? (
             <View style={styles.listingsSection}>
               <Pressable
@@ -964,7 +991,7 @@ export default function ProfileScreen() {
             </View>
           ) : null}
 
-          {/* ═══════════════════════ SETTINGS TAB ═══════════════════════════ */}
+          {/* SETTINGS TAB */}
           {activeTab === 'settings' ? (
             <View style={styles.settingsSection}>
               {/* ── APPEARANCE ── */}
@@ -1258,7 +1285,7 @@ export default function ProfileScreen() {
         </ScrollView>
       </View>
 
-      {/* ── DELETE ACCOUNT MODAL ── */}
+      {/* DELETE ACCOUNT MODAL */}
       <Modal visible={deleteConfirmVisible} transparent animationType="fade" statusBarTranslucent>
         <View style={styles.deleteOverlay}>
           <View style={[styles.deleteSheet, { backgroundColor: colors.surface }]}>
@@ -1305,20 +1332,25 @@ export default function ProfileScreen() {
   );
 }
 
+// ─── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
   storeCtaCard: {
-    flexDirection: 'row', // يتم تعديل RTL داخل JSX
+    flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffffff',
     padding: 16,
     borderRadius: 16,
-    marginHorizontal: 16, marginTop: 16,
-    borderWidth: 1, borderColor: '#e0e0e0',
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
     elevation: 2,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
   },
   storeCtaIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   storeCtaTextWrap: { flex: 1, marginHorizontal: 12 },
@@ -1327,7 +1359,6 @@ const styles = StyleSheet.create({
   approvedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 4 },
   approvedText: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
 
-  // ── Guest
   guestHero: { paddingTop: 60, paddingBottom: 48, alignItems: 'center', gap: 12 },
   guestAvatarRing: { width: 96, height: 96, borderRadius: 48, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
   guestAvatarInner: { width: 82, height: 82, borderRadius: 41, alignItems: 'center', justifyContent: 'center' },
@@ -1337,7 +1368,6 @@ const styles = StyleSheet.create({
   guestLoginBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: Radius.xl, ...Shadow.colored },
   guestLoginText: { color: '#fff', fontSize: FontSize.md, fontWeight: '800' },
 
-  // ── Hero
   hero: { paddingBottom: Spacing.xxl, alignItems: 'center', paddingTop: 0, overflow: 'hidden' },
   bannerTouchArea: { width: '100%', height: 110, position: 'relative', overflow: 'hidden', marginBottom: -(46) },
   bannerPlaceholder: { width: '100%', height: 110 },
@@ -1359,16 +1389,14 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.6)' },
   statDiv: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.18)' },
 
-  // ── Quick Actions
   actionsRow: { flexDirection: 'row', paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: 'transparent' },
   actionTile: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: Spacing.sm },
   actionIcon: { width: 48, height: 48, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
   actionLabel: { fontSize: FontSize.xs, fontWeight: '600', textAlign: 'center' },
 
-  // ── Banner in edit
   bannerEditRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, marginBottom: 4 },
   bannerThumbPreview: { width: 64, height: 40, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center' },
-  // ── Edit Card
+
   editCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: Radius.xl, borderWidth: 1, padding: Spacing.md, gap: Spacing.sm },
   editCardHead: { alignItems: 'center', gap: Spacing.sm, paddingBottom: Spacing.sm, borderBottomWidth: 1, marginBottom: 4 },
   editCardIcon: { width: 30, height: 30, borderRadius: Radius.xs, alignItems: 'center', justifyContent: 'center' },
@@ -1388,14 +1416,12 @@ const styles = StyleSheet.create({
   editSaveBtn: { flex: 2, height: 44, borderRadius: Radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   editSaveText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
 
-  // ── Tab Bar
   tabBar: { flexDirection: 'row', marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: Radius.xl, borderWidth: 1, overflow: 'hidden' },
   tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderBottomWidth: 2.5, borderBottomColor: 'transparent' },
   tabBtnText: { fontSize: FontSize.sm },
   tabCount: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: Radius.full, minWidth: 20, alignItems: 'center' },
   tabCountText: { fontSize: 10, fontWeight: '800' },
 
-  // ── Listings
   listingsSection: { padding: Spacing.lg, gap: Spacing.sm },
   postNewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: Radius.xl, marginBottom: Spacing.sm, ...Shadow.colored },
   postNewText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
@@ -1410,7 +1436,6 @@ const styles = StyleSheet.create({
   soldChip: { paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full },
   soldChipText: { fontSize: FontSize.xs, fontWeight: '700' },
 
-  // ── Settings
   settingsSection: { padding: Spacing.lg, gap: Spacing.md },
   settingsCard: { borderRadius: Radius.xl, borderWidth: 1, overflow: 'hidden', ...Shadow.xs },
   sRowInner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.md, paddingVertical: 13 },
@@ -1418,23 +1443,19 @@ const styles = StyleSheet.create({
   sRowLabel: { fontSize: FontSize.md, fontWeight: '600' },
   sRowSub: { fontSize: FontSize.xs, marginTop: 2 },
 
-  // Language toggle
   langToggle: { borderRadius: Radius.full, borderWidth: 1.5, overflow: 'hidden', flexDirection: 'row' },
   langOption: { paddingHorizontal: 14, paddingVertical: 7, minWidth: 40, alignItems: 'center' },
   langOptionText: { fontSize: FontSize.sm },
 
-  // WhatsApp card
   waWrap: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: 1 },
   waCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: '#25D366', borderRadius: Radius.xl, paddingVertical: 12, paddingHorizontal: Spacing.md, shadowColor: '#25D366', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
   waIconBadge: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)' },
   waTitle: { fontSize: FontSize.sm, fontWeight: '700', color: '#fff', marginBottom: 2 },
   waSub: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.8)' },
 
-  // New badge
   newBadge: { borderRadius: Radius.full, paddingHorizontal: 7, paddingVertical: 3 },
   newBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
 
-  // Blocked users
   blockedHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: 13, borderBottomWidth: 1 },
   blockedBadge: { backgroundColor: '#EF4444', borderRadius: Radius.full, minWidth: 22, height: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   blockedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
@@ -1448,14 +1469,12 @@ const styles = StyleSheet.create({
   unblockBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.full },
   unblockBtnText: { fontSize: FontSize.xs, fontWeight: '700' },
 
-  // Version footer
   versionFooter: { alignItems: 'center', paddingVertical: Spacing.xl, gap: 8 },
   versionDot: { width: 40, height: 1.5, borderRadius: 99 },
   versionRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   versionText: { fontSize: FontSize.xs, fontWeight: '500' },
   versionSub: { fontSize: 10, fontWeight: '500' },
 
-  // Delete account modal
   deleteOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: Spacing.lg },
   deleteSheet: { borderRadius: Radius.xxl, padding: Spacing.lg, width: '100%', maxWidth: 360, gap: Spacing.md, ...Shadow.lg },
   deleteIconWrap: { alignItems: 'center', marginBottom: 4 },
