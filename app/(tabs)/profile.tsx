@@ -253,7 +253,7 @@ export default function ProfileScreen() {
     { icon: 'add-circle-outline', label: isRTL ? 'نشر إعلان' : 'Post Ad', color: colors.primary, bg: colors.primaryGhost, onPress: () => router.push('/(tabs)/post') },
     { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
     // ✅ المسار الصحيح للإدارة: /admin (بدون /index)
-    ...(isAdmin ? [{ icon: 'admin-panel-settings', label: isRTL ? 'الإدارة' : 'Admin', color: '#D97706', bg: '#FEF3C7', onPress: () => router.push('/admin') }] : []),
+    ...(isAdmin ? [{ icon: 'admin-panel-settings', label: isRTL ? 'الإدارة' : 'Admin', color: '#D97706', bg: '#FEF3C7', onPress: () => router.push('/admin/index' as any) }] : []),
   ], [isRTL, colors, isAdmin, router, user]);
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
