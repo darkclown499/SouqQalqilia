@@ -118,7 +118,7 @@ export default function RegisterStoreScreen() {
   const { language, isRTL } = useLanguage();
   const isAr = language === 'ar';
 
-  // ── Store categories (decoupled from product categories) ──────────────────
+  // ── Store categories ──────────────────────────────────────────────────────
   const [storeCategories, setStoreCategories] = useState<StoreCategory[]>([]);
   const [catsLoading, setCatsLoading] = useState(true);
   const [catsError, setCatsError] = useState<string | null>(null);
@@ -147,8 +147,9 @@ export default function RegisterStoreScreen() {
   const [storeCategoryId, setStoreCategoryId] = useState('');
   const [catModalVisible, setCatModalVisible] = useState(false);
 
-  // ── WhatsApp ─────────────────────────────────────────────────────────────────
-  const [ownerWhatsapp, setOwnerWhatsapp] = useState('');
+  // ── WhatsApp (new: prefix + number) ─────────────────────────────────────────
+  const [whatsappPrefix, setWhatsappPrefix] = useState('972'); // '972' or '970'
+  const [whatsappNumber, setWhatsappNumber] = useState(''); // digits only, without prefix
 
   // ── Images ──────────────────────────────────────────────────────────────────
   const [logoUri, setLogoUri] = useState<string | null>(null);
@@ -175,6 +176,12 @@ export default function RegisterStoreScreen() {
       : '';
   }, [selectedLocation, locationDetail]);
 
+  // ✅ دالة لتنظيف الرقم (إزالة كل ما ليس رقم، وإزالة الأصفار الزائدة من البداية)
+  const cleanWhatsAppNumber = (text: string) => {
+    return text.replace(/[^0-9]/g, '').replace(/^0+/, '');
+  };
+
+  // ── معالجات اختيار الصور ─────────────────────────────────────────────────
   const handlePickLogo = useCallback(async () => {
     setLogoLoading(true);
     try {
@@ -191,7 +198,7 @@ export default function RegisterStoreScreen() {
     } finally { setBannerLoading(false); }
   }, []);
 
-  // ✅ دالة renderItem للمناطق (مذكرة باستخدام useCallback)
+  // ✅ دالة renderItem للمناطق
   const renderLocationItem = useCallback(({ item: loc }: { item: string }) => {
     const isSel = loc === selectedLocation;
     return (
@@ -214,7 +221,7 @@ export default function RegisterStoreScreen() {
     );
   }, [selectedLocation, colors, rtl]);
 
-  // ✅ دالة renderItem للتصنيفات (مذكرة باستخدام useCallback)
+  // ✅ دالة renderItem للتصنيفات
   const renderCategoryItem = useCallback(({ item: cat }: { item: StoreCategory }) => {
     const isSel = cat.id === storeCategoryId;
     const emoji = getStoreCategoryEmoji(cat.slug);
@@ -238,6 +245,7 @@ export default function RegisterStoreScreen() {
     );
   }, [storeCategoryId, colors, rtl, textAlign, language]);
 
+  // ── دالة الإرسال ──────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (!user) {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'يجب تسجيل الدخول أولاً' : 'Please login first');
@@ -247,15 +255,17 @@ export default function RegisterStoreScreen() {
     if (!storeName) return showAlert('مطلوب', 'يرجى إدخال اسم المتجر بالعربية');
     if (!storeCategoryId) return showAlert('مطلوب', 'يرجى اختيار نوع المتجر');
     if (!selectedLocation) return showAlert('مطلوب', 'يرجى اختيار المنطقة / البلدة');
-    if (!ownerWhatsapp.trim()) return showAlert('مطلوب', 'يرجى إدخال رقم واتساب للتواصل');
 
-    const waRe = /^\+97[02]0?\d{9}$/;
-    if (!waRe.test(ownerWhatsapp.trim())) {
+    // ✅ التحقق من رقم واتساب
+    const localNumber = whatsappNumber.trim();
+    if (!localNumber) return showAlert('مطلوب', 'يرجى إدخال رقم الهاتف المحلي');
+    if (localNumber.length < 9) {
       return showAlert(
-        'رقم غير صحيح',
-        'يرجى إدخال رقم واتساب صحيح يبدأ بـ +970 أو +972 متبوعاً برقم الجوال.'
+        isAr ? 'رقم غير صحيح' : 'Invalid Number',
+        isAr ? 'يجب أن يحتوي الرقم المحلي على 9 أرقام على الأقل' : 'Local number must have at least 9 digits'
       );
     }
+    const fullWhatsApp = `+${whatsappPrefix}${localNumber}`;
 
     if (!logoUri) return showAlert('مطلوب', 'يرجى إضافة شعار المتجر (إجباري)');
     if (!bannerUri) return showAlert('مطلوب', 'يرجى إضافة صورة غلاف المتجر (إجباري)');
@@ -271,7 +281,6 @@ export default function RegisterStoreScreen() {
       let logoUrl = '';
       let bannerUrl = '';
 
-      // ✅ رفع الشعار مع التحقق من النجاح وتمرير sourceUri
       if (logoBase64 && logoUri) {
         const res = await uploadImage(logoBase64, user.id, 'store-logo', logoUri);
         if (res.error) throw new Error(res.error);
@@ -279,7 +288,6 @@ export default function RegisterStoreScreen() {
         logoUrl = res.url;
       }
 
-      // ✅ رفع الغلاف مع التحقق من النجاح وتمرير sourceUri
       if (bannerBase64 && bannerUri) {
         const res = await uploadImage(bannerBase64, user.id, 'store-banner', bannerUri);
         if (res.error) throw new Error(res.error);
@@ -295,9 +303,9 @@ export default function RegisterStoreScreen() {
           description: '',
           description_ar: '',
           address: finalAddress,
-          whatsapp: ownerWhatsapp.trim(),
-          owner_whatsapp: ownerWhatsapp.trim(),
-          phone: ownerWhatsapp.trim(),
+          whatsapp: fullWhatsApp,
+          owner_whatsapp: fullWhatsApp,
+          phone: fullWhatsApp,
           opening_time: openingTime,
           closing_time: closingTime,
           store_category_id: storeCategoryId,
@@ -316,14 +324,14 @@ export default function RegisterStoreScreen() {
       if (error) throw new Error(error.message);
 
       const finalName = storeData?.name_ar || storeData?.name || storeName;
-      setSubmittedStore({ name: finalName, whatsapp: ownerWhatsapp.trim() });
+      setSubmittedStore({ name: finalName, whatsapp: fullWhatsApp });
       setSuccessVisible(true);
     } catch (e: any) {
       showAlert(isAr ? 'خطأ' : 'Error', e.message ?? 'Failed to submit');
     } finally {
       setLoading(false);
     }
-  }, [user, nameAr, storeCategoryId, selectedLocation, finalAddress, ownerWhatsapp, openingTime, closingTime, logoBase64, logoUri, bannerBase64, bannerUri, isAr, showAlert]);
+  }, [user, nameAr, storeCategoryId, selectedLocation, finalAddress, whatsappPrefix, whatsappNumber, openingTime, closingTime, logoBase64, logoUri, bannerBase64, bannerUri, isAr, showAlert]);
 
   const handleSuccessWhatsApp = useCallback(() => {
     if (!submittedStore || !user) return;
@@ -337,6 +345,7 @@ export default function RegisterStoreScreen() {
     router.back();
   }, [router]);
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={[s.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -411,7 +420,7 @@ export default function RegisterStoreScreen() {
             />
           </View>
 
-          {/* ── Store Category (from store_categories table) ── */}
+          {/* ── Store Category ── */}
           <View style={[s.section, { backgroundColor: colors.surface }]}>
             <View style={[s.sectionHead, { flexDirection: rtl }]}>
               <MaterialIcons name="category" size={18} color={colors.primary} />
@@ -464,7 +473,7 @@ export default function RegisterStoreScreen() {
             )}
           </View>
 
-          {/* ── Location (structured) ── */}
+          {/* ── Location ── */}
           <View style={[s.section, { backgroundColor: colors.surface }]}>
             <View style={[s.sectionHead, { flexDirection: rtl }]}>
               <MaterialIcons name="location-on" size={18} color={colors.primary} />
@@ -525,23 +534,60 @@ export default function RegisterStoreScreen() {
             </Text>
           </View>
 
-          {/* ── WhatsApp ── */}
+          {/* ── WhatsApp (مع أزرار البادئة) ── */}
           <View style={[s.section, { backgroundColor: colors.surface }]}>
             <View style={[s.sectionHead, { flexDirection: rtl }]}>
               <MaterialIcons name="chat" size={18} color="#25D366" />
               <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{'رقم واتساب للتواصل *'}</Text>
             </View>
+
+            {/* أزرار اختيار البادئة */}
+            <View style={{ flexDirection: rtl, gap: 12, marginBottom: 8 }}>
+              {['972', '970'].map(prefix => {
+                const selected = whatsappPrefix === prefix;
+                return (
+                  <Pressable
+                    key={prefix}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      paddingHorizontal: 16,
+                      paddingVertical: 8,
+                      borderRadius: Radius.full,
+                      borderWidth: 2,
+                      borderColor: selected ? colors.primary : colors.border,
+                      backgroundColor: selected ? colors.primaryGhost : colors.background,
+                    }}
+                    onPress={() => setWhatsappPrefix(prefix)}
+                  >
+                    <Text style={{ fontWeight: '700', color: selected ? colors.primary : colors.textSecondary }}>
+                      +{prefix}
+                    </Text>
+                    {selected && <MaterialIcons name="check-circle" size={18} color={colors.primary} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* حقل الرقم المحلي */}
+            <Text style={[s.fieldLabel, { color: colors.textSecondary, textAlign: 'right' }]}>
+              {'رقم الهاتف المحلي (بدون بادئة)'}
+            </Text>
             <TextInput
               style={[s.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: 'left' }]}
-              placeholder={'+970599000000'}
+              placeholder={'مثال: 52324302'}
               placeholderTextColor={colors.textMuted}
-              value={ownerWhatsapp} onChangeText={setOwnerWhatsapp}
-              keyboardType="phone-pad" maxLength={16}
+              value={whatsappNumber}
+              onChangeText={(text) => setWhatsappNumber(cleanWhatsAppNumber(text))}
+              keyboardType="number-pad"
+              maxLength={12}
             />
+
             <View style={[s.waHintRow, { flexDirection: rtl }]}>
               <MaterialIcons name="info-outline" size={13} color={colors.textMuted} />
               <Text style={[s.timeHint, { color: colors.textMuted, flex: 1, textAlign: 'right' }]}>
-                {'يجب أن يبدأ الرقم بـ +970 أو +972 — سيُستخدم لتلقي طلبات الشراء'}
+                {'سيتم حفظ الرقم بالصيغة: +' + whatsappPrefix + 'xxxxxxxxx'}
               </Text>
             </View>
           </View>
