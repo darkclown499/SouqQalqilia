@@ -33,6 +33,33 @@ import { fetchAllActiveStores } from '@/services/storesService';
 import { fetchAllActiveAds } from '@/services/adsService';
 import { fetchPageStats, fetchGeneralStats, fetchAllPageStats, PageStats, GeneralStats } from '@/services/analyticsService';
 
+// ── Error Boundary ──────────────────────────────────────────────────────────
+class AdminErrorBoundary extends React.Component<{ children: React.ReactNode; isAr: boolean }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error('[AdminScreen] ❌ Uncaught error:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <MaterialIcons name="error-outline" size={48} color="#EF4444" />
+          <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#EF4444', marginTop: 12 }}>
+            {this.props.isAr ? 'حدث خطأ غير متوقع' : 'An unexpected error occurred'}
+          </Text>
+          <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', marginTop: 8 }}>
+            {this.props.isAr
+              ? 'يرجى إعادة تشغيل التطبيق والمحاولة مرة أخرى'
+              : 'Please restart the app and try again'}
+          </Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Analytics Stats Component ──────────────────────────────────────────────
 interface AnalyticsStats {
   dau: number;
@@ -914,7 +941,8 @@ const editModal = StyleSheet.create({
   saveText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
 });
 
-export default function AdminScreen() {
+// ─── AdminScreen Content ────────────────────────────────────────────────────
+function AdminScreenContent() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { showAlert } = useAlert();
@@ -2250,159 +2278,13 @@ export default function AdminScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
-    paddingBottom: Spacing.lg, gap: Spacing.md,
-  },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerText: { flex: 1 },
-  headerTitle: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  headerSub: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
-  broadcastBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  tabBarWrap: { borderBottomWidth: 1 },
-  tabBarContent: { flexDirection: 'row', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm },
-  tabPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, height: 34, borderRadius: 17,
-  },
-  tabPillText: { fontSize: FontSize.xs },
-  tabPillBadge: { borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  tabPillBadgeText: { fontSize: 9, fontWeight: '700' },
-  listContent: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: 32 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, padding: Spacing.xl },
-  emptyText: { fontSize: FontSize.md, fontWeight: '500' },
-  searchBarWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    borderRadius: Radius.lg, borderWidth: 1.5,
-    paddingHorizontal: Spacing.md, height: 48, marginBottom: Spacing.md,
-  },
-  searchInput: { flex: 1, fontSize: FontSize.md },
-  card: { borderRadius: Radius.lg, borderWidth: 1, overflow: 'hidden', padding: Spacing.md, gap: 6 },
-  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cardTitle: { fontSize: FontSize.md, fontWeight: '700', lineHeight: 20 },
-  serialInline: { fontSize: 10, fontWeight: '600', letterSpacing: 0.2 },
-  cardDesc: { fontSize: FontSize.xs, lineHeight: 16, color: '#888' },
-  cardInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
-  cardPrice: { fontSize: FontSize.sm, fontWeight: '800' },
-  cardInfoText: { fontSize: FontSize.xs, fontWeight: '500' },
-  infoDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#CBD5E1' },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  iconStrip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    borderTopWidth: 1, paddingTop: Spacing.sm, marginTop: 4,
-  },
-  iconStripBtn: {
-    width: 34, height: 34, borderRadius: Radius.md,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
-  metaChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    paddingHorizontal: 7, paddingVertical: 3, borderRadius: Radius.full,
-  },
-  metaText: { fontSize: FontSize.xs, fontWeight: '600' },
-  priceTag: { fontSize: FontSize.xs, fontWeight: '600' },
-  cardActions: {
-    flexDirection: 'row', padding: Spacing.sm, gap: Spacing.sm,
-    borderTopWidth: 1, flexWrap: 'wrap',
-  },
-  actionBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 9, paddingVertical: 7, borderRadius: Radius.md,
-  },
-  actionBtnText: { fontSize: FontSize.xs, fontWeight: '700', color: '#fff' },
-  userCard: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
-    borderRadius: Radius.lg, borderWidth: 1, padding: Spacing.md,
-  },
-  userAvatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  userAvatarText: { fontSize: FontSize.lg, fontWeight: '800' },
-  userInfo: { flex: 1, gap: 2 },
-  userNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  userName: { fontSize: FontSize.md, fontWeight: '600' },
-  userEmail: { fontSize: FontSize.xs },
-  adminBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    paddingHorizontal: 7, paddingVertical: 3, borderRadius: Radius.full,
-  },
-  adminBadgeText: { color: '#fff', fontSize: 9, fontWeight: '700' },
-  userBtns: { flexDirection: 'row', gap: 6 },
-  blockBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  bannerCard: { borderRadius: Radius.lg, borderWidth: 1, overflow: 'hidden' },
-  bannerPreview: { flexDirection: 'row', padding: Spacing.md, gap: Spacing.md, alignItems: 'center' },
-  bannerImgWrap: { width: 52, height: 44, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
-  bannerInfo: { flex: 1, gap: 2 },
-  bannerName: { fontSize: FontSize.md, fontWeight: '600' },
-  bannerSub: { fontSize: FontSize.xs },
-  bannerUrl: { fontSize: 10 },
-  bannerStatus: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
-  bannerStatusText: { fontSize: FontSize.xs, fontWeight: '700' },
-  addBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    borderRadius: Radius.lg, paddingVertical: 14, marginBottom: Spacing.md,
-  },
-  addBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
-  inlineForm: {
-    borderRadius: Radius.lg, borderWidth: 1, padding: Spacing.md,
-    gap: Spacing.sm, marginBottom: Spacing.md,
-  },
-  inlineFormHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  inlineFormTitle: { fontSize: FontSize.md, fontWeight: '700' },
-  inlineField: { gap: 4 },
-  inlineFieldLabel: { fontSize: FontSize.xs, fontWeight: '700' },
-  inlineInput: {
-    height: 46, borderWidth: 1.5, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, fontSize: FontSize.md,
-  },
-  formSaveBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 7, borderRadius: Radius.lg, paddingVertical: 14, marginTop: 4,
-  },
-  formSaveBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
-  interHint: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm,
-    borderRadius: Radius.lg, borderWidth: 1, padding: Spacing.md, marginBottom: Spacing.md,
-  },
-  interHintText: { flex: 1, fontSize: FontSize.xs, lineHeight: 18 },
-  mediaTypeBtn: {
-    paddingVertical: 10, borderRadius: Radius.md, borderWidth: 1.5, alignItems: 'center',
-  },
-  mediaTypeBtnText: { fontSize: FontSize.sm, fontWeight: '700' },
-});
-
-const storeFormS = StyleSheet.create({
-  logoRow: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
-    marginBottom: Spacing.sm,
-  },
-  logoPreview: {
-    width: 72, height: 72, borderRadius: Radius.md,
-  },
-  logoPlaceholder: {
-    width: 72, height: 72, borderRadius: Radius.md,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  logoPickBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: Spacing.md, paddingVertical: 10,
-    borderRadius: Radius.lg, borderWidth: 1.5,
-  },
-  logoPickBtnText: { fontSize: FontSize.sm, fontWeight: '700' },
-  catRow: {
-    flexDirection: 'row', gap: Spacing.sm,
-    paddingBottom: Spacing.sm, marginBottom: Spacing.sm,
-  },
-  catChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: Spacing.md, paddingVertical: 8,
-    borderRadius: Radius.full, borderWidth: 1.5,
-  },
-  catChipText: { fontSize: FontSize.sm },
-});
+// ─── Final export with Error Boundary ──────────────────────────────────────
+export default function AdminScreen() {
+  const { language } = useLanguage();
+  const isAr = language === 'ar';
+  return (
+    <AdminErrorBoundary isAr={isAr}>
+      <AdminScreenContent />
+    </AdminErrorBoundary>
+  );
+}

@@ -247,6 +247,7 @@ export default function ProfileScreen() {
   const soldAds = useMemo(() => ads.filter(a => a.status === 'sold'), [ads]);
 
   // ── Quick actions (memoized) ──────────────────────────────────────────────
+  // ✅ تم إزالة زر الإدارة من هنا نهائياً
   const quickActions = useMemo(() => {
     const baseActions = [
       { icon: 'edit', label: isRTL ? 'تعديل الملف' : 'Edit Profile', color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
@@ -254,27 +255,8 @@ export default function ProfileScreen() {
       { icon: 'add-circle-outline', label: isRTL ? 'نشر إعلان' : 'Post Ad', color: colors.primary, bg: colors.primaryGhost, onPress: () => router.push('/(tabs)/post') },
       { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
     ];
-    if (isAdmin) {
-      baseActions.push({
-        icon: 'admin-panel-settings',
-        label: isRTL ? 'الإدارة' : 'Admin',
-        color: '#D97706',
-        bg: '#FEF3C7',
-        onPress: () => {
-          try {
-            router.push('/admin');
-          } catch (err) {
-            console.error('Navigation to admin failed:', err);
-            showAlert(
-              isRTL ? 'خطأ' : 'Error',
-              isRTL ? 'تعذر فتح صفحة الإدارة، حاول مرة أخرى.' : 'Could not open admin page, please try again.'
-            );
-          }
-        },
-      });
-    }
     return baseActions;
-  }, [isRTL, colors, isAdmin, router, user, showAlert]);
+  }, [isRTL, colors, router, user]);
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
   const loadBlockedUsers = useCallback(async () => {
@@ -1123,21 +1105,61 @@ export default function ProfileScreen() {
               <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <SectionHeader icon="manage-accounts" label={isRTL ? 'الحساب' : 'Account'} color={colors.error} bg={colors.errorLight} />
 
+                {/* ✅ زر الإدارة هنا (يظهر فقط للمديرين) */}
+                {isAdmin && (
+                  <SettingRow
+                    icon="admin-panel-settings"
+                    iconBg="#FEF3C7"
+                    iconColor="#D97706"
+                    label={isRTL ? 'لوحة الإدارة' : 'Admin Panel'}
+                    sub={isRTL ? 'إدارة التطبيق والمستخدمين' : 'Manage app and users'}
+                    isRTL={isRTL}
+                    colors={colors}
+                    onPress={() => {
+                      try {
+                        router.push('/admin');
+                      } catch (err) {
+                        console.error('Admin navigation error:', err);
+                        showAlert(
+                          isRTL ? 'خطأ' : 'Error',
+                          isRTL ? 'تعذر فتح لوحة الإدارة، حاول مرة أخرى.' : 'Could not open admin panel, please try again.'
+                        );
+                      }
+                    }}
+                    borderBottom={false}
+                  />
+                )}
+
                 <SettingRow
-                  icon="privacy-tip" iconBg={colors.primaryGhost} iconColor={colors.primary}
-                  label={t.privacyPolicy} sub={t.privacyPolicySub}
-                  isRTL={isRTL} colors={colors} onPress={() => router.push('/privacy')}
+                  icon="privacy-tip"
+                  iconBg={colors.primaryGhost}
+                  iconColor={colors.primary}
+                  label={t.privacyPolicy}
+                  sub={t.privacyPolicySub}
+                  isRTL={isRTL}
+                  colors={colors}
+                  onPress={() => router.push('/privacy')}
                 />
                 <SettingRow
-                  icon="logout" iconBg={colors.errorLight} iconColor={colors.error}
+                  icon="logout"
+                  iconBg={colors.errorLight}
+                  iconColor={colors.error}
                   label={t.signOut}
-                  isRTL={isRTL} colors={colors} danger onPress={handleLogout}
+                  isRTL={isRTL}
+                  colors={colors}
+                  danger
+                  onPress={handleLogout}
                 />
                 <SettingRow
-                  icon="delete-forever" iconBg="#FEE2E2" iconColor="#DC2626"
+                  icon="delete-forever"
+                  iconBg="#FEE2E2"
+                  iconColor="#DC2626"
                   label={isRTL ? 'حذف الحساب' : 'Delete Account'}
                   sub={isRTL ? 'حذف نهائي لجميع البيانات' : 'Permanently removes all your data'}
-                  isRTL={isRTL} colors={colors} danger borderBottom={false}
+                  isRTL={isRTL}
+                  colors={colors}
+                  danger
+                  borderBottom={false}
                   onPress={handleDeleteAccount}
                 />
               </View>
