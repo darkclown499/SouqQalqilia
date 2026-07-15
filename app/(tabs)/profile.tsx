@@ -257,17 +257,7 @@ export default function ProfileScreen() {
         label: isRTL ? 'الإدارة' : 'Admin',
         color: '#D97706',
         bg: '#FEF3C7',
-        onPress: () => {
-          try {
-            Linking.openURL('https://plankton.fit/projects/souq-qalqilya/admin');
-          } catch (err) {
-            console.error('Admin navigation error:', err);
-            showAlert(
-              isRTL ? 'خطأ' : 'Error',
-              isRTL ? 'تعذر فتح لوحة الإدارة، حاول مرة أخرى.' : 'Could not open admin panel, please try again.'
-            );
-          }
-        }
+        onPress: () => router.push('/admin'), // ✅ التعديل هنا
       });
     }
     return baseActions;

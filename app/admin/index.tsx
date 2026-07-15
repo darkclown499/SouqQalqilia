@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
@@ -33,7 +33,6 @@ import { Ad } from '@/services/adsService';
 import { getSupabaseClient } from '@/template';
 import { fetchAllActiveStores } from '@/services/storesService';
 import { fetchAllActiveAds } from '@/services/adsService';
-// ✅ استيراد دوال الإحصائيات
 import { fetchPageStats, fetchGeneralStats, fetchAllPageStats, PageStats, GeneralStats } from '@/services/analyticsService';
 
 // ── Analytics Stats Component ──────────────────────────────────────────────
@@ -50,12 +49,20 @@ interface AnalyticsStats {
 
 function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
-  const [pageStats, setPageStats] = useState<PageStats[]>([]); // ✅ حالة إحصائيات الصفحات
-  const [generalStats, setGeneralStats] = useState<GeneralStats | null>(null); // ✅ حالة الإحصائيات العامة
+  const [pageStats, setPageStats] = useState<PageStats[]>([]);
+  const [generalStats, setGeneralStats] = useState<GeneralStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchStats = useCallback(async () => {
+    // Cancel any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const supabase = getSupabaseClient();
       const now = new Date();
@@ -73,6 +80,8 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         supabase.from('ads').select('id', { count: 'exact', head: true }).eq('status', 'active'),
         supabase.from('stores').select('id', { count: 'exact', head: true }).eq('is_active', true),
       ]);
+
+      if (controller.signal.aborted) return;
 
       // ── Compute ──
       const uniqueSet = (rows: any[]) => new Set(rows.map((r: any) => r.device_id)).size;
@@ -97,29 +106,44 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       });
       const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
 
+      if (controller.signal.aborted) return;
       setStats({ dau, wau, mau, trend, totalVisits, totalUsers, activeAds, activeStores });
 
-      // ✅ جلب إحصائيات الصفحات من analyticsService
       const [pages, general] = await Promise.all([
         fetchAllPageStats(),
         fetchGeneralStats(),
       ]);
+      if (controller.signal.aborted) return;
       setPageStats(pages || []);
       setGeneralStats(general);
       setLastUpdated(new Date());
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       console.warn('fetchStats error:', err);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, []);
 
-  // Only poll while the analytics tab is actively visible (W4 fix)
   useFocusEffect(
     useCallback(() => {
+      setLoading(true);
       fetchStats();
-      const interval = setInterval(fetchStats, 30_000);
-      return () => clearInterval(interval);
+      const interval = setInterval(() => {
+        fetchStats();
+      }, 30000);
+      return () => {
+        clearInterval(interval);
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+        }
+      };
     }, [fetchStats])
   );
 
@@ -173,7 +197,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
 
       {/* Stats cards row */}
       <View style={anS.statsRow}>
-        {/* DAU */}
         <View style={[anS.statCard, { backgroundColor: colors.surface, borderColor: colors.primary + '30' }]}>
           <View style={[anS.statIconWrap, { backgroundColor: colors.primaryGhost }]}>
             <MaterialIcons name="today" size={20} color={colors.primary} />
@@ -186,8 +209,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
             {isAr ? 'اليوم' : 'Today'}
           </Text>
         </View>
-
-        {/* WAU */}
         <View style={[anS.statCard, { backgroundColor: colors.surface, borderColor: colors.accent + '40' }]}>
           <View style={[anS.statIconWrap, { backgroundColor: colors.accent + '18' }]}>
             <MaterialIcons name="date-range" size={20} color={colors.accent} />
@@ -200,8 +221,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
             {isAr ? 'آخر 7 أيام' : 'Last 7 days'}
           </Text>
         </View>
-
-        {/* MAU */}
         <View style={[anS.statCard, { backgroundColor: colors.surface, borderColor: '#8B5CF6' + '40' }]}>
           <View style={[anS.statIconWrap, { backgroundColor: '#8B5CF618' }]}>
             <MaterialIcons name="calendar-month" size={20} color="#8B5CF6" />
@@ -216,7 +235,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         </View>
       </View>
 
-      {/* ── Extra Stats Row (إحصائيات إضافية) ── */}
+      {/* Extra Stats Row */}
       <View style={[anS.extraStatsRow, { gap: Spacing.sm }]}>
         <View style={[anS.statCardSmall, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <MaterialIcons name="storefront" size={18} color={colors.primary} />
@@ -248,7 +267,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         </View>
       </View>
 
-      {/* ── PAGE STATS SECTION (جديد) ── */}
+      {/* Page Stats Section */}
       {(pageStats || []).length > 0 ? (
         <View style={[anS.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[anS.pageStatsHeader, { borderBottomColor: colors.borderLight }]}>
@@ -421,7 +440,6 @@ const anS = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center'
   },
-  // ── Page Stats Styles (جديد) ──
   pageStatsCard: {
     borderRadius: Radius.xl,
     borderWidth: 1,
@@ -528,10 +546,8 @@ function BroadcastModal({ visible, onClose, isAr, colors }: BroadcastModalProps)
 
   const reset = () => { setBTitle(''); setBMessage(''); setResult(null); };
 
-  // Load token count when modal opens
-  React.useEffect(() => {
+  useEffect(() => {
     if (!visible) return;
-    const { getSupabaseClient } = require('@/template');
     const supabase = getSupabaseClient();
     supabase
       .from('user_profiles')
@@ -562,7 +578,6 @@ function BroadcastModal({ visible, onClose, isAr, colors }: BroadcastModalProps)
             setSending(true);
             setResult(null);
             try {
-              const { getSupabaseClient } = require('@/template');
               const supabase = getSupabaseClient();
               const { data: { session } } = await supabase.auth.getSession();
               const { FunctionsHttpError } = await import('@supabase/supabase-js');
@@ -597,7 +612,6 @@ function BroadcastModal({ visible, onClose, isAr, colors }: BroadcastModalProps)
         <Pressable style={[bcastS.sheet, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
           <View style={[bcastS.handle, { backgroundColor: colors.border }]} />
 
-          {/* Header */}
           <View style={[bcastS.header, { borderBottomColor: colors.borderLight }]}>
             <View style={[bcastS.headerIcon, { backgroundColor: colors.primaryGhost }]}>
               <MaterialIcons name="campaign" size={22} color={colors.primary} />
@@ -622,7 +636,6 @@ function BroadcastModal({ visible, onClose, isAr, colors }: BroadcastModalProps)
             </Pressable>
           </View>
 
-          {/* Success result */}
           {result ? (
             <View style={[bcastS.resultBox, { backgroundColor: colors.successLight, borderColor: colors.success }]}>
               <MaterialIcons name="check-circle" size={32} color={colors.success} />
@@ -672,7 +685,6 @@ function BroadcastModal({ visible, onClose, isAr, colors }: BroadcastModalProps)
                 <Text style={[bcastS.charCount, { color: colors.textMuted }]}>{bMessage.length}/250</Text>
               </View>
 
-              {/* Preview card */}
               {(bTitle.trim() || bMessage.trim()) ? (
                 <View style={[bcastS.preview, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
                   <View style={bcastS.previewHeader}>
@@ -909,7 +921,6 @@ const editModal = StyleSheet.create({
 });
 
 export default function AdminScreen() {
-  console.log('✅ AdminScreen loaded successfully');
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { showAlert } = useAlert();
@@ -927,7 +938,6 @@ export default function AdminScreen() {
   const [loading, setLoading] = useState(true);
   const [adSearch, setAdSearch] = useState('');
 
-  // Store form state
   const [showStoreForm, setShowStoreForm] = useState(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [stName, setStName] = useState('');
@@ -945,7 +955,6 @@ export default function AdminScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [broadcastVisible, setBroadcastVisible] = useState(false);
 
-  // Banner form
   const [showBannerForm, setShowBannerForm] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
   const [bnPlacement, setBnPlacement] = useState<BannerPlacement>('home');
@@ -955,11 +964,9 @@ export default function AdminScreen() {
   const [bnLinkUrl, setBnLinkUrl] = useState('');
   const [bnSaving, setBnSaving] = useState(false);
 
-  // Derived: split by placement for dual-section UI
-  const homeBanners = (banners || []).filter(b => !b.placement || b.placement === 'home');
-const storesBanners = (banners || []).filter(b => b.placement === 'stores_directory');
+  const homeBanners = useMemo(() => (banners || []).filter(b => !b.placement || b.placement === 'home'), [banners]);
+  const storesBanners = useMemo(() => (banners || []).filter(b => b.placement === 'stores_directory'), [banners]);
 
-  // Interstitial form
   const [showInterForm, setShowInterForm] = useState(false);
   const [editingInter, setEditingInter] = useState<InterstitialAd | null>(null);
   const [inTitle, setInTitle] = useState('');
@@ -970,48 +977,49 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
   const [inShowAfter, setInShowAfter] = useState('60');
   const [inSaving, setInSaving] = useState(false);
 
- const loadData = useCallback(async () => {
-  setLoading(true);
-  try {
-    if (tab === 'stores') {
-      const { data } = await adminFetchAllStores();
-      setStores(data);
-    } else if (tab === 'ads') {
-      const { data } = await adminFetchAllAds();
-      setAds(data);
-    } else if (tab === 'users') {
-      const { data } = await adminFetchAllUsers();
-      setUsers(data);
-    } else if (tab === 'banners') {
-      const { data } = await fetchAllBanners();
-      setBanners(data);
-    } else if (tab === 'analytics') {
-      // analytics tab handles its own loading
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (tab === 'stores') {
+        const { data } = await adminFetchAllStores();
+        setStores(data);
+      } else if (tab === 'ads') {
+        const { data } = await adminFetchAllAds();
+        setAds(data);
+      } else if (tab === 'users') {
+        const { data } = await adminFetchAllUsers();
+        setUsers(data);
+      } else if (tab === 'banners') {
+        const { data } = await fetchAllBanners();
+        setBanners(data);
+      } else if (tab === 'analytics') {
+        setLoading(false);
+        return;
+      } else {
+        const { data } = await fetchAllInterstitials();
+        setInterstitials(data);
+      }
+    } catch (err) {
+      console.error('loadData error:', err);
+    } finally {
       setLoading(false);
-      return;
-    } else {
-      const { data } = await fetchAllInterstitials();
-      setInterstitials(data);
     }
-  } catch (err) {
-    console.error('loadData error:', err);
-  } finally {
-    setLoading(false);
-  }
-}, [tab]);
+  }, [tab]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const filteredAds = adSearch.trim()
-    ? (ads || []).filter(a =>
-        a.title.toLowerCase().includes(adSearch.toLowerCase()) ||
-        String(a.serial_number ?? '').includes(adSearch) ||
-        a.id.toLowerCase().includes(adSearch.toLowerCase())
-      )
-    : (ads || []);
+  const filteredAds = useMemo(() => {
+    if (!adSearch.trim()) return ads;
+    const q = adSearch.toLowerCase();
+    return (ads || []).filter(a =>
+      a.title.toLowerCase().includes(q) ||
+      String(a.serial_number ?? '').includes(q) ||
+      a.id.toLowerCase().includes(q)
+    );
+  }, [ads, adSearch]);
 
   // ── Ad handlers ──
-  const handleDeleteAd = (adId: string, title: string) => {
+  const handleDeleteAd = useCallback((adId: string, title: string) => {
     showAlert(t.deleteAd, `"${title}"`, [
       { text: t.cancel, style: 'cancel' },
       {
@@ -1022,27 +1030,27 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         },
       },
     ]);
-  };
+  }, [showAlert, t, loadData]);
 
-  const openEditAd = (ad: Ad) => {
+  const openEditAd = useCallback((ad: Ad) => {
     setEditingAd(ad);
     setEditModalVisible(true);
-  };
+  }, []);
 
-  const handleSaveAdEdit = async (id: string, updates: any) => {
+  const handleSaveAdEdit = useCallback(async (id: string, updates: any) => {
     const { error } = await adminUpdateAd(id, updates);
     if (error) showAlert('Error', error);
     else loadData();
-  };
+  }, [showAlert, loadData]);
 
-  const handleToggleFeatured = async (ad: Ad) => {
+  const handleToggleFeatured = useCallback(async (ad: Ad) => {
     const isFeatured = ad.status === 'featured';
     const { error } = await adminSetAdFeatured(ad.id, !isFeatured);
     if (error) showAlert('Error', error);
     else loadData();
-  };
+  }, [showAlert, loadData]);
 
-  const handleToggleBoost = (ad: Ad) => {
+  const handleToggleBoost = useCallback((ad: Ad) => {
     const isBoosted = ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now();
     showAlert(
       isBoosted ? t.removeboost : t.boostAd, isBoosted ? '' : t.boostAdConfirm,
@@ -1054,7 +1062,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
             const { error } = await adminBoostAd(ad.id, !isBoosted);
             if (error) { showAlert('Error', error); return; }
             loadData();
-            // Fire-and-forget push notification to ad owner when boosting (not un-boosting)
             if (!isBoosted) {
               try {
                 const supabase = getSupabaseClient();
@@ -1073,10 +1080,10 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         },
       ]
     );
-  };
+  }, [showAlert, t, loadData, isAr]);
 
   // ── User handlers ──
-  const handleToggleBlock = (u: UserProfile) => {
+  const handleToggleBlock = useCallback((u: UserProfile) => {
     const isBlocked = u.is_blocked;
     showAlert(isBlocked ? t.unblockUser : t.blockUser, '', [
       { text: t.cancel, style: 'cancel' },
@@ -1090,9 +1097,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         },
       },
     ]);
-  };
+  }, [showAlert, t, loadData]);
 
-  const handleToggleVerified = (u: UserProfile) => {
+  const handleToggleVerified = useCallback((u: UserProfile) => {
     const makeVerified = !u.is_verified;
     showAlert(
       makeVerified ? (isAr ? 'منح توثيق البائع' : 'Verify Seller') : (isAr ? 'إلغاء التوثيق' : 'Remove Verification'),
@@ -1109,9 +1116,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         },
       ]
     );
-  };
+  }, [showAlert, isAr, loadData]);
 
-  const handleToggleAdmin = (u: UserProfile) => {
+  const handleToggleAdmin = useCallback((u: UserProfile) => {
     const makeAdmin = !u.is_admin;
     showAlert(
       makeAdmin ? (isAr ? 'منح صلاحية مدير' : 'Grant Admin') : (isAr ? 'إلغاء صلاحية مدير' : 'Revoke Admin'),
@@ -1128,10 +1135,10 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         },
       ]
     );
-  };
+  }, [showAlert, isAr, loadData]);
 
   // ── Store handlers ──
-  const openStoreForm = (store?: Store) => {
+  const openStoreForm = useCallback((store?: Store) => {
     if (store) {
       setEditingStore(store);
       setStName(store.name);
@@ -1150,9 +1157,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
       setStCategoryId(categories[0]?.id ?? '');
     }
     setShowStoreForm(true);
-  };
+  }, [categories]);
 
-  const handlePickStoreLogo = async () => {
+  const handlePickStoreLogo = useCallback(async () => {
     setStLogoUploading(true);
     try {
       const result = await pickImage('gallery');
@@ -1163,9 +1170,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
       }
     } catch (_) {}
     setStLogoUploading(false);
-  };
+  }, [editingStore]);
 
-  const handleSaveStore = async () => {
+  const handleSaveStore = useCallback(async () => {
     if (!stName.trim()) {
       return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'اسم المتجر مطلوب' : 'Store name is required.');
     }
@@ -1193,9 +1200,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
     if (error) { showAlert('Error', error); return; }
     setShowStoreForm(false);
     loadData();
-  };
+  }, [stName, stNameAr, stDesc, stDescAr, stLogoUrl, stPhone, stWhatsapp, stAddress, stCategoryId, stores.length, editingStore, isAr, showAlert, loadData]);
 
-  const handleDeleteStore = (id: string, name: string) => {
+  const handleDeleteStore = useCallback((id: string, name: string) => {
     showAlert(
       isAr ? 'حذف المتجر' : 'Delete Store',
       isAr ? `حذف "${name}"؟` : `Delete "${name}"?`,
@@ -1210,10 +1217,10 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         },
       ]
     );
-  };
+  }, [showAlert, isAr, t, loadData]);
 
   // ── Banner handlers ──
-  const openBannerForm = (placement: BannerPlacement, banner?: Banner) => {
+  const openBannerForm = useCallback((placement: BannerPlacement, banner?: Banner) => {
     setBnPlacement(placement);
     if (banner) {
       setEditingBanner(banner);
@@ -1226,9 +1233,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
       setBnTitle(''); setBnSubtitle(''); setBnImageUrl(''); setBnLinkUrl('');
     }
     setShowBannerForm(true);
-  };
+  }, []);
 
-  const handleSaveBanner = async () => {
+  const handleSaveBanner = useCallback(async () => {
     if (!bnTitle.trim() || !bnImageUrl.trim()) {
       return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'العنوان ورابط الصورة مطلوبان' : 'Title and Image URL are required.');
     }
@@ -1247,9 +1254,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
     if (error) { showAlert('Error', error); return; }
     setShowBannerForm(false);
     loadData();
-  };
+  }, [bnTitle, bnSubtitle, bnImageUrl, bnLinkUrl, editingBanner, bnPlacement, isAr, showAlert, loadData]);
 
-  const handleDeleteBanner = (id: string) => {
+  const handleDeleteBanner = useCallback((id: string) => {
     showAlert(t.deleteBanner, t.deleteBannerConfirm, [
       { text: t.cancel, style: 'cancel' },
       {
@@ -1260,10 +1267,10 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         },
       },
     ]);
-  };
+  }, [showAlert, t, loadData]);
 
   // ── Interstitial handlers ──
-  const openInterForm = (inter?: InterstitialAd) => {
+  const openInterForm = useCallback((inter?: InterstitialAd) => {
     if (inter) {
       setEditingInter(inter);
       setInTitle(inter.title);
@@ -1278,9 +1285,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
       setInDuration('6'); setInSkipAfter('3'); setInShowAfter('60');
     }
     setShowInterForm(true);
-  };
+  }, []);
 
-  const handleSaveInter = async () => {
+  const handleSaveInter = useCallback(async () => {
     if (!inMediaUrl.trim()) {
       return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'رابط الوسائط مطلوب' : 'Media URL is required.');
     }
@@ -1302,9 +1309,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
     if (error) { showAlert('Error', error); return; }
     setShowInterForm(false);
     loadData();
-  };
+  }, [inTitle, inMediaUrl, inMediaType, inDuration, inSkipAfter, inShowAfter, interstitials.length, editingInter, isAr, showAlert, loadData]);
 
-  const handleDeleteInter = (id: string) => {
+  const handleDeleteInter = useCallback((id: string) => {
     showAlert(isAr ? 'حذف الإعلان' : 'Delete Ad', isAr ? 'هل تريد حذف هذا الإعلان؟' : 'Delete this interstitial ad?', [
       { text: t.cancel, style: 'cancel' },
       {
@@ -1315,10 +1322,10 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         },
       },
     ]);
-  };
+  }, [showAlert, isAr, t, loadData]);
 
-  // ── Render items ──
-  const renderAdItem = ({ item }: { item: Ad }) => {
+  // ── Render functions ──
+  const renderAdItem = useCallback(({ item }: { item: Ad }) => {
     const isFeatured = item.status === 'featured';
     const isBoosted = !!(item.boosted_until && new Date(item.boosted_until).getTime() > Date.now());
     const ownerName = (item as any).user_profiles?.username || (item as any).user_profiles?.email?.split('@')[0] || '?';
@@ -1335,7 +1342,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         borderLeftColor: isBoosted ? colors.accent : colors.border,
         ...Shadow.xs,
       }]}>
-        {/* ── Card Header: title left, ID right ── */}
         <View style={styles.cardHeaderRow}>
           <Text style={[styles.cardTitle, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
             {item.title}
@@ -1345,14 +1351,12 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
           ) : null}
         </View>
 
-        {/* ── Description ── */}
         {item.description ? (
           <Text style={[styles.cardDesc, { color: colors.textMuted }]} numberOfLines={2}>
             {item.description}
           </Text>
         ) : null}
 
-        {/* ── Row 1: Price · Condition · Boost badge ── */}
         <View style={styles.cardInfoRow}>
           <Text style={[styles.cardPrice, { color: colors.primary }]}>₪{item.price.toLocaleString()}</Text>
           <View style={styles.infoDot} />
@@ -1382,7 +1386,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
           ) : null}
         </View>
 
-        {/* ── Row 2: Owner · Status dot · Location ── */}
         <View style={styles.cardInfoRow}>
           <MaterialIcons name="person-outline" size={13} color={colors.textMuted} />
           <Text style={[styles.cardInfoText, { color: colors.textSecondary }]} numberOfLines={1}>{ownerName}</Text>
@@ -1400,13 +1403,10 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
           ) : null}
         </View>
 
-        {/* ── Action icon strip ── */}
         <View style={[styles.iconStrip, { borderTopColor: colors.borderLight }]}>
-          {/* Edit */}
           <Pressable style={[styles.iconStripBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => openEditAd(item)} hitSlop={4}>
             <MaterialIcons name="edit" size={16} color={colors.primary} />
           </Pressable>
-          {/* Feature toggle */}
           <Pressable
             style={[styles.iconStripBtn, { backgroundColor: isFeatured ? '#FEF9C3' : colors.borderLight }]}
             onPress={() => handleToggleFeatured(item)}
@@ -1414,7 +1414,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
           >
             <MaterialIcons name={isFeatured ? 'star' : 'star-border'} size={16} color={isFeatured ? '#D97706' : colors.textMuted} />
           </Pressable>
-          {/* Boost toggle */}
           <Pressable
             style={[styles.iconStripBtn, { backgroundColor: isBoosted ? colors.accentLight : colors.borderLight }]}
             onPress={() => handleToggleBoost(item)}
@@ -1422,9 +1421,7 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
           >
             <MaterialIcons name="bolt" size={16} color={isBoosted ? colors.accentDark : colors.textMuted} />
           </Pressable>
-          {/* Spacer */}
           <View style={{ flex: 1 }} />
-          {/* Delete — right-aligned, red */}
           <Pressable
             style={[styles.iconStripBtn, { backgroundColor: colors.errorLight }]}
             onPress={() => handleDeleteAd(item.id, item.title)}
@@ -1435,9 +1432,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         </View>
       </View>
     );
-  };
+  }, [colors, isAr, openEditAd, handleToggleFeatured, handleToggleBoost, handleDeleteAd]);
 
-  const renderUserItem = ({ item }: { item: UserProfile }) => (
+  const renderUserItem = useCallback(({ item }: { item: UserProfile }) => (
     <View style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border, ...Shadow.xs }]}>
       <View style={[styles.userAvatar, { backgroundColor: item.is_admin ? colors.primary : colors.surfaceTint }]}>
         <Text style={[styles.userAvatarText, { color: item.is_admin ? '#fff' : colors.textMuted }]}>
@@ -1506,9 +1503,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         </Pressable>
       </View>
     </View>
-  );
+  ), [colors, isAr, t, handleToggleBlock, handleToggleVerified, handleToggleAdmin]);
 
-  const renderBannerItem = ({ item }: { item: Banner }) => (
+  const renderBannerItem = useCallback(({ item }: { item: Banner }) => (
     <View style={[styles.bannerCard, { backgroundColor: colors.surface, borderColor: item.placement === 'stores_directory' ? '#F59E0B45' : colors.border, ...Shadow.xs }]}>
       <View style={styles.bannerPreview}>
         <View style={[styles.bannerImgWrap, { backgroundColor: colors.surfaceTint, overflow: 'hidden' }]}>
@@ -1547,9 +1544,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         </Pressable>
       </View>
     </View>
-  );
+  ), [colors, t, openBannerForm, loadData, handleDeleteBanner]);
 
-  const renderInterItem = ({ item }: { item: InterstitialAd }) => (
+  const renderInterItem = useCallback(({ item }: { item: InterstitialAd }) => (
     <View style={[styles.bannerCard, { backgroundColor: colors.surface, borderColor: colors.border, ...Shadow.xs }]}>
       <View style={styles.bannerPreview}>
         <View style={[styles.bannerImgWrap, { backgroundColor: colors.primaryGhost }]}>
@@ -1601,19 +1598,19 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         </Pressable>
       </View>
     </View>
-  );
+  ), [colors, isAr, t, openInterForm, loadData, handleDeleteInter]);
 
-  const TABS: { key: Tab; icon: string; label: string; count: number }[] = [
+  const TABS: { key: Tab; icon: string; label: string; count: number }[] = useMemo(() => [
     { key: 'analytics', icon: 'insights', label: isAr ? 'الإحصائيات' : 'Analytics', count: 0 },
     { key: 'ads', icon: 'storefront', label: t.allAds, count: ads.length },
     { key: 'users', icon: 'people', label: t.allUsers, count: users.length },
     { key: 'banners', icon: 'view-carousel', label: t.manageBanners, count: banners.length },
     { key: 'interstitials', icon: 'play-circle-outline', label: isAr ? 'إعلانات' : 'Full-Screen', count: interstitials.length },
     { key: 'stores', icon: 'store', label: isAr ? 'المتاجر' : 'Stores', count: stores.length },
-  ];
+  ], [isAr, t, ads.length, users.length, banners.length, interstitials.length, stores.length]);
 
   // ── Store form inline component ──
-  const StoreForm = () => {
+  const StoreForm = useCallback(() => {
     const selectedCat = categories.find(c => c.id === stCategoryId);
     return (
       <View style={[styles.inlineForm, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1627,7 +1624,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
           </Pressable>
         </View>
 
-        {/* Logo Upload */}
         <Text style={[styles.inlineFieldLabel, { color: colors.textSecondary }]}>
           {isAr ? 'شعار المتجر' : 'Store Logo'}
         </Text>
@@ -1662,7 +1658,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
           ) : null}
         </View>
 
-        {/* Or enter URL manually */}
         <View style={styles.inlineField}>
           <Text style={[styles.inlineFieldLabel, { color: colors.textMuted }]}>
             {isAr ? 'أو أدخل رابط الصورة يدوياً' : 'Or enter image URL manually'}
@@ -1677,7 +1672,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
           />
         </View>
 
-        {/* Names */}
         {[
           { label: isAr ? 'اسم المتجر (إنجليزي) *' : 'Store Name (English) *', value: stName, onChange: setStName },
           { label: isAr ? 'اسم المتجر (عربي)' : 'Store Name (Arabic)', value: stNameAr, onChange: setStNameAr },
@@ -1699,7 +1693,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
           </View>
         ))}
 
-        {/* Category selector */}
         <Text style={[styles.inlineFieldLabel, { color: colors.textSecondary }]}>
           {isAr ? 'التصنيف *' : 'Category *'}
         </Text>
@@ -1737,10 +1730,10 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         </Pressable>
       </View>
     );
-  };
+  }, [categories, colors, isAr, stCategoryId, stLogoUrl, stLogoUploading, stName, stNameAr, stDesc, stDescAr, stPhone, stWhatsapp, stAddress, stSaving, editingStore, handlePickStoreLogo, handleSaveStore]);
 
-  // ── Banner / Interstitial inline form renderer ──
-  const BannerForm = () => (
+  // ── Banner / Interstitial inline form ──
+  const BannerForm = useCallback(() => (
     <View style={[styles.inlineForm, { backgroundColor: colors.surface, borderColor: bnPlacement === 'home' ? colors.primary + '55' : '#F59E0B55' }]}>
       <View style={[styles.inlineFormHeader, { marginBottom: 8 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: bnPlacement === 'home' ? colors.primaryGhost : '#FEF3C7' }}>
@@ -1783,9 +1776,9 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         <Text style={styles.formSaveBtnText}>{bnSaving ? t.loading : (editingBanner ? t.saveEdit : t.addBanner)}</Text>
       </Pressable>
     </View>
-  );
+  ), [colors, bnPlacement, isAr, editingBanner, t, bnTitle, bnSubtitle, bnImageUrl, bnLinkUrl, bnSaving, handleSaveBanner]);
 
-  const InterstitialForm = () => (
+  const InterstitialForm = useCallback(() => (
     <View style={[styles.inlineForm, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.inlineFormHeader}>
         <Text style={[styles.inlineFormTitle, { color: colors.textPrimary }]}>
@@ -1842,12 +1835,10 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         <Text style={styles.formSaveBtnText}>{inSaving ? t.loading : (editingInter ? t.saveEdit : (isAr ? 'إضافة' : 'Add Ad'))}</Text>
       </Pressable>
     </View>
-  );
+  ), [colors, isAr, inTitle, inMediaUrl, inMediaType, inDuration, inSkipAfter, inShowAfter, inSaving, editingInter, t, handleSaveInter]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      {/* Header */}
-      {/* Broadcast Modal */}
       <BroadcastModal
         visible={broadcastVisible}
         onClose={() => setBroadcastVisible(false)}
@@ -1872,7 +1863,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         </Pressable>
       </View>
 
-      {/* ── Tabs: horizontal scrollable pill bar ── */}
       <View style={[styles.tabBarWrap, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <ScrollView
           horizontal
@@ -1920,7 +1910,7 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
       ) : tab === 'ads' ? (
         <FlatList
           data={filteredAds}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           renderItem={renderAdItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
@@ -1952,7 +1942,7 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
       ) : tab === 'users' ? (
         <FlatList
           data={users}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           renderItem={renderUserItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
@@ -1965,8 +1955,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         />
       ) : tab === 'banners' ? (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: Spacing.md, paddingBottom: 48, gap: Spacing.md }}>
-
-          {/* HOME BANNERS SECTION */}
           <View style={{ borderRadius: Radius.xl, borderWidth: 1.5, borderColor: colors.primary + '40', overflow: 'hidden' }}>
             <View style={{ backgroundColor: colors.primaryGhost, padding: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
               <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
@@ -2006,7 +1994,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
             </View>
           </View>
 
-          {/* STORES DIRECTORY BANNERS SECTION */}
           <View style={{ borderRadius: Radius.xl, borderWidth: 1.5, borderColor: '#F59E0B55', overflow: 'hidden' }}>
             <View style={{ backgroundColor: '#FEF3C7', padding: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
               <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D97706', alignItems: 'center', justifyContent: 'center' }}>
@@ -2045,12 +2032,11 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
               ) : storesBanners.map(item => <View key={item.id} style={{ marginBottom: Spacing.sm }}>{renderBannerItem({ item })}</View>)}
             </View>
           </View>
-
         </ScrollView>
-      ) : (
+      ) : tab === 'interstitials' ? (
         <FlatList
           data={interstitials}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           renderItem={renderInterItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
@@ -2083,12 +2069,12 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
             </View>
           }
         />
-      )}
+      ) : null}
 
       {tab === 'stores' && (
         <FlatList
           data={stores}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           renderItem={({ item }) => {
             const cat = categories.find(c => c.id === item.category_id);
             const catLabel = cat ? getCategoryName(cat, language) : '';
@@ -2170,7 +2156,6 @@ const storesBanners = (banners || []).filter(b => b.placement === 'stores_direct
         />
       )}
 
-      {/* Full Edit Modal */}
       <AdEditModal
         ad={editingAd}
         visible={editModalVisible}
@@ -2199,7 +2184,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: FontSize.xl, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   headerSub: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
   broadcastBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  // ── Tab bar ──
   tabBarWrap: { borderBottomWidth: 1 },
   tabBarContent: { flexDirection: 'row', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm },
   tabPill: {
@@ -2218,7 +2202,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md, height: 48, marginBottom: Spacing.md,
   },
   searchInput: { flex: 1, fontSize: FontSize.md },
-  // ── Ad card ──
   card: { borderRadius: Radius.lg, borderWidth: 1, overflow: 'hidden', padding: Spacing.md, gap: 6 },
   cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardTitle: { fontSize: FontSize.md, fontWeight: '700', lineHeight: 20 },
@@ -2229,7 +2212,6 @@ const styles = StyleSheet.create({
   cardInfoText: { fontSize: FontSize.xs, fontWeight: '500' },
   infoDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#CBD5E1' },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  // ── Icon action strip ──
   iconStrip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     borderTopWidth: 1, paddingTop: Spacing.sm, marginTop: 4,
@@ -2238,7 +2220,6 @@ const styles = StyleSheet.create({
     width: 34, height: 34, borderRadius: Radius.md,
     alignItems: 'center', justifyContent: 'center',
   },
-  // ── Legacy meta chips (used in banner/interstitial cards) ──
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
   metaChip: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
