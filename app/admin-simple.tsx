@@ -30,7 +30,6 @@ import {
 import { Ad } from '@/services/adsService';
 import { fetchAllPageStats, PageStats } from '@/services/analyticsService';
 // مكتبات الرسوم البيانية (تأكد من تثبيتها: npm install victory-native react-native-svg)
-import { VictoryLine, VictoryPie, VictoryChart, VictoryTheme } from 'victory-native';
 
 // ─── واجهات الأنواع ──────────────────────────────────────────────────────────
 interface ActivityLog {
@@ -463,38 +462,50 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       </View>
 
       {/* مخطط خطي للاتجاه اليومي */}
-      {stats?.trend && stats.trend.length > 0 && (
-        <View style={[styles.chartCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.chartTitle, { color: colors.textPrimary }]}>
-            {isAr ? '📈 الاتجاه اليومي (آخر 7 أيام)' : '📈 Daily Trend (Last 7 days)'}
-          </Text>
-          <VictoryChart theme={VictoryTheme.material} domainPadding={10} height={180}>
-            <VictoryLine
-              data={stats.trend.map((t: any) => ({ x: t.date.slice(5), y: t.count }))}
-              style={{ data: { stroke: colors.primary, strokeWidth: 3 } }}
-            />
-          </VictoryChart>
-        </View>
-      )}
+{/* مخطط شريطي بسيط للاتجاه اليومي (بدون مكتبات خارجية) */}
+{stats?.trend && stats.trend.length > 0 && (
+  <View style={[styles.trendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <Text style={[styles.trendTitle, { color: colors.textPrimary }]}>
+      {isAr ? '📈 الاتجاه اليومي (آخر 7 أيام)' : '📈 Daily Trend (Last 7 days)'}
+    </Text>
+    <View style={styles.trendBars}>
+      {stats.trend.map((t: any, idx: number) => {
+        const maxTrend = Math.max(...stats.trend.map((t: any) => t.count), 1);
+        return (
+          <View key={idx} style={styles.trendBarWrapper}>
+            <View style={[styles.trendBar, { height: (t.count / maxTrend) * 60, backgroundColor: colors.primary }]} />
+            <Text style={[styles.trendLabel, { color: colors.textMuted }]}>{t.count}</Text>
+            <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 8 }]}>{t.date.slice(5)}</Text>
+          </View>
+        );
+      })}
+    </View>
+  </View>
+)}
+
+{/* توزيع الأجهزة كبطاقات نصية */}
+<View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+  <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
+    {isAr ? '📱 توزيع المستخدمين حسب الجهاز' : 'Device Distribution'}
+  </Text>
+  <View style={styles.advancedStatsRow}>
+    <View style={styles.advancedStatsCol}>
+      <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>iOS</Text>
+      <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>120</Text>
+    </View>
+    <View style={styles.advancedStatsCol}>
+      <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>Android</Text>
+      <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>280</Text>
+    </View>
+    <View style={styles.advancedStatsCol}>
+      <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>Other</Text>
+      <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>15</Text>
+    </View>
+  </View>
+</View>
 
       {/* مخطط دائري لتوزيع الأجهزة (بيانات وهمية) */}
-      <View style={[styles.chartCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.chartTitle, { color: colors.textPrimary }]}>
-          {isAr ? '📱 توزيع المستخدمين حسب الجهاز' : 'Device Distribution'}
-        </Text>
-        <VictoryPie
-          data={[
-            { x: 'iOS', y: 120 },
-            { x: 'Android', y: 280 },
-            { x: 'Other', y: 15 },
-          ]}
-          colorScale={['#3B82F6', '#22C55E', '#F59E0B']}
-          radius={70}
-          innerRadius={30}
-          labelRadius={90}
-          style={{ labels: { fontSize: 10 } }}
-        />
-      </View>
+      
 
       {/* إحصائيات الصفحات */}
       <View style={[styles.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
