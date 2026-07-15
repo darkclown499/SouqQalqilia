@@ -1107,28 +1107,32 @@ export default function ProfileScreen() {
 
                 {/* ✅ زر الإدارة هنا (يظهر فقط للمديرين) */}
                 {isAdmin && (
-                  <SettingRow
-                    icon="admin-panel-settings"
-                    iconBg="#FEF3C7"
-                    iconColor="#D97706"
-                    label={isRTL ? 'لوحة الإدارة' : 'Admin Panel'}
-                    sub={isRTL ? 'إدارة التطبيق والمستخدمين' : 'Manage app and users'}
-                    isRTL={isRTL}
-                    colors={colors}
-                    onPress={() => {
-                      try {
-                        router.push('/admin');
-                      } catch (err) {
-                        console.error('Admin navigation error:', err);
-                        showAlert(
-                          isRTL ? 'خطأ' : 'Error',
-                          isRTL ? 'تعذر فتح لوحة الإدارة، حاول مرة أخرى.' : 'Could not open admin panel, please try again.'
-                        );
-                      }
-                    }}
-                    borderBottom={false}
-                  />
-                )}
+  <SettingRow
+    icon="admin-panel-settings"
+    iconBg="#FEF3C7"
+    iconColor="#D97706"
+    label={isRTL ? 'لوحة الإدارة' : 'Admin Panel'}
+    sub={isRTL ? 'إدارة التطبيق والمستخدمين' : 'Manage app and users'}
+    isRTL={isRTL}
+    colors={colors}
+    onPress={() => {
+      try {
+        // ✅ استخدام replace بدلاً من push لتجنب تكدس التنقل
+        // ✅ تأخير بسيط لمنع التعارض
+        setTimeout(() => {
+          router.replace('/admin');
+        }, 100);
+      } catch (err) {
+        console.error('Admin navigation error:', err);
+        showAlert(
+          isRTL ? 'خطأ' : 'Error',
+          isRTL ? 'تعذر فتح لوحة الإدارة، حاول مرة أخرى.' : 'Could not open admin panel, please try again.'
+        );
+      }
+    }}
+    borderBottom={false}
+  />
+)}
 
                 <SettingRow
                   icon="privacy-tip"
