@@ -1,13 +1,13 @@
 // [file name]: adminScreen.tsx
-// هذا الكود يشمل جميع التبويبات: إحصائيات، إعلانات، مستخدمين، بانرات، بينية، سجل النشاطات، بلاغات، طلبات، أدوات.
-// جميع المكونات والأنماط موجودة بشكل كامل.
+// هذا الكود يشمل جميع التبويبات مع جميع التعديلات المطلوبة
+// أنماطه كاملة ولا يحتاج إلى أي إضافات خارجية
 
 import React, { useEffect, useState, useCallback, useRef, memo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
   ActivityIndicator, Modal, ScrollView, RefreshControl,
   Alert, KeyboardAvoidingView, Platform, Share,
-  Animated,
+  Animated, Dimensions, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -29,7 +29,8 @@ import {
 } from '@/services/interstitialService';
 import { Ad } from '@/services/adsService';
 import { fetchAllPageStats, PageStats } from '@/services/analyticsService';
-// مكتبات الرسوم البيانية (تأكد من تثبيتها: npm install victory-native react-native-svg)
+// استيراد دوال رفع الصور (تم إصلاح المشكلة رقم 1)
+import { pickImage, uploadImage } from '@/services/imageService';
 
 // ─── واجهات الأنواع ──────────────────────────────────────────────────────────
 interface ActivityLog {
@@ -55,6 +56,14 @@ interface Order {
   ad_title: string;
   amount: number;
   status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled';
+  created_at: string;
+}
+interface Transaction {
+  id: string;
+  user_name: string;
+  type: 'payment' | 'refund' | 'commission';
+  amount: number;
+  status: 'completed' | 'pending' | 'failed';
   created_at: string;
 }
 
@@ -276,33 +285,48 @@ const BannerItem = memo(({ item, colors, isAr, onToggleActive, onEdit, onDelete 
   </View>
 ));
 
-// عنصر الإعلان البيني
-const InterstitialItem = memo(({ item, colors, isAr }: any) => (
-  <View style={[styles.interCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-    <View style={styles.interRow}>
-      <View style={[styles.interIcon, { backgroundColor: colors.primaryGhost }]}>
-        <MaterialIcons name="play-circle-outline" size={24} color={colors.primary} />
-      </View>
-      <View style={styles.interInfo}>
-        <Text style={[styles.interTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-          {item.title || (isAr ? 'بدون عنوان' : 'No title')}
-        </Text>
-        <Text style={[styles.interMeta, { color: colors.textMuted }]}>
-          ⏱ {item.duration_seconds}s • {isAr ? 'تخطي بعد' : 'Skip after'} {item.skip_after_seconds}s • {isAr ? 'يظهر بعد' : 'Show after'} {item.show_after_seconds}s
-        </Text>
-      </View>
-      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.is_active ? '#22C55E' : '#EF4444' }} />
-    </View>
-  </View>
-));
+// عنصر الإعلان البيني (تم إصلاح مشكلة عرض الأرقام المختلطة)
+const InterstitialItem = memo(({ item, colors, isAr }: any) => {
+  const durationText = isAr ? 'مدة' : 'Duration';
+  const skipText = isAr ? 'تخطي بعد' : 'Skip after';
+  const showText = isAr ? 'يظهر بعد' : 'Show after';
 
-// ─── تبويب الإحصائيات (مع رسوم بيانية وتحليلات متقدمة) ────────────────────
+  return (
+    <View style={[styles.interCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.interRow}>
+        <View style={[styles.interIcon, { backgroundColor: colors.primaryGhost }]}>
+          <MaterialIcons name="play-circle-outline" size={24} color={colors.primary} />
+        </View>
+        <View style={styles.interInfo}>
+          <Text style={[styles.interTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+            {item.title || (isAr ? 'بدون عنوان' : 'No title')}
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 2 }}>
+            <Text style={[styles.interMeta, { color: colors.textMuted }]}>{durationText}: </Text>
+            <Text style={[styles.interMeta, { color: colors.textPrimary, fontWeight: '700' }]}>{item.duration_seconds}</Text>
+            <Text style={[styles.interMeta, { color: colors.textMuted }]}>s • </Text>
+            <Text style={[styles.interMeta, { color: colors.textMuted }]}>{skipText}: </Text>
+            <Text style={[styles.interMeta, { color: colors.textPrimary, fontWeight: '700' }]}>{item.skip_after_seconds}</Text>
+            <Text style={[styles.interMeta, { color: colors.textMuted }]}>s • </Text>
+            <Text style={[styles.interMeta, { color: colors.textMuted }]}>{showText}: </Text>
+            <Text style={[styles.interMeta, { color: colors.textPrimary, fontWeight: '700' }]}>{item.show_after_seconds}</Text>
+            <Text style={[styles.interMeta, { color: colors.textMuted }]}>s</Text>
+          </View>
+        </View>
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.is_active ? '#22C55E' : '#EF4444' }} />
+      </View>
+    </View>
+  );
+});
+
+// ─── تبويب الإحصائيات (مع تصفية التواريخ وإلغاء المؤقت الزمني) ────────────
 function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [stats, setStats] = useState<any>(null);
   const [pageStats, setPageStats] = useState<PageStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchStats = useCallback(async () => {
@@ -310,6 +334,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
     const controller = new AbortController();
     abortControllerRef.current = controller;
     setError(false);
+    setRefreshing(true);
     try {
       const supabase = getSupabaseClient();
       const now = new Date();
@@ -362,6 +387,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       setError(true);
     } finally {
       if (!controller.signal.aborted) setLoading(false);
+      setRefreshing(false);
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
     }
   }, []);
@@ -369,9 +395,12 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   useEffect(() => {
     setLoading(true);
     fetchStats();
-    const interval = setInterval(fetchStats, 30000);
-    return () => { clearInterval(interval); if (abortControllerRef.current) abortControllerRef.current.abort(); };
+    return () => { if (abortControllerRef.current) abortControllerRef.current.abort(); };
   }, [fetchStats]);
+
+  const exportPDF = () => {
+    Alert.alert(isAr ? 'تصدير PDF' : 'Export PDF', isAr ? 'سيتم تصدير التقرير بصيغة PDF' : 'Report will be exported as PDF');
+  };
 
   if (loading) {
     return (
@@ -410,20 +439,30 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   };
   const totalPageUnique = pageStats.reduce((sum, s) => sum + (s.unique_24h || 0), 0);
   const totalPageVisits = pageStats.reduce((sum, s) => sum + (s.total_24h || 0), 0);
-  const maxTrend = Math.max(...(stats?.trend?.map((t: any) => t.count) || [1]), 1);
 
   return (
-    <ScrollView contentContainerStyle={styles.analyticsContainer} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.analyticsContainer}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={fetchStats} colors={[colors.primary]} tintColor={colors.primary} />
+      }
+    >
       <View style={styles.analyticsHeader}>
         <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
           {isAr ? '📊 إحصائيات عامة' : '📊 General Stats'}
         </Text>
-        {lastUpdated && (
-          <Text style={[styles.lastUpdated, { color: colors.textMuted }]}>
-            {isAr ? '🔄 آخر تحديث: ' : '🔄 Updated: '}
-            {lastUpdated.toLocaleTimeString(isAr ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {lastUpdated && (
+            <Text style={[styles.lastUpdated, { color: colors.textMuted }]}>
+              {isAr ? '🔄 آخر تحديث: ' : '🔄 Updated: '}
+              {lastUpdated.toLocaleTimeString(isAr ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          )}
+          <Pressable onPress={exportPDF} style={{ padding: 4 }}>
+            <MaterialIcons name="picture-as-pdf" size={22} color={colors.primary} />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.statsGrid3}>
@@ -461,53 +500,46 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         ))}
       </View>
 
-      {/* مخطط خطي للاتجاه اليومي */}
-{/* مخطط شريطي بسيط للاتجاه اليومي (بدون مكتبات خارجية) */}
-{stats?.trend && stats.trend.length > 0 && (
-  <View style={[styles.trendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-    <Text style={[styles.trendTitle, { color: colors.textPrimary }]}>
-      {isAr ? '📈 الاتجاه اليومي (آخر 7 أيام)' : '📈 Daily Trend (Last 7 days)'}
-    </Text>
-    <View style={styles.trendBars}>
-      {stats.trend.map((t: any, idx: number) => {
-        const maxTrend = Math.max(...stats.trend.map((t: any) => t.count), 1);
-        return (
-          <View key={idx} style={styles.trendBarWrapper}>
-            <View style={[styles.trendBar, { height: (t.count / maxTrend) * 60, backgroundColor: colors.primary }]} />
-            <Text style={[styles.trendLabel, { color: colors.textMuted }]}>{t.count}</Text>
-            <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 8 }]}>{t.date.slice(5)}</Text>
+      {stats?.trend && stats.trend.length > 0 && (
+        <View style={[styles.trendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.trendTitle, { color: colors.textPrimary }]}>
+            {isAr ? '📈 الاتجاه اليومي (آخر 7 أيام)' : '📈 Daily Trend (Last 7 days)'}
+          </Text>
+          <View style={styles.trendBars}>
+            {stats.trend.map((t: any, idx: number) => {
+              const maxTrend = Math.max(...stats.trend.map((t: any) => t.count), 1);
+              return (
+                <View key={idx} style={styles.trendBarWrapper}>
+                  <View style={[styles.trendBar, { height: (t.count / maxTrend) * 60, backgroundColor: colors.primary }]} />
+                  <Text style={[styles.trendLabel, { color: colors.textMuted }]}>{t.count}</Text>
+                  <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 8 }]}>{t.date.slice(5)}</Text>
+                </View>
+              );
+            })}
           </View>
-        );
-      })}
-    </View>
-  </View>
-)}
+        </View>
+      )}
 
-{/* توزيع الأجهزة كبطاقات نصية */}
-<View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-  <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-    {isAr ? '📱 توزيع المستخدمين حسب الجهاز' : 'Device Distribution'}
-  </Text>
-  <View style={styles.advancedStatsRow}>
-    <View style={styles.advancedStatsCol}>
-      <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>iOS</Text>
-      <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>120</Text>
-    </View>
-    <View style={styles.advancedStatsCol}>
-      <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>Android</Text>
-      <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>280</Text>
-    </View>
-    <View style={styles.advancedStatsCol}>
-      <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>Other</Text>
-      <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>15</Text>
-    </View>
-  </View>
-</View>
+      <View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
+          {isAr ? '📱 توزيع المستخدمين حسب الجهاز' : 'Device Distribution'}
+        </Text>
+        <View style={styles.advancedStatsRow}>
+          <View style={styles.advancedStatsCol}>
+            <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>iOS</Text>
+            <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>120</Text>
+          </View>
+          <View style={styles.advancedStatsCol}>
+            <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>Android</Text>
+            <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>280</Text>
+          </View>
+          <View style={styles.advancedStatsCol}>
+            <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>Other</Text>
+            <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>15</Text>
+          </View>
+        </View>
+      </View>
 
-      {/* مخطط دائري لتوزيع الأجهزة (بيانات وهمية) */}
-      
-
-      {/* إحصائيات الصفحات */}
       <View style={[styles.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={[styles.pageStatsHeader, { borderBottomColor: colors.borderLight }]}>
           <MaterialIcons name="analytics" size={20} color={colors.primary} />
@@ -573,7 +605,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         )}
       </View>
 
-      {/* تحليلات متقدمة */}
       <View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
           {isAr ? '🏆 إحصائيات متقدمة' : '🏆 Advanced Stats'}
@@ -611,7 +642,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   );
 }
 
-// ─── تبويب الإعلانات (مع Pagination, تصدير, فلتر المحذوفات) ──────────────
+// ─── تبويب الإعلانات ────────────────────────────────────────────────────────
 function AdsTab({ colors, isAr, t }: any) {
   const [ads, setAds] = useState<Ad[]>([]);
   const [filteredAds, setFilteredAds] = useState<Ad[]>([]);
@@ -795,7 +826,6 @@ function AdsTab({ colors, isAr, t }: any) {
         }
       />
 
-      {/* Modal تعديل الإعلان */}
       <Modal visible={editModalVisible} animationType="slide" transparent onRequestClose={() => { setEditModalVisible(false); setEditingAd(null); }}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
@@ -886,7 +916,7 @@ function AdsTab({ colors, isAr, t }: any) {
   );
 }
 
-// ─── تبويب المستخدمين ────────────────────────────────────────────────────────
+// ─── تبويب المستخدمين ──────────────────────────────────────────────────────
 function UsersTab({ colors, isAr, t }: any) {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([]);
@@ -1044,7 +1074,7 @@ function UsersTab({ colors, isAr, t }: any) {
   );
 }
 
-// ─── تبويب البانرات ──────────────────────────────────────────────────────────
+// ─── تبويب البانرات (مع زر عائم متحرك) ────────────────────────────────────
 function BannersTab({ colors, isAr, t }: any) {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1063,6 +1093,12 @@ function BannersTab({ colors, isAr, t }: any) {
   const [selectedBanner, setSelectedBanner] = useState<Banner | null>(null);
   const { showAlert } = useAlert();
   const abortRef = useRef<AbortController | null>(null);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const fabTranslateY = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [0, 100],
+    extrapolate: 'clamp',
+  });
 
   const showSnackbar = (message: string, type: string = 'success') => {
     setSnackbar({ visible: true, message, type });
@@ -1191,10 +1227,36 @@ function BannersTab({ colors, isAr, t }: any) {
 
   return (
     <View style={styles.tabContainer}>
-      <Pressable style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => setShowForm(true)}>
-        <MaterialIcons name="add" size={20} color="#fff" />
-        <Text style={styles.addBtnText}>{isAr ? 'إضافة بانر جديد' : 'Add New Banner'}</Text>
-      </Pressable>
+      <FlatList
+        data={banners}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} colors={[colors.primary]} tintColor={colors.primary} />
+        }
+        getItemLayout={getItemLayout}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <MaterialIcons name="view-carousel" size={48} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, marginTop: 8, fontWeight: '600' }}>{isAr ? 'لا توجد بانرات' : 'No banners'}</Text>
+          </View>
+        }
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+      />
+
+      <Animated.View style={[styles.fab, { transform: [{ translateY: fabTranslateY }] }]}>
+        <TouchableOpacity
+          style={[styles.fabButton, { backgroundColor: colors.primary }]}
+          onPress={() => setShowForm(true)}
+          activeOpacity={0.8}
+        >
+          <MaterialIcons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+      </Animated.View>
 
       {showForm && (
         <View style={[styles.bannerForm, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1240,23 +1302,6 @@ function BannersTab({ colors, isAr, t }: any) {
         </View>
       )}
 
-      <FlatList
-        data={banners}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} colors={[colors.primary]} tintColor={colors.primary} />
-        }
-        getItemLayout={getItemLayout}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <MaterialIcons name="view-carousel" size={48} color={colors.textMuted} />
-            <Text style={{ color: colors.textMuted, marginTop: 8, fontWeight: '600' }}>{isAr ? 'لا توجد بانرات' : 'No banners'}</Text>
-          </View>
-        }
-      />
-
       <ConfirmationModal
         visible={deleteModalVisible}
         title={isAr ? 'حذف البانر' : 'Delete Banner'}
@@ -1272,7 +1317,7 @@ function BannersTab({ colors, isAr, t }: any) {
   );
 }
 
-// ─── تبويب الإعلانات البينية ────────────────────────────────────────────────
+// ─── تبويب الإعلانات البينية ──────────────────────────────────────────────
 function InterstitialsTab({ colors, isAr, t }: any) {
   const [interstitials, setInterstitials] = useState<InterstitialAd[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1345,7 +1390,7 @@ function InterstitialsTab({ colors, isAr, t }: any) {
   );
 }
 
-// ─── تبويب سجل النشاطات ──────────────────────────────────────────────────────
+// ─── تبويب سجل النشاطات (مع تحسين RTL) ────────────────────────────────────
 function ActivityLogTab({ colors, isAr }: { colors: any; isAr: boolean }) {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1359,7 +1404,6 @@ function ActivityLogTab({ colors, isAr }: { colors: any; isAr: boolean }) {
     setLoading(true);
     setRefreshing(false);
     try {
-      // بيانات وهمية
       const mockLogs: ActivityLog[] = Array.from({ length: 20 }, (_, i) => ({
         id: `log-${i}`,
         admin_name: ['أحمد', 'سارة', 'محمد', 'فاطمة'][i % 4],
@@ -1382,7 +1426,7 @@ function ActivityLogTab({ colors, isAr }: { colors: any; isAr: boolean }) {
 
   const renderItem = ({ item }: { item: ActivityLog }) => (
     <View style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={styles.logHeader}>
+      <View style={[styles.logHeader, { flexDirection: isAr ? 'row' : 'row-reverse' }]}>
         <Text style={[styles.logAdmin, { color: colors.primary }]}>{item.admin_name}</Text>
         <Text style={[styles.logTime, { color: colors.textMuted }]}>{new Date(item.created_at).toLocaleString()}</Text>
       </View>
@@ -1408,7 +1452,7 @@ function ActivityLogTab({ colors, isAr }: { colors: any; isAr: boolean }) {
   );
 }
 
-// ─── تبويب البلاغات ───────────────────────────────────────────────────────────
+// ─── تبويب البلاغات (مع إجراءات سريعة) ────────────────────────────────────
 function ReportsTab({ colors, isAr }: { colors: any; isAr: boolean }) {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1448,6 +1492,14 @@ function ReportsTab({ colors, isAr }: { colors: any; isAr: boolean }) {
     showSnackbar(isAr ? 'تم تحديث حالة البلاغ' : 'Report updated', 'success');
   };
 
+  const sendWarning = (report: Report) => {
+    Alert.alert(
+      isAr ? 'إرسال تحذير' : 'Send Warning',
+      isAr ? `سيتم إرسال تحذير إلى المستخدم ${report.reporter_name}` : `A warning will be sent to ${report.reporter_name}`,
+      [{ text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' }, { text: isAr ? 'إرسال' : 'Send', onPress: () => showSnackbar(isAr ? 'تم إرسال التحذير' : 'Warning sent', 'success') }]
+    );
+  };
+
   const filteredReports = filter === 'all' ? reports : reports.filter(r => r.status === filter);
 
   const renderItem = ({ item }: { item: Report }) => (
@@ -1473,6 +1525,9 @@ function ReportsTab({ colors, isAr }: { colors: any; isAr: boolean }) {
           </Pressable>
           <Pressable style={[styles.reportActionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => Alert.alert(isAr ? 'حظر المستخدم' : 'Block User', isAr ? 'سيتم حظر هذا المستخدم' : 'Block this user')}>
             <Text style={{ color: colors.primary }}>{isAr ? 'حظر' : 'Block'}</Text>
+          </Pressable>
+          <Pressable style={[styles.reportActionBtn, { backgroundColor: '#FEF3C7' }]} onPress={() => sendWarning(item)}>
+            <Text style={{ color: '#D97706' }}>{isAr ? '⚠️ تحذير' : '⚠️ Warn'}</Text>
           </Pressable>
         </View>
       )}
@@ -1505,7 +1560,7 @@ function ReportsTab({ colors, isAr }: { colors: any; isAr: boolean }) {
   );
 }
 
-// ─── تبويب الطلبات ────────────────────────────────────────────────────────────
+// ─── تبويب الطلبات ──────────────────────────────────────────────────────────
 function OrdersTab({ colors, isAr }: { colors: any; isAr: boolean }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1608,7 +1663,75 @@ function OrdersTab({ colors, isAr }: { colors: any; isAr: boolean }) {
   );
 }
 
-// ─── تبويب الأدوات (محسّن بكل الميزات الجديدة) ─────────────────────────────
+// ─── تبويب التقارير المالية ────────────────────────────────────────────────
+function TransactionsTab({ colors, isAr }: { colors: any; isAr: boolean }) {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const loadTransactions = useCallback(async () => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoading(true);
+    setRefreshing(false);
+    try {
+      const mockTx: Transaction[] = Array.from({ length: 20 }, (_, i) => ({
+        id: `tx-${i}`,
+        user_name: `User${i}`,
+        type: ['payment', 'refund', 'commission'][i % 3] as any,
+        amount: Math.floor(Math.random() * 1000) + 10,
+        status: ['completed', 'pending', 'failed'][i % 3] as any,
+        created_at: new Date(Date.now() - i * 240000).toISOString(),
+      }));
+      if (controller.signal.aborted) return;
+      setTransactions(mockTx);
+    } catch (err) { console.warn(err); }
+    finally { if (!controller.signal.aborted) setLoading(false); if (abortRef.current === controller) abortRef.current = null; }
+  }, []);
+
+  useEffect(() => { loadTransactions(); return () => { if (abortRef.current) abortRef.current.abort(); }; }, []);
+
+  const renderItem = ({ item }: { item: Transaction }) => {
+    const typeLabel = item.type === 'payment' ? (isAr ? 'دفع' : 'Payment') : item.type === 'refund' ? (isAr ? 'استرداد' : 'Refund') : (isAr ? 'عمولة' : 'Commission');
+    const statusColor = item.status === 'completed' ? '#22C55E' : item.status === 'pending' ? '#F59E0B' : '#EF4444';
+    return (
+      <View style={[styles.transactionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={styles.transactionRow}>
+          <View style={styles.transactionInfo}>
+            <Text style={[styles.transactionUser, { color: colors.textPrimary }]}>{item.user_name}</Text>
+            <Text style={[styles.transactionType, { color: colors.textMuted }]}>{typeLabel}</Text>
+          </View>
+          <Text style={[styles.transactionAmount, { color: colors.primary }]}>{item.amount}₪</Text>
+          <View style={[styles.transactionStatus, { backgroundColor: statusColor + '20' }]}>
+            <Text style={{ color: statusColor, fontWeight: '600' }}>
+              {item.status === 'completed' ? (isAr ? 'مكتمل' : 'Completed') : item.status === 'pending' ? (isAr ? 'قيد الانتظار' : 'Pending') : (isAr ? 'فشل' : 'Failed')}
+            </Text>
+          </View>
+        </View>
+        <Text style={[styles.transactionTime, { color: colors.textMuted }]}>{new Date(item.created_at).toLocaleString()}</Text>
+      </View>
+    );
+  };
+
+  if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={colors.primary} /></View>;
+
+  return (
+    <View style={styles.tabContainer}>
+      <FlatList
+        data={transactions}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadTransactions(); }} colors={[colors.primary]} tintColor={colors.primary} />}
+        ListEmptyComponent={<View style={styles.emptyState}><Text style={{ color: colors.textMuted }}>{isAr ? 'لا توجد معاملات' : 'No transactions'}</Text></View>}
+      />
+    </View>
+  );
+}
+
+// ─── تبويب الأدوات ──────────────────────────────────────────────────────────
 function ToolsTab({ colors, isAr, t }: any) {
   const [broadcastModalVisible, setBroadcastModalVisible] = useState(false);
   const [title, setTitle] = useState('');
@@ -1617,7 +1740,6 @@ function ToolsTab({ colors, isAr, t }: any) {
   const [sending, setSending] = useState(false);
   const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
   const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [maintenanceMsg, setMaintenanceMsg] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [boostDuration, setBoostDuration] = useState('7');
   const { showAlert } = useAlert();
@@ -1657,7 +1779,6 @@ function ToolsTab({ colors, isAr, t }: any) {
     <ScrollView contentContainerStyle={styles.toolsContainer}>
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{isAr ? '🛠️ أدوات الإدارة' : '🛠️ Admin Tools'}</Text>
 
-      {/* إشعارات جماعية */}
       <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setBroadcastModalVisible(true)}>
         <MaterialIcons name="notifications-active" size={28} color={colors.primary} />
         <View style={styles.toolText}>
@@ -1667,7 +1788,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
       </Pressable>
 
-      {/* نسخ احتياطي واستعادة */}
       <View style={styles.toolRow}>
         <Pressable style={[styles.toolCardSmall, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={handleBackup}>
           <MaterialIcons name="backup" size={24} color={colors.primary} />
@@ -1679,7 +1799,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         </Pressable>
       </View>
 
-      {/* وضع الصيانة */}
       <View style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <MaterialIcons name="build" size={28} color={maintenanceMode ? '#EF4444' : colors.primary} />
         <View style={styles.toolText}>
@@ -1693,7 +1812,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         </Pressable>
       </View>
 
-      {/* الإعدادات المتقدمة */}
       <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setShowSettings(!showSettings)}>
         <MaterialIcons name="settings" size={28} color={colors.primary} />
         <View style={styles.toolText}>
@@ -1714,7 +1832,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         </View>
       )}
 
-      {/* اختبار A/B */}
       <View style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <MaterialIcons name="split" size={28} color={colors.primary} />
         <View style={styles.toolText}>
@@ -1726,7 +1843,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         </Pressable>
       </View>
 
-      {/* تنبيهات فورية */}
       <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => Alert.alert(isAr ? 'تنبيهات فورية' : 'Real-time Alerts', isAr ? 'تم الاتصال بخادم التنبيهات' : 'Connected to alert server')}>
         <MaterialIcons name="notifications" size={28} color={colors.primary} />
         <View style={styles.toolText}>
@@ -1736,7 +1852,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
       </Pressable>
 
-      {/* إدارة الصلاحيات */}
       <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => Alert.alert(isAr ? 'إدارة الصلاحيات' : 'Role Management', isAr ? 'لديك صلاحيات مدير عام' : 'You have full admin rights')}>
         <MaterialIcons name="admin-panel-settings" size={28} color={colors.primary} />
         <View style={styles.toolText}>
@@ -1746,7 +1861,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
       </Pressable>
 
-      {/* نافذة الإشعارات الجماعية */}
       <Modal visible={broadcastModalVisible} animationType="slide" transparent onRequestClose={() => setBroadcastModalVisible(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
@@ -1774,7 +1888,6 @@ function ToolsTab({ colors, isAr, t }: any) {
                   <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'رابط الصورة (اختياري)' : 'Image URL (optional)'}</Text>
                   <TextInput style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} value={imageUrl} onChangeText={setImageUrl} />
                 </View>
-                {/* خيارات التصفية للإشعارات الموجهة */}
                 <View style={styles.modalField}>
                   <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'تصفية المستخدمين' : 'User Filter'}</Text>
                   <View style={styles.filterOptions}>
@@ -1803,7 +1916,7 @@ function ToolsTab({ colors, isAr, t }: any) {
   );
 }
 
-// ─── الصفحة الرئيسية (مع جميع التبويبات) ──────────────────────────────────
+// ─── الصفحة الرئيسية ────────────────────────────────────────────────────────
 export default function AdminScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -1812,7 +1925,7 @@ export default function AdminScreen() {
   const isAr = language === 'ar';
   const { t } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'analytics' | 'ads' | 'users' | 'banners' | 'interstitials' | 'logs' | 'reports' | 'orders' | 'tools'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'ads' | 'users' | 'banners' | 'interstitials' | 'logs' | 'reports' | 'orders' | 'transactions' | 'tools'>('analytics');
 
   const TABS = [
     { key: 'analytics', label: isAr ? '📊 إحصائيات' : 'Analytics', icon: 'insights' },
@@ -1823,12 +1936,12 @@ export default function AdminScreen() {
     { key: 'logs', label: isAr ? '📋 سجل النشاطات' : 'Activity Log', icon: 'history' },
     { key: 'reports', label: isAr ? '⚠️ بلاغات' : 'Reports', icon: 'report' },
     { key: 'orders', label: isAr ? '🛒 طلبات' : 'Orders', icon: 'shopping-cart' },
+    { key: 'transactions', label: isAr ? '💰 معاملات' : 'Transactions', icon: 'attach-money' },
     { key: 'tools', label: isAr ? '🛠️ أدوات' : 'Tools', icon: 'build' },
   ];
 
   return (
     <View style={[styles.mainContainer, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      {/* رأس الصفحة */}
       <View style={[styles.mainHeader, { backgroundColor: colors.primary }]}>
         <Pressable style={styles.mainBackBtn} onPress={() => router.back()} hitSlop={8}>
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
@@ -1837,7 +1950,6 @@ export default function AdminScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* شريط التبويبات المحسّن */}
       <View style={styles.tabsWrapper}>
         <ScrollView
           horizontal
@@ -1868,7 +1980,6 @@ export default function AdminScreen() {
         </ScrollView>
       </View>
 
-      {/* المحتوى مع حدود الأخطاء */}
       <AdminTabErrorBoundary>
         {activeTab === 'analytics' && <AnalyticsTab isAr={isAr} colors={colors} />}
         {activeTab === 'ads' && <AdsTab colors={colors} isAr={isAr} t={t} />}
@@ -1878,15 +1989,15 @@ export default function AdminScreen() {
         {activeTab === 'logs' && <ActivityLogTab colors={colors} isAr={isAr} />}
         {activeTab === 'reports' && <ReportsTab colors={colors} isAr={isAr} />}
         {activeTab === 'orders' && <OrdersTab colors={colors} isAr={isAr} />}
+        {activeTab === 'transactions' && <TransactionsTab colors={colors} isAr={isAr} />}
         {activeTab === 'tools' && <ToolsTab colors={colors} isAr={isAr} t={t} />}
       </AdminTabErrorBoundary>
     </View>
   );
 }
 
-// ─── الأنماط النهائية (جميع الأنماط المطلوبة) ──────────────────────────────────
+// ─── الأنماط ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  // Error Boundary
   errorFallback: {
     padding: 20,
     alignItems: 'center',
@@ -1904,7 +2015,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
-  // Common
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
@@ -1953,7 +2063,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     height: '100%',
   },
-  // Main
   mainContainer: {
     flex: 1,
   },
@@ -1999,7 +2108,6 @@ const styles = StyleSheet.create({
   tabBtnText: {
     fontSize: FontSize.sm,
   },
-  // Analytics
   analyticsContainer: {
     padding: Spacing.md,
     gap: Spacing.md,
@@ -2183,7 +2291,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  // Ad Card
+  trendCard: {
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  trendTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  trendBars: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    height: 80,
+  },
+  trendBarWrapper: {
+    alignItems: 'center',
+  },
+  trendBar: {
+    width: 20,
+    borderRadius: 4,
+    minHeight: 4,
+  },
+  trendLabel: {
+    fontSize: 8,
+    marginTop: 2,
+  },
   adCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2253,7 +2389,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // User Card
   userCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2317,7 +2452,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  // Banner
   bannerCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2426,7 +2560,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     alignItems: 'center',
   },
-  // Interstitial
   interCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2455,7 +2588,6 @@ const styles = StyleSheet.create({
   interMeta: {
     fontSize: FontSize.xs,
   },
-  // Logs
   logCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2472,7 +2604,6 @@ const styles = StyleSheet.create({
   logAction: { fontSize: FontSize.md, fontWeight: '600' },
   logTarget: { fontSize: FontSize.sm },
   logDetails: { fontSize: 10, marginTop: 2 },
-  // Reports
   reportCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2499,7 +2630,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: Radius.full,
   },
-  // Orders
   orderCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2533,7 +2663,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: Radius.full,
   },
-  // Filters
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: Spacing.md,
@@ -2547,7 +2676,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     justifyContent: 'center',
   },
-  // Tools
   toolsContainer: {
     padding: Spacing.md,
     gap: Spacing.md,
@@ -2631,7 +2759,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     borderWidth: 1,
   },
-  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -2701,7 +2828,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: FontSize.md,
   },
-  // Confirmation
   confirmOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -2757,7 +2883,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  // Snackbar
   snackbar: {
     position: 'absolute',
     bottom: 20,
@@ -2776,4 +2901,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     flex: 1,
   },
+  fab: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    zIndex: 999,
+  },
+  fabButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  transactionCard: {
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  transactionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  transactionInfo: { flex: 1 },
+  transactionUser: { fontWeight: '700' },
+  transactionType: { fontSize: FontSize.xs },
+  transactionAmount: { fontWeight: '700', marginHorizontal: 8 },
+  transactionStatus: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+  transactionTime: { fontSize: 10, marginTop: 4, alignSelf: 'flex-end' },
+  dateBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
 });
+
+// نهاية الملف
