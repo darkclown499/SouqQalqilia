@@ -1130,34 +1130,7 @@ export default function ProfileScreen() {
               <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <SectionHeader icon="manage-accounts" label={isRTL ? 'الحساب' : 'Account'} color={colors.error} bg={colors.errorLight} />
 
-                {/* ✅ زر الإدارة هنا (يظهر فقط للمديرين) */}
-                {isAdmin && (
-  <SettingRow
-    icon="admin-panel-settings"
-    iconBg="#FEF3C7"
-    iconColor="#D97706"
-    label={isRTL ? 'لوحة الإدارة' : 'Admin Panel'}
-    sub={isRTL ? 'إدارة التطبيق والمستخدمين' : 'Manage app and users'}
-    isRTL={isRTL}
-    colors={colors}
-    onPress={() => {
-      try {
-        // ✅ استخدام replace بدلاً من push لتجنب تكدس التنقل
-        // ✅ تأخير بسيط لمنع التعارض
-        setTimeout(() => {
-          router.replace('/admin');
-        }, 100);
-      } catch (err) {
-        console.error('Admin navigation error:', err);
-        showAlert(
-          isRTL ? 'خطأ' : 'Error',
-          isRTL ? 'تعذر فتح لوحة الإدارة، حاول مرة أخرى.' : 'Could not open admin panel, please try again.'
-        );
-      }
-    }}
-    borderBottom={false}
-  />
-)}
+              
 
                 <SettingRow
                   icon="privacy-tip"
