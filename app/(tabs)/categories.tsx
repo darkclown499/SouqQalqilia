@@ -16,26 +16,31 @@ export default function CategoriesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { t, language } = useLanguage();
-  const { categories, loading, error } = useCategories(); // ✅ إضافة error
+  const { categories, loading, error } = useCategories();
   const { numColumns, hPad } = useResponsive();
 
-  // ✅ منع النقر المتكرر
+  // منع النقر المتكرر
   const isNavigating = useRef(false);
 
   const handlePress = useCallback(
     (cat: any) => {
       if (isNavigating.current) return;
       isNavigating.current = true;
+
       const localizedName = getCategoryName(cat, language);
-      router
-        .push(
-          `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(
-            localizedName
-          )}`
-        )
-        .finally(() => {
+      const result = router.push(
+        `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(localizedName)}`
+      );
+
+      // ✅ إصلاح الخطأ: التأكد من أن `result` هو Promise قبل استدعاء `.finally()`
+      if (result && typeof result.then === 'function') {
+        (result as Promise<any>).finally(() => {
           isNavigating.current = false;
         });
+      } else {
+        // في حالة لم تكن Promise (مثلاً في الويب أو إصدارات قديمة) نعيد تعيين العلامة فوراً
+        isNavigating.current = false;
+      }
     },
     [language, router]
   );
@@ -49,7 +54,7 @@ export default function CategoriesScreen() {
     [handlePress]
   );
 
-  // ✅ عرض خطأ إذا فشل التحميل
+  // عرض خطأ إذا فشل التحميل
   if (error) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -87,7 +92,7 @@ export default function CategoriesScreen() {
           data={categories}
           keyExtractor={(item) => item.id}
           numColumns={numColumns}
-          key={numColumns} /* يحافظ على إعادة التصيير عند تغير الأعمدة */
+          key={numColumns}
           renderItem={renderItem}
           contentContainerStyle={[
             styles.grid,
@@ -147,7 +152,6 @@ const styles = StyleSheet.create({
   },
   cardWrapper: {
     flex: 1,
-    // ✅ إزالة padding: 4 والاكتفاء بـ gap في grid
   },
   errorContainer: {
     flex: 1,
