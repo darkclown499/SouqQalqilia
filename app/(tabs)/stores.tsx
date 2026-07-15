@@ -2,7 +2,7 @@ import React, {
   useEffect, useState, useCallback, useRef, useMemo,
 } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, Dimensions,
+  View, Text, StyleSheet, ScrollView, Pressable, Dimensions, FlatList,
   ActivityIndicator, Modal, TextInput, Platform, NativeScrollEvent,
   NativeSyntheticEvent, Image as RNImage, Linking
 } from 'react-native';
@@ -16,7 +16,7 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth, getSupabaseClient } from '@/template';
 import {
   fetchAllActiveStores, fetchAllStoreRatings,
-  checkStoreIsOpen, Store, fetchFeaturedStores,  // ← أضف fetchFeaturedStores
+  checkStoreIsOpen, Store, fetchFeaturedStores,
 } from '@/services/storesService';
 import {
   fetchStoreCategories,
@@ -24,18 +24,6 @@ import {
 } from '@/services/storeCategoriesService';
 import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
 import { FontSize, Radius, Spacing } from '@/constants/theme';
-
-// ── Get featured stores (from service or fallback to top-rated) ────────────
-async function getFeaturedStores(): Promise<Store[]> {
-  try {
-    // حاول جلب المتاجر المميزة من الخدمة
-    const { data } = await fetchFeaturedStores();
-    if (data && data.length > 0) return data;
-  } catch (_) {}
-  
-  // إذا لم توجد متاجر مميزة، ارجع قائمة فارغة (سيتم التعامل معها لاحقاً)
-  return [];
-}
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
 function shuffleArray<T>(array: T[]): T[] {
@@ -51,7 +39,6 @@ function shuffleArray<T>(array: T[]): T[] {
 const { width: SCREEN_W } = Dimensions.get('window');
 const CARD_GAP = 12;
 const SIDE_PAD = 16;
-const STORE_CARD_W = Math.max(1, Math.floor((SCREEN_W - SIDE_PAD * 2 - CARD_GAP) / 2));
 
 // ── Module-level fallback category ────────────────────────────────────────────
 const FALLBACK_CAT: StoreCategory = {
@@ -70,9 +57,9 @@ function isNameInvalid(name: string): boolean {
 const get3DIconUrl = (name: string) => {
   const base = 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/';
   switch (name) {
-    case 'الكل': return base + 'Star/3D/star_3d.png'; // استخدمنا أيقونة النجمة المضمونة
+    case 'الكل': return base + 'Star/3D/star_3d.png';
     case 'العروض': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif';
-    case 'زينة وهدايا': return base + 'Party%20popper/3D/party_popper_3d.png'; // أيقونة المفرقعات المضمونة
+    case 'زينة وهدايا': return base + 'Party%20popper/3D/party_popper_3d.png';
     case 'ألعاب وترفيه': return base + 'Video%20game/3D/video_game_3d.png';
     case 'مأكولات وحلويات': return base + 'Hamburger/3D/hamburger_3d.png';
     case 'إلكترونيات': return base + 'Mobile%20phone/3D/mobile_phone_3d.png';
@@ -85,6 +72,8 @@ const get3DIconUrl = (name: string) => {
     case 'أثاث': return base + 'Couch%20and%20lamp/3D/couch_and_lamp_3d.png';
     case 'رياضة': return base + 'Soccer%20ball/3D/soccer_ball_3d.png';
     case 'عقارات': return base + 'House/3D/house_3d.png';
+    case 'خضروات وفواكه': return base + 'Apple/3D/apple_3d.png';
+    case 'مستحضرات تجميل': return base + 'Lipstick/3D/lipstick_3d.png';
     default: return base + 'Convenience%20store/3D/convenience_store_3d.png';
   }
 };
@@ -159,11 +148,10 @@ function BannerCarousel({ banners, isRTL }: { banners: Banner[]; isRTL: boolean 
     </View>
   );
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. QUICK STORE CATEGORY CARD
 // ─────────────────────────────────────────────────────────────────────────────
-
-
 function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
   const nameAr = cat.name_ar || cat.name;
   const targetImageUrl = cat.image_url || get3DIconUrl(nameAr);
@@ -173,9 +161,8 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
     <Pressable style={qc.card} onPress={onPress}>
       <View style={[
         qc.iconBg,
-        isSelected && { borderColor: activeColor } // خلينا الخلفية بيضاء صلبة زي ما هي
+        isSelected && { borderColor: activeColor }
       ]}>
-        {/* الطبقة الشفافة اللي بتلون المربع بدون ما تخرب الأندرويد */}
         {isSelected && (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: activeColor, opacity: 0.12, borderRadius: 14 }]} />
         )}
@@ -189,12 +176,13 @@ function QuickStoreCatCard({ cat, isAr, isSelected, onPress }: any) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2.5 VIP STORE CARD (فخم)
+// 2.5 VIP STORE CARD (فخم) - ✅ الخلفية = الوجو (الشعار)
 // ─────────────────────────────────────────────────────────────────────────────
 function VIPStoreCard({ store, rating, isAr, onPress }: any) {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
-  const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
+  // ✅ الخلفية = الوجو (الشعار) فقط
+  const backgroundImage = store.logo_url;
 
   return (
     <Pressable 
@@ -208,21 +196,26 @@ function VIPStoreCard({ store, rating, isAr, onPress }: any) {
         style={vip.goldBorder}
       >
         <View style={vip.inner}>
-          <Image source={{ uri: bannerImage }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          {/* ✅ الخلفية: صورة الوجو */}
+          <Image 
+            source={{ uri: backgroundImage }} 
+            style={StyleSheet.absoluteFill} 
+            contentFit="cover"
+          />
+          {/* التدرج الشفاف لتحسين رؤية النص */}
           <LinearGradient
             colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.85)']}
             locations={[0, 0.5, 1]}
             style={StyleSheet.absoluteFill}
           />
           
-          {/* شارة VIP */}
           <View style={vip.vipBadge}>
             <MaterialIcons name="stars" size={12} color="#FFD700" />
             <Text style={vip.vipBadgeText}>VIP</Text>
           </View>
 
-          {/* المحتوى */}
           <View style={vip.content}>
+            {/* ✅ الوجو الأكبر حجماً */}
             <View style={vip.logoWrap}>
               <Image source={{ uri: store.logo_url }} style={vip.logo} contentFit="cover" />
             </View>
@@ -250,15 +243,58 @@ function VIPStoreCard({ store, rating, isAr, onPress }: any) {
   );
 }
 
-// ── VIP Stores Strip ──────────────────────────────────────────────────────
+// ── VIP Stores Strip with INFINITE Auto-Scroll ──────────────────────────
+// ✅ تم إزالة أحداث اللمس، واستخدام بيانات مكررة، وتمرير مستمر
 function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
-  const [shuffledStores, setShuffledStores] = useState<Store[]>([]);
-  
-  useEffect(() => {
-    setShuffledStores(shuffleArray(stores));
+  const flatListRef = useRef<FlatList>(null);
+  const scrollX = useRef(0);
+  const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const CARD_WIDTH = 214;
+
+  // ✅ 1. تكرار البيانات (3 نسخ) لتبدو لا نهائية
+  const repeatedStores = useMemo(() => {
+    if (stores.length === 0) return [];
+    return [...stores, ...stores, ...stores];
   }, [stores]);
 
-  if (shuffledStores.length === 0) return null;
+  // ✅ 2. التمرير التلقائي المستمر (بدون توقف عند اللمس)
+  useEffect(() => {
+    if (repeatedStores.length === 0) return;
+
+    const startAutoScroll = () => {
+      if (autoScrollTimer.current) clearInterval(autoScrollTimer.current);
+      autoScrollTimer.current = setInterval(() => {
+        if (repeatedStores.length === 0) return;
+
+        let nextOffset = scrollX.current + CARD_WIDTH;
+        const maxOffset = (repeatedStores.length - 1) * CARD_WIDTH;
+
+        // إذا وصلنا للنهاية، نعود للبداية بدون حركة مفاجئة
+        if (nextOffset > maxOffset) {
+          nextOffset = 0;
+          flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+        }
+
+        scrollX.current = nextOffset;
+        flatListRef.current?.scrollToOffset({
+          offset: nextOffset,
+          animated: true,
+        });
+      }, 2000); // كل 2 ثانية
+    };
+
+    startAutoScroll();
+    return () => {
+      if (autoScrollTimer.current) clearInterval(autoScrollTimer.current);
+    };
+  }, [repeatedStores]);
+
+  // ✅ 3. تتبع موضع التمرير
+  const handleScroll = (event: any) => {
+    scrollX.current = event.nativeEvent.contentOffset.x;
+  };
+
+  if (stores.length === 0) return null;
 
   return (
     <View style={vip.stripWrap}>
@@ -269,29 +305,35 @@ function VIPStoresStrip({ stores, ratings, isAr, isRTL, onStorePress }: any) {
         </Text>
         <View style={vip.headerLine} />
       </View>
-      
-      <ScrollView
+
+      <FlatList
+        ref={flatListRef}
         horizontal
+        data={repeatedStores}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
+        renderItem={({ item }) => (
+          <VIPStoreCard
+            store={item}
+            rating={ratings[item.id] ?? { avg: 0 }}
+            isAr={isAr}
+            onPress={() => onStorePress(item.id)}
+          />
+        )}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[vip.scrollContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-      >
-        {shuffledStores.map((store) => (
-          <VIPStoreCard
-            key={store.id}
-            store={store}
-            rating={ratings[store.id] ?? { avg: 0 }}
-            isAr={isAr}
-            onPress={() => onStorePress(store.id)}
-          />
-        ))}
-      </ScrollView>
+        snapToInterval={CARD_WIDTH}
+        decelerationRate="fast"
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        // ✅ تم حذف: onTouchStart, onTouchEnd, onScrollBeginDrag, onScrollEndDrag
+      />
     </View>
   );
 }
 
 // ── VIP Styles ──────────────────────────────────────────────────────────────
 const vip = StyleSheet.create({
-  stripWrap: { marginBottom: 24, marginTop: 4 },
+  stripWrap: { marginBottom: 32, marginTop: 4 },
   headerRow: { alignItems: 'center', gap: 8, paddingHorizontal: 16, marginBottom: 14 },
   headerAccent: { width: 4, height: 24, borderRadius: 2 },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#1A1A1A', letterSpacing: -0.3 },
@@ -311,22 +353,31 @@ const vip = StyleSheet.create({
   vipBadgeText: { color: '#FFD700', fontSize: 10, fontWeight: '800' },
   content: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 14, zIndex: 2 },
   logoWrap: {
-    width: 70, height: 70, borderRadius: 35,
+    width: 85,
+    height: 85,
+    borderRadius: 42.5,
     backgroundColor: '#fff',
     overflow: 'hidden',
-    borderWidth: 2, borderColor: '#FFD700',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
+    borderWidth: 2,
+    borderColor: '#FFD700',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
     marginBottom: 8,
   },
-  logo: { width: '100%', height: '100%' },
+  logo: {
+    width: '100%',
+    height: '100%',
+  },
   name: { color: '#fff', fontSize: 15, fontWeight: '800', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   address: { color: 'rgba(255,255,255,0.7)', fontSize: 11, textAlign: 'center', marginTop: 2 },
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 10, fontWeight: '700' },
-  ratingWrap: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+  ratingWrap: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
   ratingText: { color: '#FFD700', fontSize: 11, fontWeight: '700' },
 });
 
@@ -363,56 +414,75 @@ function PremiumStoreCard({ store, rating, isAr, onPress }: any) {
   );
 }
 
+const psc = StyleSheet.create({
+  card: {
+    width: 170, backgroundColor: '#FFFFFF', borderRadius: 16,
+    marginRight: 12, marginLeft: 4, marginBottom: 8, overflow: 'hidden',
+    borderWidth: 1, borderColor: '#F3F4F6',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
+  },
+  imageWrap: { height: 110, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  logoImg: { width: '100%', height: '100%' },
+  infoWrap: { padding: 12 },
+  name: { fontSize: 14, fontWeight: '800', color: '#1A1A1A', textAlign: 'center', marginBottom: 4 },
+  address: { fontSize: 11, color: '#9CA3AF', textAlign: 'center', marginBottom: 12 },
+  bottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10 },
+  statusText: { fontSize: 11, fontWeight: '800' },
+  timeText: { color: '#9CA3AF', fontWeight: '500' },
+  ratingWrap: { flexDirection: 'row', alignItems: 'center' },
+  ratingScore: { fontSize: 12, fontWeight: '800', color: '#1A1A1A' },
+  ratingCount: { fontSize: 11, color: '#9CA3AF' },
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. CATEGORY BLOCK
+// 4. CATEGORY BLOCK - ✅ عرض أول 4 متاجر بدون ترتيب VIP
 // ─────────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-// 4. CATEGORY BLOCK (أفقي مع 4 متاجر)
-// ─────────────────────────────────────────────────────────────────────────────
-function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, featuredIds }: any) {
+function CategoryBlock({ cat, stores, ratings, isAr, isRTL, onStorePress, colors }: any) {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
   const [showAll, setShowAll] = useState(false);
-  const displayStores = showAll ? stores : stores.slice(0, 4);
   const hasMore = stores.length > 4;
+  const router = useRouter();
 
-  // ترتيب المتاجر بحيث المميزة أولاً
-  const sortedStores = useMemo(() => {
-    const featured = stores.filter((s: any) => featuredIds.has(s.id));
-    const others = stores.filter((s: any) => !featuredIds.has(s.id));
-    return [...featured, ...others];
-  }, [stores, featuredIds]);
+  // ✅ عرض أول 4 متاجر مباشرة (بدون ترتيب VIP)
+  const displayStores = useMemo(() => {
+    return showAll ? stores : stores.slice(0, 4);
+  }, [stores, showAll]);
 
-  const finalStores = showAll ? sortedStores : sortedStores.slice(0, 4);
+  const handleViewAll = () => {
+    const slug = cat.slug || cat.id;
+    router.push(`/category/${slug}` as any);
+  };
 
   return (
     <View style={s.categoryContainer}>
       <View style={[s.catHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{catName}</Text>
+        <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+          {catName}
+        </Text>
         {hasMore && (
-          <Pressable onPress={() => setShowAll(!showAll)} hitSlop={6}>
-            <Text style={[s.catMoreText, { color: '#B91C1C' }]}>
-              {showAll ? (isAr ? 'عرض أقل' : 'Show Less') : (isAr ? 'عرض المزيد' : 'View More')}
+          <Pressable onPress={handleViewAll} hitSlop={6}>
+            <Text style={[s.catMoreText, { color: colors.primary }]}>
+              {isAr ? 'عرض الكل' : 'View All'}
             </Text>
           </Pressable>
         )}
       </View>
-      
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[s.catGridHorizontal, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-      >
-        {finalStores.map((store: any) => (
-          <StoreGridCard 
-            key={store.id} 
-            store={store} 
-            rating={ratings[store.id] ?? { avg: 0 }} 
-            isAr={isAr} 
-            isFeatured={featuredIds.has(store.id)}
-            onPress={() => onStorePress(store.id)} 
+
+      <FlatList
+        data={displayStores}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <StoreVerticalCard
+            store={item}
+            rating={ratings[item.id] ?? { avg: 0, count: 0 }}
+            isAr={isAr}
+            onPress={() => onStorePress(item.id)}
           />
-        ))}
-      </ScrollView>
+        )}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={false}
+        contentContainerStyle={{ paddingBottom: 4 }}
+      />
     </View>
   );
 }
@@ -450,32 +520,168 @@ function RegisterStoreCTA({ isAr, isRTL, onPress }: {
   );
 }
 
-function StoreGridCard({ store, rating, isAr, isFeatured, onPress }: any) {
+const cta = StyleSheet.create({
+  wrap: { marginHorizontal: 16, marginBottom: 20, borderRadius: 16, shadowColor: '#B91C1C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 3 },
+  gradient: { borderRadius: 16, overflow: 'hidden', padding: 16 },
+  deco1: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.06)', top: -40, right: -20 },
+  deco2: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -10, left: 30 },
+  content: { alignItems: 'center', gap: 12 },
+  iconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  textCol: { flex: 1, gap: 4 },
+  title: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
+  sub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
+});
+
+// ── VERTICAL STORE CARD ──
+function StoreVerticalCard({ store, rating, isAr, onPress }: any) {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
-  
+  const address = store.address || (isAr ? 'قلقيلية' : 'Qalqilya');
+
   return (
-    <Pressable style={[s.gridCard, isFeatured && s.gridCardFeatured]} onPress={onPress}>
-      {isFeatured && (
-        <View style={s.featuredBadge}>
-          <MaterialIcons name="stars" size={10} color="#FFD700" />
-          <Text style={s.featuredBadgeText}>VIP</Text>
-        </View>
-      )}
-      <View style={s.logoWrap}>
-        <Image source={{ uri: store.logo_url }} style={s.logoImg} contentFit="contain" />
+    <Pressable
+      style={({ pressed }) => [svc.card, { opacity: pressed ? 0.9 : 1 }]}
+      onPress={onPress}
+    >
+      <View style={svc.imageWrap}>
+        {store.banner_url || store.logo_url ? (
+          <Image
+            source={{ uri: store.banner_url || store.logo_url }}
+            style={svc.image}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <View style={svc.imagePlaceholder}>
+            <MaterialIcons name="storefront" size={32} color="#D1D5DB" />
+          </View>
+        )}
+        {store.is_featured && (
+          <View style={svc.vipBadge}>
+            <MaterialIcons name="stars" size={10} color="#FFD700" />
+            <Text style={svc.vipBadgeText}>VIP</Text>
+          </View>
+        )}
       </View>
-      <Text style={s.storeName} numberOfLines={1}>{name}</Text>
-      <Text style={s.storeAddress} numberOfLines={1}>{store.address || 'قلقيلية'}</Text>
-      <View style={s.footerRow}>
-        <Text style={{ fontSize: 12, color: isOpen ? '#059669' : '#EA580C', fontWeight: 'bold' }}>
-          {isOpen ? 'مفتوح' : 'مغلق'}
+
+      <View style={svc.infoWrap}>
+        <View style={svc.headerRow}>
+          <Text style={svc.name} numberOfLines={1}>{name}</Text>
+          <View style={[svc.statusBadge, { backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2' }]}>
+            <View style={[svc.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
+            <Text style={[svc.statusText, { color: isOpen ? '#16A34A' : '#DC2626' }]}>
+              {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={svc.address} numberOfLines={1}>
+          <MaterialIcons name="location-on" size={12} color="#9CA3AF" />
+          {address}
         </Text>
-        <Text style={s.ratingText}>★ {rating.avg.toFixed(1)}</Text>
+
+        <View style={svc.footerRow}>
+          <View style={svc.ratingWrap}>
+            <MaterialIcons name="star" size={14} color="#F59E0B" />
+            <Text style={svc.ratingText}>{rating?.avg?.toFixed(1) ?? '0.0'}</Text>
+            <Text style={svc.ratingCount}>({rating?.count ?? 0})</Text>
+          </View>
+          <Text style={svc.hours}>
+            <MaterialIcons name="access-time" size={12} color="#9CA3AF" />
+            {store.opening_time} - {store.closing_time}
+          </Text>
+        </View>
       </View>
     </Pressable>
   );
 }
+
+const svc = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    alignItems: 'center',
+  },
+  imageWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#F9FAFB',
+    marginRight: 12,
+    position: 'relative',
+  },
+  image: { width: '100%', height: '100%' },
+  imagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  vipBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  vipBadgeText: {
+    color: '#FFD700',
+    fontSize: 8,
+    fontWeight: '800',
+  },
+  infoWrap: { flex: 1, gap: 4 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  name: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
+    flex: 1,
+    marginRight: 8,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    flexShrink: 0,
+  },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, fontWeight: '700' },
+  address: { fontSize: 12, color: '#6B7280', lineHeight: 16 },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  ratingWrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  ratingText: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  ratingCount: { fontSize: 11, color: '#9CA3AF' },
+  hours: { fontSize: 11, color: '#9CA3AF' },
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN SCREEN
@@ -533,31 +739,31 @@ export default function StoresScreen() {
     }, [user?.id])
   );
 
- useEffect(() => {
-  const localBanners = [
-    { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
-    { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
-    { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
-    { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
-  ];
-  setBanners(shuffleArray(localBanners));
+  useEffect(() => {
+    const localBanners = [
+      { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
+      { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
+      { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
+      { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
+    ];
+    setBanners(shuffleArray(localBanners));
 
-  Promise.all([
-    fetchAllActiveStores(),
-    fetchAllStoreRatings(),
-    fetchStoreCategories(),
-  ]).then(([storesRes, ratingsMap, catsRes]) => {
-    setStores(storesRes.data);
-    setRatings(ratingsMap);
-    setStoreCategories(catsRes.data);
+    Promise.all([
+      fetchAllActiveStores(),
+      fetchAllStoreRatings(),
+      fetchStoreCategories(),
+    ]).then(([storesRes, ratingsMap, catsRes]) => {
+      const shuffledStores = shuffleArray(storesRes.data);
+      setStores(shuffledStores);
+      setRatings(ratingsMap);
+      setStoreCategories(catsRes.data);
 
-    // ── استخراج الـ is_featured من البيانات ──
-    const featuredIds = storesRes.data
-      .filter((store: any) => store.is_featured === true)
-      .map((store: any) => store.id);
-    setFeaturedStoreIds(new Set(featuredIds));
-  }).finally(() => setLoading(false));
-}, []);
+      const featuredIds = shuffledStores
+        .filter((store: any) => store.is_featured === true)
+        .map((store: any) => store.id);
+      setFeaturedStoreIds(new Set(featuredIds));
+    }).finally(() => setLoading(false));
+  }, []);
 
   const handleSaveName = useCallback(async () => {
     const trimmed = editName.trim();
@@ -608,10 +814,11 @@ export default function StoresScreen() {
     if (!selectedCatId) return filteredGroupedStores;
     return filteredGroupedStores.filter(g => g.cat.id === selectedCatId);
   }, [filteredGroupedStores, selectedCatId]);
-return (
+
+  return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
       
-      {/* 1. الشريط العلوي النظيف بدون الأزرار */}
+      {/* ── Header ── */}
       <View style={[s.header, { backgroundColor: '#FFFFFF', paddingTop: insets.top + 8, paddingBottom: 15 }]}>
         <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
           
@@ -630,7 +837,6 @@ return (
             </View>
           ) : (
             <>
-              {/* 1. أيقونة الدعم الفني (تحويل للواتساب) */}
               <Pressable 
                 hitSlop={8} 
                 onPress={() => {
@@ -642,35 +848,22 @@ return (
                 <MaterialCommunityIcons name="whatsapp" size={28} color="#25D366" />
               </Pressable>
 
-              {/* 2. الزر المركزي (استنو المفاجئات) */}
               <View style={[s.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: '#F3F4F6', borderColor: 'transparent', paddingVertical: 6, paddingHorizontal: 16 }]}>
                 <Text style={{ fontSize: 13, color: '#1A1A1A', fontWeight: '800' }}>
                   {isAr ? 'استنو المفاجئات 🎁' : 'Wait for Surprises 🎁'}
                 </Text>
               </View>
               
-              {/* 3. أيقونة البحث */}
               <Pressable hitSlop={8} onPress={() => setIsSearchVisible(true)}>
                 <MaterialIcons name="search" size={28} color="#1A1A1A" />
               </Pressable>
             </>
           )}
-
         </View>
       </View>
 
       <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
         <BannerCarousel banners={banners} isRTL={isRTL} />
-
-        {/* ── قسم VIP العلوي ── */}
-<VIPStoresStrip 
-  stores={stores.filter(s => featuredStoreIds.has(s.id))} 
-  ratings={ratings} 
-  isAr={isAr} 
-  isRTL={isRTL} 
-  onStorePress={(id: string) => router.push(`/store/${id}` as any)} 
-/>
-
 
         {ownerStore !== undefined && ownerStore !== null && (
           <Pressable
@@ -707,65 +900,69 @@ return (
           </View>
         )}
 
-       {storeCategories.length > 0 && (
-  <View style={s.section}>
-    <Text style={[s.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
-      {isAr ? 'شو ناقصك اليوم؟ 🤔' : "What are you craving today? 🤔"}
-    </Text>
-    <ScrollView
-      ref={catScrollRef}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-      onContentSizeChange={() => {
-        if (isRTL && catScrollRef.current) {
-          catScrollRef.current.scrollToEnd({ animated: false });
-        }
-      }}
-    >
-     {/* 1. خيار العروض */}
-      <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
-        <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EA580C' }]}>
-          {selectedCatId === '__offers__' && (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#EA580C', opacity: 0.12, borderRadius: 14 }]} />
-          )}
-          
-          {/* النار المتحركة GIF بدون خلفيات ملونة */}
-          <Image 
-            source={{ uri: get3DIconUrl('العروض') }} 
-            style={{ width: 55, height: 55, transform: [{ scale: 1.15 }], backgroundColor: 'transparent' }} 
-            contentFit="contain" 
-          />
-        </View>
-        <Text style={[qc.label, selectedCatId === '__offers__' ? { color: '#EA580C' } : { color: '#1A1A1A' }]} numberOfLines={2}>
-          {isAr ? 'العروض' : 'Offers'}
-        </Text>
-      </Pressable>
-      
-      {/* 2. خيار عرض الكل (الافتراضي) */}
-      <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
-        <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C' }]}>
-          {selectedCatId === null && (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#B91C1C', opacity: 0.12, borderRadius: 14 }]} />
-          )}
-          <RNImage source={{ uri: get3DIconUrl('الكل') }} style={{ width: 48, height: 48 }} resizeMode="contain" />
-        </View>
-        <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]} numberOfLines={2}>{isAr ? 'الكل' : 'All'}</Text>
-      </Pressable>
+        {storeCategories.length > 0 && (
+          <View style={s.section}>
+            <Text style={[s.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'شو ناقصك اليوم؟ 🤔' : "What are you craving today? 🤔"}
+            </Text>
+            <ScrollView
+              ref={catScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              onContentSizeChange={() => {
+                if (isRTL && catScrollRef.current) {
+                  catScrollRef.current.scrollToEnd({ animated: false });
+                }
+              }}
+            >
+              <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
+                <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EA580C' }]}>
+                  {selectedCatId === '__offers__' && (
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#EA580C', opacity: 0.12, borderRadius: 14 }]} />
+                  )}
+                  <Image 
+                    source={{ uri: get3DIconUrl('العروض') }} 
+                    style={{ width: 55, height: 55, transform: [{ scale: 1.15 }], backgroundColor: 'transparent' }} 
+                    contentFit="contain" 
+                  />
+                </View>
+                <Text style={[qc.label, selectedCatId === '__offers__' ? { color: '#EA580C' } : { color: '#1A1A1A' }]} numberOfLines={2}>
+                  {isAr ? 'العروض' : 'Offers'}
+                </Text>
+              </Pressable>
+              
+              <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
+                <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C' }]}>
+                  {selectedCatId === null && (
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#B91C1C', opacity: 0.12, borderRadius: 14 }]} />
+                  )}
+                  <RNImage source={{ uri: get3DIconUrl('الكل') }} style={{ width: 48, height: 48 }} resizeMode="contain" />
+                </View>
+                <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]} numberOfLines={2}>{isAr ? 'الكل' : 'All'}</Text>
+              </Pressable>
 
-      {/* 3. باقي التصنيفات */}
-      {storeCategories.filter(cat => cat.name_ar !== 'أخرى' && cat.name !== 'Others').map(cat => (
-        <QuickStoreCatCard
-          key={cat.id}
-          cat={cat}
-          isAr={isAr}
-          isSelected={selectedCatId === cat.id}
-          onPress={() => setSelectedCatId(cat.id)}
+              {storeCategories.filter(cat => cat.name_ar !== 'أخرى' && cat.name !== 'Others').map(cat => (
+                <QuickStoreCatCard
+                  key={cat.id}
+                  cat={cat}
+                  isAr={isAr}
+                  isSelected={selectedCatId === cat.id}
+                  onPress={() => setSelectedCatId(cat.id)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* ── VIP Section ── */}
+        <VIPStoresStrip 
+          stores={stores.filter(s => featuredStoreIds.has(s.id))} 
+          ratings={ratings} 
+          isAr={isAr} 
+          isRTL={isRTL} 
+          onStorePress={(id: string) => router.push(`/store/${id}` as any)} 
         />
-      ))}
-    </ScrollView>
-  </View>
-)}
 
         {loading ? (
           <View style={s.loadingWrap}>
@@ -794,20 +991,18 @@ return (
             )}
           </View>
         ) : (
-          <>
-            {displayedGroups.map(group => (
-              <CategoryBlock
-                key={group.cat.id}
-                cat={group.cat}
-                stores={group.stores}
-                ratings={ratings}
-                isAr={isAr}
-                isRTL={isRTL}
-                colors={colors}
-                onStorePress={(id: string) => router.push(`/store/${id}` as any)}
-              />
-            ))}
-          </>
+          displayedGroups.map(group => (
+            <CategoryBlock
+              key={group.cat.id}
+              cat={group.cat}
+              stores={group.stores}
+              ratings={ratings}
+              isAr={isAr}
+              isRTL={isRTL}
+              colors={colors}
+              onStorePress={(id: string) => router.push(`/store/${id}` as any)}
+            />
+          ))
         )}
       </ScrollView>
 
@@ -843,7 +1038,7 @@ return (
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STYLESHEETS (single declaration each)
+// STYLESHEETS
 // ─────────────────────────────────────────────────────────────────────────────
 const bc = StyleSheet.create({
   wrap: { width: '100%', position: 'relative' },
@@ -861,92 +1056,10 @@ const qc = StyleSheet.create({
     borderWidth: 2, borderColor: 'transparent',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
   },
-  catImage: { width: 45, height: 45 }, // تصغير المقاس قليلاً لضمان عدم خروجها عن حدود الحاوية
   label: { fontSize: 13, fontWeight: '700', color: '#1A1A1A', textAlign: 'center', lineHeight: 18 },
 });
 
-const psc = StyleSheet.create({
-  card: {
-    width: 170, backgroundColor: '#FFFFFF', borderRadius: 16,
-    marginRight: 12, marginLeft: 4, marginBottom: 8, overflow: 'hidden',
-    borderWidth: 1, borderColor: '#F3F4F6',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
-  },
-  imageWrap: { height: 110, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  logoImg: { width: '100%', height: '100%' },
-  infoWrap: { padding: 12 },
-  name: { fontSize: 14, fontWeight: '800', color: '#1A1A1A', textAlign: 'center', marginBottom: 4 },
-  address: { fontSize: 11, color: '#9CA3AF', textAlign: 'center', marginBottom: 12 },
-  bottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10 },
-  statusText: { fontSize: 11, fontWeight: '800' },
-  timeText: { color: '#9CA3AF', fontWeight: '500' },
-  ratingWrap: { flexDirection: 'row', alignItems: 'center' },
-  ratingScore: { fontSize: 12, fontWeight: '800', color: '#1A1A1A' },
-  ratingCount: { fontSize: 11, color: '#9CA3AF' },
-});
-
-const cb = StyleSheet.create({
-  block: { marginBottom: 20, backgroundColor: '#FFFFFF', borderRadius: 16, paddingTop: 16, paddingBottom: 8, marginHorizontal: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 1 },
-  headerRow: { paddingHorizontal: 16, marginBottom: 14 },
-  title: { fontSize: 18, fontWeight: '900', color: '#1A1A1A' },
-  sponsored: { fontSize: 13, color: '#9CA3AF', marginTop: 2, fontWeight: '500' },
-  scrollContent: { paddingHorizontal: 16 },
-});
-
-const cta = StyleSheet.create({
-  wrap: { marginHorizontal: 16, marginBottom: 20, borderRadius: 16, shadowColor: '#B91C1C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 3 },
-  gradient: { borderRadius: 16, overflow: 'hidden', padding: 16 },
-  deco1: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.06)', top: -40, right: -20 },
-  deco2: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -10, left: 30 },
-  content: { alignItems: 'center', gap: 12 },
-  iconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  textCol: { flex: 1, gap: 4 },
-  title: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
-  sub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
-});
-
 const s = StyleSheet.create({
-  catHeaderRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: 12,
-},
-catMoreText: {
-  fontSize: 13,
-  fontWeight: '700',
-},
-catGridHorizontal: {
-  paddingHorizontal: 2,
-  gap: 12,
-},
-gridCardFeatured: {
-  borderColor: '#FFD700',
-  borderWidth: 2,
-  shadowColor: '#FFD700',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.2,
-  shadowRadius: 6,
-  elevation: 4,
-},
-featuredBadge: {
-  position: 'absolute',
-  top: 4,
-  right: 4,
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 2,
-  backgroundColor: '#FFD700',
-  paddingHorizontal: 6,
-  paddingVertical: 2,
-  borderRadius: 8,
-  zIndex: 5,
-},
-featuredBadgeText: {
-  color: '#1A1A1A',
-  fontSize: 8,
-  fontWeight: '800',
-},
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 15 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -980,13 +1093,27 @@ featuredBadgeText: {
   supportFab: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 },
   scrollTopFab: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
   categoryContainer: { paddingHorizontal: 16, marginBottom: 20 },
-  catTitle: { fontSize: 20, fontWeight: '900', marginBottom: 12 },
+  catHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  catTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
+  catMoreText: { fontSize: 13, fontWeight: '700' },
+  catGridHorizontal: { paddingHorizontal: 2, gap: 12, alignItems: 'center' },
+  gridCardFeatured: { borderColor: '#FFD700', borderWidth: 2, shadowColor: '#FFD700', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 4 },
+  featuredBadge: { position: 'absolute', top: 4, right: 4, flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#FFD700', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, zIndex: 5 },
+  featuredBadgeText: { color: '#1A1A1A', fontSize: 8, fontWeight: '800' },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   gridCard: {
-    width: '48%', backgroundColor: '#fff', borderRadius: 16,
-    padding: 12, marginBottom: 16, alignItems: 'center',
-    borderWidth: 1, borderColor: '#F3F4F6',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   logoWrap: { width: 70, height: 70, borderRadius: 35, overflow: 'hidden', marginBottom: 8, backgroundColor: '#F9FAFB' },
   logoImg: { width: '100%', height: '100%' },

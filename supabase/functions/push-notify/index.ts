@@ -2,13 +2,15 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
-// ── In-memory deduplication ───────────────────────────────────────────────────
+// ── In-memory deduplication (throttling) ─────────────────────────────────────
+// Key: recipient_id (or recipient_id:conversation_id) → timestamp of last notification
+// Prevents spam: no more than 1 notification per 5 seconds per user
 const lastNotified = new Map<string, number>();
-const DEDUP_WINDOW_MS = 30_000; // 30s window — groups rapid messages in same conversation
-const ACTIVE_POLL_THRESHOLD_MS = 10_000;
+const THROTTLE_WINDOW_MS = 5000; // 5 seconds — prevents message spam
+const DEDUP_WINDOW_MS = 5000;    // same as throttle for simplicity
 
 function cleanupDedup() {
-  const cutoff = Date.now() - DEDUP_WINDOW_MS * 20;
+  const cutoff = Date.now() - THROTTLE_WINDOW_MS * 20;
   for (const [k, v] of lastNotified.entries()) {
     if (v < cutoff) lastNotified.delete(k);
   }
@@ -32,8 +34,6 @@ async function sendExpoPush(payload: object): Promise<{ ok: boolean; result?: an
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         'Accept-Encoding': 'gzip, deflate',
-        // projectId header routes the push through the correct FCM/APNs config
-        'Expo-Platform': 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1',
       },
       body: JSON.stringify(payload),
     });
@@ -61,8 +61,6 @@ async function sendExpoBatch(
   errors: { token: string; error: string }[];
   staleTokens: string[];
 }> {
-  // Expo recommends ≤100 per request; we use 20 to stay well under limits
-  // and to get more granular retry points.
   const BATCH_SIZE = 20;
   let sent = 0;
   let failed = 0;
@@ -82,7 +80,7 @@ async function sendExpoBatch(
       channelId: 'messages',
       data: data ?? {},
       priority: 'high',
-      projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1',
+      projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1', // Required for EAS project routing
     }));
 
     console.log(
@@ -104,7 +102,6 @@ async function sendExpoBatch(
       const responseText = await res.text();
 
       if (!res.ok) {
-        // HTTP-level failure (network/rate-limit/server error)
         console.error(
           `[push-notify:broadcast] Batch ${batchNum} HTTP error ${res.status}: ${responseText}`
         );
@@ -122,18 +119,15 @@ async function sendExpoBatch(
         continue;
       }
     } catch (netErr: any) {
-      // Network/fetch-level failure
       console.error(`[push-notify:broadcast] Batch ${batchNum} network error: ${netErr?.message ?? netErr}`);
       failed += batchTokens.length;
       batchTokens.forEach(token => errors.push({ token, error: `Network: ${netErr?.message}` }));
       continue;
     }
 
-    // ── Parse per-ticket results ──────────────────────────────────────────────
     const tickets: any[] = Array.isArray(responseJson?.data) ? responseJson.data : [];
 
     if (tickets.length === 0) {
-      // Expo sometimes wraps errors at the top level (e.g. auth failure)
       const topError = responseJson?.errors?.[0]?.message ?? responseJson?.error ?? JSON.stringify(responseJson);
       console.error(`[push-notify:broadcast] Batch ${batchNum} — no tickets in response. Top-level error: ${topError}`);
       failed += batchTokens.length;
@@ -157,7 +151,6 @@ async function sendExpoBatch(
         );
         errors.push({ token: token ?? 'unknown', error: `${errorCode}: ${ticketError}` });
 
-        // Mark permanently dead tokens for DB cleanup
         if (PERMANENT_TOKEN_ERRORS.has(errorCode)) {
           staleTokens.push(token);
           console.warn(`[push-notify:broadcast]   🗑 Stale token queued for cleanup: ${token?.slice(-10)}`);
@@ -169,13 +162,11 @@ async function sendExpoBatch(
       `[push-notify:broadcast] Batch ${batchNum}/${totalBatches} complete — batchSent=${sent} batchFailed=${failed}`
     );
 
-    // Small delay between batches to respect Expo rate limits
     if (i + BATCH_SIZE < tokens.length) {
       await new Promise(r => setTimeout(r, 150));
     }
   }
 
-  // ── Auto-purge DeviceNotRegistered tokens from DB ─────────────────────────
   if (staleTokens.length > 0 && supabaseAdmin) {
     console.log(`[push-notify:broadcast] Purging ${staleTokens.length} stale token(s) from DB...`);
     const { error: purgeErr } = await supabaseAdmin
@@ -216,7 +207,6 @@ serve(async (req) => {
         );
       }
 
-      // Verify admin identity
       const userClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -247,7 +237,6 @@ serve(async (req) => {
         title: string;
         message: string;
         data?: Record<string, any>;
-        /** dry_run=true fetches tokens and validates but does NOT call Expo API */
         dry_run?: boolean;
       };
 
@@ -258,7 +247,6 @@ serve(async (req) => {
         );
       }
 
-      // Fetch all valid Expo tokens
       const { data: profiles, error: fetchErr } = await supabaseAdmin
         .from('user_profiles')
         .select('push_token')
@@ -286,7 +274,6 @@ serve(async (req) => {
         );
       }
 
-      // Dry-run mode: validate tokens without calling Expo
       if (dry_run) {
         return new Response(
           JSON.stringify({
@@ -313,7 +300,6 @@ serve(async (req) => {
         `[push-notify:broadcast] ✅ Complete — sent=${sent} failed=${failed} stale=${staleTokens.length} total=${tokens.length}`
       );
 
-      // Return first 10 errors as diagnostic info (not exposing full token strings)
       const diagnosticErrors = errors.slice(0, 10).map(e => ({
         tokenSuffix: e.token.slice(-12),
         error: e.error,
@@ -357,6 +343,7 @@ serve(async (req) => {
           badge: 0,
           'content-available': 1,
           priority: 'normal',
+          projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1',
         });
         if (!ok) {
           console.error('[push-notify:reset_badge] Expo error:', expoErr);
@@ -400,7 +387,21 @@ serve(async (req) => {
       );
     }
 
-    // ── Smart skip: recipient is actively viewing this chat ───────────────────
+    // ── Throttle per user: prevent more than 1 notification per 5 seconds ──
+    const throttleKey = recipient_id; // user-level throttle
+    const now = Date.now();
+    const last = lastNotified.get(throttleKey) ?? 0;
+    if (now - last < THROTTLE_WINDOW_MS) {
+      console.log(`[push-notify] Throttle skip for user ${recipient_id} (${now - last}ms since last)`);
+      return new Response(
+        JSON.stringify({ ok: true, skipped: 'throttled' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    lastNotified.set(throttleKey, now);
+    if (lastNotified.size > 500) cleanupDedup();
+
+    // ── Smart skip: recipient actively viewing this chat ───────────────────
     if (conversation_id && is_buyer_recipient !== undefined) {
       const polledCol = is_buyer_recipient ? 'buyer_last_polled_at' : 'seller_last_polled_at';
       const { data: convRow } = await supabaseAdmin
@@ -412,7 +413,7 @@ serve(async (req) => {
       const lastPolled: string | null = convRow?.[polledCol] ?? null;
       if (lastPolled) {
         const elapsed = Date.now() - new Date(lastPolled).getTime();
-        if (elapsed < ACTIVE_POLL_THRESHOLD_MS) {
+        if (elapsed < 10000) { // 10s active window
           console.log(
             `[push-notify] Recipient active (last poll ${elapsed}ms ago) — skipping conv=${conversation_id}`
           );
@@ -424,23 +425,7 @@ serve(async (req) => {
       }
     }
 
-    // ── Deduplication ─────────────────────────────────────────────────────────
-    if (conversation_id) {
-      const dedupKey = `${recipient_id}:${conversation_id}`;
-      const lastTime = lastNotified.get(dedupKey) ?? 0;
-      const now = Date.now();
-      if (now - lastTime < DEDUP_WINDOW_MS) {
-        console.log(`[push-notify] Dedup skip — key=${dedupKey}, elapsed=${now - lastTime}ms`);
-        return new Response(
-          JSON.stringify({ ok: true, skipped: 'dedup' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        );
-      }
-      lastNotified.set(dedupKey, now);
-      if (lastNotified.size > 500) cleanupDedup();
-    }
-
-    // ── Fetch push token + unread count ───────────────────────────────────────
+    // ── Fetch push token + unread count ──────────────────────────────────────
     const [profileResult, convResult] = await Promise.all([
       supabaseAdmin.from('user_profiles').select('push_token').eq('id', recipient_id).single(),
       supabaseAdmin.from('conversations').select('id').or(`buyer_id.eq.${recipient_id},seller_id.eq.${recipient_id}`),
@@ -458,7 +443,6 @@ serve(async (req) => {
     }
     if (!pushToken.startsWith('ExponentPushToken')) {
       console.warn(`[push-notify] Invalid token format for recipient=${recipient_id}: ${pushToken.slice(0, 20)}`);
-      // Purge the invalid token
       await supabaseAdmin.from('user_profiles').update({ push_token: null }).eq('id', recipient_id);
       return new Response(
         JSON.stringify({ ok: true, skipped: 'invalid_token_format' }),
@@ -480,6 +464,7 @@ serve(async (req) => {
       else unreadCount = count ?? 1;
     }
 
+    // ── Send Expo push ──────────────────────────────────────────────────────
     const { ok, result: expoResult, error: expoErr } = await sendExpoPush({
       to: pushToken,
       title: `سوق قلقيلية — ${sender_name}`,

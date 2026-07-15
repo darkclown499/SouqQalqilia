@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
   KeyboardAvoidingView, Platform, Linking, Modal, ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -237,78 +238,39 @@ export default function ProfileScreen() {
   const [testPushResult, setTestPushResult] = useState<'idle' | 'success' | 'error' | 'no_token'>('idle');
   const [currentPushToken, setCurrentPushToken] = useState<string | null>(null);
 
+  // ── Memoized computed values ─────────────────────────────────────────────
+  const isPhoneUser = useMemo(() => (user?.email ?? '').includes('@sms.souqqalqilya.local'), [user?.email]);
+  const extractedPhone = useMemo(() => (user?.email ?? '').replace(/^phone_(\d+)@sms\.souqqalqilya\.local$/, '+$1'), [user?.email]);
+  const displayEmail = useMemo(() => isPhoneUser ? (editPhone || extractedPhone) : (user?.email ?? ''), [isPhoneUser, editPhone, extractedPhone, user?.email]);
+  const displayName = useMemo(() => localDisplayName ?? user?.username ?? user?.email?.split('@')[0] ?? 'User', [localDisplayName, user]);
+  const activeAds = useMemo(() => ads.filter(a => a.status === 'active' || a.status === 'featured'), [ads]);
+  const soldAds = useMemo(() => ads.filter(a => a.status === 'sold'), [ads]);
+
+  // ── Quick actions (memoized) ──────────────────────────────────────────────
+  const quickActions = useMemo(() => [
+    { icon: 'edit', label: isRTL ? 'تعديل الملف' : 'Edit Profile', color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
+    { icon: 'person', label: isRTL ? 'ملفي العام' : 'My Page', color: '#7C3AED', bg: '#EDE9FE', onPress: () => user && router.push(`/seller/${user.id}` as any) },
+    { icon: 'add-circle-outline', label: isRTL ? 'نشر إعلان' : 'Post Ad', color: colors.primary, bg: colors.primaryGhost, onPress: () => router.push('/(tabs)/post') },
+    { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
+    ...(isAdmin ? [{ icon: 'admin-panel-settings', label: isRTL ? 'الإدارة' : 'Admin', color: '#D97706', bg: '#FEF3C7', onPress: () => router.push('/admin/index' as any) }] : []),
+  ], [isRTL, colors, isAdmin, router, user]);
+
+  // ── Callbacks ─────────────────────────────────────────────────────────────
   const loadBlockedUsers = useCallback(async () => {
-    const ids = await fetchBlockedIds();
-    if (ids.length === 0) { setBlockedUsers([]); return; }
-    const { data } = await getSupabaseClient()
-      .from('user_profiles')
-      .select('id, username, email, avatar_url')
-      .in('id', ids);
-    setBlockedUsers((data ?? []) as any);
+    try {
+      const ids = await fetchBlockedIds();
+      if (ids.length === 0) { setBlockedUsers([]); return; }
+      const { data } = await getSupabaseClient()
+        .from('user_profiles')
+        .select('id, username, email, avatar_url')
+        .in('id', ids);
+      setBlockedUsers((data ?? []) as any);
+    } catch (err) {
+      console.error('loadBlockedUsers error:', err);
+    }
   }, []);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    load();
-    setEditName(user.username || '');
-    checkIsAdmin().then(setIsAdmin);
-
-    // Fetch owner store
-    getSupabaseClient()
-      .from('stores')
-      .select('id, name, name_ar, is_approved')
-      .eq('owner_id', user.id)
-      .maybeSingle()
-      .then(({ data }) => setOwnerStore(data as any))
-      .catch(() => setOwnerStore(null));
-
-    const supabase = getSupabaseClient();
-
-    // Load stored profile data
-    supabase
-      .from('user_profiles')
-      .select('avatar_url, banner_url, phone, is_verified, push_token')
-      .eq('id', user.id)
-      .single()
-      .then(async ({ data }) => {
-        // ── Google profile photo auto-sync ─────────────────────────────────
-        // If user signed in with Google and has no stored avatar yet,
-        // pull the photo from Google's user_metadata and save it to the DB.
-        if (!data?.avatar_url) {
-          try {
-            const { data: { user: freshUser } } = await supabase.auth.getUser();
-            const googlePhoto: string | undefined =
-              freshUser?.user_metadata?.avatar_url ??
-              freshUser?.user_metadata?.picture ??
-              freshUser?.user_metadata?.photo_url;
-            if (googlePhoto) {
-              setAvatarUrl(googlePhoto);
-              // Persist so future loads skip the metadata check
-              supabase
-                .from('user_profiles')
-                .update({ avatar_url: googlePhoto })
-                .eq('id', user.id)
-                .then(() => {})
-                .catch(() => {});
-            }
-          } catch { /* non-critical */ }
-        } else {
-          setAvatarUrl(data.avatar_url);
-        }
-        if (data?.banner_url) setBannerUrl(data.banner_url);
-        if (data?.phone) setEditPhone(data.phone ?? '');
-        setIsVerified(!!data?.is_verified);
-        setCurrentPushToken(data?.push_token ?? null);
-      });
-    loadBlockedUsers();
-  }, [user?.id, loadBlockedUsers]);
-
-  useEffect(() => {
-    const unsub = subscribeToBlockChanges(loadBlockedUsers);
-    return unsub;
-  }, [loadBlockedUsers]);
-
-  const handleUnblock = (userId: string, name: string) => {
+  const handleUnblock = useCallback((userId: string, name: string) => {
     showAlert(
       isRTL ? 'رفع الحظر' : 'Unblock User',
       isRTL ? `هل تريد رفع الحظر عن "${name}"؟` : `Unblock "${name}"?`,
@@ -318,16 +280,22 @@ export default function ProfileScreen() {
           text: isRTL ? 'رفع الحظر' : 'Unblock',
           onPress: async () => {
             setUnblockingId(userId);
-            await unblockUser(userId);
-            setBlockedUsers(prev => prev.filter(u => u.id !== userId));
-            setUnblockingId(null);
+            try {
+              await unblockUser(userId);
+              setBlockedUsers(prev => prev.filter(u => u.id !== userId));
+            } catch (err) {
+              console.error('Unblock error:', err);
+              showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'فشل رفع الحظر' : 'Unblock failed');
+            } finally {
+              setUnblockingId(null);
+            }
           },
         },
       ]
     );
-  };
+  }, [isRTL, showAlert, t.cancel]);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     showAlert(t.signOut, t.signOutConfirm, [
       { text: t.cancel, style: 'cancel' },
       {
@@ -337,9 +305,9 @@ export default function ProfileScreen() {
         },
       },
     ]);
-  };
+  }, [showAlert, t, logout]);
 
-  const handleDeleteAd = (adId: string, adTitle: string) => {
+  const handleDeleteAd = useCallback((adId: string, adTitle: string) => {
     showAlert(
       isRTL ? 'حذف الإعلان' : 'Delete Listing',
       isRTL ? `هل أنت متأكد من حذف "${adTitle}"؟` : `Delete "${adTitle}"?`,
@@ -347,20 +315,38 @@ export default function ProfileScreen() {
         { text: t.cancel, style: 'cancel' },
         {
           text: isRTL ? 'حذف' : 'Delete', style: 'destructive',
-          onPress: async () => { await updateAdStatus(adId, 'deleted'); load(); },
+          onPress: async () => {
+            try {
+              await updateAdStatus(adId, 'deleted');
+              load();
+            } catch (err) {
+              console.error('Delete ad error:', err);
+              showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'فشل حذف الإعلان' : 'Failed to delete listing');
+            }
+          },
         },
       ]
     );
-  };
+  }, [isRTL, showAlert, t.cancel, load]);
 
-  const handleMarkSold = (adId: string) => {
+  const handleMarkSold = useCallback((adId: string) => {
     showAlert(t.markAsSold, t.markAsSoldConfirm, [
       { text: t.cancel, style: 'cancel' },
-      { text: t.confirm, onPress: async () => { await updateAdStatus(adId, 'sold'); load(); } },
+      {
+        text: t.confirm, onPress: async () => {
+          try {
+            await updateAdStatus(adId, 'sold');
+            load();
+          } catch (err) {
+            console.error('Mark sold error:', err);
+            showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'فشل التحديث' : 'Update failed');
+          }
+        },
+      },
     ]);
-  };
+  }, [showAlert, t, load, isRTL]);
 
-  const handlePickAvatar = async () => {
+  const handlePickAvatar = useCallback(async () => {
     if (!user) return;
     setAvatarLoading(true);
     try {
@@ -372,13 +358,14 @@ export default function ProfileScreen() {
       await supabase.from('user_profiles').update({ avatar_url: url }).eq('id', user.id);
       setAvatarUrl(url);
     } catch (e: any) {
+      console.error('Avatar upload error:', e);
       showAlert('Error', e.message ?? 'Failed to update avatar.');
     } finally {
       setAvatarLoading(false);
     }
-  };
+  }, [user, showAlert]);
 
-  const handlePickBanner = async () => {
+  const handlePickBanner = useCallback(async () => {
     if (!user) return;
     setBannerLoading(true);
     try {
@@ -390,13 +377,14 @@ export default function ProfileScreen() {
       await supabase.from('user_profiles').update({ banner_url: url }).eq('id', user.id);
       setBannerUrl(url);
     } catch (e: any) {
+      console.error('Banner upload error:', e);
       showAlert('Error', e.message ?? 'Failed to update banner.');
     } finally {
       setBannerLoading(false);
     }
-  };
+  }, [user, showAlert]);
 
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = useCallback(async () => {
     if (!user) return;
     const trimmedName = editName.trim();
     if (!trimmedName) {
@@ -415,15 +403,16 @@ export default function ProfileScreen() {
       showAlert(t.profileUpdated, t.profileUpdatedMsg);
       setEditMode(false);
     } catch (e: any) {
+      console.error('Save profile error:', e);
       showAlert('Error', e.message ?? 'Failed to save profile.');
     } finally {
       setSaving(false);
     }
-  };
+  }, [user, editName, editPhone, isRTL, showAlert, refreshSession, t]);
 
-  const handleDeleteAccount = () => setDeleteConfirmVisible(true);
+  const handleDeleteAccount = useCallback(() => setDeleteConfirmVisible(true), []);
 
-  const confirmDeleteAccount = async () => {
+  const confirmDeleteAccount = useCallback(async () => {
     setDeletingAccount(true);
     try {
       const supabase = getSupabaseClient();
@@ -443,14 +432,15 @@ export default function ProfileScreen() {
       setDeleteConfirmVisible(false);
       router.replace('/login');
     } catch (e: any) {
+      console.error('Delete account error:', e);
       setDeleteConfirmVisible(false);
       showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to delete account.');
     } finally {
       setDeletingAccount(false);
     }
-  };
+  }, [isRTL, showAlert, router]);
 
-  const handleChangePassword = () => {
+  const handleChangePassword = useCallback(() => {
     if (isPhoneUser) {
       return showAlert(
         isRTL ? 'مستخدم هاتف' : 'Phone User',
@@ -477,15 +467,16 @@ export default function ProfileScreen() {
               if (error) throw error;
               showAlert(isRTL ? 'تم الإرسال' : 'Email Sent', isRTL ? `تم إرسال رابط إعادة التعيين إلى ${user.email}` : `A reset link was sent to ${user.email}`);
             } catch (e: any) {
+              console.error('Reset password error:', e);
               showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to send reset link');
             }
           },
         },
       ]
     );
-  };
+  }, [isPhoneUser, isRTL, showAlert, user]);
 
-  const handleTestNotification = async () => {
+  const handleTestNotification = useCallback(async () => {
     if (!user) return;
     setTestPushLoading(true);
     setTestPushResult('idle');
@@ -528,20 +519,128 @@ export default function ProfileScreen() {
         );
       }
     } catch (e: any) {
+      console.error('Test notification error:', e);
       setTestPushResult('error');
       showAlert(isRTL ? 'خطأ' : 'Error', e.message ?? 'Failed to send test notification');
     } finally {
       setTestPushLoading(false);
       setTimeout(() => setTestPushResult('idle'), 6000);
     }
-  };
+  }, [user, isRTL, showAlert]);
 
-  const handleWhatsApp = () => {
+  const handleWhatsApp = useCallback(() => {
     const msg = encodeURIComponent(SUPPORT_WHATSAPP_MESSAGE);
     Linking.openURL(`https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${msg}`).catch(() => {});
-  };
+  }, []);
 
-  const openLink = (url: string) => Linking.openURL(url).catch(() => {});
+  const openLink = useCallback((url: string) => Linking.openURL(url).catch(() => {}), []);
+
+  // ── Main useEffect with AbortController ──────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    const loadData = async () => {
+      try {
+        load();
+        setEditName(user.username || '');
+        const admin = await checkIsAdmin();
+        if (!signal.aborted) setIsAdmin(admin);
+
+        // Fetch owner store
+        const supabase = getSupabaseClient();
+        const { data: storeData } = await supabase
+          .from('stores')
+          .select('id, name, name_ar, is_approved')
+          .eq('owner_id', user.id)
+          .maybeSingle();
+        if (!signal.aborted) setOwnerStore(storeData as any);
+
+        // Load profile data
+        const { data: profileData } = await supabase
+          .from('user_profiles')
+          .select('avatar_url, banner_url, phone, is_verified, push_token')
+          .eq('id', user.id)
+          .single();
+
+        if (!signal.aborted && profileData) {
+          // Google photo sync
+          if (!profileData.avatar_url) {
+            try {
+              const { data: { user: freshUser } } = await supabase.auth.getUser();
+              const googlePhoto = freshUser?.user_metadata?.avatar_url ?? freshUser?.user_metadata?.picture ?? freshUser?.user_metadata?.photo_url;
+              if (googlePhoto) {
+                setAvatarUrl(googlePhoto);
+                supabase.from('user_profiles').update({ avatar_url: googlePhoto }).eq('id', user.id).then().catch(console.error);
+              }
+            } catch { /* non-critical */ }
+          } else {
+            setAvatarUrl(profileData.avatar_url);
+          }
+          if (profileData.banner_url) setBannerUrl(profileData.banner_url);
+          if (profileData.phone) setEditPhone(profileData.phone ?? '');
+          setIsVerified(!!profileData.is_verified);
+          setCurrentPushToken(profileData.push_token ?? null);
+        }
+
+        // Load blocked users
+        await loadBlockedUsers();
+      } catch (err) {
+        if (!signal.aborted) console.error('Profile load error:', err);
+      }
+    };
+
+    loadData();
+
+    return () => {
+      controller.abort();
+    };
+  }, [user?.id, load, loadBlockedUsers]);
+
+  // ── Block changes subscription ────────────────────────────────────────────
+  useEffect(() => {
+    const unsub = subscribeToBlockChanges(loadBlockedUsers);
+    return unsub;
+  }, [loadBlockedUsers]);
+
+  // ── Render functions ──────────────────────────────────────────────────────
+  const renderAdItem = useCallback(({ item: ad }: { item: any }) => (
+    <View style={styles.adRow}>
+      <AdCard ad={ad} />
+      <View style={[styles.adActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <Pressable
+          style={[styles.adActionBtn, { backgroundColor: colors.primaryGhost, borderColor: colors.primary }]}
+          onPress={() => router.push(`/edit-ad/${ad.id}` as any)}
+        >
+          <MaterialIcons name="edit" size={14} color={colors.primary} />
+          <Text style={[styles.adActionBtnText, { color: colors.primary }]}>{isRTL ? 'تعديل' : 'Edit'}</Text>
+        </Pressable>
+
+        {ad.status === 'active' || ad.status === 'featured' ? (
+          <Pressable
+            style={[styles.adActionBtn, { backgroundColor: colors.successLight, borderColor: colors.success, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+            onPress={() => handleMarkSold(ad.id)}
+          >
+            <MaterialIcons name="check-circle-outline" size={14} color={colors.success} />
+            <Text style={[styles.adActionBtnText, { color: colors.success }]}>{t.markAsSold}</Text>
+          </Pressable>
+        ) : (
+          <View style={[styles.soldChip, { backgroundColor: colors.accentLight }]}>
+            <Text style={[styles.soldChipText, { color: colors.accentDark }]}>✓ {t.sold.toUpperCase()}</Text>
+          </View>
+        )}
+
+        <Pressable
+          style={[styles.adActionBtn, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]}
+          onPress={() => handleDeleteAd(ad.id, ad.title)}
+        >
+          <MaterialIcons name="delete-outline" size={14} color="#EF4444" />
+          <Text style={[styles.adActionBtnText, { color: '#EF4444' }]}>{isRTL ? 'حذف' : 'Delete'}</Text>
+        </Pressable>
+      </View>
+    </View>
+  ), [colors, isRTL, router, handleMarkSold, t, handleDeleteAd]);
 
   // ── Guest View ──
   if (!user) {
@@ -566,22 +665,13 @@ export default function ProfileScreen() {
     );
   }
 
-  // For phone-auth users, show real phone number instead of synthetic email
-  const isPhoneUser = (user.email ?? '').includes('@sms.souqqalqilya.local');
-  // Derive display contact: prefer stored editPhone, fallback to extracting from synthetic email
-  const extractedPhone = (user.email ?? '').replace(/^phone_(\d+)@sms\.souqqalqilya\.local$/, '+$1');
-  const displayEmail = isPhoneUser
-    ? (editPhone || extractedPhone)
-    : (user.email ?? '');
-  const displayName = localDisplayName ?? user.username ?? user.email?.split('@')[0] ?? 'User';
-  const activeAds = ads.filter(a => a.status === 'active' || a.status === 'featured');
-  const soldAds = ads.filter(a => a.status === 'sold');
-
   return (
     <View style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <ScrollView showsVerticalScrollIndicator={false}>
-
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* ── HERO ── */}
           <View style={[styles.hero, { backgroundColor: colors.primary }]}>
             {/* Avatar */}
@@ -594,7 +684,11 @@ export default function ProfileScreen() {
                 </View>
               )}
               <View style={[styles.avatarCamBtn, { backgroundColor: colors.accent }]}>
-                <MaterialIcons name={avatarLoading ? 'hourglass-empty' : 'camera-alt'} size={13} color="#fff" />
+                {avatarLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <MaterialIcons name="camera-alt" size={13} color="#fff" />
+                )}
               </View>
             </Pressable>
 
@@ -638,7 +732,6 @@ export default function ProfileScreen() {
           {/* ── OWNER STORE CARD ── */}
           {ownerStore !== undefined && (
             ownerStore === null ? (
-              // No store yet — CTA
               <Pressable
                 style={styles.storeCtaCard}
                 onPress={() => router.push('/register-store' as any)}
@@ -657,7 +750,6 @@ export default function ProfileScreen() {
                 <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.primary} flexShrink={0} />
               </Pressable>
             ) : ownerStore.is_approved ? (
-              // Approved store — management button
               <Pressable
                 style={styles.storeCtaCard}
                 onPress={() => router.push('/store-dashboard' as any)}
@@ -679,7 +771,6 @@ export default function ProfileScreen() {
                 </View>
               </Pressable>
             ) : (
-              // Pending store — info card
               <Pressable
                 style={[styles.storeCtaCard, { borderColor: '#F59E0B' }]}
                 onPress={() => router.push('/store-dashboard' as any)}
@@ -702,13 +793,7 @@ export default function ProfileScreen() {
 
           {/* ── QUICK ACTIONS ── */}
           <View style={[styles.actionsRow, { backgroundColor: colors.surface }]}>
-            {[
-              { icon: 'edit', label: isRTL ? 'تعديل الملف' : 'Edit Profile', color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
-              { icon: 'person', label: isRTL ? 'ملفي العام' : 'My Page', color: '#7C3AED', bg: '#EDE9FE', onPress: () => user && router.push(`/seller/${user.id}` as any) },
-              { icon: 'add-circle-outline', label: isRTL ? 'نشر إعلان' : 'Post Ad', color: colors.primary, bg: colors.primaryGhost, onPress: () => router.push('/(tabs)/post') },
-              { icon: 'favorite-border', label: isRTL ? 'المفضلة' : 'Favorites', color: '#EF4444', bg: '#FEE2E2', onPress: () => router.push('/favorites') },
-              ...(isAdmin ? [{ icon: 'admin-panel-settings', label: isRTL ? 'الإدارة' : 'Admin', color: '#D97706', bg: '#FEF3C7', onPress: () => router.push('/admin/index' as any) }] : []),
-            ].map((a) => (
+            {quickActions.map((a) => (
               <Pressable
                 key={a.label}
                 style={({ pressed }) => [styles.actionTile, { opacity: pressed ? 0.7 : 1 }]}
@@ -838,7 +923,9 @@ export default function ProfileScreen() {
                 <Text style={styles.postNewText}>{t.postNew}</Text>
               </Pressable>
 
-              {ads.length === 0 && !loading ? (
+              {loading && ads.length === 0 ? (
+                <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 40 }} />
+              ) : ads.length === 0 ? (
                 <View style={[styles.emptyListings, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={[styles.emptyIcon, { backgroundColor: colors.primaryGhost }]}>
                     <MaterialIcons name="storefront" size={32} color={colors.primary} />
@@ -847,44 +934,13 @@ export default function ProfileScreen() {
                   <Text style={[styles.emptySub, { color: colors.textMuted }]}>{t.noListingsYetSub}</Text>
                 </View>
               ) : (
-                ads.map(ad => (
-                  <View key={ad.id} style={styles.adRow}>
-                    <AdCard ad={ad} />
-                    <View style={[styles.adActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                      {/* Edit button */}
-                      <Pressable
-                        style={[styles.adActionBtn, { backgroundColor: colors.primaryGhost, borderColor: colors.primary }]}
-                        onPress={() => router.push(`/edit-ad/${ad.id}` as any)}
-                      >
-                        <MaterialIcons name="edit" size={14} color={colors.primary} />
-                        <Text style={[styles.adActionBtnText, { color: colors.primary }]}>{isRTL ? 'تعديل' : 'Edit'}</Text>
-                      </Pressable>
-
-                      {ad.status === 'active' || ad.status === 'featured' ? (
-                        <Pressable
-                          style={[styles.adActionBtn, { backgroundColor: colors.successLight, borderColor: colors.success, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-                          onPress={() => handleMarkSold(ad.id)}
-                        >
-                          <MaterialIcons name="check-circle-outline" size={14} color={colors.success} />
-                          <Text style={[styles.adActionBtnText, { color: colors.success }]}>{t.markAsSold}</Text>
-                        </Pressable>
-                      ) : (
-                        <View style={[styles.soldChip, { backgroundColor: colors.accentLight }]}>
-                          <Text style={[styles.soldChipText, { color: colors.accentDark }]}>✓ {t.sold.toUpperCase()}</Text>
-                        </View>
-                      )}
-
-                      {/* Delete button */}
-                      <Pressable
-                        style={[styles.adActionBtn, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]}
-                        onPress={() => handleDeleteAd(ad.id, ad.title)}
-                      >
-                        <MaterialIcons name="delete-outline" size={14} color="#EF4444" />
-                        <Text style={[styles.adActionBtnText, { color: '#EF4444' }]}>{isRTL ? 'حذف' : 'Delete'}</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ))
+                <FlatList
+                  data={ads}
+                  keyExtractor={item => item.id}
+                  renderItem={renderAdItem}
+                  scrollEnabled={false}
+                  contentContainerStyle={{ gap: Spacing.sm }}
+                />
               )}
             </View>
           ) : null}
@@ -892,7 +948,6 @@ export default function ProfileScreen() {
           {/* ═══════════════════════ SETTINGS TAB ═══════════════════════════ */}
           {activeTab === 'settings' ? (
             <View style={styles.settingsSection}>
-
               {/* ── APPEARANCE ── */}
               <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <SectionHeader icon="palette" label={isRTL ? 'المظهر' : 'Appearance'} color={colors.primary} bg={colors.primaryGhost} />
@@ -954,27 +1009,27 @@ export default function ProfileScreen() {
                 <SectionHeader icon="support-agent" label={isRTL ? 'مركز المساعدة' : 'Help Center'} color="#0A6E5C" bg={colors.primaryGhost} />
 
                 {/* ── AI SUPPORT CHAT ── */}
-              <View style={[styles.waWrap, { borderBottomColor: colors.borderLight }]}>
-                <Pressable
-                  style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1, backgroundColor: colors.primary }]}
-                  onPress={() => router.push('/ai-support')}
-                >
-                  <View style={styles.waIconBadge}>
-                    <MaterialIcons name="smart-toy" size={26} color="#fff" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.waTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
-                      {isRTL ? 'مساعد سوق قلقيلية الذكي' : 'Souq Qalqilya AI Assistant'}
-                    </Text>
-                    <Text style={[styles.waSub, { textAlign: isRTL ? 'right' : 'left' }]}>
-                      {isRTL ? 'إجابات فورية على أسئلتك بالعربية' : 'Instant answers to your questions'}
-                    </Text>
-                  </View>
-                  <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={18} color="rgba(255,255,255,0.7)" />
-                </Pressable>
-              </View>
+                <View style={[styles.waWrap, { borderBottomColor: colors.borderLight }]}>
+                  <Pressable
+                    style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1, backgroundColor: colors.primary }]}
+                    onPress={() => router.push('/ai-support')}
+                  >
+                    <View style={styles.waIconBadge}>
+                      <MaterialIcons name="smart-toy" size={26} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.waTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+                        {isRTL ? 'مساعد سوق قلقيلية الذكي' : 'Souq Qalqilya AI Assistant'}
+                      </Text>
+                      <Text style={[styles.waSub, { textAlign: isRTL ? 'right' : 'left' }]}>
+                        {isRTL ? 'إجابات فورية على أسئلتك بالعربية' : 'Instant answers to your questions'}
+                      </Text>
+                    </View>
+                    <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={18} color="rgba(255,255,255,0.7)" />
+                  </Pressable>
+                </View>
 
-              {/* WhatsApp */}
+                {/* WhatsApp */}
                 <View style={[styles.waWrap, { borderBottomColor: colors.borderLight }]}>
                   <Pressable style={({ pressed }) => [styles.waCard, { opacity: pressed ? 0.88 : 1 }]} onPress={handleWhatsApp}>
                     <View style={styles.waIconBadge}><MaterialIcons name="support-agent" size={26} color="#fff" /></View>
@@ -1312,7 +1367,7 @@ const styles = StyleSheet.create({
   avatarEditSub: { fontSize: FontSize.xs, marginTop: 2 },
   editFields: { gap: Spacing.sm },
   editLabel: { fontSize: FontSize.sm, fontWeight: '600', marginBottom: 2 },
-  editInput: { height: 48, borderWidth: 1.5, borderRadius: Radius.md, paddingHorizontal: Spacing.md, fontSize: FontSize.md },
+  editInput: { minHeight: 48, borderWidth: 1.5, borderRadius: Radius.md, paddingHorizontal: Spacing.md, fontSize: FontSize.md },
   editBtns: { gap: Spacing.sm, marginTop: 4 },
   editCancelBtn: { flex: 1, height: 44, borderRadius: Radius.lg, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   editCancelText: { fontSize: FontSize.md, fontWeight: '600' },

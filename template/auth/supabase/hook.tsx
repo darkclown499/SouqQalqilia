@@ -101,7 +101,7 @@ export function useAuth(): AuthContextType {
     } catch (error) {
       console.warn('[Template:useAuth] signInWithPassword exception:', error);
       return { 
-        error: 'Login failed',
+        error: error instanceof Error ? error.message : String(error),
         user: null 
       };
     } finally {

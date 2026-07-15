@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
   FlatList, Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Share,
@@ -17,6 +17,12 @@ import {
 } from '@/services/storeCategoriesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+import {
+  getLocalCategories,
+  addLocalCategory,
+  deleteLocalCategory,
+  LocalCategory,
+} from '@/services/localCategoriesService';
 
 // ── Add/Edit Product Modal ────────────────────────────────────────────────────
 interface ProductForm {
@@ -58,12 +64,14 @@ const DEFAULT_PRODUCT_CATEGORIES = ['قسم عام', 'عروض', 'منتجات �
 
 function ProductModal({
   visible, onClose, onSave, storeId, editProduct, storeCategoryNameAr, isAr, isRTL, colors,
+  customCategories,
 }: {
   visible: boolean; onClose: () => void;
   onSave: (product: StoreProduct) => void;
   storeId: string;
   editProduct: StoreProduct | null;
   storeCategoryNameAr: string;
+  customCategories: LocalCategory[];
   isAr: boolean; isRTL: boolean; colors: any;
 }) {
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
@@ -74,8 +82,10 @@ function ProductModal({
   const { user } = useAuth();
   const { showAlert } = useAlert();
 
-  // Resolve chips from the store's category
-  const chips = PRODUCT_CATEGORY_MAP[storeCategoryNameAr] ?? DEFAULT_PRODUCT_CATEGORIES;
+  // Resolve chips from the store's category – memoized
+  const chips = useMemo(() => {
+    return PRODUCT_CATEGORY_MAP[storeCategoryNameAr] ?? DEFAULT_PRODUCT_CATEGORIES;
+  }, [storeCategoryNameAr]);
 
   useEffect(() => {
     if (editProduct) {
@@ -112,12 +122,10 @@ function ProductModal({
 
   const handleSave = async () => {
     if (!form.name_ar.trim()) return;
-    // Image is mandatory
     if (!form.image_url) {
       showAlert('تنبيه', 'يجب إضافة صورة للمنتج');
       return;
     }
-    // Category chip must be selected
     if (!form.category_label_ar) {
       setCatError(true);
       return;
@@ -127,7 +135,6 @@ function ProductModal({
       const supabase = getSupabaseClient();
       const payload = {
         store_id: storeId,
-        // Use Arabic as canonical — English mirrors it for DB compatibility
         name: form.name_ar.trim(),
         name_ar: form.name_ar.trim(),
         description: form.description_ar.trim(),
@@ -135,11 +142,11 @@ function ProductModal({
         price: parseFloat(form.price) || 0,
         category_label: form.category_label_ar,
         category_label_ar: form.category_label_ar,
+        custom_category_id: customCategories.find(c => (isAr ? c.name_ar : c.name) === form.category_label_ar)?.id || null,
         image_url: form.image_url,
         is_available: form.is_available,
         position: parseInt(form.position) || 0,
       };
-
       let result;
       if (editProduct) {
         const { data, error } = await supabase
@@ -162,7 +169,7 @@ function ProductModal({
       onSave(result as StoreProduct);
       onClose();
     } catch (e: any) {
-      // silent
+      showAlert('خطأ', e?.message || 'حدث خطأ أثناء الحفظ');
     } finally { setSaving(false); }
   };
 
@@ -187,7 +194,6 @@ function ProductModal({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={pm.content}>
-
               {/* ── Product image (mandatory) ── */}
               <View style={pm.field}>
                 <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>
@@ -230,6 +236,7 @@ function ProductModal({
                   placeholderTextColor={colors.textMuted}
                   value={form.name_ar}
                   onChangeText={v => setForm(f => ({ ...f, name_ar: v }))}
+                  autoFocus
                 />
               </View>
 
@@ -257,22 +264,29 @@ function ProductModal({
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={[pm.chipsScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
                 >
-                  {chips.map(chip => {
-                    const selected = form.category_label_ar === chip;
-                    return (
-                      <Pressable
-                        key={chip}
-                        style={[pm.chip, {
-                          backgroundColor: selected ? colors.primary : colors.background,
-                          borderColor: selected ? colors.primary : (catError ? '#EF4444' : colors.border),
-                        }]}
-                        onPress={() => { setForm(f => ({ ...f, category_label_ar: chip })); setCatError(false); }}
-                      >
-                        {selected ? <MaterialIcons name="check" size={13} color="#fff" /> : null}
-                        <Text style={[pm.chipText, { color: selected ? '#fff' : colors.textPrimary }]}>{chip}</Text>
-                      </Pressable>
-                    );
-                  })}
+                  {customCategories.length === 0 ? (
+                    <Text style={{ color: colors.textMuted, fontSize: FontSize.sm, paddingVertical: 8 }}>
+                      {isAr ? '⚠️ لا توجد تصنيفات. أضف تصنيفاً أولاً في لوحة التحكم.' : '⚠️ No categories. Add one in dashboard first.'}
+                    </Text>
+                  ) : (
+                    customCategories.map(cat => {
+                      const catName = isAr ? cat.name_ar : cat.name;
+                      const selected = form.category_label_ar === catName;
+                      return (
+                        <Pressable
+                          key={cat.id}
+                          style={[pm.chip, {
+                            backgroundColor: selected ? colors.primary : colors.background,
+                            borderColor: selected ? colors.primary : (catError ? '#EF4444' : colors.border),
+                          }]}
+                          onPress={() => { setForm(f => ({ ...f, category_label_ar: catName })); setCatError(false); }}
+                        >
+                          {selected ? <MaterialIcons name="check" size={13} color="#fff" /> : null}
+                          <Text style={[pm.chipText, { color: selected ? '#fff' : colors.textPrimary }]}>{catName}</Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
                 </ScrollView>
               </View>
 
@@ -454,6 +468,7 @@ export default function StoreDashboardScreen() {
   const [storeCategory, setStoreCategory] = useState<StoreCategory | null>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [productModalVisible, setProductModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState<StoreProduct | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'products'>('overview');
@@ -462,35 +477,132 @@ export default function StoreDashboardScreen() {
   const textAlign = isRTL ? 'right' as const : 'left' as const;
   const rtl = isRTL ? 'row-reverse' as const : 'row' as const;
 
+  // ── Custom categories state ──
+  const [customCategories, setCustomCategories] = useState<LocalCategory[]>([]);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryNameAr, setNewCategoryNameAr] = useState('');
+
+  // ── Add custom category (memoized) ──
+  const handleAddCategory = useCallback(async () => {
+    if (!store?.id || !newCategoryName.trim() || !newCategoryNameAr.trim()) {
+      showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'الاسم مطلوب' : 'Name is required');
+      return;
+    }
+    try {
+      const newCat = await addLocalCategory(
+        store.id,
+        newCategoryName.trim(),
+        newCategoryNameAr.trim(),
+        'category',
+        '#6B7280'
+      );
+      if (newCat) {
+        setCustomCategories(prev => [...prev, newCat]);
+        setNewCategoryName('');
+        setNewCategoryNameAr('');
+        setShowCategoryForm(false);
+        showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم إضافة التصنيف' : 'Category added');
+      } else {
+        throw new Error('Failed to add category');
+      }
+    } catch (e: any) {
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message || isAr ? 'تعذر إضافة التصنيف' : 'Could not add category');
+    }
+  }, [store?.id, newCategoryName, newCategoryNameAr, isAr, showAlert]);
+
+  // ── Delete custom category (memoized) ──
+  const handleDeleteCategory = useCallback((id: string) => {
+    showAlert(
+      isAr ? 'تأكيد الحذف' : 'Confirm Delete',
+      isAr ? 'هل تريد حذف هذا التصنيف؟' : 'Delete this category?',
+      [
+        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isAr ? 'حذف' : 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (store?.id) {
+              try {
+                const success = await deleteLocalCategory(store.id, id);
+                if (success) {
+                  setCustomCategories(prev => prev.filter(c => c.id !== id));
+                } else {
+                  throw new Error('Delete failed');
+                }
+              } catch (e: any) {
+                showAlert(isAr ? 'خطأ' : 'Error', e?.message || isAr ? 'تعذر حذف التصنيف' : 'Could not delete category');
+              }
+            }
+          },
+        },
+      ]
+    );
+  }, [store?.id, isAr, showAlert]);
+
+  // ── Load data with AbortController ──
   const loadData = useCallback(async () => {
     if (!user) return;
+    setError(null);
     setLoading(true);
+    const controller = new AbortController();
+    let isMounted = true;
+
     try {
-      const { data: storeData } = await getSupabaseClient()
+      const supabase = getSupabaseClient();
+      // Fetch store
+      const { data: storeData, error: storeError } = await supabase
         .from('stores')
         .select('*, store_categories(id, name, name_ar, icon, color, slug, position, is_active, image_url, created_at)')
         .eq('owner_id', user.id)
         .maybeSingle();
+      if (storeError) throw storeError;
+      if (!isMounted) return;
+
       setStore(storeData);
       if (storeData?.store_categories) {
         setStoreCategory(storeData.store_categories as StoreCategory);
       } else if (storeData?.store_category_id) {
-        // Fallback: fetch separately if join didn't return it
-        fetchStoreCategories().then(res => {
-          const cat = res.data.find(c => c.id === storeData.store_category_id);
-          if (cat) setStoreCategory(cat);
-        });
+        // Fallback fetch
+        const { data: cats } = await fetchStoreCategories();
+        const cat = cats.find(c => c.id === storeData.store_category_id);
+        if (cat && isMounted) setStoreCategory(cat);
       }
-      if (storeData) {
-        // includeUnavailable=true so merchants see all their products in dashboard
-        const { data: prods } = await fetchStoreProducts(storeData.id, true);
-        setProducts(prods);
+
+      if (storeData && isMounted) {
+        const { data: prods, error: prodError } = await fetchStoreProducts(storeData.id, true);
+        if (prodError) throw prodError;
+        if (isMounted) setProducts(prods || []);
       }
-    } finally { setLoading(false); }
+    } catch (e: any) {
+      if (isMounted) {
+        setError(e?.message || 'Failed to load store data');
+      }
+    } finally {
+      if (isMounted) setLoading(false);
+    }
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [user]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // ── Load local categories when store changes ──
+  useEffect(() => {
+    if (store?.id) {
+      getLocalCategories(store.id).then(setCustomCategories);
+    }
+  }, [store?.id]);
 
+  // ── Trigger loadData on user change ──
+  useEffect(() => {
+    const cleanup = loadData();
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [loadData]);
+
+  // ── Delete product (memoized) ──
   const handleDeleteProduct = useCallback((product: StoreProduct) => {
     showAlert(
       isAr ? 'حذف المنتج' : 'Delete Product',
@@ -519,6 +631,7 @@ export default function StoreDashboardScreen() {
     );
   }, [isAr, showAlert]);
 
+  // ── Share store (memoized) ──
   const handleShareStore = useCallback(async () => {
     if (!store || shareLoading) return;
     setShareLoading(true);
@@ -532,10 +645,12 @@ export default function StoreDashboardScreen() {
           : `Shop at "${name}" on Souq Qalqilya! 🛒✨\n\n${shortLink}`,
         url: shortLink,
       });
-    } catch { /* silent */ }
-    finally { setShareLoading(false); }
-  }, [store, isAr, shareLoading]);
+    } catch (e: any) {
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message || isAr ? 'تعذر المشاركة' : 'Could not share');
+    } finally { setShareLoading(false); }
+  }, [store, isAr, shareLoading, showAlert]);
 
+  // ── Save product (memoized) ──
   const handleSaveProduct = useCallback((saved: StoreProduct) => {
     setProducts(prev => {
       const idx = prev.findIndex(p => p.id === saved.id);
@@ -548,10 +663,26 @@ export default function StoreDashboardScreen() {
     });
   }, []);
 
+  // ── Memoized values ──
+  const storeName = useMemo(() => isAr ? (store?.name_ar || store?.name) : store?.name, [store, isAr]);
+  const availableCount = useMemo(() => products.filter(p => p.is_available).length, [products]);
+
   if (loading) {
     return (
       <View style={[s.loadingScreen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <ActivityIndicator color={colors.primary} size="large" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[s.loadingScreen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <MaterialIcons name="error-outline" size={48} color={colors.error} />
+        <Text style={[s.noStoreText, { color: colors.error }]}>{error}</Text>
+        <Pressable style={[s.registerBtn, { backgroundColor: colors.primary }]} onPress={() => { setError(null); loadData(); }}>
+          <Text style={s.registerBtnText}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
+        </Pressable>
       </View>
     );
   }
@@ -570,9 +701,6 @@ export default function StoreDashboardScreen() {
     );
   }
 
-  const storeName = isAr ? (store.name_ar || store.name) : store.name;
-  const availableCount = products.filter(p => p.is_available).length;
-
   return (
     <View style={[s.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
 
@@ -585,7 +713,6 @@ export default function StoreDashboardScreen() {
         <View style={[s.headerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
           <Text style={[s.headerSub, { textAlign }]}>{isAr ? 'لوحة تحكم' : 'Store Dashboard'}</Text>
           <Text style={[s.headerTitle, { textAlign }]} numberOfLines={1}>{storeName}</Text>
-          {/* Approval status */}
           <View style={[s.statusBadge, { backgroundColor: store.is_approved ? '#D1FAE5' : '#FEF3C7', flexDirection: rtl }]}>
             <MaterialIcons
               name={store.is_approved ? 'check-circle' : 'access-time'}
@@ -646,10 +773,72 @@ export default function StoreDashboardScreen() {
 
       {/* ── Overview tab ── */}
       {activeTab === 'overview' ? (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.tabContent}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={s.tabContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* ── إدارة التصنيفات المخصصة ── */}
+          <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: Spacing.md }]}>
+            <View style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={[s.catBadgeText, { color: colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' }]}>
+                {isAr ? 'تصنيفات المتجر المخصصة' : 'Custom Categories'}
+              </Text>
+              <Pressable onPress={() => setShowCategoryForm(!showCategoryForm)} style={{ flexDirection: rtl, alignItems: 'center', gap: 4 }}>
+                <MaterialIcons name={showCategoryForm ? 'remove-circle-outline' : 'add-circle-outline'} size={22} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontSize: FontSize.sm, fontWeight: '600' }}>
+                  {showCategoryForm ? (isAr ? 'إلغاء' : 'Cancel') : (isAr ? 'إضافة' : 'Add')}
+                </Text>
+              </Pressable>
+            </View>
+
+            {showCategoryForm && (
+              <View style={{ gap: 8, marginTop: 8 }}>
+                <TextInput
+                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
+                  placeholder={isAr ? 'الاسم (عربي)' : 'Name (Arabic)'}
+                  placeholderTextColor={colors.textMuted}
+                  value={newCategoryNameAr}
+                  onChangeText={setNewCategoryNameAr}
+                />
+                <TextInput
+                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
+                  placeholder={isAr ? 'الاسم (إنجليزي)' : 'Name (English)'}
+                  placeholderTextColor={colors.textMuted}
+                  value={newCategoryName}
+                  onChangeText={setNewCategoryName}
+                />
+                <Pressable
+                  style={[pm.saveBtn, { backgroundColor: colors.primary, paddingVertical: 10, borderRadius: Radius.lg }]}
+                  onPress={handleAddCategory}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>{isAr ? 'حفظ التصنيف' : 'Save Category'}</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {customCategories.length === 0 ? (
+              <Text style={{ color: colors.textMuted, fontSize: FontSize.sm, marginTop: 8, textAlign }}>
+                {isAr ? 'لا توجد تصنيفات مخصصة بعد' : 'No custom categories yet'}
+              </Text>
+            ) : (
+              <View style={{ marginTop: 8, gap: 6 }}>
+                {customCategories.map(cat => (
+                  <View key={cat.id} style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
+                    <Text style={{ color: colors.textPrimary, fontSize: FontSize.sm }}>
+                      {isAr ? cat.name_ar : cat.name}
+                    </Text>
+                    <Pressable onPress={() => handleDeleteCategory(cat.id)} hitSlop={8}>
+                      <MaterialIcons name="delete-outline" size={18} color="#EF4444" />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
           {/* Store info card */}
           <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            {/* Store category badge */}
             {storeCategory ? (
               <View style={[s.infoRow, { flexDirection: rtl }]}>
                 <View style={[s.catBadge, { backgroundColor: storeCategory.color + '18' }]}>
@@ -700,7 +889,7 @@ export default function StoreDashboardScreen() {
             <MaterialIcons name="chevron-left" size={20} color={colors.primary} />
           </Pressable>
 
-          {/* Approval message when pending */}
+          {/* Approval message */}
           {!store.is_approved ? (
             <View style={[s.pendingCard, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
               <MaterialIcons name="access-time" size={22} color="#D97706" />
@@ -771,6 +960,7 @@ export default function StoreDashboardScreen() {
           storeId={store.id}
           editProduct={editingProduct}
           storeCategoryNameAr={storeCategory?.name_ar || storeCategory?.name || ''}
+          customCategories={customCategories}
           isAr={isAr}
           isRTL={isRTL}
           colors={colors}
