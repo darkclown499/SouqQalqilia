@@ -38,7 +38,6 @@ export default function SupportFormScreen() {
       );
       return;
     }
-    
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images',
       quality: 0.7,

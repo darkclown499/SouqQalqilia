@@ -17,8 +17,12 @@ import {
 } from '@/services/storeCategoriesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
-import * as LocalCategoryService from '@/services/localCategoriesService';
-import type { LocalCategory } from '@/services/localCategoriesService';
+import {
+  getLocalCategories,
+  addLocalCategory,
+  deleteLocalCategory,
+  LocalCategory,
+} from '@/services/localCategoriesService';
 
 // ── Add/Edit Product Modal ────────────────────────────────────────────────────
 interface ProductForm {
@@ -82,6 +86,7 @@ function ProductModal({
   const textAlign = 'right' as const;
   const rtl = isRTL ? 'row-reverse' as const : 'row' as const;
 
+  // ── Reset form when editing product changes ──
   useEffect(() => {
     if (editProduct) {
       setForm({
@@ -101,6 +106,7 @@ function ProductModal({
     setCatError(false);
   }, [editProduct, visible]);
 
+  // ── Pick image ──
   const handlePickImage = async () => {
     setImgLoading(true);
     try {
@@ -115,6 +121,7 @@ function ProductModal({
     } finally { setImgLoading(false); }
   };
 
+  // ── Save product ──
   const handleSave = async () => {
     if (!form.name_ar.trim()) {
       showAlert('تنبيه', 'يرجى إدخال اسم المنتج');
@@ -190,6 +197,7 @@ function ProductModal({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={pm.content}>
+              {/* ── Product image ── */}
               <View style={pm.field}>
                 <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>
                   {'صورة المنتج (إجباري *)'}
@@ -222,6 +230,7 @@ function ProductModal({
                 </Pressable>
               </View>
 
+              {/* ── Product name ── */}
               <View style={pm.field}>
                 <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>{'اسم المنتج *'}</Text>
                 <TextInput
@@ -234,6 +243,7 @@ function ProductModal({
                 />
               </View>
 
+              {/* ── Description ── */}
               <View style={pm.field}>
                 <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>{'الوصف'}</Text>
                 <TextInput
@@ -247,6 +257,7 @@ function ProductModal({
                 />
               </View>
 
+              {/* ── Category chips ── */}
               <View style={pm.field}>
                 <Text style={[pm.fieldLabel, { color: catError ? '#EF4444' : colors.textSecondary, textAlign: textAlign }]}>
                   {catError ? 'التصنيف مطلوب *' : 'تصنيف المنتج *'}
@@ -282,6 +293,7 @@ function ProductModal({
                 </ScrollView>
               </View>
 
+              {/* ── Price ── */}
               <View style={pm.field}>
                 <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>{'السعر (₪)'}</Text>
                 <TextInput
@@ -294,6 +306,7 @@ function ProductModal({
                 />
               </View>
 
+              {/* ── Available toggle ── */}
               <Pressable
                 style={[pm.toggleRow, { flexDirection: rtl, borderColor: form.is_available ? colors.primary : colors.border, backgroundColor: form.is_available ? colors.primaryGhost : colors.background }]}
                 onPress={() => setForm(f => ({ ...f, is_available: !f.is_available }))}
@@ -473,12 +486,6 @@ export default function StoreDashboardScreen() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryNameAr, setNewCategoryNameAr] = useState('');
 
-  // ── WhatsApp edit modal state ──
-  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
-  const [whatsappPrefix, setWhatsappPrefix] = useState('972');
-  const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [savingWhatsApp, setSavingWhatsApp] = useState(false);
-
   // ── Add custom category ──
   const handleAddCategory = useCallback(async () => {
     if (!store?.id) {
@@ -489,17 +496,8 @@ export default function StoreDashboardScreen() {
       showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'الاسم بالعربية والإنجليزية مطلوب' : 'Both Arabic and English names are required');
       return;
     }
-
-    if (typeof LocalCategoryService.addLocalCategory !== 'function') {
-      showAlert(
-        isAr ? 'خطأ في الخدمة' : 'Service Error',
-        isAr ? 'دالة إضافة التصنيف غير متوفرة. تأكد من تهيئة الخدمة.' : 'Add category function is not available. Check service initialization.'
-      );
-      return;
-    }
-
     try {
-      const newCat = await LocalCategoryService.addLocalCategory(
+      const newCat = await addLocalCategory(
         store.id,
         newCategoryName.trim(),
         newCategoryNameAr.trim(),
@@ -526,15 +524,6 @@ export default function StoreDashboardScreen() {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لم يتم تحميل المتجر' : 'Store not loaded');
       return;
     }
-
-    if (typeof LocalCategoryService.deleteLocalCategory !== 'function') {
-      showAlert(
-        isAr ? 'خطأ في الخدمة' : 'Service Error',
-        isAr ? 'دالة حذف التصنيف غير متوفرة.' : 'Delete category function is not available.'
-      );
-      return;
-    }
-
     showAlert(
       isAr ? 'تأكيد الحذف' : 'Confirm Delete',
       isAr ? 'هل تريد حذف هذا التصنيف؟' : 'Delete this category?',
@@ -545,7 +534,7 @@ export default function StoreDashboardScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const success = await LocalCategoryService.deleteLocalCategory(store.id, id);
+              const success = await deleteLocalCategory(store.id, id);
               if (success) {
                 setCustomCategories(prev => prev.filter(c => c.id !== id));
                 showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم حذف التصنيف' : 'Category deleted');
@@ -561,7 +550,7 @@ export default function StoreDashboardScreen() {
     );
   }, [store?.id, isAr, showAlert]);
 
-  // ── Load data ──
+  // ── Load data with AbortController ──
   const loadData = useCallback(async () => {
     if (!user) return;
     setError(null);
@@ -570,6 +559,7 @@ export default function StoreDashboardScreen() {
 
     try {
       const supabase = getSupabaseClient();
+      // Fetch store
       const { data: storeData, error: storeError } = await supabase
         .from('stores')
         .select('*, store_categories(id, name, name_ar, icon, color, slug, position, is_active, image_url, created_at)')
@@ -582,6 +572,7 @@ export default function StoreDashboardScreen() {
       if (storeData?.store_categories) {
         setStoreCategory(storeData.store_categories as StoreCategory);
       } else if (storeData?.store_category_id) {
+        // Fallback fetch
         const { data: cats } = await fetchStoreCategories();
         const cat = cats.find(c => c.id === storeData.store_category_id);
         if (cat && isMounted) setStoreCategory(cat);
@@ -604,15 +595,14 @@ export default function StoreDashboardScreen() {
     };
   }, [user]);
 
-  // ── Load local categories ──
+  // ── Load local categories when store changes ──
   useEffect(() => {
     if (store?.id) {
-      LocalCategoryService.getLocalCategories(store.id)
-        .then(setCustomCategories)
-        .catch(console.error);
+      getLocalCategories(store.id).then(setCustomCategories).catch(console.error);
     }
   }, [store?.id]);
 
+  // ── Trigger loadData on mount ──
   useEffect(() => {
     const cleanup = loadData();
     return () => {
@@ -682,58 +672,6 @@ export default function StoreDashboardScreen() {
     });
     showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم حفظ المنتج' : 'Product saved');
   }, [isAr, showAlert]);
-
-  // ── Open WhatsApp edit modal ──
-  const openWhatsAppModal = useCallback(() => {
-    const currentWhatsApp = store?.owner_whatsapp || store?.whatsapp || '';
-    let prefix = '972';
-    let number = '';
-    if (currentWhatsApp.startsWith('+972')) {
-      prefix = '972';
-      number = currentWhatsApp.replace('+972', '');
-    } else if (currentWhatsApp.startsWith('+970')) {
-      prefix = '970';
-      number = currentWhatsApp.replace('+970', '');
-    } else {
-      number = currentWhatsApp.replace(/^0+/, '');
-    }
-    setWhatsappPrefix(prefix);
-    setWhatsappNumber(number);
-    setShowWhatsAppModal(true);
-  }, [store]);
-
-  // ── Save WhatsApp number ──
-  const handleSaveWhatsApp = useCallback(async () => {
-    if (!store?.id) {
-      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لم يتم تحميل المتجر' : 'Store not loaded');
-      return;
-    }
-    let cleanNumber = whatsappNumber.replace(/^0+/, '');
-    if (cleanNumber.length < 9) {
-      showAlert(
-        isAr ? 'رقم غير صحيح' : 'Invalid Number',
-        isAr ? 'الرقم يجب أن يحتوي على 9 أرقام على الأقل بعد البادئة' : 'Number must have at least 9 digits after the prefix'
-      );
-      return;
-    }
-    const fullNumber = `+${whatsappPrefix}${cleanNumber}`;
-    setSavingWhatsApp(true);
-    try {
-      const supabase = getSupabaseClient();
-      const { error: updateError } = await supabase
-        .from('stores')
-        .update({ owner_whatsapp: fullNumber })
-        .eq('id', store.id);
-      if (updateError) throw updateError;
-      setStore((prev: any) => ({ ...prev, owner_whatsapp: fullNumber }));
-      setShowWhatsAppModal(false);
-      showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم تحديث رقم واتساب' : 'WhatsApp number updated');
-    } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر تحديث الرقم' : 'Could not update number'));
-    } finally {
-      setSavingWhatsApp(false);
-    }
-  }, [store?.id, whatsappPrefix, whatsappNumber, isAr, showAlert]);
 
   // ── Memoized values ──
   const storeName = useMemo(() => isAr ? (store?.name_ar || store?.name) : store?.name, [store, isAr]);
@@ -850,7 +788,7 @@ export default function StoreDashboardScreen() {
           contentContainerStyle={s.tabContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ── Custom categories ── */}
+          {/* ── إدارة التصنيفات المخصصة ── */}
           <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: Spacing.md }]}>
             <View style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={[s.catBadgeText, { color: colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' }]}>
@@ -909,7 +847,7 @@ export default function StoreDashboardScreen() {
             )}
           </View>
 
-          {/* ── Store info card (مع زر تعديل واتساب) ── */}
+          {/* Store info card */}
           <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {storeCategory ? (
               <View style={[s.infoRow, { flexDirection: rtl }]}>
@@ -935,20 +873,13 @@ export default function StoreDashboardScreen() {
                 {store.opening_time} – {store.closing_time}
               </Text>
             </View>
-            <View style={[s.infoRow, { flexDirection: rtl, justifyContent: 'space-between' }]}>
-              <View style={{ flexDirection: rtl, alignItems: 'center', gap: 10, flex: 1 }}>
-                <MaterialIcons name="chat" size={16} color="#25D366" />
-                <Text style={[s.infoText, { color: colors.textPrimary, textAlign }]}>
-                  {store.owner_whatsapp || store.whatsapp || (isAr ? 'لم يُضَف' : 'Not added')}
-                </Text>
-              </View>
-              <Pressable onPress={openWhatsAppModal} hitSlop={8} style={{ padding: 6 }}>
-                <MaterialIcons name="edit" size={18} color={colors.primary} />
-              </Pressable>
+            <View style={[s.infoRow, { flexDirection: rtl }]}>
+              <MaterialIcons name="chat" size={16} color="#25D366" />
+              <Text style={[s.infoText, { color: colors.textPrimary, textAlign }]}>{store.owner_whatsapp || store.whatsapp || (isAr ? 'لم يُضَف' : 'Not added')}</Text>
             </View>
           </View>
 
-          {/* ── Share My Store button ── */}
+          {/* Share My Store button */}
           <Pressable
             style={[s.shareStoreBtn, { borderColor: colors.primary, backgroundColor: colors.primaryGhost, opacity: shareLoading ? 0.7 : 1 }]}
             onPress={handleShareStore}
@@ -968,7 +899,7 @@ export default function StoreDashboardScreen() {
             <MaterialIcons name="chevron-left" size={20} color={colors.primary} />
           </Pressable>
 
-          {/* ── Approval message ── */}
+          {/* Approval message */}
           {!store.is_approved ? (
             <View style={[s.pendingCard, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
               <MaterialIcons name="access-time" size={22} color="#D97706" />
@@ -1030,7 +961,7 @@ export default function StoreDashboardScreen() {
         </Pressable>
       ) : null}
 
-      {/* ── Product modal ── */}
+      {/* Product modal */}
       {store ? (
         <ProductModal
           visible={productModalVisible}
@@ -1045,104 +976,6 @@ export default function StoreDashboardScreen() {
           colors={colors}
         />
       ) : null}
-
-      {/* ── WhatsApp Edit Modal ── */}
-      <Modal visible={showWhatsAppModal} transparent animationType="slide" onRequestClose={() => setShowWhatsAppModal(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={pm.overlay}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowWhatsAppModal(false)} />
-            <View style={[pm.sheet, { backgroundColor: colors.surface, paddingBottom: 40 }]}>
-              <View style={[pm.handle, { backgroundColor: colors.border }]} />
-              <View style={[pm.titleRow, { flexDirection: rtl, borderBottomColor: colors.borderLight }]}>
-                <MaterialIcons name="chat" size={22} color="#25D366" />
-                <Text style={[pm.titleText, { color: colors.textPrimary, flex: 1, textAlign: textAlign }]}>
-                  {isAr ? 'تعديل رقم واتساب' : 'Edit WhatsApp Number'}
-                </Text>
-                <Pressable onPress={() => setShowWhatsAppModal(false)} hitSlop={10}>
-                  <MaterialIcons name="close" size={22} color={colors.textMuted} />
-                </Pressable>
-              </View>
-
-              <View style={[pm.content, { gap: 16 }]}>
-                {/* اختيار البادئة */}
-                <View>
-                  <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>
-                    {isAr ? 'اختر البادئة' : 'Select Prefix'}
-                  </Text>
-                  <View style={{ flexDirection: rtl, gap: 12, marginTop: 6 }}>
-                    {['972', '970'].map(prefix => {
-                      const selected = whatsappPrefix === prefix;
-                      return (
-                        <Pressable
-                          key={prefix}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 8,
-                            paddingHorizontal: 16,
-                            paddingVertical: 10,
-                            borderRadius: Radius.full,
-                            borderWidth: 2,
-                            borderColor: selected ? colors.primary : colors.border,
-                            backgroundColor: selected ? colors.primaryGhost : colors.background,
-                            flex: 1,
-                            justifyContent: 'center',
-                          }}
-                          onPress={() => setWhatsappPrefix(prefix)}
-                        >
-                          <Text style={{ fontWeight: '700', color: selected ? colors.primary : colors.textSecondary }}>
-                            +{prefix}
-                          </Text>
-                          {selected && <MaterialIcons name="check-circle" size={18} color={colors.primary} />}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                {/* حقل الرقم المحلي */}
-                <View>
-                  <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>
-                    {isAr ? 'رقم الهاتف المحلي' : 'Local Phone Number'}
-                  </Text>
-                  <TextInput
-                    style={[pm.input, {
-                      borderColor: colors.border,
-                      backgroundColor: colors.background,
-                      color: colors.textPrimary,
-                      textAlign: textAlign,
-                    }]}
-                    placeholder={isAr ? 'مثال: 52324302' : 'e.g. 52324302'}
-                    placeholderTextColor={colors.textMuted}
-                    value={whatsappNumber}
-                    onChangeText={(text) => {
-                      const cleaned = text.replace(/[^0-9]/g, '').replace(/^0+/, '');
-                      setWhatsappNumber(cleaned);
-                    }}
-                    keyboardType="numeric"
-                    maxLength={12}
-                  />
-                  <Text style={{ fontSize: FontSize.xs, color: colors.textMuted, marginTop: 4, textAlign }}>
-                    {isAr ? '📌 سيتم حفظ الرقم بالصيغة: +' + whatsappPrefix + 'xxxxxxxxx' : '📌 Will be saved as: +' + whatsappPrefix + 'xxxxxxxxx'}
-                  </Text>
-                </View>
-              </View>
-
-              <Pressable
-                style={[pm.saveBtn, { backgroundColor: colors.primary, opacity: savingWhatsApp ? 0.7 : 1, marginTop: 8 }]}
-                onPress={handleSaveWhatsApp}
-                disabled={savingWhatsApp}
-              >
-                {savingWhatsApp ? <ActivityIndicator color="#fff" size="small" /> : <MaterialIcons name="check" size={20} color="#fff" />}
-                <Text style={pm.saveBtnText}>
-                  {savingWhatsApp ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'حفظ الرقم' : 'Save Number')}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
     </View>
   );
 }

@@ -259,7 +259,7 @@ export default function ProfileScreen() {
         bg: '#FEF3C7',
         onPress: () => {
           try {
-            Linking.openURL('https://plankton.fit/projects/souq-qalqilya/admin');
+            router.push('/admin' as any);
           } catch (err) {
             console.error('Admin navigation error:', err);
             showAlert(
