@@ -831,29 +831,36 @@ export default function AdminScreen() {
   const [inShowAfter, setInShowAfter] = useState('60');
   const [inSaving, setInSaving] = useState(false);
 
+  // ============================================================
+  // ✅ التعديل المطلوب: تعطيل جلب البيانات وإيقاف التحميل فوراً
+  // ============================================================
   const loadData = useCallback(async () => {
-    setLoading(true);
-    if (tab === 'stores') {
-      const { data } = await adminFetchAllStores();
-      setStores(data);
-    } else if (tab === 'ads') {
-      const { data } = await adminFetchAllAds();
-      setAds(data);
-    } else if (tab === 'users') {
-      const { data } = await adminFetchAllUsers();
-      setUsers(data);
-    } else if (tab === 'banners') {
-      const { data } = await fetchAllBanners();
-      setBanners(data);
-    } else if (tab === 'analytics') {
-      // analytics tab handles its own loading
-      setLoading(false);
-      return;
-    } else {
-      const { data } = await fetchAllInterstitials();
-      setInterstitials(data);
-    }
+    // 🛑 إيقاف التحميل وإنهاء الدالة فوراً لتجاوز قيود الخادم
     setLoading(false);
+    return;
+
+    // // الكود الأصلي (معلّق)
+    // setLoading(true);
+    // if (tab === 'stores') {
+    //   const { data } = await adminFetchAllStores();
+    //   setStores(data);
+    // } else if (tab === 'ads') {
+    //   const { data } = await adminFetchAllAds();
+    //   setAds(data);
+    // } else if (tab === 'users') {
+    //   const { data } = await adminFetchAllUsers();
+    //   setUsers(data);
+    // } else if (tab === 'banners') {
+    //   const { data } = await fetchAllBanners();
+    //   setBanners(data);
+    // } else if (tab === 'analytics') {
+    //   setLoading(false);
+    //   return;
+    // } else {
+    //   const { data } = await fetchAllInterstitials();
+    //   setInterstitials(data);
+    // }
+    // setLoading(false);
   }, [tab]);
 
   useEffect(() => { loadData(); }, [loadData]);

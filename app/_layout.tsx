@@ -6,7 +6,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { preloadAds } from '@/services/adsService';
 import { preloadBanners } from '@/services/bannersService';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Stack, router, useSegments } from 'expo-router';
+import { Stack, router, useSegments, useRouter } from 'expo-router'; // ✅ أضفنا useRouter
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -35,8 +35,6 @@ if (Platform.OS !== 'web') {
       }),
     });
     if (Platform.OS === 'android') {
-      // AndroidImportance.MAX ensures heads-up notifications (peeking banners)
-      // on all Android versions including Oreo+ where channels are required.
       Notifications.setNotificationChannelAsync('messages', {
         name: 'الرسائل',
         importance: Notifications.AndroidImportance.MAX,
@@ -94,7 +92,7 @@ async function loadShownIds(): Promise<Map<string, number>> {
     const now = Date.now();
     const map = new Map<string, number>();
     for (const [id, ts] of Object.entries(obj)) {
-      if (now - ts < SHOWN_IDS_TTL_MS) map.set(id, ts); // discard expired
+      if (now - ts < SHOWN_IDS_TTL_MS) map.set(id, ts);
     }
     return map;
   } catch { return new Map(); }
@@ -119,14 +117,12 @@ interface BannerPayload {
 
 function InAppChatBanner() {
   const { user } = useAuth();
-  // useTheme is safe here — InAppChatBanner renders inside ThemeProvider
   const { colors, isDark } = useTheme();
   const segments = useSegments();
+  const router = useRouter(); // ✅ استخدمنا useRouter هنا
   const [banner, setBanner] = useState<BannerPayload | null>(null);
 
-  // ── Reanimated shared values ─────────────────────────────────────────────
-  // slideY: base position (-120 = off-screen above, 0 = visible)
-  // dragY:  live drag offset while user is panning
+  // Reanimated shared values
   const slideY = useSharedValue(-120);
   const dragY = useSharedValue(0);
 
@@ -134,21 +130,16 @@ function InAppChatBanner() {
     transform: [{ translateY: slideY.value + dragY.value }],
   }));
 
-  // Map of { msgId → shownAt timestamp } — persisted to AsyncStorage so banners
-  // for the same message are suppressed even after the app is closed and reopened.
   const shownMsgIdsRef = useRef<Map<string, number>>(new Map());
 
-  // Load persisted shown IDs on mount
   useEffect(() => {
     loadShownIds().then(map => { shownMsgIdsRef.current = map; });
   }, []);
-  // Per-conversation cooldown map: convId → last banner timestamp
-  // Prevents flooding the user with banners for the same conversation.
+
   const convCooldownRef = useRef<Map<string, number>>(new Map());
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // JS-thread dismiss — clears timer + state after animation completes
   const clearBanner = useCallback(() => {
     setBanner(null);
     if (dismissTimerRef.current) {
@@ -177,22 +168,18 @@ function InAppChatBanner() {
     dismissTimerRef.current = setTimeout(() => dismissBanner(), 5000);
   }, [slideY, dragY, dismissBanner]);
 
-  // ── Swipe-up-to-dismiss pan gesture ──────────────────────────────────────
-  // Threshold: -30px upward → dismiss; otherwise spring back
+  // Pan gesture
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
-      // Allow upward drag freely; clamp downward bounce to 16px
       dragY.value = Math.min(e.translationY, 16);
     })
     .onEnd((e) => {
       if (e.translationY < -30) {
-        // ── Swipe up past threshold → fly off screen ─────────────────────
         dragY.value = withTiming(0, { duration: 60 });
         slideY.value = withTiming(-160, { duration: 220 }, (finished) => {
           if (finished) runOnJS(clearBanner)();
         });
       } else {
-        // ── Not enough → elastic spring back to rest ─────────────────────
         dragY.value = withSpring(0, { damping: 18, stiffness: 300 });
       }
     });
@@ -225,17 +212,12 @@ function InAppChatBanner() {
           .single();
 
         if (!data) return;
-        // Suppress while user is inside the relevant chat
         if (activeChatId && activeChatId === data.conversation_id) return;
-        // Suppress while user is on the messages list tab
         if ((segments as string[]).includes('messages')) return;
-        // Never re-show a banner for a message we already showed (persisted across restarts)
         if (shownMsgIdsRef.current.has(data.id)) return;
-        // Per-conversation cooldown: max one banner per conversation every 20 seconds
         const lastConvBanner = convCooldownRef.current.get(data.conversation_id) ?? 0;
         if (Date.now() - lastConvBanner < 20000) return;
 
-        // Persist this ID so it survives app restarts
         persistShownId(data.id, shownMsgIdsRef.current);
         convCooldownRef.current.set(data.conversation_id, Date.now());
         const senderProfile = (data as any).user_profiles;
@@ -262,9 +244,6 @@ function InAppChatBanner() {
 
   if (!banner) return null;
 
-  // ── Theme-aware card colors ────────────────────────────────────────────────
-  // Dark mode  → rich near-black with subtle border
-  // Light mode → clean white surface with elevation shadow
   const cardBg = isDark ? 'rgba(15,25,35,0.96)' : colors.surface;
   const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : colors.border;
   const nameColor = isDark ? '#fff' : colors.textPrimary;
@@ -283,17 +262,15 @@ function InAppChatBanner() {
           onPress={async () => {
             const convId = banner.conversationId;
             dismissBanner();
-            // Mark messages as read immediately so tab badge clears at once
             try {
               if (user?.id) {
                 const { markMessagesRead } = await import('@/services/chatService');
                 await markMessagesRead(convId, user.id);
               }
-            } catch { /* non-critical — navigation proceeds regardless */ }
+            } catch { /* non-critical */ }
             router.push(`/chat/${convId}` as any);
           }}
         >
-          {/* Avatar */}
           {banner.avatarUrl ? (
             <Image
               source={{ uri: banner.avatarUrl }}
@@ -309,7 +286,6 @@ function InAppChatBanner() {
             </View>
           )}
 
-          {/* Content */}
           <View style={bannerStyles.textWrap}>
             <View style={bannerStyles.topRow}>
               <Text style={[bannerStyles.appLabel, { color: colors.primary }]}>سوق قلقيلية</Text>
@@ -323,7 +299,6 @@ function InAppChatBanner() {
             </Text>
           </View>
 
-          {/* Swipe-up hint + dismiss button */}
           <View style={bannerStyles.rightCol}>
             <View style={bannerStyles.swipeIndicator}>
               <View style={[bannerStyles.swipePill, { backgroundColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.13)' }]} />
@@ -384,7 +359,7 @@ const bannerStyles = StyleSheet.create({
   closeX: { fontSize: 20, fontWeight: '300', lineHeight: 20 },
 });
 
-// ── Semver comparison: returns true if `current` < `minimum` ────────────────
+// ── Semver comparison ──────────────────────────────────────────────────────────
 function isVersionOutdated(current: string, minimum: string): boolean {
   const parse = (v: string) => v.split('.').map(n => parseInt(n, 10) || 0);
   const [cMaj, cMin, cPat] = parse(current);
@@ -407,7 +382,7 @@ export default function RootLayout() {
       const work = (async () => {
         try {
           await Promise.all([preloadAds(), preloadBanners()]);
-        } catch { /* never block the user */ }
+        } catch { /* never block */ }
       })();
       await Promise.race([work, deadline]);
       if (!cancelled) setAppIsReady(true);
@@ -488,9 +463,6 @@ export default function RootLayout() {
         preloadAds().catch(() => {});
         preloadBanners().catch(() => {});
 
-        // Always re-register push token on sign-in / token refresh.
-        // This is the PRIMARY registration path — catches users who were
-        // already logged in when they installed an update.
         if (Platform.OS !== 'web') {
           import('@/hooks/useChat').then(({ registerPushToken }) => {
             registerPushToken().catch(() => {});
@@ -518,7 +490,6 @@ export default function RootLayout() {
       };
     }
 
-    // Permission + initial token registration (runs after first render)
     const task = InteractionManager.runAfterInteractions(() => {
       if (Platform.OS !== 'web') {
         import('@/hooks/useChat').then(({ requestNotificationPermissions }) => {
@@ -527,24 +498,17 @@ export default function RootLayout() {
       }
     });
 
-    // ── Foreground notification listener ──────────────────────────────────
-    // Fires when a push arrives while the app is OPEN (foreground).
-    // Without this the OS drops the notification silently on some Android versions.
     let foregroundSub: any = null;
     if (Platform.OS !== 'web') {
       try {
         const Notifications = require('expo-notifications');
         foregroundSub = Notifications.addNotificationReceivedListener((notification: any) => {
-          const data  = notification?.request?.content?.data  ?? {};
+          const data = notification?.request?.content?.data ?? {};
           const convId: string | undefined = data?.conversation_id;
-          // Suppress the push banner if the user is already viewing that exact chat
           if (convId) {
-            import('expo-router').then(({ useSegments: _unused, router: _r }) => {}).catch(() => {});
-            // Read active route via Linking
             import('expo-linking').then(async ({ default: ExpoLinking }) => {
               const url = await ExpoLinking.getInitialURL();
               if (url && url.includes(convId)) {
-                // User is in this chat — swallow the notification (already handled)
                 return;
               }
             }).catch(() => {});
@@ -553,12 +517,8 @@ export default function RootLayout() {
       } catch (_) {}
     }
 
-    // ── App-foreground token refresh ──────────────────────────────────────
-    // Re-registers the push token every time the app comes back from background.
-    // Ensures stale/rotated tokens are always up to date in the DB.
     let appStateSub: any = null;
     if (Platform.OS !== 'web') {
-      // Track app_open on every foreground activation
       trackEvent('app_open').catch(() => {});
       appStateSub = AppState.addEventListener('change', (state) => {
         if (state === 'active') {
@@ -593,39 +553,39 @@ export default function RootLayout() {
     <AlertProvider>
       <SafeAreaProvider onLayout={onLayoutRootView}>
         <GestureHandlerRootView style={{ flex: 1 }}>
-        <ThemeProvider>
-          <LanguageProvider>
-            <AuthProvider>
-              <InAppChatBanner />
-              <Stack screenOptions={{
-  headerShown: false,
-  gestureEnabled: true,                 // يفعّل السحب من الحافة للرجوع على أندرويد
-  fullScreenGestureEnabled: true,       // يسمح بالسحب من أي مكان في الشاشة (وليس فقط الحافة)
-}}>
-                <Stack.Screen name="index" options={{ headerShown: false }} />
-                <Stack.Screen name="login" options={{ headerShown: false }} />
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="ad/[id]" options={{ headerShown: false }} />
-                <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
-                <Stack.Screen name="search" options={{ headerShown: false }} />
-                <Stack.Screen name="category/[slug]" options={{ headerShown: false }} />
-                <Stack.Screen name="admin/index" options={{ headerShown: false }} />
-                <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
-                <Stack.Screen name="favorites" options={{ headerShown: false }} />
-                <Stack.Screen name="privacy" options={{ headerShown: false }} />
-                <Stack.Screen name="faq" options={{ headerShown: false }} />
-                <Stack.Screen name="support-form" options={{ headerShown: false }} />
-                <Stack.Screen name="edit-ad/[id]" options={{ headerShown: false }} />
-                <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
-                <Stack.Screen name="seller/[id]" options={{ headerShown: false }} />
-                <Stack.Screen name="ai-support" options={{ headerShown: false }} />
-                <Stack.Screen name="store/[id]" options={{ headerShown: false }} />
-                <Stack.Screen name="register-store" options={{ headerShown: false }} />
-                <Stack.Screen name="store-dashboard" options={{ headerShown: false }} />
-              </Stack>
-            </AuthProvider>
-          </LanguageProvider>
-        </ThemeProvider>
+          <ThemeProvider>
+            <LanguageProvider>
+              <AuthProvider>
+                <InAppChatBanner />
+                <Stack screenOptions={{
+                  headerShown: false,
+                  gestureEnabled: true,
+                  fullScreenGestureEnabled: true,
+                }}>
+                  <Stack.Screen name="index" options={{ headerShown: false }} />
+                  <Stack.Screen name="login" options={{ headerShown: false }} />
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="ad/[id]" options={{ headerShown: false }} />
+                  <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+                  <Stack.Screen name="search" options={{ headerShown: false }} />
+                  <Stack.Screen name="category/[slug]" options={{ headerShown: false }} />
+                  <Stack.Screen name="admin/index" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+                  <Stack.Screen name="favorites" options={{ headerShown: false }} />
+                  <Stack.Screen name="privacy" options={{ headerShown: false }} />
+                  <Stack.Screen name="faq" options={{ headerShown: false }} />
+                  <Stack.Screen name="support-form" options={{ headerShown: false }} />
+                  <Stack.Screen name="edit-ad/[id]" options={{ headerShown: false }} />
+                  <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
+                  <Stack.Screen name="seller/[id]" options={{ headerShown: false }} />
+                  <Stack.Screen name="ai-support" options={{ headerShown: false }} />
+                  <Stack.Screen name="store/[id]" options={{ headerShown: false }} />
+                  <Stack.Screen name="register-store" options={{ headerShown: false }} />
+                  <Stack.Screen name="store-dashboard" options={{ headerShown: false }} />
+                </Stack>
+              </AuthProvider>
+            </LanguageProvider>
+          </ThemeProvider>
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </AlertProvider>
