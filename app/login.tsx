@@ -329,19 +329,13 @@ export default function LoginScreen() {
     try {
       const { error, user: u } = await signInWithPassword(email.trim().toLowerCase(), password);
       if (error) {
-                showAlert("تفاصيل الخطأ الفعلي", JSON.stringify(error, Object.getOwnPropertyNames(error)));
         if (error.includes('Failed to load user profile')) {
           router.replace('/(tabs)');
           return;
         }
         const friendlyError = mapAuthError(error);
-        if (friendlyError) {
-          showAlert(t.loginFailed, friendlyError);
-          if (error.includes('RequestRateLimitReached') || error.includes('rate limit')) {
-          }
-        }
+        showAlert(t.loginFailed, friendlyError || error);
         return;
-
       }
       if (u) router.replace('/(tabs)');
     } finally { isSubmittingRef.current = false; }
