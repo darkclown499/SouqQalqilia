@@ -483,7 +483,7 @@ export default function ChatScreen() {
     ]);
   }, [adId, actionLoading, isAr, showAlert]);
 
-  const handleCancelSold = useCallback(() => {
+  const handleCancelSold = useCallback(async () => {
     if (!adId) {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لا يوجد إعلان مرتبط' : 'No ad linked');
       return;
