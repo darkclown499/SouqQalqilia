@@ -31,7 +31,7 @@ import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useConversations } from '@/hooks/useChat'; // ✅ استيراد useConversations
+import { useConversations } from '@/hooks/useChat';
 
 // ── Featured Stores Strip ───────────────────────────────────────────────────
 function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
@@ -603,7 +603,7 @@ export default function HomeScreen() {
   const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
   const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
-  const { unreadCount } = useConversations(); // ✅ للحصول على العدد الإجمالي للرسائل غير المقروءة
+  const { unreadCount } = useConversations();
 
   const [isOnline, setIsOnline] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -631,7 +631,6 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isApplyingFilter, setIsApplyingFilter] = useState(false);
 
-  // ✅ حالة جديدة لفتح شيت المحادثات
   const [conversationsSheetVisible, setConversationsSheetVisible] = useState(false);
 
   const requestIdRef = useRef(0);
@@ -911,12 +910,12 @@ export default function HomeScreen() {
     />
   ), [isAr, isRTL, colors, handleFeaturedStorePress]);
 
-  // ✅ معالج ضغط الجرس: فتح شيت المحادثات
+  // معالج ضغط الجرس: فتح شيت المحادثات
   const handleBellPress = useCallback(() => {
     setConversationsSheetVisible(true);
   }, []);
 
-  // ✅ معالج اختيار محادثة من الشيت
+  // معالج اختيار محادثة من الشيت
   const handleConversationPress = useCallback((conversationId: string) => {
     setConversationsSheetVisible(false);
     router.push(`/chat/${conversationId}` as any);
@@ -1038,11 +1037,12 @@ export default function HomeScreen() {
           contentContainerStyle={[
             styles.catContent,
             {
-              flexDirection: isRTL ? 'row-reverse' : 'row',
+              flexDirection: 'row', // ✅ ثابت ← لضمان البدء من اليمين عند RTL
               paddingHorizontal: hPad,
             }
           ]}
         >
+          {/* زر "الكل" دائماً في البداية */}
           <Pressable
             style={[styles.catChip, selectedCategory === null
               ? { backgroundColor: colors.primary, borderColor: colors.primary }
@@ -1052,6 +1052,8 @@ export default function HomeScreen() {
             <MaterialIcons name="apps" size={14} color={selectedCategory === null ? '#fff' : colors.textMuted} />
             <Text style={[styles.catChipText, { color: selectedCategory === null ? '#fff' : colors.textSecondary, fontWeight: selectedCategory === null ? '700' : '500' }]}>{t.all}</Text>
           </Pressable>
+
+          {/* التصنيفات مع عكس الترتيب عند RTL */}
           {(isRTL ? [...categories].reverse() : categories).map(cat => {
             const isSelected = selectedCategory === cat.id;
             return (
@@ -1169,7 +1171,6 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
 
-            {/* ✅ زر الجرس المعدل */}
             <Pressable style={styles.headerIconBtn} onPress={handleBellPress} hitSlop={6}>
               <MaterialCommunityIcons name="bell" size={20} color="#fff" />
               {unreadCount > 0 ? (
@@ -1304,7 +1305,7 @@ export default function HomeScreen() {
         isAr={isAr}
       />
 
-      {/* ── FILTER BOTTOM SHEET ── (بدون تغيير) ── */}
+      {/* ── FILTER BOTTOM SHEET ── */}
       {filterVisible ? (
         <View style={[StyleSheet.absoluteFillObject, { zIndex: 100 }]} pointerEvents="box-none">
           <Pressable style={fStyles.overlay} onPress={() => setFilterVisible(false)} />
@@ -1393,7 +1394,7 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* ── AREA PICKER MODAL ── (بدون تغيير) ── */}
+      {/* ── AREA PICKER MODAL ── */}
       {areaPickerVisible ? (
         <View style={[StyleSheet.absoluteFillObject, { zIndex: 200 }]} pointerEvents="box-none">
           <Pressable style={fStyles.overlay} onPress={() => setAreaPickerVisible(false)} />
@@ -1671,6 +1672,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   catContent: {
+    flexDirection: 'row', // ✅ ثابت (بدون row-reverse)
     gap: Spacing.sm,
     alignItems: 'center',
   },
