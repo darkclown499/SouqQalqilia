@@ -33,6 +33,8 @@ import { Ad } from '@/services/adsService';
 import { getSupabaseClient } from '@/template';
 import { fetchAllActiveStores } from '@/services/storesService';
 import { fetchAllActiveAds } from '@/services/adsService';
+// ✅ استيراد دوال الإحصائيات
+import { fetchPageStats, fetchGeneralStats, fetchAllPageStats, PageStats, GeneralStats } from '@/services/analyticsService';
 
 // ── Analytics Stats Component ──────────────────────────────────────────────
 interface AnalyticsStats {
@@ -48,57 +50,69 @@ interface AnalyticsStats {
 
 function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
+  const [pageStats, setPageStats] = useState<PageStats[]>([]); // ✅ حالة إحصائيات الصفحات
+  const [generalStats, setGeneralStats] = useState<GeneralStats | null>(null); // ✅ حالة الإحصائيات العامة
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchStats = useCallback(async () => {
-  try {
-    const supabase = getSupabaseClient();
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    try {
+      const supabase = getSupabaseClient();
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    // ── Fetch all stats in parallel ──
-    const [dauRes, wauRes, mauRes, totalVisitsRes, usersRes, activeAdsRes, activeStoresRes] = await Promise.all([
-      supabase.from('app_visits').select('device_id').gte('visited_at', todayStart),
-      supabase.from('app_visits').select('device_id').gte('visited_at', weekAgo),
-      supabase.from('app_visits').select('device_id').gte('visited_at', monthAgo),
-      supabase.from('app_visits').select('id', { count: 'exact', head: true }),
-      supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-      supabase.from('ads').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-      supabase.from('stores').select('id', { count: 'exact', head: true }).eq('is_active', true),
-    ]);
+      // ── Fetch all stats in parallel ──
+      const [dauRes, wauRes, mauRes, totalVisitsRes, usersRes, activeAdsRes, activeStoresRes] = await Promise.all([
+        supabase.from('app_visits').select('device_id').gte('visited_at', todayStart),
+        supabase.from('app_visits').select('device_id').gte('visited_at', weekAgo),
+        supabase.from('app_visits').select('device_id').gte('visited_at', monthAgo),
+        supabase.from('app_visits').select('id', { count: 'exact', head: true }),
+        supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
+        supabase.from('ads').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('stores').select('id', { count: 'exact', head: true }).eq('is_active', true),
+      ]);
 
-    // ── Compute ──
-    const uniqueSet = (rows: any[]) => new Set(rows.map((r: any) => r.device_id)).size;
-    const dau = uniqueSet(dauRes.data ?? []);
-    const wau = uniqueSet(wauRes.data ?? []);
-    const mau = uniqueSet(mauRes.data ?? []);
-    const totalVisits = totalVisitsRes.count ?? 0;
-    const totalUsers = usersRes.count ?? 0;
-    const activeAds = activeAdsRes.count ?? 0;
-    const activeStores = activeStoresRes.count ?? 0;
+      // ── Compute ──
+      const uniqueSet = (rows: any[]) => new Set(rows.map((r: any) => r.device_id)).size;
+      const dau = uniqueSet(dauRes.data ?? []);
+      const wau = uniqueSet(wauRes.data ?? []);
+      const mau = uniqueSet(mauRes.data ?? []);
+      const totalVisits = totalVisitsRes.count ?? 0;
+      const totalUsers = usersRes.count ?? 0;
+      const activeAds = activeAdsRes.count ?? 0;
+      const activeStores = activeStoresRes.count ?? 0;
 
-    // ── Trend ──
-    const trendMap: Record<string, Set<string>> = {};
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const key = d.toISOString().slice(0, 10);
-      trendMap[key] = new Set();
+      // ── Trend ──
+      const trendMap: Record<string, Set<string>> = {};
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        const key = d.toISOString().slice(0, 10);
+        trendMap[key] = new Set();
+      }
+      (wauRes.data ?? []).forEach((row: any) => {
+        const day = row.visited_at ? String(row.visited_at).slice(0, 10) : null;
+        if (day && trendMap[day]) trendMap[day].add(row.device_id);
+      });
+      const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
+
+      setStats({ dau, wau, mau, trend, totalVisits, totalUsers, activeAds, activeStores });
+
+      // ✅ جلب إحصائيات الصفحات من analyticsService
+      const [pages, general] = await Promise.all([
+        fetchAllPageStats(),
+        fetchGeneralStats(),
+      ]);
+      setPageStats(pages);
+      setGeneralStats(general);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.warn('fetchStats error:', err);
+    } finally {
+      setLoading(false);
     }
-    (wauRes.data ?? []).forEach((row: any) => {
-      const day = row.visited_at ? String(row.visited_at).slice(0, 10) : null;
-      if (day && trendMap[day]) trendMap[day].add(row.device_id);
-    });
-    const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
-
-    setStats({ dau, wau, mau, trend, totalVisits, totalUsers, activeAds, activeStores });
-    setLastUpdated(new Date());
-  } catch { /* silent */ } finally {
-    setLoading(false);
-  }
-}, []);
+  }, []);
 
   // Only poll while the analytics tab is actively visible (W4 fix)
   useFocusEffect(
@@ -157,7 +171,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         </Pressable>
       </View>
 
-           {/* Stats cards row */}
+      {/* Stats cards row */}
       <View style={anS.statsRow}>
         {/* DAU */}
         <View style={[anS.statCard, { backgroundColor: colors.surface, borderColor: colors.primary + '30' }]}>
@@ -233,6 +247,71 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
           </Text>
         </View>
       </View>
+
+      {/* ── PAGE STATS SECTION (جديد) ── */}
+      {pageStats.length > 0 ? (
+        <View style={[anS.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[anS.pageStatsHeader, { borderBottomColor: colors.borderLight }]}>
+            <MaterialIcons name="analytics" size={20} color={colors.primary} />
+            <Text style={[anS.pageStatsTitle, { color: colors.textPrimary }]}>
+              {isAr ? 'إحصائيات الصفحات' : 'Page Statistics'}
+            </Text>
+          </View>
+          {pageStats.map(stat => {
+            const pageName = isAr
+              ? stat.page === 'home' ? 'الصفحة الرئيسية'
+              : stat.page === 'stores' ? 'صفحة المتاجر'
+              : stat.page === 'ad' ? 'صفحة الإعلان'
+              : stat.page === 'store' ? 'صفحة المتجر'
+              : stat.page === 'profile' ? 'الملف الشخصي'
+              : stat.page
+              : stat.page;
+            const icon = stat.page === 'home' ? 'home'
+              : stat.page === 'stores' ? 'storefront'
+              : stat.page === 'ad' ? 'campaign'
+              : stat.page === 'store' ? 'store'
+              : stat.page === 'profile' ? 'person'
+              : 'web';
+            return (
+              <View key={stat.page} style={[anS.pageStatItem, { borderBottomColor: colors.borderLight }]}>
+                <View style={[anS.pageStatIcon, { backgroundColor: colors.primaryGhost }]}>
+                  <MaterialIcons name={icon as any} size={16} color={colors.primary} />
+                </View>
+                <View style={anS.pageStatContent}>
+                  <Text style={[anS.pageStatName, { color: colors.textPrimary }]}>{pageName}</Text>
+                  <View style={anS.pageStatRow}>
+                    <View style={anS.pageStatMetric}>
+                      <Text style={[anS.pageStatLabel, { color: colors.textMuted }]}>
+                        {isAr ? 'فريد 24 ساعة' : 'Unique 24h'}
+                      </Text>
+                      <Text style={[anS.pageStatValue, { color: colors.textPrimary }]}>{stat.unique_24h}</Text>
+                    </View>
+                    <View style={anS.pageStatMetric}>
+                      <Text style={[anS.pageStatLabel, { color: colors.textMuted }]}>
+                        {isAr ? 'إجمالي 24 ساعة' : 'Total 24h'}
+                      </Text>
+                      <Text style={[anS.pageStatValue, { color: colors.textPrimary }]}>{stat.total_24h}</Text>
+                    </View>
+                    <View style={anS.pageStatMetric}>
+                      <Text style={[anS.pageStatLabel, { color: colors.textMuted }]}>
+                        {isAr ? 'فريد 7 أيام' : 'Unique 7d'}
+                      </Text>
+                      <Text style={[anS.pageStatValue, { color: colors.textPrimary }]}>{stat.unique_7d}</Text>
+                    </View>
+                    <View style={anS.pageStatMetric}>
+                      <Text style={[anS.pageStatLabel, { color: colors.textMuted }]}>
+                        {isAr ? 'إجمالي 7 أيام' : 'Total 7d'}
+                      </Text>
+                      <Text style={[anS.pageStatValue, { color: colors.textPrimary }]}>{stat.total_7d}</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
       {/* Trend Chart */}
       <View style={[anS.chartCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={[anS.chartHeader, { borderBottomColor: colors.borderLight }]}>
@@ -318,31 +397,90 @@ const anS = StyleSheet.create({
   statValue: { fontSize: 28, fontWeight: '800', letterSpacing: -1 },
   statLabel: { fontSize: 10, fontWeight: '700', textAlign: 'center', lineHeight: 14 },
   statPeriod: { fontSize: 9, fontWeight: '500', textAlign: 'center' },
-  extraStatsRow: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    gap: Spacing.sm, 
-    justifyContent: 'space-between' 
+  extraStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    justifyContent: 'space-between'
   },
   statCardSmall: {
-    flex: 1, 
-    minWidth: '45%', 
-    borderRadius: Radius.lg, 
+    flex: 1,
+    minWidth: '45%',
+    borderRadius: Radius.lg,
     borderWidth: 1,
-    padding: Spacing.sm, 
-    alignItems: 'center', 
+    padding: Spacing.sm,
+    alignItems: 'center',
     gap: 4,
   },
-  statValueSmall: { 
-    fontSize: FontSize.lg, 
-    fontWeight: '800' 
+  statValueSmall: {
+    fontSize: FontSize.lg,
+    fontWeight: '800'
   },
-  statLabelSmall: { 
-    fontSize: FontSize.xs, 
-    fontWeight: '600', 
-    textAlign: 'center' 
+  statLabelSmall: {
+    fontSize: FontSize.xs,
+    fontWeight: '600',
+    textAlign: 'center'
   },
-
+  // ── Page Stats Styles (جديد) ──
+  pageStatsCard: {
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  pageStatsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  pageStatsTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    flex: 1,
+  },
+  pageStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+  },
+  pageStatIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  pageStatContent: {
+    flex: 1,
+    gap: 4,
+  },
+  pageStatName: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+  },
+  pageStatRow: {
+    flexDirection: 'row',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  pageStatMetric: {
+    alignItems: 'center',
+    minWidth: 50,
+  },
+  pageStatLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+  },
+  pageStatValue: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+  },
   chartCard: {
     borderRadius: Radius.xl, borderWidth: 1,
     overflow: 'hidden',
@@ -831,11 +969,8 @@ export default function AdminScreen() {
   const [inShowAfter, setInShowAfter] = useState('60');
   const [inSaving, setInSaving] = useState(false);
 
-  // ============================================================
-  // ✅ التعديل المطلوب: تعطيل جلب البيانات وإيقاف التحميل فوراً
-  // ============================================================
   const loadData = useCallback(async () => {
-    // 🛑 إيقاف التحميل وإنهاء الدالة فوراً لتجاوز قيود الخادم
+    // 🔄 تعطيل جلب البيانات مؤقتاً للاختبار
     setLoading(false);
     return;
 

@@ -10,10 +10,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingOffersButton from '@/components/FloatingOffersButton';
 import { useAuth, getSupabaseClient } from '@/template';
-import { trackEvent } from '@/services/analyticsService';
+import { trackEvent, trackPageView } from '@/services/analyticsService'; // ✅ أضفنا trackPageView
 import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router'; // ✅ أضفنا useFocusEffect
 
 // expo-haptics is native-only; imported dynamically to avoid web/SSR bundling errors
 import { Dimensions as _RNDims } from 'react-native';
@@ -497,6 +498,13 @@ export default function HomeScreen() {
   const isAr = language === 'ar';
   const appTitle = useMemo(() => isAr ? 'سوق قلقيلية' : 'Souq Qalqilya', [isAr]);
 
+  // ✅ تسجيل زيارة الصفحة الرئيسية
+  useFocusEffect(
+    useCallback(() => {
+      trackPageView('home');
+    }, [])
+  );
+
   // Online status
   useEffect(() => {
     NetInfo.fetch().then(s => setIsOnline(s.isConnected !== false));
@@ -657,12 +665,10 @@ export default function HomeScreen() {
   const handleApplyFilters = useCallback(() => {
     const parsedMax = draftMaxPrice.trim() ? parseFloat(draftMaxPrice) : undefined;
     setIsApplyingFilter(true);
-    // Simulate applying (or we can just set states; the loading will be handled by the data effect)
     setAppliedArea(draftArea);
     setAppliedMaxPrice(isNaN(parsedMax as number) ? undefined : parsedMax);
     setAppliedCondition(draftCondition);
     setFilterVisible(false);
-    // Reset loading state after a short delay (actual load will happen via useEffect)
     setTimeout(() => setIsApplyingFilter(false), 300);
   }, [draftMaxPrice, draftArea, draftCondition]);
 
@@ -701,7 +707,6 @@ export default function HomeScreen() {
 
   const handleSearchHistoryChipPress = useCallback((query: string) => {
     saveSearchHistory(query, searchHistory).then(setSearchHistory);
-    // Pass filters to search page
     router.push({
       pathname: '/search',
       params: {

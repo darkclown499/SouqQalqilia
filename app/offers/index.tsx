@@ -1,33 +1,33 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, ActivityIndicator, Linking } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as WebBrowser from 'expo-web-browser'; // 🌟 أضفنا مكتبة المتصفح الداخلي
+import * as WebBrowser from 'expo-web-browser';
 import { fetchOfferCategories, OfferCategory } from '@/services/offerCategoriesService';
+import { trackPageView } from '@/services/analyticsService'; // ✅ استيراد تتبع الصفحات
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const VIP_WIDTH = SCREEN_WIDTH - 24; 
+const VIP_WIDTH = SCREEN_WIDTH - 24;
 
-// 🌟 لاحظ كيف نوعنا بالروابط بين واتساب ومواقع ويب عادية
 const VIP_OFFERS = [
   {
     id: 'vip-1',
     storeName: 'الراعي الرسمي',
     title: 'مهرجان تحطيم الأسعار - خصومات تصل لـ 70% على كل الأقسام!',
     image: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?q=80&w=1000&auto=format&fit=crop',
-    productId: 'ad-001',  // ← معرف المنتج (رابط للصفحة الداخلية)
+    productId: 'ad-001',
     storeId: 'store-001',
-    url: 'whatsapp://send?phone=+970590000000&text=مرحبا، شفت عرض الـ VIP بسوق قلقيلية وبدي أستفسر!' // 👈 رابط واتساب مع رسالة جاهزة
+    url: 'whatsapp://send?phone=+970590000000&text=مرحبا، شفت عرض الـ VIP بسوق قلقيلية وبدي أستفسر!'
   },
   {
     id: 'vip-2',
     storeName: 'معرض الإلكترونيات',
     title: 'أقوى أجهزة اللابتوب بأسعار حصرية لفترة محدودة 💻',
     image: 'https://images.unsplash.com/photo-1531297172868-942cece06ac1?q=80&w=1000&auto=format&fit=crop',
-    url: 'https://www.apple.com' // 👈 موقع ويب عادي
+    url: 'https://www.apple.com'
   },
   {
     id: 'vip-3',
@@ -186,8 +186,6 @@ const DUMMY_OFFERS = [
   },
 ];
 
-const CATEGORIES = ['الكل', 'مطاعم', 'سوبرماركت', 'إلكترونيات', 'ملابس', 'صحة'];
-
 export default function OffersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -195,35 +193,38 @@ export default function OffersScreen() {
   const [activeCategory, setActiveCategory] = useState('الكل');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [offerCategories, setOfferCategories] = useState<OfferCategory[]>([]);
-const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
 
-useEffect(() => {
-  fetchOfferCategories()
-    .then(setOfferCategories)
-    .finally(() => setIsLoadingCategories(false));
-}, []);
+  useEffect(() => {
+    fetchOfferCategories()
+      .then(setOfferCategories)
+      .finally(() => setIsLoadingCategories(false));
+  }, []);
+
+  // ✅ تسجيل زيارة صفحة العروض (فردي وإجمالي)
+  useFocusEffect(
+    React.useCallback(() => {
+      trackPageView('offers');
+    }, [])
+  );
 
   const scrollViewRef = useRef<ScrollView>(null);
   const [currentVipIndex, setCurrentVipIndex] = useState(0);
 
-  // 🌟 دالة فتح الروابط الذكية (In-App Browser & WhatsApp)
   const handleOpenLink = async (url: string) => {
     if (!url) return;
     try {
-      // 1. إذا كان الرابط موقع ويب عادي (http أو https)، افتحه جوا التطبيق
       if (url.toLowerCase().startsWith('http')) {
         await WebBrowser.openBrowserAsync(url, {
-          toolbarColor: '#E11D48', // 👈 لون شريط المتصفح رح يكون أحمر زي هوية تطبيقك
-          enableBarCollapsing: true, // 👈 إخفاء الشريط عند النزول لتحت لزيادة مساحة الشاشة
+          toolbarColor: '#E11D48',
+          enableBarCollapsing: true,
         });
-      } 
-      // 2. إذا كان الرابط واتساب، اتصال، أو غيره، افتحه بالتطبيق المخصص له
-      else {
+      } else {
         const supported = await Linking.canOpenURL(url);
         if (supported) {
           await Linking.openURL(url);
         } else {
-          console.log("تطبيق غير متوفر لفتح هذا الرابط (قد يكون الواتساب غير مثبت):", url);
+          console.log("تطبيق غير متوفر لفتح هذا الرابط:", url);
         }
       }
     } catch (error) {
@@ -231,35 +232,29 @@ useEffect(() => {
     }
   };
 
-  // 🌟 دالة معالجة النقر على العرض (تقرر إما تروح للمنتج أو تفتح رابط خارجي)
-const handleOfferPress = (offer: any) => {
-  // 1. أولوية أولى: إذا كان العرض يحتوي على productId، اذهب لصفحة المنتج
-  if (offer.productId) {
-    router.push(`/ad/${offer.productId}` as any);
-    return;
-  }
-  
-  // 2. ثانياً: إذا كان العرض يحتوي على url، افتحه (واتساب أو متصفح)
-  if (offer.url) {
-    handleOpenLink(offer.url);
-    return;
-  }
-  
-  // 3. إذا لم يوجد شيء، لا تفعل شيئاً
-  console.warn('لا يوجد رابط أو productId لهذا العرض');
-};
+  const handleOfferPress = (offer: any) => {
+    if (offer.productId) {
+      router.push(`/ad/${offer.productId}` as any);
+      return;
+    }
+    if (offer.url) {
+      handleOpenLink(offer.url);
+      return;
+    }
+    console.warn('لا يوجد رابط أو productId لهذا العرض');
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
       const nextIndex = (currentVipIndex + 1) % VIP_OFFERS.length;
       scrollViewRef.current?.scrollTo({
-        x: nextIndex * (VIP_WIDTH + 12), 
+        x: nextIndex * (VIP_WIDTH + 12),
         animated: true,
       });
       setCurrentVipIndex(nextIndex);
     }, 3500);
-    return () => clearInterval(interval); 
-  }, [currentVipIndex]); 
+    return () => clearInterval(interval);
+  }, [currentVipIndex]);
 
   const handleScrollEnd = (event: any) => {
     const contentOffsetX = Math.abs(event.nativeEvent.contentOffset.x);
@@ -287,7 +282,6 @@ const handleOfferPress = (offer: any) => {
     return { leftCol: left, rightCol: right };
   }, [filteredOffers]);
 
-  // الإعلانات العادية (ضغط على كامل الكرت)
   const renderBanner = (item: typeof DUMMY_OFFERS[0]) => (
     <Pressable 
       key={item.id} 
@@ -322,25 +316,25 @@ const handleOfferPress = (offer: any) => {
       <View style={styles.filtersWrapper}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rtlScrollView} contentContainerStyle={styles.filtersScrollContent}>
           {isLoadingCategories ? (
-  [1,2,3,4,5].map(i => (
-    <View key={i} style={[styles.filterChip, { width: 80, height: 36, backgroundColor: '#E5E7EB' }]} />
-  ))
-) : (
-  [
-    { id: 'all', name_ar: 'الكل' },
-    ...offerCategories
-  ].map((cat) => (
-    <Pressable
-      key={cat.id || 'all'}
-      onPress={() => setActiveCategory(cat.name_ar || 'الكل')}
-      style={[styles.filterChip, activeCategory === (cat.name_ar || 'الكل') && styles.activeFilterChip, styles.rtlItem]}
-    >
-      <Text style={[styles.filterText, activeCategory === (cat.name_ar || 'الكل') && styles.activeFilterText]}>
-        {cat.name_ar || 'الكل'}
-      </Text>
-    </Pressable>
-  ))
-)}
+            [1,2,3,4,5].map(i => (
+              <View key={i} style={[styles.filterChip, { width: 80, height: 36, backgroundColor: '#E5E7EB' }]} />
+            ))
+          ) : (
+            [
+              { id: 'all', name_ar: 'الكل' },
+              ...offerCategories
+            ].map((cat) => (
+              <Pressable
+                key={cat.id || 'all'}
+                onPress={() => setActiveCategory(cat.name_ar || 'الكل')}
+                style={[styles.filterChip, activeCategory === (cat.name_ar || 'الكل') && styles.activeFilterChip, styles.rtlItem]}
+              >
+                <Text style={[styles.filterText, activeCategory === (cat.name_ar || 'الكل') && styles.activeFilterText]}>
+                  {cat.name_ar || 'الكل'}
+                </Text>
+              </Pressable>
+            ))
+          )}
         </ScrollView>
       </View>
 
@@ -371,7 +365,6 @@ const handleOfferPress = (offer: any) => {
                   <Text style={styles.vipStoreName}>{offer.storeName}</Text>
                   <Text style={styles.vipTitle}>{offer.title}</Text>
                   
-                  {/* الضغط فقط على الزر كما طلبت */}
                   <Pressable 
                     style={styles.vipButton}
                     onPress={() => handleOfferPress(offer)}

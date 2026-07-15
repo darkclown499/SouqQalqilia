@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router'; // ✅ useFocusEffect مستورد
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
@@ -24,6 +24,7 @@ import {
 } from '@/services/storeCategoriesService';
 import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
 import { FontSize, Radius, Spacing } from '@/constants/theme';
+import { trackPageView } from '@/services/analyticsService'; // ✅ استيراد تتبع الصفحات
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
 function shuffleArray<T>(array: T[]): T[] {
@@ -712,6 +713,13 @@ export default function StoresScreen() {
   const [editName, setEditName] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState('');
+
+  // ✅ تسجيل زيارة صفحة المتاجر
+  useFocusEffect(
+    useCallback(() => {
+      trackPageView('stores');
+    }, [])
+  );
 
   useFocusEffect(
     useCallback(() => {
