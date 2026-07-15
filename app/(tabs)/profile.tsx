@@ -11,7 +11,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming,
 } from 'react-native-reanimated';
-import NetInfo from '@react-native-community/netinfo'; // ✅ إضافة NetInfo
+import NetInfo from '@react-native-community/netinfo';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { AdCard, Button, EmptyState } from '@/components';
 import { useMyAds } from '@/hooks/useAds';
@@ -204,6 +204,7 @@ function SettingRow({ icon, iconBg, iconColor, label, sub, isRTL, colors, onPres
 }
 
 export default function ProfileScreen() {
+  // ── جميع الـ Hooks في الأعلى (قبل أي return شرطي) ──────────────────────
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, logout, refreshSession } = useAuth();
@@ -242,7 +243,7 @@ export default function ProfileScreen() {
   const activeAds = useMemo(() => ads.filter(a => a.status === 'active' || a.status === 'featured'), [ads]);
   const soldAds = useMemo(() => ads.filter(a => a.status === 'sold'), [ads]);
 
-  // ── Quick actions (memoized) with fixed admin navigation ──────────────────
+  // ── Quick actions (memoized) ──────────────────────────────────────────────
   const quickActions = useMemo(() => {
     const baseActions = [
       { icon: 'edit', label: isRTL ? 'تعديل الملف' : 'Edit Profile', color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
@@ -258,7 +259,6 @@ export default function ProfileScreen() {
         bg: '#FEF3C7',
         onPress: () => {
           try {
-            // ✅ استخدام المسار الصحيح مع معالجة الأخطاء
             router.push('/admin' as any);
           } catch (err) {
             console.error('Admin navigation error:', err);
@@ -273,7 +273,7 @@ export default function ProfileScreen() {
     return baseActions;
   }, [isRTL, colors, isAdmin, router, user, showAlert]);
 
-  // ── Callbacks ─────────────────────────────────────────────────────────────
+  // ── Callbacks (جميعها قبل أي return) ─────────────────────────────────────
   const loadBlockedUsers = useCallback(async () => {
     try {
       const ids = await fetchBlockedIds();
@@ -402,10 +402,8 @@ export default function ProfileScreen() {
     }
   }, [user, showAlert]);
 
-  // ✅ التحقق من الاتصال قبل حفظ الملف الشخصي
   const handleSaveProfile = useCallback(async () => {
     if (!user) return;
-    // Check internet connection
     const netState = await NetInfo.fetch();
     if (!netState.isConnected) {
       return showAlert(
@@ -563,6 +561,13 @@ export default function ProfileScreen() {
 
   const openLink = useCallback((url: string) => Linking.openURL(url).catch(() => {}), []);
 
+  // ── Helper to reset edit fields when canceling ───────────────────────────
+  const handleCancelEdit = useCallback(() => {
+    setEditName(user?.username || '');
+    setEditPhone(user?.phone || '');
+    setEditMode(false);
+  }, [user]);
+
   // ── Main useEffect with AbortController ──────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
@@ -666,7 +671,7 @@ export default function ProfileScreen() {
     </View>
   ), [colors, isRTL, router, handleMarkSold, t, handleDeleteAd]);
 
-  // ── Guest View ──
+  // ── Guest View (بعد جميع الـ Hooks) ─────────────────────────────────────
   if (!user) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -689,13 +694,7 @@ export default function ProfileScreen() {
     );
   }
 
-  // ── Helper to reset edit fields when canceling ───────────────────────────
-  const handleCancelEdit = useCallback(() => {
-    setEditName(user?.username || '');
-    setEditPhone(user?.phone || '');
-    setEditMode(false);
-  }, [user]);
-
+  // ── باقي الـ return مع المحتوى الرئيسي ──────────────────────────────────
   return (
     <View style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -760,7 +759,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* ── OWNER STORE CARD (مع إصلاح RTL) ── */}
+          {/* ── OWNER STORE CARD ── */}
           {ownerStore !== undefined && (
             ownerStore === null ? (
               <Pressable
@@ -822,7 +821,7 @@ export default function ProfileScreen() {
             )
           )}
 
-          {/* ── QUICK ACTIONS (مع إصلاح RTL) ── */}
+          {/* ── QUICK ACTIONS ── */}
           <View style={[styles.actionsRow, { backgroundColor: colors.surface, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             {quickActions.map((a) => (
               <Pressable
@@ -1320,7 +1319,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   storeCtaCard: {
-    flexDirection: 'row', // ✅ تم تعديل RTL داخل JSX
+    flexDirection: 'row', // يتم تعديل RTL داخل JSX
     alignItems: 'center',
     backgroundColor: '#ffffff',
     padding: 16,
