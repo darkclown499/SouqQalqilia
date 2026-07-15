@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, KeyboardAvoidingView,
   Platform, Pressable, ActivityIndicator, Modal, Animated,
@@ -35,6 +35,8 @@ export default function LoginScreen() {
   const isAr = language === 'ar';
   const router = useRouter();
 
+
+
   // Pre-warm browser for OAuth
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -44,7 +46,11 @@ export default function LoginScreen() {
   }, []);
 
   // ── Platform logic ─────────────────────────────────────────────────────────
-  const showPhoneTab = true;
+  // iOS: show phone + email tabs, default = phone
+  // Android: show only email (Google is the "fast" option)
+  // Web: email only
+  const showPhoneTab = Platform.OS === 'ios';
+  const showGoogleBtn = Platform.OS !== 'web'; // Android only renders it, iOS skips the block
   const defaultTab: MainTab = Platform.OS === 'ios' ? 'phone' : 'email';
 
   // ── Tab state ──────────────────────────────────────────────────────────────
@@ -105,16 +111,6 @@ export default function LoginScreen() {
         return v - 1;
       });
     }, 1000);
-  }, []);
-
-  // FIX: Cleanup loginCooldownRef on unmount
-  useEffect(() => {
-    return () => {
-      if (loginCooldownRef.current) {
-        clearInterval(loginCooldownRef.current);
-        loginCooldownRef.current = null;
-      }
-    };
   }, []);
 
   // ── Pulsing badge animation (Android Google button badge) ─────────────────
@@ -190,19 +186,6 @@ export default function LoginScreen() {
 
   const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
 
-  // FIX: Add friendly error mapper for SMS
-  const mapSmsError = useCallback((error: string): string => {
-    if (error.includes('RequestRateLimitReached') || error.includes('rate limit') || error.includes('429')) {
-      return isAr
-        ? 'تم تجاوز عدد المحاولات. يرجى الانتظار دقيقة ثم المحاولة مجدداً.'
-        : 'Too many attempts. Please wait a moment and try again.';
-    }
-    if (error.includes('invalid phone number')) {
-      return isAr ? 'رقم الهاتف غير صحيح.' : 'Invalid phone number.';
-    }
-    return error;
-  }, [isAr]);
-
   // ── Phone: Send code ──────────────────────────────────────────────────────
   const handleSendPhoneCode = async () => {
     if (!phoneEulaAccepted) {
@@ -242,8 +225,7 @@ export default function LoginScreen() {
       setPhoneStep('otp');
       setPhoneResend(60);
     } catch (e: any) {
-      const friendly = mapSmsError(e?.message ?? '');
-      showAlert(isAr ? 'خطأ' : 'Error', friendly);
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? (isAr ? 'فشل إرسال رمز التحقق' : 'Failed to send verification code'));
     } finally {
       setPhoneLoading(false);
       isSubmittingRef.current = false;
@@ -294,14 +276,13 @@ export default function LoginScreen() {
         throw new Error(data?.error ?? 'No session returned');
       }
     } catch (e: any) {
-      const friendly = mapSmsError(e?.message ?? (isAr ? 'الرمز غير صحيح' : 'Incorrect code'));
-      showAlert(isAr ? 'فشل التحقق' : 'Verification Failed', friendly);
+      showAlert(isAr ? 'فشل التحقق' : 'Verification Failed', e?.message ?? (isAr ? 'الرمز غير صحيح' : 'Incorrect code'));
     } finally {
       setPhoneLoading(false);
     }
   };
 
-  // ── Friendly error message mapper (email) ──────────────────────────────────
+  // ── Friendly error message mapper ──────────────────────────────────────────
   const mapAuthError = useCallback((error: string): string => {
     if (error.includes('RequestRateLimitReached') || error.includes('rate limit') || error.includes('429')) {
       return isAr
@@ -315,6 +296,7 @@ export default function LoginScreen() {
       return isAr ? 'يرجى تأكيد بريدك الإلكتروني أولاً.' : 'Please confirm your email first.';
     }
     if (error.includes('Failed to load user profile')) {
+      // Profile fetch failed — not a fatal error, navigate to app
       return '';
     }
     return error;
@@ -329,7 +311,7 @@ export default function LoginScreen() {
     try {
       const { error, user: u } = await signInWithPassword(email.trim().toLowerCase(), password);
       if (error) {
-                showAlert("تفاصيل الخطأ الفعلي", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+        // If profile load failed but auth succeeded, navigate to app anyway
         if (error.includes('Failed to load user profile')) {
           router.replace('/(tabs)');
           return;
@@ -337,12 +319,12 @@ export default function LoginScreen() {
         const friendlyError = mapAuthError(error);
         if (friendlyError) {
           showAlert(t.loginFailed, friendlyError);
+          // Start cooldown after rate limit error to prevent hammer-clicking
           if (error.includes('RequestRateLimitReached') || error.includes('rate limit')) {
             startLoginCooldown(30);
           }
         }
         return;
-
       }
       if (u) router.replace('/(tabs)');
     } finally { isSubmittingRef.current = false; }
@@ -421,10 +403,6 @@ export default function LoginScreen() {
     setGoogleLoading(true);
     const supabase = getSupabaseClient();
 
-    // FIX: Use refs to clean up subscription and poll
-    const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
-    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
     if (Platform.OS === 'web') {
       try {
         const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '';
@@ -440,14 +418,10 @@ export default function LoginScreen() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (authResolved) return;
       if (event === 'SIGNED_IN' && session) {
-        authResolved = true;
-        subscription.unsubscribe();
-        if (pollRef.current) clearInterval(pollRef.current);
-        setGoogleLoading(false);
-        router.replace('/(tabs)');
+        authResolved = true; subscription.unsubscribe();
+        setGoogleLoading(false); router.replace('/(tabs)');
       }
     });
-    subscriptionRef.current = subscription;
 
     try {
       const redirectTo = 'souqqalqilya://auth/callback';
@@ -455,8 +429,7 @@ export default function LoginScreen() {
       if (error || !data?.url) {
         subscription.unsubscribe();
         showAlert(isAr ? 'خطأ' : 'Error', error?.message ?? (isAr ? 'تعذّر الاتصال بـ Google' : 'Could not connect to Google'));
-        setGoogleLoading(false);
-        return;
+        setGoogleLoading(false); return;
       }
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo) as { type: string; url?: string };
 
@@ -469,94 +442,40 @@ export default function LoginScreen() {
         const errorDesc = params.get('error_description');
 
         if (errorParam) {
-          subscription.unsubscribe();
-          if (pollRef.current) clearInterval(pollRef.current);
-          authResolved = true;
+          subscription.unsubscribe(); authResolved = true;
           showAlert(isAr ? 'خطأ Google' : 'Google Error', `${errorParam}: ${errorDesc ?? ''}`);
-          setGoogleLoading(false);
-          return;
+          setGoogleLoading(false); return;
         }
 
         if (code) {
           const { error: exchErr } = await supabase.auth.exchangeCodeForSession(code);
-          if (!exchErr && !authResolved) {
-            authResolved = true;
-            subscription.unsubscribe();
-            if (pollRef.current) clearInterval(pollRef.current);
-            setGoogleLoading(false);
-            router.replace('/(tabs)');
-            return;
-          }
-          if (exchErr && !authResolved) {
-            subscription.unsubscribe();
-            if (pollRef.current) clearInterval(pollRef.current);
-            authResolved = true;
-            showAlert(isAr ? 'خطأ' : 'Error', exchErr.message);
-            setGoogleLoading(false);
-            return;
-          }
+          if (!exchErr && !authResolved) { authResolved = true; subscription.unsubscribe(); setGoogleLoading(false); router.replace('/(tabs)'); return; }
+          if (exchErr && !authResolved) { subscription.unsubscribe(); authResolved = true; showAlert(isAr ? 'خطأ' : 'Error', exchErr.message); setGoogleLoading(false); return; }
         } else {
           const at = params.get('access_token'), rt = params.get('refresh_token');
           if (at && rt && !authResolved) {
             const { error: sessErr } = await supabase.auth.setSession({ access_token: at, refresh_token: rt });
-            if (sessErr && !authResolved) {
-              subscription.unsubscribe();
-              if (pollRef.current) clearInterval(pollRef.current);
-              authResolved = true;
-              showAlert(isAr ? 'خطأ' : 'Error', sessErr.message);
-              setGoogleLoading(false);
-              return;
-            }
+            if (sessErr && !authResolved) { subscription.unsubscribe(); authResolved = true; showAlert(isAr ? 'خطأ' : 'Error', sessErr.message); setGoogleLoading(false); return; }
           }
-        }
-        // If still not resolved, fallback to poll
-        if (!authResolved) {
-          let attempts = 0;
-          pollRef.current = setInterval(async () => {
-            attempts++;
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session && !authResolved) {
-              authResolved = true;
-              subscription.unsubscribe();
-              if (pollRef.current) clearInterval(pollRef.current);
-              setGoogleLoading(false);
-              router.replace('/(tabs)');
-            } else if (attempts >= 10 && !authResolved) {
-              authResolved = true;
-              subscription.unsubscribe();
-              if (pollRef.current) clearInterval(pollRef.current);
-              setGoogleLoading(false);
-              showAlert(isAr ? 'لم يكتمل' : 'Not completed', isAr ? 'يرجى المحاولة مجدداً' : 'Please try again.');
-            }
-          }, 1500);
         }
         return;
       }
 
-      // If result not success, attempt poll
       if (!authResolved) {
         let attempts = 0;
-        pollRef.current = setInterval(async () => {
+        const poll = setInterval(async () => {
           attempts++;
           const { data: { session } } = await supabase.auth.getSession();
           if (session && !authResolved) {
-            authResolved = true;
-            subscription.unsubscribe();
-            if (pollRef.current) clearInterval(pollRef.current);
-            setGoogleLoading(false);
-            router.replace('/(tabs)');
+            authResolved = true; subscription.unsubscribe(); clearInterval(poll); setGoogleLoading(false); router.replace('/(tabs)');
           } else if (attempts >= 10 && !authResolved) {
-            authResolved = true;
-            subscription.unsubscribe();
-            if (pollRef.current) clearInterval(pollRef.current);
-            setGoogleLoading(false);
+            authResolved = true; subscription.unsubscribe(); clearInterval(poll); setGoogleLoading(false);
             showAlert(isAr ? 'لم يكتمل' : 'Not completed', isAr ? 'يرجى المحاولة مجدداً' : 'Please try again.');
           }
         }, 1500);
       }
     } catch (e: any) {
       subscription.unsubscribe();
-      if (pollRef.current) clearInterval(pollRef.current);
       showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Google sign-in failed');
       setGoogleLoading(false);
     }
@@ -621,7 +540,7 @@ export default function LoginScreen() {
         >
 
           {/* ══════════════════════════════════════════════════════
-              Segmented control — Phone / Email (visible on all platforms)
+              iOS-ONLY: Segmented control — Phone / Email
           ══════════════════════════════════════════════════════ */}
           {showPhoneTab ? (
             <View style={[s.segmentWrap, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
@@ -672,7 +591,7 @@ export default function LoginScreen() {
           ) : null}
 
           {/* ══════════════════════════════════════════════════════
-              Phone panel
+              iOS Phone panel
           ══════════════════════════════════════════════════════ */}
           {showPhoneTab && activeTab === 'phone' ? (
             phoneStep === 'input' ? (
@@ -698,7 +617,7 @@ export default function LoginScreen() {
           ) : null}
 
           {/* ══════════════════════════════════════════════════════
-              Email panel
+              Email panel (both Android + iOS, switchable on iOS)
           ══════════════════════════════════════════════════════ */}
           {activeTab === 'email' ? (
             <>
@@ -728,7 +647,6 @@ export default function LoginScreen() {
                 <OtpPanel
                   email={email} otp={otp} setOtp={setOtp}
                   resendCooldown={resendCooldown} loading={operationLoading}
-                  verifying={verifying} // FIX: pass verifying to disable button
                   onVerify={handleVerifyOTP} onResend={handleResendOTP}
                   onBack={() => setEmailMode('register')}
                   colors={colors} t={t} isAr={isAr}
@@ -759,7 +677,7 @@ export default function LoginScreen() {
                 </View>
               ) : null}
 
-              {/* ── Android-only Google button ── */}
+              {/* ── Android-only Google button — inside card, below switcher ── */}
               {Platform.OS === 'android' && (emailMode === 'login' || emailMode === 'register') ? (
                 <View style={[s.inCardGoogle, { borderTopColor: colors.borderLight }]}>
                   <View style={s.inCardDividerRow}>
@@ -768,6 +686,7 @@ export default function LoginScreen() {
                     <View style={[s.inCardDivLine, { backgroundColor: colors.borderLight }]} />
                   </View>
 
+                  {/* Pulsing badge */}
                   <View style={s.googleBadgeWrap} pointerEvents="none">
                     <Animated.View style={[s.googleBadge, { transform: [{ scale: pulseAnim }], opacity: pulseOpacity }]}>
                       <Text style={s.googleBadgeText}>{isAr ? 'سجل الدخول من هنا أسرع ⚡' : 'Fastest sign-in option ⚡'}</Text>
@@ -775,6 +694,7 @@ export default function LoginScreen() {
                     </Animated.View>
                   </View>
 
+                  {/* Gradient border wrapper */}
                   <View style={s.googleGradientBorder}>
                     <LinearGradient
                       colors={['#4285F4', '#EA4335', '#FBBC05', '#34A853']}
@@ -797,9 +717,11 @@ export default function LoginScreen() {
           ) : null}
         </Animated.View>
 
-        {/* ── iOS-only hidden buttons (kept for compatibility) ── */}
+        {/* ── iOS-only: Apple Sign-In + Google — both hidden (code kept, buttons not shown) ── */}
         {Platform.OS === 'ios' ? (
           <View style={{ display: 'none' }}>
+            {/* Apple Sign-In button — hidden, capability enabled in app.json for build compatibility */}
+            {/* Google Sign-In button — hidden on iOS, shown on Android */}
             <SocialButton
               icon={<GoogleG />}
               label={isAr ? 'متابعة بـ Google' : 'Continue with Google'}
@@ -828,31 +750,9 @@ const COUNTRY_CODES = [
 ];
 
 // ─── Phone Input Panel ────────────────────────────────────────────────────────
-const PhoneInputPanel = React.memo(function PhoneInputPanel({
-  phoneNumber, setPhoneNumber, countryCode, setCountryCode,
-  loading, eulaAccepted, setEulaAccepted, onOpenEula, onSend,
-  colors, isAr, router
-}: any) {
+const PhoneInputPanel = React.memo(function PhoneInputPanel({ phoneNumber, setPhoneNumber, countryCode, setCountryCode, loading, eulaAccepted, setEulaAccepted, onOpenEula, onSend, colors, isAr, router }: any) {
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode) ?? COUNTRY_CODES[0];
-
-  // FIX: memoize onPress handlers
-  const handleToggleEula = useCallback(() => {
-    setEulaAccepted(!eulaAccepted);
-  }, [eulaAccepted, setEulaAccepted]);
-
-  const handleOpenPicker = useCallback(() => {
-    setShowCountryPicker(true);
-  }, []);
-
-  const handleClosePicker = useCallback(() => {
-    setShowCountryPicker(false);
-  }, []);
-
-  const handleSelectCountry = useCallback((code: '+970' | '+972') => {
-    setCountryCode(code);
-    setShowCountryPicker(false);
-  }, [setCountryCode]);
 
   return (
     <View style={s.panelBody}>
@@ -865,7 +765,7 @@ const PhoneInputPanel = React.memo(function PhoneInputPanel({
       </View>
 
       <View style={[s.phoneRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
-        <Pressable style={[s.countryTag, { borderRightColor: colors.border }]} onPress={handleOpenPicker}>
+        <Pressable style={[s.countryTag, { borderRightColor: colors.border }]} onPress={() => setShowCountryPicker(true)}>
           <Text style={s.flagEmoji}>{selectedCountry.flag}</Text>
           <Text style={[s.countryCode, { color: colors.primary }]}>{selectedCountry.code}</Text>
           <MaterialIcons name="arrow-drop-down" size={16} color={colors.textMuted} />
@@ -884,8 +784,8 @@ const PhoneInputPanel = React.memo(function PhoneInputPanel({
         />
       </View>
 
-      <Modal visible={showCountryPicker} transparent animationType="slide" onRequestClose={handleClosePicker}>
-        <Pressable style={s.pickerOverlay} onPress={handleClosePicker}>
+      <Modal visible={showCountryPicker} transparent animationType="slide" onRequestClose={() => setShowCountryPicker(false)}>
+        <Pressable style={s.pickerOverlay} onPress={() => setShowCountryPicker(false)}>
           <View style={[s.pickerSheet, { backgroundColor: colors.surface }]}>
             <View style={[s.pickerHeader, { borderBottomColor: colors.border }]}>
               <View style={[s.eulaSheetHandle, { backgroundColor: colors.border }]} />
@@ -895,7 +795,7 @@ const PhoneInputPanel = React.memo(function PhoneInputPanel({
               <Pressable
                 key={c.code}
                 style={[s.pickerOption, { borderBottomColor: colors.borderLight }, c.code === countryCode && { backgroundColor: colors.primaryGhost }]}
-                onPress={() => handleSelectCountry(c.code)}
+                onPress={() => { setCountryCode(c.code); setShowCountryPicker(false); }}
               >
                 <Text style={s.pickerFlag}>{c.flag}</Text>
                 <View style={{ flex: 1 }}>
@@ -909,17 +809,14 @@ const PhoneInputPanel = React.memo(function PhoneInputPanel({
         </Pressable>
       </Modal>
 
-      {/* FIX: added textAlign for RTL */}
-      <Text style={[s.phoneHint, { color: colors.textMuted, textAlign: isAr ? 'right' : 'left' }]}>
-        {isAr ? 'أدخل الرقم بدون صفر أو رمز الدولة — مثال: 591234567' : 'Enter number without 0 or country code — e.g. 591234567'}
-      </Text>
+      <Text style={[s.phoneHint, { color: colors.textMuted }]}>{isAr ? 'أدخل الرقم بدون صفر أو رمز الدولة — مثال: 591234567' : 'Enter number without 0 or country code — e.g. 591234567'}</Text>
 
       <View style={[s.waBanner, { backgroundColor: '#E8F0FE', borderColor: '#1A73E8' }]}>
         <MaterialIcons name="sms" size={16} color="#1A73E8" />
         <Text style={[s.waBannerText, { color: '#1558B0' }]}>{isAr ? 'سيصلك رمز التحقق عبر رسالة نصية SMS' : 'You will receive a verification code via SMS'}</Text>
       </View>
 
-      <Pressable style={[s.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]} onPress={handleToggleEula}>
+      <Pressable style={[s.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]} onPress={() => setEulaAccepted(!eulaAccepted)}>
         <View style={[s.eulaCheck, { borderColor: eulaAccepted ? colors.primary : colors.border, backgroundColor: eulaAccepted ? colors.primary : 'transparent' }]}>
           {eulaAccepted ? <MaterialIcons name="check" size={11} color="#fff" /> : null}
         </View>
@@ -945,10 +842,7 @@ const PhoneInputPanel = React.memo(function PhoneInputPanel({
 });
 
 // ─── Phone OTP Panel ──────────────────────────────────────────────────────────
-const PhoneOtpPanel = React.memo(function PhoneOtpPanel({
-  phoneNumber, otp, setOtp, resendCooldown, loading,
-  onVerify, onResend, onBack, colors, isAr
-}: any) {
+const PhoneOtpPanel = React.memo(function PhoneOtpPanel({ phoneNumber, otp, setOtp, resendCooldown, loading, onVerify, onResend, onBack, colors, isAr }: any) {
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
   const handleDigitChange = (idx: number, val: string) => {
@@ -981,8 +875,7 @@ const PhoneOtpPanel = React.memo(function PhoneOtpPanel({
   };
 
   return (
-    // FIX: added keyboardShouldPersistTaps to prevent keyboard dismissal
-    <View style={s.panelBody} keyboardShouldPersistTaps="handled">
+    <View style={s.panelBody}>
       <View style={s.panelHeader}>
         <View style={[s.panelIconWrap, { backgroundColor: '#E8F0FE' }]}>
           <MaterialIcons name="sms" size={28} color="#1A73E8" />
@@ -1044,49 +937,26 @@ const PhoneOtpPanel = React.memo(function PhoneOtpPanel({
 });
 
 // ─── Login Panel ──────────────────────────────────────────────────────────────
-const LoginPanel = React.memo(function LoginPanel({
-  email, setEmail, password, setPassword, showPassword, togglePassword,
-  loading, onLogin, onForgot, cooldown, colors, t, isAr
-}: any) {
+const LoginPanel = React.memo(function LoginPanel({ email, setEmail, password, setPassword, showPassword, togglePassword, loading, onLogin, onForgot, cooldown, colors, t, isAr }: any) {
   const isDisabled = loading || (cooldown ?? 0) > 0;
-
-  // FIX: memoize rightElement for password
-  const passwordRightElement = useMemo(() => (
-    <Pressable onPress={togglePassword} hitSlop={8}>
-      <MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} />
-    </Pressable>
-  ), [showPassword, togglePassword, colors.textMuted]);
-
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{t.welcomeBack}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{t.signInAccount}</Text>
       </View>
+      <PremiumInput label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
       <PremiumInput
-        label={t.emailAddress + ' *'}
-        placeholder={t.emailPlaceholder}
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        iconName="email"
-        colors={colors}
-      />
-      <PremiumInput
-        label={t.password + ' *'}
-        placeholder={t.passwordPlaceholder}
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry={!showPassword}
-        iconName="lock"
-        rightElement={passwordRightElement}
+        label={t.password} placeholder={t.passwordPlaceholder}
+        value={password} onChangeText={setPassword}
+        secureTextEntry={!showPassword} iconName="lock"
+        rightElement={<Pressable onPress={togglePassword} hitSlop={8}><MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} /></Pressable>}
         colors={colors}
       />
       <Pressable style={[s.forgotLink, { alignSelf: isAr ? 'flex-start' : 'flex-end', marginTop: -6 }]} onPress={onForgot} hitSlop={8}>
         <Text style={[s.forgotText, { color: colors.primary }]}>{isAr ? 'نسيت كلمة المرور؟' : 'Forgot password?'}</Text>
       </Pressable>
+      {/* Cooldown warning */}
       {(cooldown ?? 0) > 0 ? (
         <View style={[s.rateLimitBanner, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
           <MaterialIcons name="timer" size={15} color="#D97706" />
@@ -1114,35 +984,14 @@ const LoginPanel = React.memo(function LoginPanel({
 });
 
 // ─── Register Panel ───────────────────────────────────────────────────────────
-const RegisterPanel = React.memo(function RegisterPanel({
-  email, setEmail, password, setPassword, confirmPassword, setConfirmPassword,
-  showPassword, togglePassword, showConfirmPassword, toggleConfirmPassword,
-  eulaAccepted, setEulaAccepted, onOpenEula, loading, onSend,
-  colors, t, isAr, router
-}: any) {
-  // FIX: memoize rightElements
-  const passwordRightElement = useMemo(() => (
-    <Pressable onPress={togglePassword} hitSlop={8}>
-      <MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} />
-    </Pressable>
-  ), [showPassword, togglePassword, colors.textMuted]);
-
-  const confirmPasswordRightElement = useMemo(() => (
-    <Pressable onPress={toggleConfirmPassword} hitSlop={8}>
-      <MaterialIcons name={showConfirmPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} />
-    </Pressable>
-  ), [showConfirmPassword, toggleConfirmPassword, colors.textMuted]);
-
-  const handleToggleEula = useCallback(() => {
-    setEulaAccepted((v: boolean) => !v);
-  }, [setEulaAccepted]);
-
+const RegisterPanel = React.memo(function RegisterPanel({ email, setEmail, password, setPassword, confirmPassword, setConfirmPassword, showPassword, togglePassword, showConfirmPassword, toggleConfirmPassword, eulaAccepted, setEulaAccepted, onOpenEula, loading, onSend, colors, t, isAr, router }: any) {
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{t.createAccount}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{t.joinToBuySell}</Text>
       </View>
+      {/* Spam warning — shown only during registration on Android */}
       {Platform.OS === 'android' ? (
         <View style={[s.spamWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
           <MaterialIcons name="warning" size={14} color="#D97706" />
@@ -1153,38 +1002,10 @@ const RegisterPanel = React.memo(function RegisterPanel({
           </Text>
         </View>
       ) : null}
-      <PremiumInput
-        label={t.emailAddress + ' *'}
-        placeholder={t.emailPlaceholder}
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        iconName="email"
-        colors={colors}
-      />
-      <PremiumInput
-        label={t.password + ' *'}
-        placeholder={t.minPassword}
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry={!showPassword}
-        iconName="lock"
-        rightElement={passwordRightElement}
-        colors={colors}
-      />
-      <PremiumInput
-        label={t.confirmPassword + ' *'}
-        placeholder={t.repeatPassword}
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        secureTextEntry={!showConfirmPassword}
-        iconName="lock-outline"
-        rightElement={confirmPasswordRightElement}
-        colors={colors}
-      />
-      <Pressable style={[s.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]} onPress={handleToggleEula}>
+      <PremiumInput label={t.emailAddress} placeholder={t.emailPlaceholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
+      <PremiumInput label={t.password} placeholder={t.minPassword} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} iconName="lock" rightElement={<Pressable onPress={togglePassword} hitSlop={8}><MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} /></Pressable>} colors={colors} />
+      <PremiumInput label={t.confirmPassword} placeholder={t.repeatPassword} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showConfirmPassword} iconName="lock-outline" rightElement={<Pressable onPress={toggleConfirmPassword} hitSlop={8}><MaterialIcons name={showConfirmPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} /></Pressable>} colors={colors} />
+      <Pressable style={[s.eulaRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]} onPress={() => setEulaAccepted((v: boolean) => !v)}>
         <View style={[s.eulaCheck, { borderColor: eulaAccepted ? colors.primary : colors.border, backgroundColor: eulaAccepted ? colors.primary : 'transparent' }]}>
           {eulaAccepted ? <MaterialIcons name="check" size={11} color="#fff" /> : null}
         </View>
@@ -1205,11 +1026,7 @@ const RegisterPanel = React.memo(function RegisterPanel({
 });
 
 // ─── OTP Panel ────────────────────────────────────────────────────────────────
-const OtpPanel = React.memo(function OtpPanel({
-  email, otp, setOtp, resendCooldown, loading, verifying,
-  onVerify, onResend, onBack, colors, t, isAr
-}: any) {
-  // FIX: memoize rightElement (none needed here)
+const OtpPanel = React.memo(function OtpPanel({ email, otp, setOtp, resendCooldown, loading, onVerify, onResend, onBack, colors, t, isAr }: any) {
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
@@ -1224,22 +1041,14 @@ const OtpPanel = React.memo(function OtpPanel({
         </View>
       </View>
       <PremiumInput
-        label={t.verificationCode + ' *'}
-        placeholder="•  •  •  •"
-        value={otp}
-        onChangeText={setOtp}
-        keyboardType="number-pad"
-        maxLength={4}
-        iconName="pin"
-        colors={colors}
+        label={t.verificationCode} placeholder="•  •  •  •"
+        value={otp} onChangeText={setOtp}
+        keyboardType="number-pad" maxLength={4}
+        iconName="pin" colors={colors}
         inputStyle={{ textAlign: 'center', letterSpacing: 12, fontSize: FontSize.xl, fontWeight: '800' }}
       />
-      <Pressable
-        style={({ pressed }) => [s.primaryBtn, { backgroundColor: colors.primary, opacity: pressed || loading ? 0.85 : 1 }]}
-        onPress={onVerify}
-        disabled={loading || verifying}  // FIX: disable while verifying
-      >
-        {loading || verifying ? <ActivityIndicator size="small" color="#fff" /> : (
+      <Pressable style={({ pressed }) => [s.primaryBtn, { backgroundColor: colors.primary, opacity: pressed || loading ? 0.85 : 1 }]} onPress={onVerify} disabled={loading}>
+        {loading ? <ActivityIndicator size="small" color="#fff" /> : (
           <><MaterialIcons name="verified" size={16} color="#fff" /><Text style={s.primaryBtnText}>{t.verifyCreate}</Text></>
         )}
       </Pressable>
@@ -1256,9 +1065,7 @@ const OtpPanel = React.memo(function OtpPanel({
 });
 
 // ─── Forgot Panel ─────────────────────────────────────────────────────────────
-const ForgotPanel = React.memo(function ForgotPanel({
-  email, setEmail, loading, onSend, onBack, colors, isAr
-}: any) {
+const ForgotPanel = React.memo(function ForgotPanel({ email, setEmail, loading, onSend, onBack, colors, isAr }: any) {
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
@@ -1268,17 +1075,7 @@ const ForgotPanel = React.memo(function ForgotPanel({
         <Text style={[s.panelTitle, { color: colors.textPrimary }]}>{isAr ? 'نسيت كلمة المرور؟' : 'Forgot Password?'}</Text>
         <Text style={[s.panelSub, { color: colors.textMuted }]}>{isAr ? 'أدخل بريدك الإلكتروني وسنرسل لك رابط استرداد' : 'Enter your email and we will send a reset link'}</Text>
       </View>
-      <PremiumInput
-        label={isAr ? 'البريد الإلكتروني *' : 'Email Address *'}
-        placeholder="you@example.com"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        iconName="email"
-        colors={colors}
-      />
+      <PremiumInput label={isAr ? 'البريد الإلكتروني' : 'Email Address'} placeholder="you@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} iconName="email" colors={colors} />
       <Pressable style={({ pressed }) => [s.primaryBtn, { backgroundColor: '#D97706', opacity: pressed || loading ? 0.85 : 1 }]} onPress={onSend} disabled={loading}>
         {loading ? <ActivityIndicator size="small" color="#fff" /> : (
           <><MaterialIcons name="send" size={16} color="#fff" /><Text style={s.primaryBtnText}>{isAr ? 'إرسال رابط الاسترداد' : 'Send Reset Link'}</Text></>
@@ -1293,9 +1090,7 @@ const ForgotPanel = React.memo(function ForgotPanel({
 });
 
 // ─── Forgot Sent Panel ────────────────────────────────────────────────────────
-const ForgotSentPanel = React.memo(function ForgotSentPanel({
-  email, onBack, colors, isAr
-}: any) {
+const ForgotSentPanel = React.memo(function ForgotSentPanel({ email, onBack, colors, isAr }: any) {
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
@@ -1319,11 +1114,7 @@ const ForgotSentPanel = React.memo(function ForgotSentPanel({
 });
 
 // ─── Premium Input ────────────────────────────────────────────────────────────
-const PremiumInput = React.memo(function PremiumInput({
-  label, placeholder, value, onChangeText, keyboardType,
-  autoCapitalize, autoCorrect, secureTextEntry, iconName,
-  rightElement, colors, maxLength, inputStyle, onSubmitEditing
-}: any) {
+const PremiumInput = React.memo(function PremiumInput({ label, placeholder, value, onChangeText, keyboardType, autoCapitalize, autoCorrect, secureTextEntry, iconName, rightElement, colors, maxLength, inputStyle, onSubmitEditing }: any) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={s.inputGroup}>
@@ -1352,9 +1143,7 @@ const PremiumInput = React.memo(function PremiumInput({
 });
 
 // ─── Social Button ─────────────────────────────────────────────────────────────
-const SocialButton = React.memo(function SocialButton({
-  icon, label, loading, onPress, style, labelStyle
-}: any) {
+function SocialButton({ icon, label, loading, onPress, style, labelStyle }: any) {
   const scale = useRef(new Animated.Value(1)).current;
   return (
     <Animated.View style={[s.socialBtnWrap, { transform: [{ scale }] }]}>
@@ -1370,24 +1159,26 @@ const SocialButton = React.memo(function SocialButton({
       </Pressable>
     </Animated.View>
   );
-});
+}
 
-// ─── Google G Icon (memoized) ─────────────────────────────────────────────────
-const GoogleG = React.memo(function GoogleG() {
+// ─── Google G Icon (official brand colors) ──────────────────────────────────
+function GoogleG() {
   return (
     <View style={googleGStyles.container}>
+      {/* Outer ring: Google brand gradient approximated as 4-quadrant color segments */}
       <View style={googleGStyles.ring}>
         <View style={[googleGStyles.quadrant, googleGStyles.topLeft]} />
         <View style={[googleGStyles.quadrant, googleGStyles.topRight]} />
         <View style={[googleGStyles.quadrant, googleGStyles.bottomLeft]} />
         <View style={[googleGStyles.quadrant, googleGStyles.bottomRight]} />
       </View>
+      {/* White center with the G letter using official blue */}
       <View style={googleGStyles.inner}>
         <Text style={googleGStyles.letter}>G</Text>
       </View>
     </View>
   );
-});
+}
 
 const googleGStyles = StyleSheet.create({
   container: {
@@ -1481,6 +1272,7 @@ const s = StyleSheet.create({
   heroSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.6)', fontWeight: '500' },
   card: { borderRadius: 28, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.22, shadowRadius: 28, elevation: 16 },
 
+  // ── iOS Segmented Control ─────────────────────────────────────────────────
   segmentWrap: {
     margin: 16,
     marginBottom: 0,
@@ -1560,6 +1352,17 @@ const s = StyleSheet.create({
   switcherText: { fontSize: FontSize.sm },
   switcherLink: { fontSize: FontSize.sm, fontWeight: '700' },
 
+  // ── Social / Google section ────────────────────────────────────────────────
+  socialSection: { marginTop: Spacing.xl },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.md },
+  divLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.18)' },
+  divText: { fontSize: FontSize.xs, fontWeight: '600', color: 'rgba(255,255,255,0.5)' },
+  socialBtnWrap: { flex: 1 },
+  socialBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: Radius.xl },
+  socialLabel: { fontSize: FontSize.sm, fontWeight: '700' },
+  googleBtn: { backgroundColor: '#fff', borderWidth: 1 },
+
+  // ── In-card Google section (Android) ─────────────────────────────────────
   inCardGoogle: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.sm },
   inCardDividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   inCardDivLine: { flex: 1, height: 1 },
@@ -1578,6 +1381,8 @@ const s = StyleSheet.create({
     gap: 10, height: 54, borderRadius: Radius.xl,
     backgroundColor: '#fff',
   },
+
+  // ── Android pulsing badge ─────────────────────────────────────────────────
   googleBadgeWrap: {
     alignItems: 'center',
     marginBottom: 6,
@@ -1593,6 +1398,7 @@ const s = StyleSheet.create({
     shadowOpacity: 0.45,
     shadowRadius: 10,
     elevation: 8,
+    // Small downward-pointing triangle made with a separate View below
     position: 'relative',
     marginBottom: 8,
   },
@@ -1634,7 +1440,4 @@ const s = StyleSheet.create({
   spamWarningText: { flex: 1, fontSize: FontSize.xs, lineHeight: 17, fontWeight: '500', color: '#92400E' },
   rateLimitBanner: { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 10, borderRadius: Radius.md, borderWidth: 1 },
   rateLimitText: { flex: 1, fontSize: FontSize.xs, lineHeight: 17, fontWeight: '600', color: '#92400E' },
-  socialBtnWrap: { flex: 1 },
-  socialBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: Radius.xl },
-  socialLabel: { fontSize: FontSize.sm, fontWeight: '700' },
 });

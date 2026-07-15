@@ -11,7 +11,6 @@ export interface StoreProduct {
   image_url: string;
   category_label: string;
   category_label_ar: string;
-  custom_category_id?: string | null;
   is_available: boolean;
   position: number;
   created_at: string;

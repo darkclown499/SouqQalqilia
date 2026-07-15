@@ -1,4 +1,5 @@
-import React, { useCallback, useRef, useEffect, useState } from 'react';
+
+import React, { useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
 } from 'react-native';
@@ -22,44 +23,38 @@ export default function MessagesScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const { t, isRTL, language } = useLanguage();
-  const { conversations, loading, reload, unreadCount, error: convError } = useConversations();
-  const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
+  const { conversations, loading, reload, unreadCount } = useConversations();
+  const [blockedIds, setBlockedIds] = React.useState<Set<string>>(new Set());
 
   // ── Auto-mark all unread conversations on tab focus ────────────────────────
+  // Uses two trigger points:
+  //   1. useFocusEffect → fires when tab gains focus (covers pre-loaded conversations)
+  //   2. useEffect([conversations]) → fires when data arrives async on first open
   const conversationsRef = useRef<typeof conversations>([]);
   conversationsRef.current = conversations;
   const isFocusedRef = useRef(false);
-  // FIX: Track which conversation IDs have been marked read in the current session
-  const markedReadSetRef = useRef<Set<string>>(new Set());
 
   const autoMarkAllUnread = useCallback(() => {
     if (!user) return;
-    // Filter unread conversations that haven't been marked yet in this session
     const unreadConvs = conversationsRef.current.filter(
-      (c: any) => (c.unread_count ?? 0) > 0 && !markedReadSetRef.current.has(c.id)
+      (c: any) => (c.unread_count ?? 0) > 0
     );
     if (unreadConvs.length === 0) return;
 
     // Optimistic local update — badge clears instantly
     unreadConvs.forEach((conv: any) => {
       markConversationRead(conv.id, conv.last_message_at ?? null);
-      markedReadSetRef.current.add(conv.id);
     });
 
-    // DB writes — parallel, fire-and-forget with error logging
+    // DB writes — parallel, fire-and-forget, idempotent
     Promise.all(
       unreadConvs.map((conv: any) =>
-        markMessagesRead(conv.id, user.id).catch((err) => {
-          console.warn(`Failed to mark conversation ${conv.id} as read:`, err);
-        })
+        markMessagesRead(conv.id, user.id).catch(() => {})
       )
-    ).then(() => {
-      triggerUnreadRefresh().catch((e) => console.warn('Unread refresh error:', e));
-    }).catch((e) => console.warn('Unread refresh error:', e));
+    ).then(() => triggerUnreadRefresh()).catch(() => {});
   }, [user]);
 
-  // Trigger 1: tab gains focus
+  // Trigger 1: tab gains focus (handles conversations already in memory)
   useFocusEffect(
     useCallback(() => {
       isFocusedRef.current = true;
@@ -69,53 +64,37 @@ export default function MessagesScreen() {
   );
 
   // Trigger 2: conversations load/refresh while tab is focused
-  // FIX: Added proper dependencies; autoMarkAllUnread is stable
   useEffect(() => {
-    if (isFocusedRef.current && !loading) {
-      autoMarkAllUnread();
-    }
-  }, [conversations, loading, autoMarkAllUnread]);
+    if (isFocusedRef.current && !loading) autoMarkAllUnread();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, loading]);
 
-  // ── Blocked IDs with AbortController ──────────────────────────────────────
-  useEffect(() => {
-    if (!user) return;
-    const controller = new AbortController();
-    const fetch = async () => {
-      try {
-        const ids = await fetchBlockedIds({ signal: controller.signal });
-        setBlockedIds(new Set(ids));
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
-        console.warn('Failed to fetch blocked IDs:', err);
-        setError('Failed to load blocked users');
-      }
-    };
-    fetch();
-    return () => controller.abort();
+  React.useEffect(() => {
+    if (user) {
+      fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
+    }
   }, [user?.id]);
 
   // Re-sync when any block/unblock happens
-  useEffect(() => {
-    if (!user) return;
+  React.useEffect(() => {
     const unsub = subscribeToBlockChanges(() => {
-      // Re-fetch using AbortController internally (assume service handles it)
-      fetchBlockedIds().then(ids => setBlockedIds(new Set(ids))).catch(console.warn);
+      if (user) fetchBlockedIds().then(ids => setBlockedIds(new Set(ids)));
     });
     return unsub;
   }, [user?.id]);
 
-  // ── Derived values ──────────────────────────────────────────────────────────
   const totalConvs = conversations.length;
   const isAr = language === 'ar';
-  const hasError = convError || error;
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleConvPress = useCallback((id: string) => {
     router.push(`/chat/${id}`);
   }, [router]);
 
+  // Called by MessagePreview AFTER the DB write succeeded.
+  // The optimistic update already happened inside MessagePreview via the store.
+  // This just triggers a background server sync to reconcile the badge count.
   const handleMarkedRead = useCallback((_conversationId: string) => {
-    setTimeout(() => triggerUnreadRefresh().catch(console.warn), 2000);
+    setTimeout(() => triggerUnreadRefresh(), 2000);
   }, []);
 
   const renderConversation = useCallback(({ item }: any) => {
@@ -131,7 +110,6 @@ export default function MessagesScreen() {
     );
   }, [user, handleConvPress, blockedIds, handleMarkedRead]);
 
-  // ── Guest (not logged in) ──────────────────────────────────────────────────
   if (!user) {
     return (
       <View style={[styles.guest, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -156,42 +134,6 @@ export default function MessagesScreen() {
     );
   }
 
-  // ── Error state ────────────────────────────────────────────────────────────
-  if (hasError) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <View style={[styles.header, { backgroundColor: colors.primary }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerSub}>{isAr ? 'صندوق' : 'Your'}</Text>
-            <Text style={styles.headerTitle}>{t.yourMessages}</Text>
-          </View>
-          <View style={[styles.headerIconWrap, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
-            <MaterialIcons name="forum" size={26} color="#fff" />
-          </View>
-        </View>
-        <View style={styles.emptyWrap}>
-          <View style={[styles.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
-            <MaterialIcons name="error-outline" size={44} color={colors.error || '#EF4444'} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
-            {isAr ? 'حدث خطأ' : 'Something went wrong'}
-          </Text>
-          <Text style={[styles.emptySub, { color: colors.textMuted }]}>
-            {hasError}
-          </Text>
-          <Pressable
-            style={[styles.browseBtn, { backgroundColor: colors.primary, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-            onPress={() => { setError(null); reload(); }}
-          >
-            <MaterialIcons name="refresh" size={16} color="#fff" />
-            <Text style={styles.browseBtnText}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
-  // ── Main view ───────────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
 
@@ -285,7 +227,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.lg,
-    paddingTop: Math.max(Spacing.sm, 8), // FIX: use safe value (insets applied on container)
+    paddingTop: Spacing.sm,
   },
   headerSub: {
     fontSize: FontSize.sm,

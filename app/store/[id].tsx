@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
@@ -19,7 +20,6 @@ import { checkStoreIsOpen } from '@/services/storesService';
 import { Spacing, FontSize, Radius } from '@/constants/theme';
 import { Dimensions } from 'react-native';
 import { shortenUrl } from '@/utils/shortenUrl';
-import { getLocalCategories, LocalCategory } from '@/services/localCategoriesService';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const BANNER_H = 240;
@@ -36,7 +36,7 @@ const ORDER_LABELS: Record<OrderType, { ar: string; en: string; icon: string }> 
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PRODUCT CARD
+// PRODUCT CARD (Orgadastyle clean layout)
 // ─────────────────────────────────────────────────────────────────────────────
 function ProductCard({
   product, qty, onAdd, onRemove, isAr, isRTL, colors, disabled,
@@ -51,9 +51,10 @@ function ProductCard({
 
   return (
     <View style={[pc.card, { opacity: unavailable ? 0.6 : 1 }]}>
+      {/* Product Image */}
       <View style={pc.imgWrap}>
         {product.image_url ? (
-          <Image source={{ uri: product.image_url }} style={pc.img} contentFit="cover" transition={200} />
+          <Image source={{ uri: product.image_url }} style={pc.img} contentFit="contain" transition={200} />
         ) : (
           <View style={[pc.imgFallback, { backgroundColor: '#F9FAFB' }]}>
             <MaterialIcons name="fastfood" size={32} color="#D1D5DB" />
@@ -67,14 +68,15 @@ function ProductCard({
               <MaterialIcons name="check" size={8} color={colors.primary} />
             </View>
             {qty > 0 ? (
-              <View style={pc.qtyBadge}>
-                <Text style={pc.qtyBadgeText}>{qty}</Text>
-              </View>
-            ) : null}
+  <View style={pc.qtyBadge}>
+    <Text style={pc.qtyBadgeText}>{qty}</Text>
+  </View>
+) : null}
           </Pressable>
         ) : null}
       </View>
 
+      {/* Product Details */}
       <View style={[pc.body, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
         <Text style={[pc.name, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
           {name}
@@ -85,6 +87,7 @@ function ProductCard({
           </Text>
         ) : null}
         
+        {/* Price Row */}
         <View style={[pc.priceRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <Text style={pc.priceLabel}>{isAr ? 'السعر:' : 'Price:'}</Text>
           <Text style={[pc.price, { color: colors.primary }]}>
@@ -111,13 +114,13 @@ const pc = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
-    overflow: 'visible',
+    overflow: 'visible', // ضروري للزر العائم
   },
   imgWrap: { width: '100%', height: 110, padding: 10, position: 'relative', borderTopLeftRadius: 16, borderTopRightRadius: 16 },
-  img: { width: '100%', height: '100%', borderRadius: 8 },
+  img: { width: '100%', height: '100%' },
   imgFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   addCircle: {
-    position: 'absolute', bottom: -12, left: 12,
+    position: 'absolute', bottom: -12, left: 12, // يطفو في الأسفل على اليسار
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: '#BE123C',
     alignItems: 'center', justifyContent: 'center',
@@ -172,6 +175,7 @@ function ProductSection({
         </Text>
       </View>
 
+
       <View style={[ps.grid, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         {visibleProducts.map(item => (
           <ProductCard 
@@ -210,6 +214,8 @@ function ProductSection({
   );
 }
 
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
@@ -230,7 +236,6 @@ export default function StoreDetailScreen() {
   const { ids: favoriteIds, toggle: toggleFav } = useFavoriteIds();
   const isFavorited = favoriteIds.has(id ?? '');
   const [shareLoading, setShareLoading] = useState(false);
-  const [customCategories, setCustomCategories] = useState<LocalCategory[]>([]);
 
   // ── Cart state ──────────────────────────────────────────────────────────────
   const [cart, setCart] = useState<Record<string, CartItem>>({});
@@ -245,50 +250,34 @@ export default function StoreDetailScreen() {
   const cartTotal = useMemo(() => cartItems.reduce((s, i) => s + i.product.price * i.qty, 0), [cartItems]);
   const cartCount = useMemo(() => cartItems.reduce((s, i) => s + i.qty, 0), [cartItems]);
 
-  // ── Group products by category ────────────────────────────────────────────
+  // ── Group products by category_label_ar ──────────────────────────────────
   const groupedProducts = useMemo(() => {
     const map = new Map<string, StoreProduct[]>();
-    
-    for (const cat of customCategories) {
-      const catName = isAr ? cat.name_ar : cat.name;
-      const items = products.filter(p => p.custom_category_id === cat.id);
-      if (items.length > 0) {
-        map.set(catName, items);
-      }
-    }
+    const uncategorized: StoreProduct[] = [];
 
     for (const p of products) {
-      if (p.custom_category_id) continue;
       const label = isAr
         ? (p.category_label_ar || p.category_label || '')
         : (p.category_label || p.category_label_ar || '');
       if (label) {
-        if (!map.has(label)) {
-          map.set(label, []);
-        }
-        const existingItems = map.get(label) || [];
-        if (!existingItems.some(item => item.id === p.id)) {
-          map.get(label)!.push(p);
-        }
+        if (!map.has(label)) map.set(label, []);
+        map.get(label)!.push(p);
+      } else {
+        uncategorized.push(p);
       }
     }
-
-    const uncategorized = products.filter(p => 
-      !p.custom_category_id && 
-      !(isAr ? (p.category_label_ar || p.category_label || '') : (p.category_label || p.category_label_ar || ''))
-    );
-    
     const result: { label: string; items: StoreProduct[] }[] = [];
     map.forEach((items, label) => result.push({ label, items }));
     if (uncategorized.length > 0) {
       result.push({ label: isAr ? 'منتجات أخرى' : 'Other Products', items: uncategorized });
     }
     return result;
-  }, [products, customCategories, isAr]);
+  }, [products, isAr]);
 
   // ── Load data ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id) {
+      // No id means invalid/malformed deep link — stop loading immediately
       setLoading(false);
       return;
     }
@@ -306,15 +295,13 @@ export default function StoreDetailScreen() {
       getSupabaseClient().from('stores').select('*').eq('id', id).single(),
       fetchStoreProducts(id),
       fetchStoreRating(id),
-      getLocalCategories(id),
-    ]).then(([storeRes, productsRes, ratingRes, categoriesRes]) => {
+    ]).then(([storeRes, productsRes, ratingRes]) => {
       if (storeRes.data) {
         setStore(storeRes.data);
         setIsOpen(checkStoreIsOpen(storeRes.data));
       }
       setProducts(productsRes.data);
       setRating(ratingRes);
-      setCustomCategories(categoriesRes);
     }).finally(() => setLoading(false));
   }, [id]);
 
@@ -479,7 +466,7 @@ export default function StoreDetailScreen() {
         contentContainerStyle={{ paddingBottom: cartCount > 0 && isOpen ? 116 : 48 }}
       >
         <View style={s.heroContainer}>
-          {/* Banner */}
+          {/* الغلاف العلوي */}
           <View style={[s.bannerWrap, { height: 240, backgroundColor: colors.surface }]}>
             {store.banner_url ? (
               <Image source={{ uri: store.banner_url }} style={StyleSheet.absoluteFill} contentFit="contain" />
@@ -488,53 +475,54 @@ export default function StoreDetailScreen() {
             )}
             <LinearGradient colors={['rgba(0,0,0,0.4)', 'transparent', 'transparent']} style={StyleSheet.absoluteFill} />
             
-            {/* Header buttons */}
+            
             <View style={[s.headerOverlay, { paddingTop: insets.top + 10, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              
               <Pressable style={s.headerBtn} onPress={() => router.back()}>
                 <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#111827" />
               </Pressable>
               
+             
               <View style={[s.headerActionsRight, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <Pressable 
-                  style={s.headerBtn} 
-                  onPress={() => {
-                    const userName = user?.username || user?.email?.split('@')[0] || isAr ? 'عميل' : 'Customer';
-                    const msg = isAr 
-                      ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
-                      : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
-                    const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
-                    if (phone) {
-                      Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-                    } else {
-                      alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
-                    }
-                  }}
-                >
-                  <MaterialIcons name="chat" size={18} color="#25D366" />
-                </Pressable>
-                <Pressable style={s.headerBtn} onPress={() => id && toggleFav(id)}>
-                  <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={20} color={isFavorited ? colors.primary : '#111827'} />
-                </Pressable>
-                <Pressable style={s.headerBtn} onPress={handleShare}>
-                  <MaterialIcons name="share" size={18} color="#111827" />
-                </Pressable>
-              </View>
+  {/* زر واتساب */}
+  <Pressable 
+    style={s.headerBtn} 
+    onPress={() => {
+      const userName = user?.username || user?.email?.split('@')[0] || isAr ? 'عميل' : 'Customer';
+      const msg = isAr 
+        ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
+        : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
+      const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
+      if (phone) {
+        Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+      } else {
+        // إذا لم يكن هناك رقم، نفتح رابط المتجر العام
+        alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
+      }
+    }}
+  >
+    <MaterialIcons name="chat" size={18} color="#25D366" />
+  </Pressable>
+  <Pressable style={s.headerBtn} onPress={() => id && toggleFav(id)}>
+    <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={20} color={isFavorited ? colors.primary : '#111827'} />
+  </Pressable>
+  <Pressable style={s.headerBtn} onPress={handleShare}>
+    <MaterialIcons name="share" size={18} color="#111827" />
+  </Pressable>
+</View>
             </View>
           </View>
 
-          {/* Overlap: logo + status badge (left) */}
+      
           <View style={s.overlapWrapper}>
-            {/* Status badge (left) - only one instance */}
-            <View style={[s.sideBadge, { left: 16, top: 25 }]}>
-              <View style={[s.modernPill, { borderColor: isOpen ? '#16A34A' : colors.textMuted }]}>
-                <View style={[s.statusDot, { backgroundColor: isOpen ? '#16A34A' : colors.textMuted }]} />
-                <Text style={[s.modernPillText, { color: isOpen ? '#16A34A' : colors.textMuted, marginLeft: 4 }]}>
-                  {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
-                </Text>
+            <View style={[s.sideBadge, { right: 16 }]}>
+              <View style={[s.modernPill, { borderColor: colors.primary }]}>
+                <MaterialIcons name="access-time" size={14} color={colors.primary} />
+                <Text style={[s.modernPillText, { color: colors.primary, marginLeft: 4 }]}>{hoursLabel || '01:00 - 10:30'}</Text>
               </View>
             </View>
 
-            {/* Logo */}
+  
             <View style={s.logoWrap}>
               {store.logo_url ? (
                 <Image source={{ uri: store.logo_url }} style={s.mainLogo} contentFit="cover" />
@@ -542,98 +530,61 @@ export default function StoreDetailScreen() {
                 <MaterialIcons name="storefront" size={40} color={colors.primary} />
               )}
             </View>
-          </View>
 
-          {/* Store details (name, WhatsApp button, location, hours) */}
-          <View style={s.storeDetails}>
-            <Text style={s.storeNameTxt}>{storeName}</Text>
-            
-            {/* WhatsApp button */}
-            <Pressable
-              style={({ pressed }) => [s.whatsappBtn, { 
-                backgroundColor: '#25D366', 
-                opacity: pressed ? 0.85 : 1,
-                transform: [{ scale: pressed ? 0.97 : 1 }]
-              }]}
-              onPress={() => {
-                const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
-                const msg = isAr 
-                  ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
-                  : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
-                const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
-                if (phone) {
-                  Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-                } else {
-                  alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
-                }
-              }}
-            >
-              <MaterialIcons name="whatsapp" size={20} color="#fff" />
-              <Text style={s.whatsappBtnText}>
-                {isAr ? 'تواصل واتساب' : 'WhatsApp'}
-              </Text>
-            </Pressable>
-
-            {/* Location */}
-            <View style={s.locationRow}>
-              <MaterialIcons name="place" size={16} color={colors.primary} />
-              <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
-            </View>
-
-            {/* Hours - moved from top banner */}
-            {hoursLabel ? (
-              <View style={s.hoursRow}>
-                <MaterialIcons name="access-time" size={14} color={colors.textMuted} />
-                <Text style={s.hoursText}>{hoursLabel}</Text>
+            <View style={[s.sideBadge, { left: 16 }]}>
+              <View style={[s.modernPill, { borderColor: isOpen ? '#16A34A' : colors.textMuted }]}>
+                <View style={[s.statusDot, { backgroundColor: isOpen ? '#16A34A' : colors.textMuted }]} />
+                <Text style={[s.modernPillText, { color: isOpen ? '#16A34A' : colors.textMuted, marginLeft: 4 }]}>
+                  {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+                </Text>
               </View>
+            </View>
+          </View>
+
+          
+         <View style={s.storeDetails}>
+  <Text style={s.storeNameTxt}>{storeName}</Text>
+  
+  {/* زر واتساب المميز */}
+  <Pressable
+    style={({ pressed }) => [s.whatsappBtn, { 
+      backgroundColor: '#25D366', 
+      opacity: pressed ? 0.85 : 1,
+      transform: [{ scale: pressed ? 0.97 : 1 }]
+    }]}
+    onPress={() => {
+      const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
+      const msg = isAr 
+        ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
+        : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
+      const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
+      if (phone) {
+        Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+      } else {
+        alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
+      }
+    }}
+  >
+    <MaterialIcons name="whatsapp" size={20} color="#fff" />
+    <Text style={s.whatsappBtnText}>
+      {isAr ? 'تواصل واتساب' : 'WhatsApp'}
+    </Text>
+  </Pressable>
+
+  {/* باقي المحتوى (الموقع، الوصف) */}
+  <View style={s.locationRow}>
+    <MaterialIcons name="support-agent" size={16} color={colors.primary} />
+    <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
+  </View>
+</View>
+
+
+            {storeDesc ? (
+              <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
             ) : null}
-          </View>
-
-          {storeDesc ? (
-            <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
-          ) : null}
-        </View>
-
-        {/* ── PRODUCTS ── */}
-        {products.length === 0 ? (
-          <View style={s.emptyWrap}>
-            <View style={[s.emptyIllus, { backgroundColor: colors.primaryGhost }]}>
-              <MaterialIcons name="fastfood" size={36} color={colors.primary} />
-            </View>
-            <Text style={[s.emptyTitle, { color: colors.textPrimary }]}>
-              {isAr ? 'لا توجد منتجات بعد' : 'No products yet'}
-            </Text>
-            <Text style={[s.emptySub, { color: colors.textSecondary }]}>
-              {isAr ? 'تابع هذا المتجر لمعرفة العروض القادمة' : 'Follow this store for upcoming offers'}
-            </Text>
-          </View>
-        ) : (
-          <View style={[s.menuWrap, { marginTop: 24 }]}>
-            {/* Header - removed closed pill */}
-            <View style={[s.menuHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
-              <MaterialIcons name="restaurant-menu" size={20} color={colors.primary} />
-              <Text style={[s.menuHeaderText, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
-                {isAr ? 'قائمة المنتجات' : 'Products'}
-              </Text>
-            </View>
-
-            {groupedProducts.map(({ label, items }) => (
-              <ProductSection
-                key={label}
-                label={label}
-                products={items}
-                cart={cart}
-                onAdd={addToCart}
-                onRemove={removeFromCart}
-                isAr={isAr}
-                isRTL={isRTL}
-                colors={colors}
-                isOpen={isOpen}
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
+          {/* Closing tag for View s.heroContainer moved here */}
+          </View> 
+        </ScrollView>
 
       {cartCount > 0 && isOpen ? (
         <Animated.View style={[s.cartFab, cartBtnAnimStyle]}>
@@ -670,7 +621,7 @@ export default function StoreDetailScreen() {
                   </Pressable>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={m.cartItems}>
+               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={m.cartItems}>
                   {cartItems.map(({ product, qty }) => {
                     const pName = isAr ? (product.name_ar || product.name) : product.name;
                     return (
@@ -841,28 +792,29 @@ export default function StoreDetailScreen() {
 }
 
 const s = StyleSheet.create({
+
   whatsappBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#25D366',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 30,
-    marginTop: 8,
-    marginBottom: 4,
-    shadowColor: '#25D366',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  whatsappBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  backgroundColor: '#25D366',
+  paddingHorizontal: 20,
+  paddingVertical: 10,
+  borderRadius: 30,
+  marginTop: 8,
+  marginBottom: 4,
+  shadowColor: '#25D366',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.3,
+  shadowRadius: 8,
+  elevation: 5,
+},
+whatsappBtnText: {
+  color: '#fff',
+  fontSize: 14,
+  fontWeight: '700',
+},
   container: { flex: 1 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
 
@@ -871,7 +823,7 @@ const s = StyleSheet.create({
   fabBtn: { position: 'absolute', zIndex: 10, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   
   overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -50, zIndex: 10 },
-  sideBadge: { position: 'absolute', top: 25, alignItems: 'center' },
+  sideBadge: { position: 'absolute', top: 50, alignItems: 'center' },
   modernPill: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff',
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5,
@@ -879,17 +831,18 @@ const s = StyleSheet.create({
   },
   modernPillText: { fontSize: 12, fontWeight: '800' },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
+  pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 8 },
+  pillText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   
   logoWrap: { width: 130, height: 130, borderRadius: 65, borderWidth: 4, borderColor: '#fff', backgroundColor: '#fff', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 6 },
   mainLogo: { width: '100%', height: '100%' },
 
-  storeDetails: { marginTop: 12, alignItems: 'center', gap: 6 },
+  storeDetails: { marginTop: 12, alignItems: 'center' },
   storeNameTxt: { fontSize: 24, fontWeight: '900', color: '#111827', marginBottom: 4 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   locationTxt: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
-  hoursRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  hoursText: { fontSize: 12, color: '#6B7280' },
 
+  // تنسيقات أزرار الهيدر الجديدة
   headerOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0,
     justifyContent: 'space-between', alignItems: 'center',
@@ -902,6 +855,7 @@ const s = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3
   },
 
+  // تنسيقات تفاصيل المتجر الجديدة
   storeDescTxt: { 
     fontSize: 13, color: '#6B7280', textAlign: 'center', 
     marginTop: 10, paddingHorizontal: 32, lineHeight: 20 

@@ -5,9 +5,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router'; // <-- ADDED useFocusEffect
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications'; // <-- ADDED expo-notifications
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { useMessages, triggerUnreadRefresh } from '@/hooks/useChat';
 import {
@@ -16,12 +15,11 @@ import {
   addToOfflineQueue, removeFromOfflineQueue, getOfflineQueue,
   Conversation, Message,
 } from '@/services/chatService';
-import { blockUser, isUserBlocked, unblockUser } from '@/services/blockService';
+import { blockUser, isUserBlocked } from '@/services/blockService';
 import { updateAdStatus } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { v4 as uuidv4 } from 'uuid';
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢'] as const;
 type ReactionEmoji = typeof REACTION_EMOJIS[number];
@@ -106,8 +104,6 @@ export default function ChatScreen() {
   const [isBlocked, setIsBlocked] = useState(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<FlatList<MsgItem>>(null);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const markReadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [pickerMsgId, setPickerMsgId] = useState<string | null>(null);
   const [localReactions, setLocalReactions] = useState<Record<string, string>>({});
@@ -129,30 +125,6 @@ export default function ChatScreen() {
   const soundRef = useRef<any>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ----- Helper: Cleanup sound and recording resources -----
-  const cleanupAudioResources = useCallback(async () => {
-    if (soundRef.current) {
-      try {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-      } catch (_) {}
-      soundRef.current = null;
-    }
-    if (recordingRef.current) {
-      try {
-        await recordingRef.current.stopAndUnloadAsync();
-      } catch (_) {}
-      recordingRef.current = null;
-    }
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    setIsRecording(false);
-    setRecordingDuration(0);
-  }, []);
-
-  // ----- Audio Recording Handlers (memoized) -----
   const handleStartRecording = useCallback(async () => {
     try {
       const { Audio } = await import('expo-av');
@@ -187,20 +159,8 @@ export default function ChatScreen() {
 
   const handlePlayVoice = useCallback(async (msgId: string, voiceUrl: string) => {
     try {
-      if (playingVoiceId === msgId) {
-        if (soundRef.current) {
-          await soundRef.current.stopAsync();
-          await soundRef.current.unloadAsync();
-          soundRef.current = null;
-        }
-        setPlayingVoiceId(null);
-        return;
-      }
-      if (soundRef.current) {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
+      if (playingVoiceId === msgId) { if (soundRef.current) { await soundRef.current.stopAsync(); soundRef.current = null; } setPlayingVoiceId(null); return; }
+      if (soundRef.current) { await soundRef.current.stopAsync(); soundRef.current = null; }
       const { Audio } = await import('expo-av');
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
       const { sound } = await Audio.Sound.createAsync({ uri: voiceUrl }, { shouldPlay: true });
@@ -208,25 +168,20 @@ export default function ChatScreen() {
       sound.setOnPlaybackStatusUpdate((status: any) => {
         if (status.isLoaded) {
           setVoiceProgress(prev => ({ ...prev, [msgId]: status.durationMillis ? status.positionMillis / status.durationMillis : 0 }));
-          if (status.didJustFinish) {
-            setPlayingVoiceId(null);
-            soundRef.current = null;
-          }
+          if (status.didJustFinish) { setPlayingVoiceId(null); soundRef.current = null; }
         }
       });
     } catch { setPlayingVoiceId(null); }
   }, [playingVoiceId]);
 
-  // ----- Cleanup on unmount (Audio, timers) -----
   useEffect(() => {
     return () => {
-      cleanupAudioResources();
-      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-      if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current);
+      if (soundRef.current) soundRef.current.stopAsync().catch(() => {});
+      if (recordingRef.current) recordingRef.current.stopAndUnloadAsync().catch(() => {});
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     };
-  }, [cleanupAudioResources]);
+  }, []);
 
-  // ----- Search functionality (memoized values) -----
   const searchMatchIds = useMemo<string[]>(() => {
     if (!searchQuery.trim()) return [];
     return messages.filter(m => m.content?.toLowerCase().includes(searchQuery.toLowerCase())).map(m => m.id);
@@ -239,8 +194,7 @@ export default function ChatScreen() {
   const scrollToMatch = useCallback((idx: number) => {
     const msgId = searchMatchIds[idx];
     if (!msgId || !listRef.current) return;
-    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-    scrollTimeoutRef.current = setTimeout(() => {
+    requestAnimationFrame(() => {
       if (!listRef.current) return;
       let flatIdx = -1; let dateCount = 0; let lastDate = '';
       for (let i = 0; i < messages.length; i++) {
@@ -249,17 +203,14 @@ export default function ChatScreen() {
         if (messages[i].id === msgId) { flatIdx = i + dateCount; break; }
       }
       if (flatIdx >= 0) try { listRef.current.scrollToIndex({ index: flatIdx, animated: true, viewPosition: 0.5 }); } catch { }
-      scrollTimeoutRef.current = null;
-    }, 80);
+    });
   }, [searchMatchIds, messages]);
 
   const handleSearchNext = useCallback(() => { if (totalMatches === 0) return; const next = (clampedMatchIdx + 1) % totalMatches; setSearchMatchIndex(next); scrollToMatch(next); }, [clampedMatchIdx, totalMatches, scrollToMatch]);
   const handleSearchPrev = useCallback(() => { if (totalMatches === 0) return; const prev = (clampedMatchIdx - 1 + totalMatches) % totalMatches; setSearchMatchIndex(prev); scrollToMatch(prev); }, [clampedMatchIdx, totalMatches, scrollToMatch]);
-
   useEffect(() => { setSearchMatchIndex(0); }, [searchQuery]);
   useEffect(() => { if (isSearchActive && totalMatches > 0) scrollToMatch(0); }, [isSearchActive, totalMatches]);
 
-  // ----- Fetch conversation and block status -----
   useEffect(() => {
     if (id) fetchConversationById(id).then(({ data }) => {
       setConversation(data);
@@ -267,7 +218,6 @@ export default function ChatScreen() {
     });
   }, [id, user?.id]);
 
-  // ----- Offline queue retry -----
   useEffect(() => {
     if (!isOnline || !id || !user || isBuyer === null) return;
     (async () => {
@@ -280,19 +230,17 @@ export default function ChatScreen() {
     })();
   }, [isOnline, id, user?.id, isBuyer]);
 
-  // ----- Quick replies -----
   const QUICK_REPLIES_AR = ['هل السعر قابل للتفاوض؟', 'هل المنتج لا يزال متاحاً؟', 'ما هو موقعك؟', 'هل يمكن التوصيل؟'];
   const QUICK_REPLIES_EN = ['Is the price negotiable?', 'Is this still available?', 'Where is your location?', 'Can you deliver?'];
   const quickReplies = isAr ? QUICK_REPLIES_AR : QUICK_REPLIES_EN;
 
-  // ----- Typing indicator -----
-  const handleTyping = useCallback((val: string) => {
+  const handleTyping = (val: string) => {
     setText(val);
     if (!id || !user || isBuyer === null) return;
     updateTypingIndicator(id, isBuyer, true).catch(() => {});
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(() => { updateTypingIndicator(id, isBuyer, false).catch(() => {}); }, 3000);
-  }, [id, user, isBuyer]);
+  };
 
   useEffect(() => {
     return () => {
@@ -301,16 +249,10 @@ export default function ChatScreen() {
     };
   }, [id, user?.id, isBuyer]);
 
-  // ----- Mark messages as read (with debounce) -----
   const markedOnMount = useRef(false);
-  const lastMarkTimeRef = useRef(0);
 
   const doMark = useCallback(async () => {
     if (!id || !user) return;
-    const now = Date.now();
-    if (now - lastMarkTimeRef.current < 1000) return;
-    lastMarkTimeRef.current = now;
-
     try {
       const supabase = getSupabaseClient();
       await supabase
@@ -325,57 +267,21 @@ export default function ChatScreen() {
     } catch (e) { }
   }, [id, user?.id, markReadLocally]);
 
-  // Mark on mount and when new messages arrive
   useEffect(() => {
-    if (!markedOnMount.current) {
-      markedOnMount.current = true;
-      doMark();
-      return;
-    }
+    if (!markedOnMount.current) { markedOnMount.current = true; doMark(); return; }
     const hasUnread = messages.some(m => m.sender_id !== user?.id && !m.read_at);
-    if (hasUnread) {
-      if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current);
-      markReadTimeoutRef.current = setTimeout(doMark, 500);
-    }
-    return () => { if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current); };
+    if (hasUnread) doMark();
   }, [messages.length, user?.id, doMark]);
 
-  // ----- NEW: useFocusEffect to mark read and dismiss notifications when screen comes into focus -----
-  useFocusEffect(
-    useCallback(() => {
-      // 1. Ensure all unread messages are marked as read
-      doMark();
-
-      // 2. Dismiss all system notifications
-      Notifications.dismissAllNotificationsAsync().catch(() => {});
-
-      return () => {}; // optional cleanup
-    }, [doMark])
-  );
-
-  // ----- Auto-scroll to bottom -----
-  const scrollToBottom = useCallback(() => {
-    if (isSearchActive) return;
-    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-    scrollTimeoutRef.current = setTimeout(() => {
-      listRef.current?.scrollToEnd({ animated: true });
-      scrollTimeoutRef.current = null;
-    }, 80);
-  }, [isSearchActive]);
-
   useEffect(() => {
-    if (messages.length > 0 && !isSearchActive) scrollToBottom();
+    if (messages.length > 0 && !isSearchActive) setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
   }, [messages.length, isSearchActive]);
 
-  // ----- Handlers (memoized) -----
-  const handleQuickReply = useCallback((reply: string) => {
-    setText(reply);
-    setShowQuickReplies(false);
-  }, []);
+  const handleQuickReply = (reply: string) => { setText(reply); setShowQuickReplies(false); };
 
-  const handleSendMessage = useCallback(async (content: string, imageUrl?: string) => {
+  const handleSendMessage = async (content: string, imageUrl?: string) => {
     if (!id) return;
-    const clientId = uuidv4();
+    const clientId = (() => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); }))();
     const tempMsg: Message = { id: clientId, conversation_id: id, sender_id: user?.id ?? '', content: imageUrl ? (content || '📷 صورة') : content, image_url: imageUrl ?? null, message_type: imageUrl ? 'image' : 'text', read_at: null, created_at: new Date().toISOString(), _pending: true };
     appendMessage(tempMsg);
 
@@ -387,17 +293,17 @@ export default function ChatScreen() {
       if (sent) updateMessage(clientId, sent);
       if (recipientId) notifyRecipient(recipientId, user?.username || user?.email?.split('@')[0] || 'رسالة جديدة', content || '📷 صورة', id, !isBuyerSending);
     }
-  }, [id, user, appendMessage, updateMessage]);
+  };
 
-  const handleSend = useCallback(async () => {
+  const handleSend = async () => {
     const content = text.trim();
     if (!content || !id || sending) return;
     setSending(true); setText('');
     try { await handleSendMessage(content); }
     finally { setSending(false); if (isBuyer !== null) { updateTypingIndicator(id!, isBuyer, false).catch(() => {}); if (typingTimerRef.current) clearTimeout(typingTimerRef.current); } }
-  }, [text, id, sending, handleSendMessage, isBuyer]);
+  };
 
-  const handleCameraCapture = useCallback(async () => {
+  const handleCameraCapture = async () => {
     if (!id || imageUploading) return;
     try {
       const ImagePicker = await import('expo-image-picker'); const perm = await ImagePicker.requestCameraPermissionsAsync(); if (perm.status !== 'granted') return;
@@ -406,9 +312,9 @@ export default function ChatScreen() {
       setImageUploading(true); const { url } = await uploadChatImage(result.assets[0].uri, result.assets[0].fileName ?? `cam_${Date.now()}.jpg`); setImageUploading(false);
       if (url) await handleSendMessage('', url);
     } catch { setImageUploading(false); }
-  }, [id, imageUploading, handleSendMessage]);
+  };
 
-  const handleImagePick = useCallback(async () => {
+  const handleImagePick = async () => {
     if (!id || imageUploading) return;
     try {
       const ImagePicker = await import('expo-image-picker'); const perm = await ImagePicker.requestMediaLibraryPermissionsAsync(); if (perm.status !== 'granted') return;
@@ -417,144 +323,67 @@ export default function ChatScreen() {
       setImageUploading(true); const { url } = await uploadChatImage(result.assets[0].uri, result.assets[0].fileName ?? `chat_${Date.now()}.jpg`); setImageUploading(false);
       if (url) await handleSendMessage('', url);
     } catch { setImageUploading(false); }
-  }, [id, imageUploading, handleSendMessage]);
+  };
 
-  // ----- Conversation actions (memoized) -----
-  const isSeller = conversation?.seller_id === user?.id;
-  const adStatus = (conversation as any)?.ads?.status as string | undefined;
-  const adId = conversation?.ad_id;
-
-  const handleMarkSold = useCallback(async () => {
-    if (!adId) {
-      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لا يوجد إعلان مرتبط' : 'No ad linked');
-      return;
-    }
-    if (actionLoading) return;
+  const handleMarkSold = async () => {
+    if (!adId || actionLoading) return;
     setMenuVisible(false);
     showAlert(isAr ? 'تأكيد البيع' : 'Confirm Sale', isAr ? 'هل تريد تحديد هذا الإعلان كـ «تم البيع»؟' : 'Mark this listing as sold?', [
       { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-      { text: isAr ? 'تم البيع ✓' : 'Mark Sold ✓', onPress: async () => { setActionLoading(true); const { error } = await updateAdStatus(adId, 'sold'); setActionLoading(false); if (!error) setConversation(prev => prev ? { ...prev, ads: { ...prev.ads, title: prev.ads?.title ?? '', status: 'sold' } } : prev); else showAlert(isAr ? 'خطأ' : 'Error', error?.message || isAr ? 'فشل التحديث' : 'Update failed'); } },
+      { text: isAr ? 'تم البيع ✓' : 'Mark Sold ✓', onPress: async () => { setActionLoading(true); const { error } = await updateAdStatus(adId, 'sold'); setActionLoading(false); if (!error) setConversation(prev => prev ? { ...prev, ads: { ...prev.ads, title: prev.ads?.title ?? '', status: 'sold' } } : prev); } },
     ]);
-  }, [adId, actionLoading, isAr, showAlert]);
+  };
 
-  const handleCancelSold = useCallback(async () => {
-    if (!adId) {
-      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لا يوجد إعلان مرتبط' : 'No ad linked');
-      return;
-    }
-    if (actionLoading) return;
+  const handleCancelSold = async () => {
+    if (!adId || actionLoading) return;
     setMenuVisible(false); setActionLoading(true);
     const { error } = await updateAdStatus(adId, 'active'); setActionLoading(false);
     if (!error) setConversation(prev => prev ? { ...prev, ads: { ...prev.ads, title: prev.ads?.title ?? '', status: 'active' } } : prev);
-    else showAlert(isAr ? 'خطأ' : 'Error', error?.message || isAr ? 'فشل التحديث' : 'Update failed');
-  }, [adId, actionLoading, isAr, showAlert]);
+  };
 
-  const handleBlockUser = useCallback(() => {
+  const handleBlockUser = () => {
     setMenuVisible(false); const otherId = isBuyer ? conversation?.seller_id : conversation?.buyer_id; if (!otherId) return;
     showAlert(isAr ? (isBlocked ? 'رفع الحظر' : 'حظر المستخدم') : (isBlocked ? 'Unblock User' : 'Block User'), isBlocked ? (isAr ? 'هل تريد رفع الحظر؟' : 'Unblock this user?') : (isAr ? 'هل تريد حظر هذا المستخدم؟' : 'Block this user?'), [
       { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-      { text: isBlocked ? (isAr ? 'رفع الحظر' : 'Unblock') : (isAr ? 'حظر' : 'Block'), style: isBlocked ? 'default' : 'destructive', onPress: async () => { setActionLoading(true); if (isBlocked) { const { error } = await unblockUser(otherId); setActionLoading(false); if (!error) setIsBlocked(false); else showAlert(isAr ? 'خطأ' : 'Error', error?.message || isAr ? 'فشل رفع الحظر' : 'Unblock failed'); } else { const { error } = await blockUser(otherId); setActionLoading(false); if (!error) setIsBlocked(true); else showAlert(isAr ? 'خطأ' : 'Error', error?.message || isAr ? 'فشل الحظر' : 'Block failed'); } } },
+      { text: isBlocked ? (isAr ? 'رفع الحظر' : 'Unblock') : (isAr ? 'حظر' : 'Block'), style: isBlocked ? 'default' : 'destructive', onPress: async () => { setActionLoading(true); if (isBlocked) { const { error } = await (await import('@/services/blockService')).unblockUser(otherId); setActionLoading(false); if (!error) setIsBlocked(false); } else { const { error } = await blockUser(otherId); setActionLoading(false); if (!error) setIsBlocked(true); } } },
     ]);
-  }, [isBlocked, isBuyer, conversation, isAr, showAlert]);
+  };
 
-  const handleReportUser = useCallback(() => {
+  const handleReportUser = () => {
     setMenuVisible(false); const otherId = isBuyer ? conversation?.seller_id : conversation?.buyer_id; if (!otherId || !user) return;
     showAlert(isAr ? 'الإبلاغ' : 'Report', isAr ? 'الإبلاغ عن المستخدم؟' : 'Report this user?', [
       { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
       { text: isAr ? 'إبلاغ' : 'Report', style: 'destructive', onPress: async () => { const supabase = getSupabaseClient(); await supabase.from('reports').upsert({ ad_id: conversation?.ad_id ?? '', reporter_id: user.id, reason: 'abusive_user' }, { onConflict: 'ad_id,reporter_id', ignoreDuplicates: true }); showAlert(isAr ? 'تم الإبلاغ' : 'Reported', ''); } },
     ]);
-  }, [isBuyer, conversation, user, isAr, showAlert]);
+  };
 
-  const handleDeleteConversation = useCallback(() => {
+  const handleDeleteConversation = () => {
     setMenuVisible(false);
     showAlert(isAr ? 'حذف المحادثة' : 'Delete', isAr ? 'حذف المحادثة نهائياً؟' : 'Permanently delete?', [
       { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-      { text: isAr ? 'حذف' : 'Delete', style: 'destructive', onPress: async () => { setActionLoading(true); const { error } = await deleteConversation(id); setActionLoading(false); if (!error) router.replace('/(tabs)/messages'); else showAlert(isAr ? 'خطأ' : 'Error', error?.message || isAr ? 'فشل الحذف' : 'Delete failed'); } },
+      { text: isAr ? 'حذف' : 'Delete', style: 'destructive', onPress: async () => { setActionLoading(true); const { error } = await deleteConversation(id); setActionLoading(false); if (!error) router.replace('/(tabs)/messages'); } },
     ]);
-  }, [id, isAr, showAlert, router]);
+  };
 
-  // ----- Derived values -----
+  const isSeller = conversation?.seller_id === user?.id;
+  const adStatus = (conversation as any)?.ads?.status as string | undefined;
+  const adId = conversation?.ad_id;
   const otherUser = isBuyer ? conversation?.seller : conversation?.buyer;
   const otherName = otherUser?.username || otherUser?.email?.split('@')[0] || 'User';
   const otherInitial = otherName.charAt(0).toUpperCase();
   const otherAvatarUrl = (otherUser as any)?.avatar_url ?? null;
 
-  // ----- Pagination -----
   const PAGE_SIZE = 60; const [visibleCount, setVisibleCount] = useState(PAGE_SIZE); useEffect(() => { setVisibleCount(PAGE_SIZE); }, [id]);
   const pagedMessages = useMemo(() => messages.slice(Math.max(0, messages.length - visibleCount)), [messages, visibleCount]);
   const handleLoadMore = useCallback(() => { setVisibleCount(v => Math.min(v + PAGE_SIZE, Math.max(messages.length, PAGE_SIZE))); }, [messages.length]);
 
-  // ----- Date grouping (memoized) -----
   type MsgItem = (Message & { _type?: undefined }) | { _type: 'date'; _date: string; id: string };
-  const withDates = useMemo<MsgItem[]>(() => {
-    const items: MsgItem[] = [];
-    let lastDate = '';
-    for (const msg of pagedMessages) {
-      const d = new Date(msg.created_at).toDateString();
-      if (d !== lastDate) { items.push({ _type: 'date', _date: msg.created_at, id: `date_${msg.id}` }); lastDate = d; }
-      items.push(msg);
-    }
-    return items;
-  }, [pagedMessages]);
-
-  // ----- Render functions (memoized) -----
-  const renderItem = useCallback(({ item }: { item: MsgItem }) => {
-    if (item._type === 'date') {
-      return <View style={styles.dateSeparator}><Text style={styles.dateText}>{formatDateGroup(item._date, isAr)}</Text></View>;
-    }
-    const msg = item; const isMine = msg.sender_id === user?.id; const isVoice = msg.message_type === 'image' && !!msg.image_url && msg.image_url.includes('.m4a'); const isImage = msg.message_type === 'image' && !!msg.image_url && !isVoice; const isRead = !!msg.read_at;
-    // Determine bubble style based on RTL
-    const borderRadiusStyle = isMine
-      ? {
-          borderTopRightRadius: isAr ? 4 : 18,
-          borderTopLeftRadius: isAr ? 18 : 4,
-          borderBottomRightRadius: isAr ? 4 : 18,
-          borderBottomLeftRadius: isAr ? 18 : 4,
-        }
-      : {
-          borderTopLeftRadius: isAr ? 4 : 18,
-          borderTopRightRadius: isAr ? 18 : 4,
-          borderBottomLeftRadius: isAr ? 4 : 18,
-          borderBottomRightRadius: isAr ? 18 : 4,
-        };
-    return (
-      <View style={[styles.messageRow, { flexDirection: isMine ? (isAr ? 'row' : 'row-reverse') : (isAr ? 'row-reverse' : 'row') }]}>
-        <View style={[styles.messageBubble, isMine ? [styles.messageSent, { backgroundColor: colors.primary }] : [styles.messageReceived, { backgroundColor: colors.surface }], borderRadiusStyle, isImage ? { paddingHorizontal: 4, paddingVertical: 4 } : null]}>
-          {isVoice ? (
-            <Pressable style={[styles.voicePlayer, { backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : colors.primaryGhost }]} onPress={() => handlePlayVoice(msg.id, msg.image_url!)}>
-              <MaterialIcons name={playingVoiceId === msg.id ? 'pause-circle-filled' : 'play-circle-filled'} size={32} color={isMine ? '#fff' : colors.primary} />
-              <View style={{ height: 3, backgroundColor: isMine ? 'rgba(255,255,255,0.3)' : colors.border, flex: 1, borderRadius: 2 }}><View style={{ height: 3, backgroundColor: isMine ? '#fff' : colors.primary, width: `${((voiceProgress[msg.id] ?? 0) * 100).toFixed(0)}%` as any }} /></View>
-            </Pressable>
-          ) : isImage ? (
-            <Image source={{ uri: msg.image_url! }} style={{ width: 200, height: 150, borderRadius: 14 }} contentFit="cover" />
-          ) : (
-            <Text style={[styles.messageText, { color: isMine ? '#fff' : colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]}>{msg.content}</Text>
-          )}
-          <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 }}>
-            <Text style={[styles.messageTime, { color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted }]}>{formatTime(msg.created_at)}</Text>
-            {isMine && (
-              <MaterialIcons
-                name={isRead ? "done-all" : "done"}
-                size={14}
-                color={isRead ? (isMine ? '#fff' : '#4ADE80') : 'rgba(255,255,255,0.7)'}
-              />
-            )}
-          </View>
-        </View>
-      </View>
-    );
-  }, [isAr, user, colors, playingVoiceId, voiceProgress, handlePlayVoice]);
-
-  const footerComponent = useMemo(() => {
-    if (!otherTyping) return null;
-    return (
-      <View style={[styles.messageRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
-        <View style={[styles.messageBubble, styles.messageReceived, { backgroundColor: colors.surface }]}>
-          <TypingDots color={colors.textMuted} />
-        </View>
-      </View>
-    );
-  }, [otherTyping, isAr, colors]);
+  const withDates: MsgItem[] = []; let lastDate = '';
+  for (const msg of pagedMessages) {
+    const d = new Date(msg.created_at).toDateString();
+    if (d !== lastDate) { withDates.push({ _type: 'date', _date: msg.created_at, id: `date_${msg.id}` }); lastDate = d; }
+    withDates.push(msg);
+  }
 
   if (!id) return <View style={styles.center}><Text>Conversation not found.</Text></View>;
 
@@ -596,7 +425,7 @@ export default function ChatScreen() {
           </View>
 
           <View style={[styles.headerActions, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
-            <Pressable hitSlop={10} style={styles.iconButton} onPress={() => { setIsSearchActive(v => !v); if (!isSearchActive) setTimeout(() => searchInputRef.current?.focus(), 100); }}>
+            <Pressable hitSlop={10} style={styles.iconButton} onPress={() => setIsSearchActive(v => !v)}>
               <MaterialIcons name="search" size={24} color="#FFF" />
             </Pressable>
             <Pressable hitSlop={10} style={styles.iconButton} onPress={() => setMenuVisible(true)}>
@@ -607,7 +436,7 @@ export default function ChatScreen() {
 
         {isSearchActive && (
           <View style={[styles.searchBar, { backgroundColor: colors.surface, borderBottomColor: colors.border, flexDirection: isAr ? 'row-reverse' : 'row' }]}>
-            <TextInput ref={searchInputRef} style={[styles.searchInput, { color: colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]} placeholder={isAr ? 'البحث...' : 'Search...'} placeholderTextColor={colors.textMuted} value={searchQuery} onChangeText={setSearchQuery} returnKeyType="search" autoFocus />
+            <TextInput ref={searchInputRef} style={[styles.searchInput, { color: colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]} placeholder={isAr ? 'البحث...' : 'Search...'} placeholderTextColor={colors.textMuted} value={searchQuery} onChangeText={setSearchQuery} returnKeyType="search" />
             {totalMatches > 0 && <Text style={{ color: colors.textMuted }}>{clampedMatchIdx + 1}/{totalMatches}</Text>}
             <Pressable onPress={handleSearchPrev} style={styles.searchNavBtn}><MaterialIcons name="expand-less" size={22} color={colors.primary} /></Pressable>
             <Pressable onPress={handleSearchNext} style={styles.searchNavBtn}><MaterialIcons name="expand-more" size={22} color={colors.primary} /></Pressable>
@@ -660,15 +489,33 @@ export default function ChatScreen() {
         </Modal>
 
         <FlatList
-          ref={listRef}
-          data={withDates}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.chatScroll}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
+          ref={listRef} data={withDates} keyExtractor={item => item.id} contentContainerStyle={styles.chatScroll} showsVerticalScrollIndicator={false}
           ListHeaderComponent={messages.length > visibleCount ? <Pressable style={[styles.dateSeparator, { backgroundColor: colors.surfaceTint }]} onPress={handleLoadMore}><Text style={styles.dateText}>{isAr ? 'رسائل أقدم' : 'Older'}</Text></Pressable> : null}
-          renderItem={renderItem}
-          ListFooterComponent={footerComponent}
+          renderItem={({ item }) => {
+            if (item._type === 'date') return <View style={styles.dateSeparator}><Text style={styles.dateText}>{formatDateGroup(item._date, isAr)}</Text></View>;
+            const msg = item; const isMine = msg.sender_id === user?.id; const isVoice = msg.message_type === 'image' && !!msg.image_url && msg.image_url.includes('.m4a'); const isImage = msg.message_type === 'image' && !!msg.image_url && !isVoice; const isRead = !!msg.read_at;
+            return (
+              <View style={[styles.messageRow, { flexDirection: isMine ? (isAr ? 'row' : 'row-reverse') : (isAr ? 'row-reverse' : 'row') }]}>
+                <View style={[styles.messageBubble, isMine ? [styles.messageSent, { backgroundColor: colors.primary }] : [styles.messageReceived, { backgroundColor: colors.surface }], isImage ? { paddingHorizontal: 4, paddingVertical: 4 } : null]}>
+                  {isVoice ? (
+                    <Pressable style={[styles.voicePlayer, { backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : colors.primaryGhost }]} onPress={() => handlePlayVoice(msg.id, msg.image_url!)}>
+                      <MaterialIcons name={playingVoiceId === msg.id ? 'pause-circle-filled' : 'play-circle-filled'} size={32} color={isMine ? '#fff' : colors.primary} />
+                      <View style={{ height: 3, backgroundColor: isMine ? 'rgba(255,255,255,0.3)' : colors.border, flex: 1, borderRadius: 2 }}><View style={{ height: 3, backgroundColor: isMine ? '#fff' : colors.primary, width: `${((voiceProgress[msg.id] ?? 0) * 100).toFixed(0)}%` as any }} /></View>
+                    </Pressable>
+                  ) : isImage ? (
+                    <Image source={{ uri: msg.image_url! }} style={{ width: 200, height: 150, borderRadius: 14 }} contentFit="cover" />
+                  ) : (
+                    <Text style={[styles.messageText, { color: isMine ? '#fff' : colors.textPrimary, textAlign: isAr ? 'right' : 'left' }]}>{msg.content}</Text>
+                  )}
+                  <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 }}>
+                    <Text style={[styles.messageTime, { color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted }]}>{formatTime(msg.created_at)}</Text>
+                    {isMine && <MaterialIcons name={isRead ? "done-all" : "done"} size={14} color={isRead ? (isMine ? '#fff' : '#4ADE80') : 'rgba(255,255,255,0.7)'} />}
+                  </View>
+                </View>
+              </View>
+            );
+          }}
+          ListFooterComponent={otherTyping ? <View style={[styles.messageRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}><View style={[styles.messageBubble, styles.messageReceived, { backgroundColor: colors.surface }]}><TypingDots color={colors.textMuted} /></View></View> : null}
         />
 
         {showQuickReplies && (

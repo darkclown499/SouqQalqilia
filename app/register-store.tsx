@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, Pressable, TextInput,
   KeyboardAvoidingView, Platform, Modal, ActivityIndicator, Linking,
@@ -121,20 +121,16 @@ export default function RegisterStoreScreen() {
   // ── Store categories (decoupled from product categories) ──────────────────
   const [storeCategories, setStoreCategories] = useState<StoreCategory[]>([]);
   const [catsLoading, setCatsLoading] = useState(true);
-  const [catsError, setCatsError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchStoreCategories()
-      .then(res => {
-        setStoreCategories(res.data);
-        setCatsError(null);
-      })
-      .catch(err => {
-        console.error("Error loading categories:", err);
-        setCatsError(isAr ? 'فشل تحميل التصنيفات' : 'Failed to load categories');
-      })
-      .finally(() => setCatsLoading(false));
-  }, [isAr]);
+  fetchStoreCategories()
+    .then(res => {
+      console.log("Categories loaded:", res.data); // أضف هذا السطر
+      setStoreCategories(res.data);
+    })
+    .catch(err => console.error("Error loading categories:", err)) // أضف خطأ للتوضيح
+    .finally(() => setCatsLoading(false));
+}, []);
 
   // ── Form state ──────────────────────────────────────────────────────────────
   const [nameAr, setNameAr] = useState('');
@@ -146,6 +142,7 @@ export default function RegisterStoreScreen() {
   const [closingTime, setClosingTime] = useState('22:00');
   const [storeCategoryId, setStoreCategoryId] = useState('');
   const [catModalVisible, setCatModalVisible] = useState(false);
+
 
   // ── WhatsApp ─────────────────────────────────────────────────────────────────
   const [ownerWhatsapp, setOwnerWhatsapp] = useState('');
@@ -168,75 +165,28 @@ export default function RegisterStoreScreen() {
 
   const selectedCat = storeCategories.find(c => c.id === storeCategoryId);
 
-  // ✅ استخدام useMemo لحساب العنوان النهائي
-  const finalAddress = useMemo(() => {
-    return selectedLocation
-      ? (locationDetail.trim() ? `${selectedLocation} - ${locationDetail.trim()}` : selectedLocation)
-      : '';
-  }, [selectedLocation, locationDetail]);
+  // Build final address string for submission
+  const finalAddress = selectedLocation
+    ? (locationDetail.trim() ? `${selectedLocation} - ${locationDetail.trim()}` : selectedLocation)
+    : '';
 
   const handlePickLogo = useCallback(async () => {
     setLogoLoading(true);
     try {
-      const img = await pickImage('gallery', [1, 1]);
+      // مرر [1, 1] هنا لفرض المربع فقط لهذا الشعار
+      const img = await pickImage('gallery', [1, 1]); 
       if (img) { setLogoUri(img.uri); setLogoBase64(img.base64); }
     } finally { setLogoLoading(false); }
   }, []);
 
   const handlePickBanner = useCallback(async () => {
-    setBannerLoading(true);
-    try {
-      const img = await pickImage('gallery', [2, 1]);
-      if (img) { setBannerUri(img.uri); setBannerBase64(img.base64); }
-    } finally { setBannerLoading(false); }
-  }, []);
-
-  // ✅ دالة renderItem للمناطق (مذكرة باستخدام useCallback)
-  const renderLocationItem = useCallback(({ item: loc }: { item: string }) => {
-    const isSel = loc === selectedLocation;
-    return (
-      <Pressable
-        style={({ pressed }) => [cm.item, {
-          borderColor: isSel ? colors.primary : colors.borderLight,
-          backgroundColor: isSel ? colors.primary + '12' : (pressed ? colors.surfaceTint : colors.background),
-          flexDirection: rtl,
-        }]}
-        onPress={() => { setSelectedLocation(loc); setLocationModalVisible(false); }}
-      >
-        <View style={[cm.icon, { backgroundColor: isSel ? colors.primary + '20' : colors.surfaceTint }]}>
-          <MaterialIcons name="location-on" size={20} color={isSel ? colors.primary : colors.textMuted} />
-        </View>
-        <Text style={[cm.itemText, { color: isSel ? colors.primary : colors.textPrimary, fontWeight: isSel ? '700' : '500', flex: 1, textAlign: 'right' }]}>
-          {loc}
-        </Text>
-        {isSel ? <MaterialIcons name="check-circle" size={20} color={colors.primary} /> : null}
-      </Pressable>
-    );
-  }, [selectedLocation, colors, rtl]);
-
-  // ✅ دالة renderItem للتصنيفات (مذكرة باستخدام useCallback)
-  const renderCategoryItem = useCallback(({ item: cat }: { item: StoreCategory }) => {
-    const isSel = cat.id === storeCategoryId;
-    const emoji = getStoreCategoryEmoji(cat.slug);
-    return (
-      <Pressable
-        style={({ pressed }) => [cm.item, {
-          borderColor: isSel ? cat.color : colors.borderLight,
-          backgroundColor: isSel ? cat.color + '15' : (pressed ? colors.surfaceTint : colors.background),
-          flexDirection: rtl,
-        }]}
-        onPress={() => { setStoreCategoryId(cat.id); setCatModalVisible(false); }}
-      >
-        <View style={[cm.icon, { backgroundColor: isSel ? cat.color + '25' : colors.surfaceTint }]}>
-          {emoji ? <Text style={{ fontSize: 22 }}>{emoji}</Text> : <MaterialIcons name={cat.icon as any} size={22} color={isSel ? cat.color : colors.textMuted} />}
-        </View>
-        <Text style={[cm.itemText, { color: isSel ? cat.color : colors.textPrimary, fontWeight: isSel ? '700' : '500', flex: 1, textAlign }]}>
-          {getStoreCategoryName(cat, language)}
-        </Text>
-        {isSel ? <MaterialIcons name="check-circle" size={20} color={cat.color} /> : null}
-      </Pressable>
-    );
-  }, [storeCategoryId, colors, rtl, textAlign, language]);
+  setBannerLoading(true);
+  try {
+    // [2, 1] تعني نسبة عرض إلى طول 2:1، وهو ما يطابق مقاس 1000×500 تماماً
+    const img = await pickImage('gallery', [2, 1]); 
+    if (img) { setBannerUri(img.uri); setBannerBase64(img.base64); }
+  } finally { setBannerLoading(false); }
+}, []);
 
   const handleSubmit = useCallback(async () => {
     if (!user) return;
@@ -246,6 +196,7 @@ export default function RegisterStoreScreen() {
     if (!selectedLocation) return showAlert('مطلوب', 'يرجى اختيار المنطقة / البلدة');
     if (!ownerWhatsapp.trim()) return showAlert('مطلوب', 'يرجى إدخال رقم واتساب للتواصل');
 
+    // ── WhatsApp validation: must start with +970 or +972, then optional 0, then 9 digits ──
     const waRe = /^\+97[02]0?\d{9}$/;
     if (!waRe.test(ownerWhatsapp.trim())) {
       return showAlert(
@@ -254,6 +205,7 @@ export default function RegisterStoreScreen() {
       );
     }
 
+    // ── Images mandatory ──
     if (!logoUri) return showAlert('مطلوب', 'يرجى إضافة شعار المتجر (إجباري)');
     if (!bannerUri) return showAlert('مطلوب', 'يرجى إضافة صورة غلاف المتجر (إجباري)');
 
@@ -268,18 +220,13 @@ export default function RegisterStoreScreen() {
       let logoUrl = '';
       let bannerUrl = '';
 
-      // ✅ رفع الشعار مع التحقق من النجاح
       if (logoBase64 && logoUri) {
         const res = await uploadImage(logoBase64, user.id, 'store-logo');
-        if (!res.url) throw new Error('فشل رفع شعار المتجر');
-        logoUrl = res.url;
+        if (res.url) logoUrl = res.url;
       }
-
-      // ✅ رفع الغلاف مع التحقق من النجاح
       if (bannerBase64 && bannerUri) {
         const res = await uploadImage(bannerBase64, user.id, 'store-banner');
-        if (!res.url) throw new Error('فشل رفع غلاف المتجر');
-        bannerUrl = res.url;
+        if (res.url) bannerUrl = res.url;
       }
 
       const { data: storeData, error } = await supabase
@@ -295,13 +242,14 @@ export default function RegisterStoreScreen() {
           phone: ownerWhatsapp.trim(),
           opening_time: openingTime,
           closing_time: closingTime,
+          // Keep category_id null or map if needed; use store_category_id for store typing
           store_category_id: storeCategoryId,
           category_id: null,
           logo_url: logoUrl,
           banner_url: bannerUrl,
           owner_id: user.id,
           is_approved: false,
-          is_active: true,
+          is_active: true, // active from creation; visible in feed only after admin sets is_approved = true
           is_featured: false,
           position: 999,
         })
@@ -318,14 +266,14 @@ export default function RegisterStoreScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user, nameAr, storeCategoryId, selectedLocation, finalAddress, ownerWhatsapp, openingTime, closingTime, logoBase64, logoUri, bannerBase64, bannerUri, isAr, showAlert]);
+  }, [user, nameAr, storeCategoryId, selectedLocation, locationDetail, finalAddress, ownerWhatsapp, openingTime, closingTime, logoBase64, logoUri, bannerBase64, bannerUri, isAr, showAlert]);
 
   const handleSuccessWhatsApp = useCallback(() => {
     if (!submittedStore || !user) return;
     const displayName = user.username || user.email?.split('@')[0] || 'عميل';
     const msg = `مرحباً إدارة سوق قلقيلية، أنا ${displayName}. لقد قمت للتو بتقديم طلب لإضافة متجري (${submittedStore.name}) وهو الآن قيد المراجعة في النظام. رقمي للتواصل: ${submittedStore.whatsapp}.`;
     Linking.openURL(`https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(msg)}`).catch(() => {});
-  }, [submittedStore, user]);
+  }, [submittedStore, user, isAr]);
 
   const handleSuccessClose = useCallback(() => {
     setSuccessVisible(false);
@@ -370,8 +318,8 @@ export default function RegisterStoreScreen() {
               <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{'صور المتجر'}</Text>
               <Text style={[s.sectionSub, { color: '#EF4444' }]}>{'(إجباري *)'}</Text>
             </View>
-            <View style={[s.imageRow, { flexDirection: rtl, gap: Spacing.md }]}>
-              <View style={{ width: '48%' }}>
+            <View style={[s.imageRow, { flexDirection: rtl }]}>
+              <View style={{ flex: 1 }}>
                 <Text style={[s.imgLabel, { color: colors.textSecondary, textAlign: 'right' }]}>{'الشعار *'}</Text>
                 <ImagePickerTile
                   label={'شعار المتجر'} icon="store"
@@ -380,7 +328,7 @@ export default function RegisterStoreScreen() {
                 />
                 <Text style={[s.imgDimHint, { color: colors.textMuted }]}>{'المقاس الموصى به: 500×500'}</Text>
               </View>
-              <View style={{ width: '48%' }}>
+              <View style={{ flex: 1 }}>
                 <Text style={[s.imgLabel, { color: colors.textSecondary, textAlign: 'right' }]}>{'الغلاف *'}</Text>
                 <ImagePickerTile
                   label={'غلاف المتجر'} icon="panorama"
@@ -422,11 +370,6 @@ export default function RegisterStoreScreen() {
                   {isAr ? 'جارٍ التحميل...' : 'Loading...'}
                 </Text>
               </View>
-            ) : catsError ? (
-              <View style={[s.catsLoading, { backgroundColor: '#FEE2E2', padding: 10, borderRadius: Radius.md }]}>
-                <MaterialIcons name="error-outline" size={18} color="#EF4444" />
-                <Text style={[s.catsLoadingText, { color: '#EF4444', flex: 1 }]}>{catsError}</Text>
-              </View>
             ) : (
               <Pressable
                 style={[s.catSelector, { borderColor: storeCategoryId ? colors.primary : colors.border, backgroundColor: colors.background, flexDirection: rtl }]}
@@ -466,6 +409,7 @@ export default function RegisterStoreScreen() {
               <Text style={[s.sectionTitle, { color: colors.textPrimary }]}>{'المنطقة / البلدة *'}</Text>
             </View>
 
+            {/* Location picker */}
             <Pressable
               style={[s.catSelector, { borderColor: selectedLocation ? colors.primary : colors.border, backgroundColor: colors.background, flexDirection: rtl }]}
               onPress={() => setLocationModalVisible(true)}
@@ -489,6 +433,7 @@ export default function RegisterStoreScreen() {
               )}
             </Pressable>
 
+            {/* Optional detail input */}
             <Text style={[s.fieldLabel, { color: colors.textSecondary, textAlign: 'right', marginTop: 4 }]}>
               {'تفاصيل العنوان (اختياري)'}
             </Text>
@@ -575,16 +520,36 @@ export default function RegisterStoreScreen() {
                 {'محافظة قلقيلية — اختر البلدة التي يقع فيها متجرك'}
               </Text>
               <FlatList
-                data={QALQILYA_LOCATIONS}
-                keyExtractor={(item) => item}
-                contentContainerStyle={cm.list}
-                renderItem={renderLocationItem}
-              />
+  data={QALQILYA_LOCATIONS}
+  keyExtractor={(item) => item}
+  contentContainerStyle={cm.list}
+  renderItem={({ item: loc }) => {
+    const isSel = loc === selectedLocation;
+    return (
+      <Pressable
+        style={({ pressed }) => [cm.item, {
+          borderColor: isSel ? colors.primary : colors.borderLight,
+          backgroundColor: isSel ? colors.primary + '12' : (pressed ? colors.surfaceTint : colors.background),
+          flexDirection: rtl,
+        }]}
+        onPress={() => { setSelectedLocation(loc); setLocationModalVisible(false); }}
+      >
+        <View style={[cm.icon, { backgroundColor: isSel ? colors.primary + '20' : colors.surfaceTint }]}>
+          <MaterialIcons name="location-on" size={20} color={isSel ? colors.primary : colors.textMuted} />
+        </View>
+        <Text style={[cm.itemText, { color: isSel ? colors.primary : colors.textPrimary, fontWeight: isSel ? '700' : '500', flex: 1, textAlign: 'right' }]}>
+          {loc}
+        </Text>
+        {isSel ? <MaterialIcons name="check-circle" size={20} color={colors.primary} /> : null}
+      </Pressable>
+    );
+  }}
+/>
             </View>
           </Pressable>
         </Modal>
 
-        {/* ── Store Category Picker Modal ── */}
+        {/* ── Store Category Picker Modal (store_categories ONLY) ── */}
         <Modal visible={catModalVisible} transparent animationType="slide" onRequestClose={() => setCatModalVisible(false)} statusBarTranslucent>
           <Pressable style={cm.overlay} onPress={() => setCatModalVisible(false)}>
             <View style={[cm.sheet, { backgroundColor: colors.surface }]} onStartShouldSetResponder={() => true}>
@@ -602,11 +567,32 @@ export default function RegisterStoreScreen() {
                 {isAr ? 'هذه التصنيفات خاصة بأنواع المتاجر فقط' : 'These are store-specific business types'}
               </Text>
               <FlatList
-                data={storeCategories}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={cm.list}
-                renderItem={renderCategoryItem}
-              />
+  data={storeCategories}
+  keyExtractor={(item) => item.id}
+  contentContainerStyle={cm.list}
+  renderItem={({ item: cat }) => {
+    const isSel = cat.id === storeCategoryId;
+    const emoji = getStoreCategoryEmoji(cat.slug);
+    return (
+      <Pressable
+        style={({ pressed }) => [cm.item, {
+          borderColor: isSel ? cat.color : colors.borderLight,
+          backgroundColor: isSel ? cat.color + '15' : (pressed ? colors.surfaceTint : colors.background),
+          flexDirection: rtl,
+        }]}
+        onPress={() => { setStoreCategoryId(cat.id); setCatModalVisible(false); }}
+      >
+        <View style={[cm.icon, { backgroundColor: isSel ? cat.color + '25' : colors.surfaceTint }]}>
+          {emoji ? <Text style={{ fontSize: 22 }}>{emoji}</Text> : <MaterialIcons name={cat.icon as any} size={22} color={isSel ? cat.color : colors.textMuted} />}
+        </View>
+        <Text style={[cm.itemText, { color: isSel ? cat.color : colors.textPrimary, fontWeight: isSel ? '700' : '500', flex: 1, textAlign }]}>
+          {getStoreCategoryName(cat, language)}
+        </Text>
+        {isSel ? <MaterialIcons name="check-circle" size={20} color={cat.color} /> : null}
+      </Pressable>
+    );
+  }}
+/>
             </View>
           </Pressable>
         </Modal>

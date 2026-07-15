@@ -6,7 +6,6 @@ import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as WebBrowser from 'expo-web-browser'; // 🌟 أضفنا مكتبة المتصفح الداخلي
-import { fetchOfferCategories, OfferCategory } from '@/services/offerCategoriesService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const VIP_WIDTH = SCREEN_WIDTH - 24; 
@@ -39,151 +38,12 @@ const VIP_OFFERS = [
 ];
 
 const DUMMY_OFFERS = [
-  // ── مطاعم ──
-  {
-    id: '1',
-    storeName: 'KFC',
-    title: 'وجبة عائلية بروستد + بطاطس + مشروبات بسعر ٥٥ شيكل!',
-    category: 'مطاعم',
-    height: 220,
-    image: 'https://images.unsplash.com/photo-1562967914-608f82629710?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-001',
-    storeId: 'store-001',
-    url: 'whatsapp://send?phone=+970590000000&text=مرحبا، بدي أطلب وجبة العائلة'
-  },
-  {
-    id: '2',
-    storeName: 'إيلورا',
-    title: 'وجبات صحية وسلطات طازجة بأسعار منافسة 🥗',
-    category: 'مطاعم',
-    height: 200,
-    image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-002',
-    storeId: 'store-002',
-    url: 'whatsapp://send?phone=+970590000001&text=مرحبا، بدي أطلب من إيلورا'
-  },
-  {
-    id: '3',
-    storeName: 'مطعم البيك',
-    title: 'وجبة التوفير العائلية - دجاج + بطاطس + خبز بسعر ٤٠ شيكل',
-    category: 'مطاعم',
-    height: 280,
-    image: 'https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-003',
-    storeId: 'store-003',
-    url: 'whatsapp://send?phone=+970590000002&text=مرحبا، بدي وجبة العائلة'
-  },
-
-  // ── سوبرماركت ──
-  {
-    id: '4',
-    storeName: 'سوبرماركت التوفير',
-    title: 'خصم ٥٠٪ على المنظفات والمطهرات! عرض لفترة محدودة 🧹',
-    category: 'سوبرماركت',
-    height: 180,
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-004',
-    storeId: 'store-004',
-    url: 'whatsapp://send?phone=+970590000003&text=مرحبا، بدي أستفسر عن عروض المنظفات'
-  },
-  {
-    id: '5',
-    storeName: 'سوبرماركت العائلة',
-    title: 'عرض خاص: ٢+١ مجاناً على جميع المواد الغذائية 🛒',
-    category: 'سوبرماركت',
-    height: 200,
-    image: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-005',
-    storeId: 'store-005',
-    url: 'whatsapp://send?phone=+970590000004&text=مرحبا، بدي أستفسر عن العرض'
-  },
-
-  // ── إلكترونيات ──
-  {
-    id: '6',
-    storeName: 'معرض الإلكترونيات',
-    title: 'لابتوبات HP و Dell بأسعار حرق 🔥 خصم يصل لـ ٣٠٪',
-    category: 'إلكترونيات',
-    height: 190,
-    image: 'https://images.unsplash.com/photo-1531297172868-942cece06ac1?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-006',
-    storeId: 'store-006',
-    url: 'whatsapp://send?phone=+970590000005&text=مرحبا، بدي أستفسر عن عروض اللابتوبات'
-  },
-  {
-    id: '7',
-    storeName: 'أجهزة المستقبل',
-    title: 'هواتف ذكية وأجهزة لوحية بأفضل الأسعار 📱',
-    category: 'إلكترونيات',
-    height: 170,
-    image: 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-007',
-    storeId: 'store-007',
-    url: 'whatsapp://send?phone=+970590000006&text=مرحبا، بدي أستفسر عن عروض الهواتف'
-  },
-
-  // ── ملابس ──
-  {
-    id: '8',
-    storeName: 'بوتيك الأناقة',
-    title: 'تشكيلة الصيف ٢٠٢٦ وصلت! خصومات تصل لـ ٤٠٪ 👗',
-    category: 'ملابس',
-    height: 220,
-    image: 'https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-008',
-    storeId: 'store-008',
-    url: 'whatsapp://send?phone=+970590000007&text=مرحبا، بدي أستفسر عن تشكيلة الصيف'
-  },
-  {
-    id: '9',
-    storeName: 'موضة الشباب',
-    title: 'أحذية وشنط أصلية بأسعار المصنع 🎒',
-    category: 'ملابس',
-    height: 190,
-    image: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-009',
-    storeId: 'store-009',
-    url: 'whatsapp://send?phone=+970590000008&text=مرحبا، بدي أستفسر عن الأحذية'
-  },
-
-  // ── مستحضرات تجميل (جديد) ──
-  {
-    id: '10',
-    storeName: 'صيدلية الشفاء',
-    title: 'مستحضرات تجميل أصلية من أفضل الماركات العالمية 💄',
-    category: 'مستحضرات تجميل',
-    height: 200,
-    image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-010',
-    storeId: 'store-010',
-    url: 'whatsapp://send?phone=+970590000009&text=مرحبا، بدي أستفسر عن عروض التجميل'
-  },
-
-  // ── خضروات وفواكه (جديد) ──
-  {
-    id: '11',
-    storeName: 'سوق الخضار المركزي',
-    title: 'خضروات وفواكه طازجة يومياً من المزارع 🍎🥬',
-    category: 'خضروات وفواكه',
-    height: 190,
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-011',
-    storeId: 'store-011',
-    url: 'whatsapp://send?phone=+970590000010&text=مرحبا، بدي أستفسر عن الخضروات الطازجة'
-  },
-
-  // ── زينة وهدايا (جديد) ──
-  {
-    id: '12',
-    storeName: 'زينة وهدايا',
-    title: 'هدايا وأفكار مميزة للمناسبات 🎁🎈',
-    category: 'زينة وهدايا',
-    height: 210,
-    image: 'https://images.unsplash.com/photo-1513885535751-8b9238bd345a?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-012',
-    storeId: 'store-012',
-    url: 'whatsapp://send?phone=+970590000011&text=مرحبا، بدي أستفسر عن الهدايا'
-  },
+  { id: '1', storeName: 'سوبرماركت التوفير', title: 'خصم 50% على المنظفات', category: 'سوبرماركت', height: 220, image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=600&auto=format&fit=crop', url: 'whatsapp://send?phone=+970590000000' },
+  { id: '2', storeName: 'صيدلية الشفاء', title: 'عروض الفيتامينات الصيفية', category: 'صحة', height: 160, image: 'https://images.unsplash.com/photo-1584308666744-24d5e4a778fc?q=80&w=600&auto=format&fit=crop', url: 'https://example.com' },
+  { id: '3', storeName: 'مطعم البيك', title: 'وجبة التوفير العائلية', category: 'مطاعم', height: 280, image: 'https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=600&auto=format&fit=crop', url: 'whatsapp://send?phone=+970590000000' },
+  { id: '4', storeName: 'معرض الإلكترونيات', title: 'لابتوبات بأسعار حرق', category: 'إلكترونيات', height: 180, image: 'https://images.unsplash.com/photo-1531297172868-942cece06ac1?q=80&w=600&auto=format&fit=crop', url: 'https://example.com' },
+  { id: '5', storeName: 'مخبز الأمل', title: 'كعك طازج 1+1 مجاناً', category: 'مطاعم', height: 200, image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=600&auto=format&fit=crop', url: 'https://example.com' },
+  { id: '6', storeName: 'بوتيك الأناقة', title: 'تشكيلة الصيف وصلت', category: 'ملابس', height: 240, image: 'https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=600&auto=format&fit=crop', url: 'https://example.com' },
 ];
 
 const CATEGORIES = ['الكل', 'مطاعم', 'سوبرماركت', 'إلكترونيات', 'ملابس', 'صحة'];
@@ -194,14 +54,6 @@ export default function OffersScreen() {
   
   const [activeCategory, setActiveCategory] = useState('الكل');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [offerCategories, setOfferCategories] = useState<OfferCategory[]>([]);
-const [isLoadingCategories, setIsLoadingCategories] = useState(true);
-
-useEffect(() => {
-  fetchOfferCategories()
-    .then(setOfferCategories)
-    .finally(() => setIsLoadingCategories(false));
-}, []);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const [currentVipIndex, setCurrentVipIndex] = useState(0);
@@ -292,7 +144,7 @@ const handleOfferPress = (offer: any) => {
     <Pressable 
       key={item.id} 
       style={[styles.bannerCard, { height: item.height }]}
-      onPress={() => handleOfferPress(item)}
+      onPress={() => handleOpenLink(item.url)}
     >
       <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
       <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.gradientOverlay} />
@@ -321,26 +173,15 @@ const handleOfferPress = (offer: any) => {
 
       <View style={styles.filtersWrapper}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rtlScrollView} contentContainerStyle={styles.filtersScrollContent}>
-          {isLoadingCategories ? (
-  [1,2,3,4,5].map(i => (
-    <View key={i} style={[styles.filterChip, { width: 80, height: 36, backgroundColor: '#E5E7EB' }]} />
-  ))
-) : (
-  [
-    { id: 'all', name_ar: 'الكل' },
-    ...offerCategories
-  ].map((cat) => (
-    <Pressable
-      key={cat.id || 'all'}
-      onPress={() => setActiveCategory(cat.name_ar || 'الكل')}
-      style={[styles.filterChip, activeCategory === (cat.name_ar || 'الكل') && styles.activeFilterChip, styles.rtlItem]}
-    >
-      <Text style={[styles.filterText, activeCategory === (cat.name_ar || 'الكل') && styles.activeFilterText]}>
-        {cat.name_ar || 'الكل'}
-      </Text>
-    </Pressable>
-  ))
-)}
+          {CATEGORIES.map((cat) => (
+            <Pressable
+              key={cat}
+              onPress={() => setActiveCategory(cat)}
+              style={[styles.filterChip, activeCategory === cat && styles.activeFilterChip, styles.rtlItem]}
+            >
+              <Text style={[styles.filterText, activeCategory === cat && styles.activeFilterText]}>{cat}</Text>
+            </Pressable>
+          ))}
         </ScrollView>
       </View>
 
@@ -374,7 +215,7 @@ const handleOfferPress = (offer: any) => {
                   {/* الضغط فقط على الزر كما طلبت */}
                   <Pressable 
                     style={styles.vipButton}
-                    onPress={() => handleOfferPress(offer)}
+                    onPress={() => handleOpenLink(offer.url)}
                   >
                     <Text style={styles.vipButtonText}>اكتشف العرض الآن</Text>
                     <MaterialIcons name="local-activity" size={16} color="#fff" />

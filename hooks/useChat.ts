@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 import {
@@ -142,82 +143,6 @@ export function useMessages(
   // Visibility tracking — both must be true for fast polling
   const isAppActiveRef = useRef(true);    // AppState === 'active'
   const isScreenFocusedRef = useRef(true); // screen is in foreground (always true for now, extendable)
-
-  // ─── Realtime subscription for read receipts ──────────────────────────────
-  const realtimeChannelRef = useRef<any>(null);
-
-  const setupRealtimeSubscription = useCallback(() => {
-    // Clean up existing subscription
-    if (realtimeChannelRef.current) {
-      realtimeChannelRef.current.unsubscribe();
-      realtimeChannelRef.current = null;
-    }
-
-    if (!conversationId || !currentUserId) return;
-
-    const supabase = getSupabaseClient();
-
-    // Create a channel for this conversation
-    const channel = supabase
-      .channel(`messages:${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload: any) => {
-          const updated = payload.new as Message;
-          // Only react to changes in read_at or delivered_at fields
-          const old = payload.old as Message;
-          const readChanged = updated.read_at !== old.read_at;
-          const deliveredChanged = updated.delivered_at !== old.delivered_at;
-
-          if (!readChanged && !deliveredChanged) return;
-
-          // Update the local messages state
-          setMessages(prev => {
-            const existing = prev.find(m => m.id === updated.id);
-            if (!existing) return prev;
-
-            // Only update if the timestamp actually changed
-            const needsUpdate =
-              (readChanged && updated.read_at !== existing.read_at) ||
-              (deliveredChanged && updated.delivered_at !== existing.delivered_at);
-
-            if (!needsUpdate) return prev;
-
-            return prev.map(m =>
-              m.id === updated.id
-                ? {
-                    ...m,
-                    read_at: updated.read_at ?? m.read_at,
-                    delivered_at: updated.delivered_at ?? m.delivered_at,
-                  }
-                : m
-            );
-          });
-        }
-      )
-      .subscribe((status: any) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`[Realtime] Subscribed to messages:${conversationId}`);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.warn(`[Realtime] Error subscribing to messages:${conversationId}`);
-        }
-      });
-
-    realtimeChannelRef.current = channel;
-
-    return () => {
-      if (realtimeChannelRef.current) {
-        realtimeChannelRef.current.unsubscribe();
-        realtimeChannelRef.current = null;
-      }
-    };
-  }, [conversationId, currentUserId]);
 
   /** Effective poll interval based on current visibility */
   const getEffectivePollMs = useCallback((): number => {
@@ -388,57 +313,51 @@ export function useMessages(
     setMessages(prev => prev.filter(m => m.id !== id));
   }, []);
 
-  // ─── Main effect: fetch initial messages + polling + realtime ─────────────
   useEffect(() => {
     if (!conversationId) return;
 
     setLoading(true);
     currentPollDelayRef.current = BASE_POLL_MS;
     failureCountRef.current = 0;
-
-    // 1. Initial fetch
     fetchMessages(conversationId).then(({ data }) => {
       setMessages(data);
       if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
       setLoading(false);
+      // Mark as delivered on initial load
       if (currentUserId && data.length > 0) {
         markMessagesDelivered(conversationId, currentUserId).catch(() => {});
       }
     });
 
-    // 2. Polling interval
     intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
 
-    // 3. Realtime subscription for read receipts
-    const cleanupRealtime = setupRealtimeSubscription();
-
-    // 4. App state listener for adaptive polling
+    // ── Visibility-based adaptive polling ─────────────────────────────────
     const handleAppState = (state: AppStateStatus) => {
       const wasActive = isAppActiveRef.current;
       isAppActiveRef.current = state === 'active';
 
       if (state === 'active' && !wasActive) {
+        // App foregrounded: switch to fast polling immediately
         currentPollDelayRef.current = BASE_POLL_MS;
         failureCountRef.current = 0;
         if (intervalRef.current) clearInterval(intervalRef.current);
         intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
         pollSilentRef.current(); // immediate poll on resume
       } else if (state !== 'active') {
+        // App backgrounded: switch to slow interval to save battery (~60%)
         if (intervalRef.current) clearInterval(intervalRef.current);
         intervalRef.current = setInterval(() => pollSilentRef.current(), INACTIVE_POLL_MS);
       }
     };
     const appStateSub = AppState.addEventListener('change', handleAppState);
 
-    // ─── Cleanup ──────────────────────────────────────────────────────────────
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       appStateSub.remove();
-      if (cleanupRealtime) cleanupRealtime();
       lastCreatedAtRef.current = null;
       pollingRef.current = false;
     };
-  }, [conversationId, currentUserId, setupRealtimeSubscription]);
+  }, [conversationId, currentUserId]); // Added currentUserId to deps
 
   useEffect(() => {
     if (isBuyer === null) return;
