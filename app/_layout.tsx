@@ -213,7 +213,7 @@ function InAppChatBanner() {
           .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`, { referencedTable: 'conversations' })
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (!data) return;
         if (activeChatId && activeChatId === data.conversation_id) return;
@@ -376,22 +376,21 @@ function isVersionOutdated(current: string, minimum: string): boolean {
 // ── Admin Guard: يسمح بالدخول من الويب فقط، ويعيد التوجيه من الأجهزة الأخرى ──
 function AdminGuard() {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth(); // ← استخدم loading
   const router = useRouter();
 
   useEffect(() => {
     const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
-    if (isAdminRoute) {
-      // إذا كان المستخدم على الويب، نسمح بالدخول بدون صلاحية
-      if (Platform.OS === 'web') {
-        return;
-      }
-      // على الأجهزة (Android/iOS)، نمنع الدخول إذا لم يكن مديراً
-      if (!user || !user.is_admin) {
-        router.replace('/');
-      }
+    if (!isAdminRoute) return;
+
+    if (Platform.OS === 'web') return; // السماح بالويب
+
+    if (authLoading) return; // انتظر تحميل المستخدم
+
+    if (!user || !user.is_admin) {
+      router.replace('/');
     }
-  }, [pathname, user]);
+  }, [pathname, user, authLoading]);
 
   return null;
 }
