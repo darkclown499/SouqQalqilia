@@ -362,6 +362,7 @@ export default function HomeScreen() {
   const [recentlyViewed, setRecentlyViewed] = useState<Ad[]>([]);
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [banners, setBanners] = useState<Banner[]>([]);
+  const currentBanner = banners[featuredIndex] ?? banners[0];
   const [sortBy, setSortBy] = useState<SortOption>('newest');
 
   const [filterVisible, setFilterVisible] = useState(false);
