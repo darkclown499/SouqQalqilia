@@ -62,6 +62,7 @@ const PRODUCT_CATEGORY_MAP: Record<string, string[]> = {
 };
 const DEFAULT_PRODUCT_CATEGORIES = ['قسم عام', 'عروض', 'منتجات متنوعة', 'أخرى'];
 
+// ── Product Modal Component ───────────────────────────────────────────────────
 function ProductModal({
   visible, onClose, onSave, storeId, editProduct, storeCategoryNameAr, isAr, isRTL, colors,
   customCategories,
@@ -82,11 +83,10 @@ function ProductModal({
   const { user } = useAuth();
   const { showAlert } = useAlert();
 
-  // Resolve chips from the store's category – memoized
-  const chips = useMemo(() => {
-    return PRODUCT_CATEGORY_MAP[storeCategoryNameAr] ?? DEFAULT_PRODUCT_CATEGORIES;
-  }, [storeCategoryNameAr]);
+  const textAlign = 'right' as const;
+  const rtl = isRTL ? 'row-reverse' as const : 'row' as const;
 
+  // ── Reset form when editing product changes ──
   useEffect(() => {
     if (editProduct) {
       setForm({
@@ -106,6 +106,7 @@ function ProductModal({
     setCatError(false);
   }, [editProduct, visible]);
 
+  // ── Pick image ──
   const handlePickImage = async () => {
     setImgLoading(true);
     try {
@@ -120,14 +121,19 @@ function ProductModal({
     } finally { setImgLoading(false); }
   };
 
+  // ── Save product ──
   const handleSave = async () => {
-    if (!form.name_ar.trim()) return;
+    if (!form.name_ar.trim()) {
+      showAlert('تنبيه', 'يرجى إدخال اسم المنتج');
+      return;
+    }
     if (!form.image_url) {
       showAlert('تنبيه', 'يجب إضافة صورة للمنتج');
       return;
     }
     if (!form.category_label_ar) {
       setCatError(true);
+      showAlert('تنبيه', 'يرجى اختيار تصنيف للمنتج');
       return;
     }
     setSaving(true);
@@ -173,9 +179,6 @@ function ProductModal({
     } finally { setSaving(false); }
   };
 
-  const textAlign = 'right' as const;
-  const rtl = isRTL ? 'row-reverse' as const : 'row' as const;
-
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -185,7 +188,7 @@ function ProductModal({
             <View style={[pm.handle, { backgroundColor: colors.border }]} />
             <View style={[pm.titleRow, { flexDirection: rtl, borderBottomColor: colors.borderLight }]}>
               <MaterialIcons name={editProduct ? 'edit' : 'add-box'} size={22} color={colors.primary} />
-              <Text style={[pm.titleText, { color: colors.textPrimary, flex: 1, textAlign }]}>
+              <Text style={[pm.titleText, { color: colors.textPrimary, flex: 1, textAlign: textAlign }]}>
                 {editProduct ? 'تعديل المنتج' : 'إضافة منتج جديد'}
               </Text>
               <Pressable onPress={onClose} hitSlop={10}>
@@ -194,9 +197,9 @@ function ProductModal({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={pm.content}>
-              {/* ── Product image (mandatory) ── */}
+              {/* ── Product image ── */}
               <View style={pm.field}>
-                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>
+                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>
                   {'صورة المنتج (إجباري *)'}
                 </Text>
                 <Pressable
@@ -227,11 +230,11 @@ function ProductModal({
                 </Pressable>
               </View>
 
-              {/* ── Product name (Arabic) ── */}
+              {/* ── Product name ── */}
               <View style={pm.field}>
-                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>{'اسم المنتج *'}</Text>
+                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>{'اسم المنتج *'}</Text>
                 <TextInput
-                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign }]}
+                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: textAlign }]}
                   placeholder="أدخل اسم المنتج"
                   placeholderTextColor={colors.textMuted}
                   value={form.name_ar}
@@ -240,11 +243,11 @@ function ProductModal({
                 />
               </View>
 
-              {/* ── Description (Arabic) ── */}
+              {/* ── Description ── */}
               <View style={pm.field}>
-                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>{'الوصف'}</Text>
+                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>{'الوصف'}</Text>
                 <TextInput
-                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign, minHeight: 78 }]}
+                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: textAlign, minHeight: 78 }]}
                   placeholder="وصف المنتج (اختياري)"
                   placeholderTextColor={colors.textMuted}
                   value={form.description_ar}
@@ -256,7 +259,7 @@ function ProductModal({
 
               {/* ── Category chips ── */}
               <View style={pm.field}>
-                <Text style={[pm.fieldLabel, { color: catError ? '#EF4444' : colors.textSecondary, textAlign }]}>
+                <Text style={[pm.fieldLabel, { color: catError ? '#EF4444' : colors.textSecondary, textAlign: textAlign }]}>
                   {catError ? 'التصنيف مطلوب *' : 'تصنيف المنتج *'}
                 </Text>
                 <ScrollView
@@ -292,9 +295,9 @@ function ProductModal({
 
               {/* ── Price ── */}
               <View style={pm.field}>
-                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>{'السعر (₪)'}</Text>
+                <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>{'السعر (₪)'}</Text>
                 <TextInput
-                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign }]}
+                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: textAlign }]}
                   placeholder="0.00"
                   placeholderTextColor={colors.textMuted}
                   value={form.price}
@@ -483,10 +486,14 @@ export default function StoreDashboardScreen() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryNameAr, setNewCategoryNameAr] = useState('');
 
-  // ── Add custom category (memoized) ──
+  // ── Add custom category ──
   const handleAddCategory = useCallback(async () => {
-    if (!store?.id || !newCategoryName.trim() || !newCategoryNameAr.trim()) {
-      showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'الاسم مطلوب' : 'Name is required');
+    if (!store?.id) {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لم يتم تحميل المتجر' : 'Store not loaded');
+      return;
+    }
+    if (!newCategoryName.trim() || !newCategoryNameAr.trim()) {
+      showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'الاسم بالعربية والإنجليزية مطلوب' : 'Both Arabic and English names are required');
       return;
     }
     try {
@@ -507,12 +514,16 @@ export default function StoreDashboardScreen() {
         throw new Error('Failed to add category');
       }
     } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e?.message || isAr ? 'تعذر إضافة التصنيف' : 'Could not add category');
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر إضافة التصنيف' : 'Could not add category'));
     }
   }, [store?.id, newCategoryName, newCategoryNameAr, isAr, showAlert]);
 
-  // ── Delete custom category (memoized) ──
+  // ── Delete custom category ──
   const handleDeleteCategory = useCallback((id: string) => {
+    if (!store?.id) {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لم يتم تحميل المتجر' : 'Store not loaded');
+      return;
+    }
     showAlert(
       isAr ? 'تأكيد الحذف' : 'Confirm Delete',
       isAr ? 'هل تريد حذف هذا التصنيف؟' : 'Delete this category?',
@@ -522,17 +533,16 @@ export default function StoreDashboardScreen() {
           text: isAr ? 'حذف' : 'Delete',
           style: 'destructive',
           onPress: async () => {
-            if (store?.id) {
-              try {
-                const success = await deleteLocalCategory(store.id, id);
-                if (success) {
-                  setCustomCategories(prev => prev.filter(c => c.id !== id));
-                } else {
-                  throw new Error('Delete failed');
-                }
-              } catch (e: any) {
-                showAlert(isAr ? 'خطأ' : 'Error', e?.message || isAr ? 'تعذر حذف التصنيف' : 'Could not delete category');
+            try {
+              const success = await deleteLocalCategory(store.id, id);
+              if (success) {
+                setCustomCategories(prev => prev.filter(c => c.id !== id));
+                showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم حذف التصنيف' : 'Category deleted');
+              } else {
+                throw new Error('Delete failed');
               }
+            } catch (e: any) {
+              showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر حذف التصنيف' : 'Could not delete category'));
             }
           },
         },
@@ -545,7 +555,6 @@ export default function StoreDashboardScreen() {
     if (!user) return;
     setError(null);
     setLoading(true);
-    const controller = new AbortController();
     let isMounted = true;
 
     try {
@@ -583,26 +592,25 @@ export default function StoreDashboardScreen() {
     }
     return () => {
       isMounted = false;
-      controller.abort();
     };
   }, [user]);
 
   // ── Load local categories when store changes ──
   useEffect(() => {
     if (store?.id) {
-      getLocalCategories(store.id).then(setCustomCategories);
+      getLocalCategories(store.id).then(setCustomCategories).catch(console.error);
     }
   }, [store?.id]);
 
-  // ── Trigger loadData on user change ──
+  // ── Trigger loadData on mount ──
   useEffect(() => {
     const cleanup = loadData();
     return () => {
-      if (cleanup) cleanup();
+      if (typeof cleanup === 'function') cleanup();
     };
   }, [loadData]);
 
-  // ── Delete product (memoized) ──
+  // ── Delete product ──
   const handleDeleteProduct = useCallback((product: StoreProduct) => {
     showAlert(
       isAr ? 'حذف المنتج' : 'Delete Product',
@@ -619,6 +627,7 @@ export default function StoreDashboardScreen() {
                 .eq('id', product.id);
               if (error) throw error;
               setProducts(prev => prev.filter(p => p.id !== product.id));
+              showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم حذف المنتج' : 'Product deleted');
             } catch (e: any) {
               showAlert(
                 isAr ? 'خطأ في الحذف' : 'Delete Failed',
@@ -631,7 +640,7 @@ export default function StoreDashboardScreen() {
     );
   }, [isAr, showAlert]);
 
-  // ── Share store (memoized) ──
+  // ── Share store ──
   const handleShareStore = useCallback(async () => {
     if (!store || shareLoading) return;
     setShareLoading(true);
@@ -646,11 +655,11 @@ export default function StoreDashboardScreen() {
         url: shortLink,
       });
     } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e?.message || isAr ? 'تعذر المشاركة' : 'Could not share');
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر المشاركة' : 'Could not share'));
     } finally { setShareLoading(false); }
   }, [store, isAr, shareLoading, showAlert]);
 
-  // ── Save product (memoized) ──
+  // ── Save product ──
   const handleSaveProduct = useCallback((saved: StoreProduct) => {
     setProducts(prev => {
       const idx = prev.findIndex(p => p.id === saved.id);
@@ -661,7 +670,8 @@ export default function StoreDashboardScreen() {
       }
       return [saved, ...prev];
     });
-  }, []);
+    showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم حفظ المنتج' : 'Product saved');
+  }, [isAr, showAlert]);
 
   // ── Memoized values ──
   const storeName = useMemo(() => isAr ? (store?.name_ar || store?.name) : store?.name, [store, isAr]);
