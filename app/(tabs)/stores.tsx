@@ -4,7 +4,7 @@ import React, {
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Dimensions, FlatList,
   ActivityIndicator, Modal, TextInput, Platform, NativeScrollEvent,
-  NativeSyntheticEvent, Image as RNImage, Linking
+  NativeSyntheticEvent, Image as RNImage, Linking, RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -91,9 +91,6 @@ const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRT
   const BANNER_H = Math.round(SCREEN_W * 0.68);
   const displayBanners = banners || [];
 
-  // حفظ startAuto في ref لتجنب إعادة إنشاء المؤقت
-  const startAutoRef = useRef<(() => void) | null>(null);
-
   useEffect(() => {
     if (displayBanners.length <= 1) return;
 
@@ -108,7 +105,6 @@ const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRT
         });
       }, 4500);
     };
-    startAutoRef.current = startAuto;
     startAuto();
 
     return () => {
@@ -704,6 +700,7 @@ export default function StoresScreen() {
   const [ratings, setRatings] = useState<Record<string, { avg: number; count: number }>>({});
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ownerStore, setOwnerStore] = useState<any>(undefined);
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
@@ -718,59 +715,28 @@ export default function StoresScreen() {
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState('');
 
-  // ✅ تسجيل زيارة صفحة المتاجر
-  useFocusEffect(
-    useCallback(() => {
-      trackPageView('stores');
-    }, [])
-  );
+  // ── Local banners (will be shuffled on each focus) ──
+  const LOCAL_BANNERS = useMemo(() => [
+    { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
+    { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
+    { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
+    { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
+  ], []);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!user) return;
-      getSupabaseClient()
-        .from('user_profiles')
-        .select('username')
-        .eq('id', user.id)
-        .single()
-        .then(({ data }) => {
-          if (isNameInvalid(data?.username ?? '')) {
-            setEditName(data?.username ?? '');
-            setNameGateVisible(true);
-          }
-        })
-        .catch(() => {});
-
-      getSupabaseClient()
-        .from('stores')
-        .select('*')
-        .eq('owner_id', user.id)
-        .maybeSingle()
-        .then(({ data }) => setOwnerStore(data ?? null))
-        .catch(() => setOwnerStore(null));
-    }, [user?.id])
-  );
-
-  // ── تحميل البيانات مع معالجة الأخطاء ──────────────────────────────────────
-  useEffect(() => {
-    const localBanners = [
-      { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
-      { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
-      { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
-      { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
-    ];
-    setBanners(shuffleArray(localBanners));
-
-    let isMounted = true;
-    setLoading(true);
+  // ── Load data function (can be called for initial load and refresh) ──
+  const loadData = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     setError(null);
+    try {
+      // Shuffle banners on every load
+      setBanners(shuffleArray(LOCAL_BANNERS));
 
-    Promise.all([
-      fetchAllActiveStores(),
-      fetchAllStoreRatings(),
-      fetchStoreCategories(),
-    ]).then(([storesRes, ratingsMap, catsRes]) => {
-      if (!isMounted) return;
+      const [storesRes, ratingsMap, catsRes] = await Promise.all([
+        fetchAllActiveStores(),
+        fetchAllStoreRatings(),
+        fetchStoreCategories(),
+      ]);
+
       const shuffledStores = shuffleArray(storesRes.data);
       setStores(shuffledStores);
       setRatings(ratingsMap);
@@ -780,16 +746,59 @@ export default function StoresScreen() {
         .filter((store: any) => store.is_featured === true)
         .map((store: any) => store.id);
       setFeaturedStoreIds(new Set(featuredIds));
-      setLoading(false);
-    }).catch((err) => {
-      if (!isMounted) return;
+    } catch (err) {
       console.error('Failed to load stores data:', err);
       setError(isAr ? 'فشل تحميل المتاجر، يرجى المحاولة لاحقاً' : 'Failed to load stores, please try again');
-      setLoading(false);
-    });
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, [LOCAL_BANNERS, isAr]);
 
-    return () => { isMounted = false; };
+  // ── Load owner store and check name ──
+  useEffect(() => {
+    if (!user) return;
+    getSupabaseClient()
+      .from('user_profiles')
+      .select('username')
+      .eq('id', user.id)
+      .single()
+      .then(({ data }) => {
+        if (isNameInvalid(data?.username ?? '')) {
+          setEditName(data?.username ?? '');
+          setNameGateVisible(true);
+        }
+      })
+      .catch(() => {});
+
+    getSupabaseClient()
+      .from('stores')
+      .select('*')
+      .eq('owner_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => setOwnerStore(data ?? null))
+      .catch(() => setOwnerStore(null));
+  }, [user]);
+
+  // ── Initial load ──
+  useEffect(() => {
+    loadData(true);
   }, []);
+
+  // ── Focus: re-shuffle banners only (avoid full reload) ──
+  useFocusEffect(
+    useCallback(() => {
+      trackPageView('stores');
+      // Shuffle banners every time screen is focused
+      setBanners(shuffleArray(LOCAL_BANNERS));
+    }, [LOCAL_BANNERS])
+  );
+
+  // ── Refresh handler (pull-to-refresh) ──
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData(false);
+    setRefreshing(false);
+  }, [loadData]);
 
   const handleSaveName = useCallback(async () => {
     const trimmed = editName.trim();
@@ -805,6 +814,7 @@ export default function StoresScreen() {
     else setNameGateVisible(false);
   }, [editName, user, isAr]);
 
+  // ── Group stores by category ──
   const groupedStores = useMemo(() => {
     const catMap = new Map(storeCategories.map(c => [c.id, c]));
     const map = new Map<string, { cat: StoreCategory; stores: Store[] }>();
@@ -840,31 +850,6 @@ export default function StoresScreen() {
     if (!selectedCatId) return filteredGroupedStores;
     return filteredGroupedStores.filter(g => g.cat.id === selectedCatId);
   }, [filteredGroupedStores, selectedCatId]);
-
-  const handleRetry = useCallback(() => {
-    // إعادة التحميل
-    setError(null);
-    setLoading(true);
-    Promise.all([
-      fetchAllActiveStores(),
-      fetchAllStoreRatings(),
-      fetchStoreCategories(),
-    ]).then(([storesRes, ratingsMap, catsRes]) => {
-      const shuffledStores = shuffleArray(storesRes.data);
-      setStores(shuffledStores);
-      setRatings(ratingsMap);
-      setStoreCategories(catsRes.data);
-      const featuredIds = shuffledStores
-        .filter((store: any) => store.is_featured === true)
-        .map((store: any) => store.id);
-      setFeaturedStoreIds(new Set(featuredIds));
-      setLoading(false);
-    }).catch((err) => {
-      console.error('Failed to load stores data:', err);
-      setError(isAr ? 'فشل تحميل المتاجر، يرجى المحاولة لاحقاً' : 'Failed to load stores, please try again');
-      setLoading(false);
-    });
-  }, [isAr]);
 
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
@@ -913,7 +898,20 @@ export default function StoresScreen() {
         </View>
       </View>
 
-      <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
+      <ScrollView 
+        ref={scrollRef} 
+        style={{ flex: 1 }} 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={{ paddingBottom: 80 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+      >
         <BannerCarousel banners={banners} isRTL={isRTL} />
 
         {ownerStore !== undefined && ownerStore !== null && (
@@ -1027,7 +1025,7 @@ export default function StoresScreen() {
             </View>
             <Text style={[s.emptyTitle, { color: colors.textPrimary }]}>{isAr ? 'حدث خطأ' : 'Error'}</Text>
             <Text style={[s.emptySub, { color: colors.textMuted }]}>{error}</Text>
-            <Pressable style={[s.clearFilterBtn, { borderColor: colors.primary }]} onPress={handleRetry}>
+            <Pressable style={[s.clearFilterBtn, { borderColor: colors.primary }]} onPress={handleRefresh}>
               <Text style={[s.clearFilterText, { color: colors.primary }]}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
             </Pressable>
           </View>
