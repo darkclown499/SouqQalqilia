@@ -1,4 +1,4 @@
-import React, { memo, useRef, useState, useCallback, useEffect } from 'react';
+import React, { memo, useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, PanResponder } from 'react-native';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -117,35 +117,44 @@ export const MessagePreview = memo(function MessagePreview({
   const isAr = language === 'ar';
 
   // ── Subscribe to the global read store ────────────────────────────────────
-  // useChatReadStore() returns a version number. The component re-renders only
-  // when markConversationRead() or rollbackConversationRead() is called —
-  // NOT on every server poll. This is the key to zero-flicker behaviour.
+  // The store returns a version number to trigger re-renders only when
+  // markConversationRead() or rollbackConversationRead() is called.
   useChatReadStore();
 
+  // ── Derive data from conversation ────────────────────────────────────────
   const isBuyer = conversation.buyer_id === currentUserId;
   const otherUser = isBuyer ? conversation.seller : conversation.buyer;
-  const otherName = isBlocked
-    ? (isAr ? 'مستخدم محظور' : 'Blocked User')
-    : (otherUser?.username || otherUser?.email?.split('@')[0] || 'User');
-  const avatarColor = getAvatarColor(otherName);
+
+  const otherName = useMemo(() => {
+    if (isBlocked) return isAr ? 'مستخدم محظور' : 'Blocked User';
+    return otherUser?.username || otherUser?.email?.split('@')[0] || 'User';
+  }, [isBlocked, otherUser, isAr]);
+
+  const avatarColor = useMemo(() => getAvatarColor(otherName), [otherName]);
   const avatarUrl = (otherUser as any)?.avatar_url;
 
   const adTitle = (conversation as any).ads?.title ?? '';
   const rawAdImages: any[] = (conversation as any).ads?.ad_images ?? [];
-  const adThumb = [...rawAdImages].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.url ?? null;
+  const adThumb = useMemo(() => {
+    return [...rawAdImages].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.url ?? null;
+  }, [rawAdImages]);
 
-  // ── Derive hasUnread via Timestamp Fencing ──────────────────────────────
-  // shouldOverrideServerCount() compares the store's markedAt epoch against
-  // conversation.last_message_at — NOT integer counts. This eliminates the
-  // "8 messages" bug where old+new counts were summed incorrectly.
+  // ── Unread logic with Timestamp Fencing ──────────────────────────────────
   const serverUnread: number = (conversation as any).unread_count ?? 0;
   const lastMsgAt: string | null = (conversation as any).last_message_at ?? null;
-  // override=true means: same messages, still being processed → show as read
-  // override=false means: new message arrived after mark → show real badge
-  const overrideToRead = shouldOverrideServerCount(conversation.id, lastMsgAt);
-  const hasUnread = serverUnread > 0 && !overrideToRead;
-  // Display count: always 0 when locally read (prevents badge flicker)
-  const displayUnread = hasUnread ? serverUnread : 0;
+
+  // Override to read if the store has marked this conversation after the last message time
+  const overrideToRead = useMemo(() => {
+    return shouldOverrideServerCount(conversation.id, lastMsgAt);
+  }, [conversation.id, lastMsgAt]);
+
+  const hasUnread = useMemo(() => {
+    return serverUnread > 0 && !overrideToRead;
+  }, [serverUnread, overrideToRead]);
+
+  const displayUnread = useMemo(() => {
+    return hasUnread ? serverUnread : 0;
+  }, [hasUnread, serverUnread]);
 
   const lastMsg = conversation.last_message ?? '';
 
@@ -175,8 +184,6 @@ export const MessagePreview = memo(function MessagePreview({
 
     // ── STEP 1: Optimistic update — synchronous, before any await ───────────
     // Pass the CURRENT last_message_at as the fence anchor.
-    // This is the key fix for the swipe-lock bug: using the live prop value
-    // (not a stale closure) ensures the fence is always fresh.
     markConversationRead(conversation.id, lastMsgAt);
 
     // ── STEP 2: Visual snap animation (purely cosmetic) ────────────────────
@@ -209,8 +216,9 @@ export const MessagePreview = memo(function MessagePreview({
   // Keep ref pointing to the latest triggerMarkRead after every render
   useEffect(() => { triggerMarkReadRef.current = triggerMarkRead; }, [triggerMarkRead]);
 
-  const panResponder = useRef(
-    PanResponder.create({
+  // ── PanResponder (created once with useMemo) ─────────────────────────────
+  const panResponder = useMemo(() => {
+    return PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_e, gs) =>
         Math.abs(gs.dx) > 8 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.4,
@@ -236,10 +244,10 @@ export const MessagePreview = memo(function MessagePreview({
         }
       },
       onPanResponderTerminate: () => snapBack(),
-    })
-  ).current;
+    });
+  }, [translateX, snapBack]);
 
-  // Swipe hint: show when drag crosses 20 px
+  // ── Swipe hint: show when drag crosses 20 px ─────────────────────────────
   const [showHint, setShowHint] = useState(false);
   useEffect(() => {
     const id = translateX.addListener(({ value }) => setShowHint(Math.abs(value) > 20));

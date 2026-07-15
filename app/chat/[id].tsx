@@ -8,6 +8,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
+import { v4 as uuidv4 } from 'uuid';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { useMessages, triggerUnreadRefresh } from '@/hooks/useChat';
 import {
@@ -21,7 +22,8 @@ import { updateAdStatus } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { generateUUID } from '@/services/chatService';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢'] as const;
 type ReactionEmoji = typeof REACTION_EMOJIS[number];
@@ -155,16 +157,20 @@ export default function ChatScreen() {
   // ----- Audio Recording Handlers (memoized) -----
   const handleStartRecording = useCallback(async () => {
     try {
-      const { Audio } = await import('expo-av');
       const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') return;
+      if (status !== 'granted') {
+        showAlert(isAr ? 'صلاحية' : 'Permission', isAr ? 'يلزم منح صلاحية الميكروفون' : 'Microphone permission required');
+        return;
+      }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       recordingRef.current = recording;
       setIsRecording(true); setRecordingDuration(0);
       recordingTimerRef.current = setInterval(() => setRecordingDuration(d => d + 1), 1000);
-    } catch { }
-  }, []);
+    } catch (e) {
+      console.warn('Start recording error:', e);
+    }
+  }, [isAr, showAlert]);
 
   const handleStopRecording = useCallback(async (send: boolean) => {
     if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
@@ -181,9 +187,13 @@ export default function ChatScreen() {
       setImageUploading(false);
       if (!url) return;
       await handleSendMessage('🎤 رسالة صوتية', url);
-    } catch { recordingRef.current = null; setImageUploading(false); }
-    finally { if (tempUri) try { const { deleteAsync } = await import('expo-file-system') as any; await deleteAsync(tempUri, { idempotent: true }); } catch { } }
-  }, []);
+    } catch (e) {
+      console.warn('Stop recording error:', e);
+      setImageUploading(false);
+    } finally {
+      if (tempUri) try { await FileSystem.deleteAsync(tempUri, { idempotent: true }); } catch { }
+    }
+  }, [handleSendMessage]);
 
   const handlePlayVoice = useCallback(async (msgId: string, voiceUrl: string) => {
     try {
@@ -201,7 +211,6 @@ export default function ChatScreen() {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
-      const { Audio } = await import('expo-av');
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
       const { sound } = await Audio.Sound.createAsync({ uri: voiceUrl }, { shouldPlay: true });
       soundRef.current = sound; setPlayingVoiceId(msgId);
@@ -214,10 +223,13 @@ export default function ChatScreen() {
           }
         }
       });
-    } catch { setPlayingVoiceId(null); }
+    } catch (e) {
+      console.warn('Play voice error:', e);
+      setPlayingVoiceId(null);
+    }
   }, [playingVoiceId]);
 
-  // ----- Cleanup on unmount (Audio, timers) -----
+  // ----- Cleanup on unmount -----
   useEffect(() => {
     return () => {
       cleanupAudioResources();
@@ -313,15 +325,17 @@ export default function ChatScreen() {
 
     try {
       const supabase = getSupabaseClient();
-      await supabase
+      const { error } = await supabase
         .from('messages')
         .update({ read_at: new Date().toISOString() })
         .eq('conversation_id', id)
         .neq('sender_id', user.id)
         .is('read_at', null);
-
-      markReadLocally(user.id);
-      triggerUnreadRefresh();
+      if (!error) {
+        // تحديث الحالة المحلية
+        markReadLocally(user.id);
+        triggerUnreadRefresh();
+      }
     } catch (e) { }
   }, [id, user?.id, markReadLocally]);
 
@@ -370,9 +384,19 @@ export default function ChatScreen() {
   }, []);
 
   const handleSendMessage = useCallback(async (content: string, imageUrl?: string) => {
-    if (!id) return;
+    if (!id || !user) return;
     const clientId = uuidv4();
-    const tempMsg: Message = { id: clientId, conversation_id: id, sender_id: user?.id ?? '', content: imageUrl ? (content || '📷 صورة') : content, image_url: imageUrl ?? null, message_type: imageUrl ? 'image' : 'text', read_at: null, created_at: new Date().toISOString(), _pending: true };
+    const tempMsg: Message = {
+      id: clientId,
+      conversation_id: id,
+      sender_id: user.id,
+      content: imageUrl ? (content || '📷 صورة') : content,
+      image_url: imageUrl ?? null,
+      message_type: imageUrl ? 'image' : 'text',
+      read_at: null,
+      created_at: new Date().toISOString(),
+      _pending: true,
+    };
     appendMessage(tempMsg);
 
     const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
@@ -380,8 +404,14 @@ export default function ChatScreen() {
       updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
       await addToOfflineQueue({ tempId: clientId, conversationId: id, content: imageUrl ? (content || '📷 صورة') : content, image_url: imageUrl, message_type: imageUrl ? 'image' : 'text', created_at: tempMsg.created_at });
     } else {
-      if (sent) updateMessage(clientId, sent);
-      if (recipientId) notifyRecipient(recipientId, user?.username || user?.email?.split('@')[0] || 'رسالة جديدة', content || '📷 صورة', id, !isBuyerSending);
+      if (sent) {
+        updateMessage(clientId, sent);
+        // في حالة نجاح الإرسال، نقوم بإشعار المستلم إذا كان مختلفاً عن المرسل
+        if (recipientId && recipientId !== user.id) {
+          const senderName = user.username || user.email?.split('@')[0] || 'مستخدم';
+          notifyRecipient(recipientId, senderName, content || '📷 صورة', id, !isBuyerSending);
+        }
+      }
     }
   }, [id, user, appendMessage, updateMessage]);
 
@@ -396,31 +426,51 @@ export default function ChatScreen() {
   const handleCameraCapture = useCallback(async () => {
     if (!id || imageUploading) return;
     try {
-      const ImagePicker = await import('expo-image-picker'); const perm = await ImagePicker.requestCameraPermissionsAsync(); if (perm.status !== 'granted') return;
+      const ImagePicker = await import('expo-image-picker');
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') {
+        showAlert(isAr ? 'صلاحية' : 'Permission', isAr ? 'يلزم منح صلاحية الكاميرا' : 'Camera permission required');
+        return;
+      }
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8, allowsEditing: true, aspect: [4, 3] });
       if (result.canceled || !result.assets?.[0]) return;
-      setImageUploading(true); const { url } = await uploadChatImage(result.assets[0].uri, result.assets[0].fileName ?? `cam_${Date.now()}.jpg`); setImageUploading(false);
+      setImageUploading(true);
+      const { url } = await uploadChatImage(result.assets[0].uri, result.assets[0].fileName ?? `cam_${Date.now()}.jpg`);
+      setImageUploading(false);
       if (url) await handleSendMessage('', url);
-    } catch { setImageUploading(false); }
-  }, [id, imageUploading, handleSendMessage]);
+    } catch (e) {
+      console.warn('Camera error:', e);
+      setImageUploading(false);
+    }
+  }, [id, imageUploading, handleSendMessage, isAr, showAlert]);
 
   const handleImagePick = useCallback(async () => {
     if (!id || imageUploading) return;
     try {
-      const ImagePicker = await import('expo-image-picker'); const perm = await ImagePicker.requestMediaLibraryPermissionsAsync(); if (perm.status !== 'granted') return;
+      const ImagePicker = await import('expo-image-picker');
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        showAlert(isAr ? 'صلاحية' : 'Permission', isAr ? 'يلزم منح صلاحية المعرض' : 'Gallery permission required');
+        return;
+      }
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.75, allowsEditing: true, aspect: [4, 3] });
       if (result.canceled || !result.assets?.[0]) return;
-      setImageUploading(true); const { url } = await uploadChatImage(result.assets[0].uri, result.assets[0].fileName ?? `chat_${Date.now()}.jpg`); setImageUploading(false);
+      setImageUploading(true);
+      const { url } = await uploadChatImage(result.assets[0].uri, result.assets[0].fileName ?? `chat_${Date.now()}.jpg`);
+      setImageUploading(false);
       if (url) await handleSendMessage('', url);
-    } catch { setImageUploading(false); }
-  }, [id, imageUploading, handleSendMessage]);
+    } catch (e) {
+      console.warn('Image pick error:', e);
+      setImageUploading(false);
+    }
+  }, [id, imageUploading, handleSendMessage, isAr, showAlert]);
 
   // ----- Conversation actions (memoized) -----
   const isSeller = conversation?.seller_id === user?.id;
   const adStatus = (conversation as any)?.ads?.status as string | undefined;
   const adId = conversation?.ad_id;
 
-  const handleMarkSold = useCallback(async () => {
+  const handleMarkSold = useCallback(() => {
     if (!adId) {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لا يوجد إعلان مرتبط' : 'No ad linked');
       return;
@@ -433,7 +483,7 @@ export default function ChatScreen() {
     ]);
   }, [adId, actionLoading, isAr, showAlert]);
 
-  const handleCancelSold = useCallback(async () => {
+  const handleCancelSold = useCallback(() => {
     if (!adId) {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لا يوجد إعلان مرتبط' : 'No ad linked');
       return;
@@ -466,7 +516,6 @@ export default function ChatScreen() {
     showAlert(isAr ? 'حذف المحادثة' : 'Delete', isAr ? 'حذف المحادثة نهائياً؟' : 'Permanently delete?', [
       { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
       { text: isAr ? 'حذف' : 'Delete', style: 'destructive', onPress: async () => { setActionLoading(true); const { error } = await deleteConversation(id); setActionLoading(false); if (!error) {
-        // ✅ العودة إلى الصفحة الرئيسية (بدلاً من تبويب الرسائل المحذوف)
         router.replace('/(tabs)');
       } else showAlert(isAr ? 'خطأ' : 'Error', error?.message || isAr ? 'فشل الحذف' : 'Delete failed'); } },
     ]);
@@ -535,7 +584,7 @@ export default function ChatScreen() {
               <MaterialIcons
                 name={isRead ? "done-all" : "done"}
                 size={14}
-                color={isRead ? (isMine ? '#fff' : '#4ADE80') : 'rgba(255,255,255,0.7)'}
+                color={isRead ? (isMine ? '#4ADE80' : '#4ADE80') : 'rgba(255,255,255,0.7)'}
               />
             )}
           </View>
