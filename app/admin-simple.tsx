@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
   ActivityIndicator, Modal, ScrollView, RefreshControl,
-  Alert, KeyboardAvoidingView, Platform,
+  Alert, KeyboardAvoidingView, Platform, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -40,14 +40,22 @@ class AdminTabErrorBoundary extends React.Component<{ children: React.ReactNode 
   render() {
     if (this.state.hasError) {
       return (
-        <View style={{ padding: 20, alignItems: 'center' }}>
-          <MaterialIcons name="error-outline" size={32} color="#EF4444" />
-          <Text style={{ color: '#EF4444', marginTop: 8 }}>حدث خطأ في هذا التبويب</Text>
+        <View style={styles.errorFallback}>
+          <MaterialIcons name="error-outline" size={40} color="#EF4444" />
+          <Text style={styles.errorFallbackText}>حدث خطأ في هذا التبويب</Text>
+          <Text style={styles.errorFallbackSub}>حاول العودة ثم الدخول مرة أخرى</Text>
         </View>
       );
     }
     return this.props.children;
   }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return String(n);
 }
 
 // ─── Analytics Tab ──────────────────────────────────────────────────────────
@@ -128,25 +136,18 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={{ color: colors.textMuted, marginTop: 12 }}>{isAr ? 'جارٍ التحميل...' : 'Loading...'}</Text>
       </View>
     );
   }
 
-  // أيقونات للصفحات
   const pageIcons: Record<string, string> = {
-    home: 'home',
-    stores: 'storefront',
-    ad: 'campaign',
-    store: 'store',
-    profile: 'person',
-    offers: 'local-offer',
-    search: 'search',
-    categories: 'category',
+    home: 'home', stores: 'storefront', ad: 'campaign',
+    store: 'store', profile: 'person', offers: 'local-offer',
+    search: 'search', categories: 'category',
   };
-
   const pageNames: Record<string, string> = {
     home: isAr ? 'الرئيسية' : 'Home',
     stores: isAr ? 'المتاجر' : 'Stores',
@@ -158,106 +159,130 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
     categories: isAr ? 'التصنيفات' : 'Categories',
   };
 
+  const totalPageUnique = pageStats.reduce((sum, s) => sum + (s.unique_24h || 0), 0);
+  const totalPageVisits = pageStats.reduce((sum, s) => sum + (s.total_24h || 0), 0);
+
   return (
-    <ScrollView contentContainerStyle={{ padding: Spacing.md, gap: Spacing.md, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <Text style={{ fontSize: FontSize.md, fontWeight: '700', color: colors.textPrimary }}>
+    <ScrollView contentContainerStyle={styles.analyticsContainer} showsVerticalScrollIndicator={false}>
+      <View style={styles.analyticsHeader}>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
           {isAr ? '📊 إحصائيات عامة' : '📊 General Stats'}
         </Text>
         {lastUpdated && (
-          <Text style={{ fontSize: 10, color: colors.textMuted }}>
-            {isAr ? 'آخر تحديث: ' : 'Updated: '}
+          <Text style={[styles.lastUpdated, { color: colors.textMuted }]}>
+            {isAr ? '🔄 آخر تحديث: ' : '🔄 Updated: '}
             {lastUpdated.toLocaleTimeString(isAr ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' })}
           </Text>
         )}
       </View>
 
-      {/* بطاقات الإحصائيات الرئيسية - 3 أعمدة */}
-      <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+      {/* بطاقات رئيسية */}
+      <View style={styles.statsGrid3}>
         {[
           { label: isAr ? 'مستخدمين اليوم' : 'Today', value: stats?.dau ?? 0, icon: 'today', color: '#3B82F6' },
           { label: isAr ? 'مستخدمين الأسبوع' : 'This Week', value: stats?.wau ?? 0, icon: 'date-range', color: '#8B5CF6' },
           { label: isAr ? 'مستخدمين الشهر' : 'This Month', value: stats?.mau ?? 0, icon: 'calendar-month', color: '#10B981' },
         ].map((item, i) => (
-          <View key={i} style={{ flex: 1, backgroundColor: colors.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: colors.border, padding: Spacing.sm, alignItems: 'center' }}>
-            <MaterialIcons name={item.icon as any} size={18} color={item.color} />
-            <Text style={{ fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginTop: 2 }}>{item.value}</Text>
-            <Text style={{ fontSize: 10, color: colors.textMuted, textAlign: 'center' }}>{item.label}</Text>
+          <View key={i} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.statIcon, { backgroundColor: item.color + '20' }]}>
+              <MaterialIcons name={item.icon as any} size={20} color={item.color} />
+            </View>
+            <Text style={[styles.statValue, { color: colors.textPrimary }]}>{formatNumber(item.value)}</Text>
+            <Text style={[styles.statLabel, { color: colors.textMuted }]}>{item.label}</Text>
           </View>
         ))}
       </View>
 
-      {/* إحصائيات إضافية - 2 أعمدة */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
+      {/* بطاقات إضافية */}
+      <View style={styles.statsGrid2}>
         {[
           { label: isAr ? '🛒 متاجر نشطة' : 'Active Stores', value: stats?.activeStores ?? 0, icon: 'storefront' },
           { label: isAr ? '📢 إعلانات نشطة' : 'Active Ads', value: stats?.activeAds ?? 0, icon: 'campaign' },
           { label: isAr ? '👤 مستخدمين مسجلين' : 'Registered Users', value: stats?.totalUsers ?? 0, icon: 'people' },
           { label: isAr ? '👁️ إجمالي الزيارات' : 'Total Visits', value: stats?.totalVisits ?? 0, icon: 'visibility' },
         ].map((item, i) => (
-          <View key={i} style={{ flex: 1, minWidth: '47%', backgroundColor: colors.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: colors.border, padding: Spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primaryGhost, alignItems: 'center', justifyContent: 'center' }}>
+          <View key={i} style={[styles.statCardSmall, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.statIconSmall, { backgroundColor: colors.primaryGhost }]}>
               <MaterialIcons name={item.icon as any} size={18} color={colors.primary} />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary }}>{item.value}</Text>
-              <Text style={{ fontSize: 9, color: colors.textMuted }}>{item.label}</Text>
+            <View style={styles.statContentSmall}>
+              <Text style={[styles.statValueSmall, { color: colors.textPrimary }]}>{formatNumber(item.value)}</Text>
+              <Text style={[styles.statLabelSmall, { color: colors.textMuted }]}>{item.label}</Text>
             </View>
           </View>
         ))}
       </View>
 
       {/* إحصائيات الصفحات */}
-      <View style={{ backgroundColor: colors.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
-        <View style={{ padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderLight, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <MaterialIcons name="analytics" size={18} color={colors.primary} />
-          <Text style={{ fontSize: FontSize.md, fontWeight: '700', color: colors.textPrimary }}>{isAr ? 'إحصائيات الصفحات' : 'Page Statistics'}</Text>
+      <View style={[styles.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.pageStatsHeader, { borderBottomColor: colors.borderLight }]}>
+          <MaterialIcons name="analytics" size={20} color={colors.primary} />
+          <Text style={[styles.pageStatsTitle, { color: colors.textPrimary }]}>
+            {isAr ? '📈 إحصائيات الصفحات' : '📈 Page Statistics'}
+          </Text>
           <View style={{ flex: 1 }} />
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <Text style={{ fontSize: 9, color: colors.textMuted, fontWeight: '600' }}>{isAr ? 'فريد' : 'Unique'}</Text>
-            <Text style={{ fontSize: 9, color: colors.textMuted, fontWeight: '600' }}>{isAr ? 'إجمالي' : 'Total'}</Text>
+          <View style={styles.pageStatsHeaders}>
+            <Text style={[styles.pageStatsHeaderLabel, { color: colors.textMuted }]}>
+              {isAr ? 'فريد' : 'Unique'}
+            </Text>
+            <Text style={[styles.pageStatsHeaderLabel, { color: colors.textMuted }]}>
+              {isAr ? 'إجمالي' : 'Total'}
+            </Text>
           </View>
         </View>
+
         {(pageStats || []).length === 0 ? (
-          <View style={{ padding: 20, alignItems: 'center' }}>
+          <View style={styles.pageStatsEmpty}>
             <Text style={{ color: colors.textMuted, fontSize: FontSize.sm }}>{isAr ? 'لا توجد بيانات' : 'No data yet'}</Text>
           </View>
         ) : (
-          (pageStats || []).map((stat, index) => {
-            const icon = pageIcons[stat.page] || 'web';
-            const name = pageNames[stat.page] || stat.page;
-            const isLast = index === (pageStats || []).length - 1;
-            return (
-              <View
-                key={stat.page}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 12,
-                  paddingVertical: 10,
-                  paddingHorizontal: Spacing.md,
-                  borderBottomWidth: isLast ? 0 : 1,
-                  borderBottomColor: colors.borderLight,
-                }}
-              >
-                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primaryGhost, alignItems: 'center', justifyContent: 'center' }}>
-                  <MaterialIcons name={icon as any} size={16} color={colors.primary} />
+          <>
+            {(pageStats || []).map((stat, index) => {
+              const icon = pageIcons[stat.page] || 'web';
+              const name = pageNames[stat.page] || stat.page;
+              const isLast = index === (pageStats || []).length - 1;
+              return (
+                <View
+                  key={stat.page}
+                  style={[
+                    styles.pageStatRow,
+                    { borderBottomColor: colors.borderLight, borderBottomWidth: isLast ? 0 : 1 }
+                  ]}
+                >
+                  <View style={[styles.pageStatIcon, { backgroundColor: colors.primaryGhost }]}>
+                    <MaterialIcons name={icon as any} size={16} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.pageStatName, { color: colors.textPrimary }]}>{name}</Text>
+                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary }]}>
+                    {stat.unique_24h || 0}
+                  </Text>
+                  <Text style={[styles.pageStatTotal, { color: colors.textMuted }]}>
+                    {stat.total_24h || 0}
+                  </Text>
                 </View>
-                <Text style={{ flex: 1, fontSize: FontSize.sm, fontWeight: '600', color: colors.textPrimary }}>{name}</Text>
-                <Text style={{ fontSize: FontSize.sm, fontWeight: '700', color: colors.textPrimary, minWidth: 30, textAlign: 'center' }}>
-                  {stat.unique_24h || 0}
-                </Text>
-                <Text style={{ fontSize: FontSize.sm, fontWeight: '600', color: colors.textMuted, minWidth: 30, textAlign: 'center' }}>
-                  {stat.total_24h || 0}
-                </Text>
+              );
+            })}
+            {/* إجمالي الصف */}
+            <View style={[styles.pageStatRow, { borderTopWidth: 1, borderTopColor: colors.borderLight, paddingTop: 8 }]}>
+              <View style={[styles.pageStatIcon, { backgroundColor: colors.primary }]}>
+                <MaterialIcons name="summarize" size={16} color="#fff" />
               </View>
-            );
-          })
+              <Text style={[styles.pageStatName, { color: colors.textPrimary, fontWeight: '800' }]}>
+                {isAr ? 'الإجمالي' : 'Total'}
+              </Text>
+              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700' }]}>
+                {totalPageUnique}
+              </Text>
+              <Text style={[styles.pageStatTotal, { color: colors.textPrimary, fontWeight: '700' }]}>
+                {totalPageVisits}
+              </Text>
+            </View>
+          </>
         )}
       </View>
 
-      <View style={{ backgroundColor: colors.surfaceTint, borderRadius: Radius.lg, padding: Spacing.sm, borderWidth: 1, borderColor: colors.borderLight }}>
-        <Text style={{ fontSize: 10, color: colors.textMuted, textAlign: 'center' }}>
+      <View style={[styles.noteBox, { backgroundColor: colors.surfaceTint, borderColor: colors.borderLight }]}>
+        <Text style={[styles.noteText, { color: colors.textMuted }]}>
           {isAr
             ? '📌 الفريد: عدد الزوار المختلفين (جهاز واحد) • الإجمالي: عدد الزيارات الكلي (يشمل التكرار)'
             : '📌 Unique: distinct visitors (per device) • Total: total visits (includes repeats)'}
@@ -307,43 +332,63 @@ function AdEditModal({ visible, ad, onClose, onSave, isAr, colors }: any) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: Spacing.lg, maxHeight: '90%' }}>
-            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 12 }} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: colors.borderLight, paddingBottom: Spacing.md }}>
-              <MaterialIcons name="edit" size={20} color={colors.primary} />
-              <Text style={{ fontSize: FontSize.lg, fontWeight: '700', color: colors.textPrimary, flex: 1 }}>{isAr ? 'تعديل الإعلان' : 'Edit Ad'}</Text>
-              <Pressable onPress={onClose} hitSlop={8}><MaterialIcons name="close" size={22} color={colors.textMuted} /></Pressable>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: colors.surface }]}>
+            <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+            <View style={[styles.modalHeader, { borderBottomColor: colors.borderLight }]}>
+              <MaterialIcons name="edit" size={22} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                {isAr ? 'تعديل الإعلان' : 'Edit Ad'}
+              </Text>
+              <Pressable onPress={onClose} hitSlop={8}>
+                <MaterialIcons name="close" size={24} color={colors.textMuted} />
+              </Pressable>
             </View>
-            <ScrollView contentContainerStyle={{ gap: Spacing.sm, paddingVertical: Spacing.md }}>
-              <View>
-                <Text style={{ fontSize: FontSize.sm, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>{isAr ? 'العنوان' : 'Title'}</Text>
-                <TextInput style={{ borderWidth: 1.5, borderColor: colors.border, borderRadius: Radius.md, padding: Spacing.md, color: colors.textPrimary, backgroundColor: colors.background }} value={title} onChangeText={setTitle} />
+            <ScrollView contentContainerStyle={styles.modalContent}>
+              <View style={styles.modalField}>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'العنوان' : 'Title'}</Text>
+                <TextInput style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} value={title} onChangeText={setTitle} />
               </View>
-              <View>
-                <Text style={{ fontSize: FontSize.sm, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>{isAr ? 'الوصف' : 'Description'}</Text>
-                <TextInput style={{ borderWidth: 1.5, borderColor: colors.border, borderRadius: Radius.md, padding: Spacing.md, color: colors.textPrimary, backgroundColor: colors.background, height: 80, textAlignVertical: 'top' }} value={description} onChangeText={setDescription} multiline />
+              <View style={styles.modalField}>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'الوصف' : 'Description'}</Text>
+                <TextInput style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, height: 80, textAlignVertical: 'top' }]} value={description} onChangeText={setDescription} multiline />
               </View>
-              <View>
-                <Text style={{ fontSize: FontSize.sm, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>{isAr ? 'السعر (₪)' : 'Price (₪)'}</Text>
-                <TextInput style={{ borderWidth: 1.5, borderColor: colors.border, borderRadius: Radius.md, padding: Spacing.md, color: colors.textPrimary, backgroundColor: colors.background }} value={price} onChangeText={setPrice} keyboardType="numeric" />
+              <View style={styles.modalField}>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'السعر (₪)' : 'Price (₪)'}</Text>
+                <TextInput style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} value={price} onChangeText={setPrice} keyboardType="numeric" />
               </View>
-              <View>
-                <Text style={{ fontSize: FontSize.sm, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>{isAr ? 'الموقع' : 'Location'}</Text>
-                <TextInput style={{ borderWidth: 1.5, borderColor: colors.border, borderRadius: Radius.md, padding: Spacing.md, color: colors.textPrimary, backgroundColor: colors.background }} value={location} onChangeText={setLocation} />
+              <View style={styles.modalField}>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'الموقع' : 'Location'}</Text>
+                <TextInput style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} value={location} onChangeText={setLocation} />
               </View>
-              <View>
-                <Text style={{ fontSize: FontSize.sm, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>{isAr ? 'الحالة' : 'Condition'}</Text>
-                <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+              <View style={styles.modalField}>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'الحالة' : 'Condition'}</Text>
+                <View style={styles.modalConditionRow}>
                   {(['new', 'used'] as const).map(c => (
-                    <Pressable key={c} style={{ flex: 1, paddingVertical: 10, borderRadius: Radius.md, borderWidth: 1.5, borderColor: condition === c ? colors.primary : colors.border, backgroundColor: condition === c ? colors.primary : colors.background }} onPress={() => setCondition(c)}>
-                      <Text style={{ textAlign: 'center', color: condition === c ? '#fff' : colors.textSecondary, fontWeight: '700' }}>{c === 'new' ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used')}</Text>
+                    <Pressable
+                      key={c}
+                      style={[
+                        styles.modalConditionBtn,
+                        {
+                          borderColor: condition === c ? colors.primary : colors.border,
+                          backgroundColor: condition === c ? colors.primary : colors.background,
+                        }
+                      ]}
+                      onPress={() => setCondition(c)}
+                    >
+                      <Text style={{ color: condition === c ? '#fff' : colors.textSecondary, fontWeight: '700' }}>
+                        {c === 'new' ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used')}
+                      </Text>
                     </Pressable>
                   ))}
                 </View>
               </View>
-              <Pressable style={{ marginTop: Spacing.sm, paddingVertical: 14, borderRadius: Radius.full, backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }} onPress={handleSave} disabled={saving}>
-                {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>{isAr ? 'حفظ التغييرات' : 'Save Changes'}</Text>}
+              <Pressable
+                style={[styles.modalSaveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]}
+                onPress={handleSave}
+                disabled={saving}
+              >
+                {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.modalSaveBtnText}>{isAr ? '💾 حفظ التغييرات' : '💾 Save Changes'}</Text>}
               </Pressable>
             </ScrollView>
           </View>
@@ -444,64 +489,95 @@ function AdsTab({ colors, isAr, t }: any) {
       : item.status === 'active' ? 'Active' : item.status === 'featured' ? 'Featured' : 'Expired';
 
     return (
-      <View style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: isBoosted ? '#2563EB' : colors.border, borderRadius: Radius.lg, padding: Spacing.md, marginBottom: Spacing.sm }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ fontSize: FontSize.md, fontWeight: '700', color: colors.textPrimary, flex: 1 }}>{item.title}</Text>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: statusColor }} />
-          <Text style={{ fontSize: 9, fontWeight: '600', color: statusColor }}>{statusLabel}</Text>
+      <View style={[styles.adCard, { backgroundColor: colors.surface, borderColor: isBoosted ? '#2563EB' : colors.border }]}>
+        <View style={styles.adHeader}>
+          <Text style={[styles.adTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
+          <View style={[styles.adStatusDot, { backgroundColor: statusColor }]} />
+          <Text style={[styles.adStatusText, { color: statusColor }]}>{statusLabel}</Text>
         </View>
-        <Text style={{ fontSize: FontSize.xs, color: colors.textMuted, marginTop: 2 }}>{item.price}₪ • {item.condition === 'new' ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used')}</Text>
-        {item.location && <Text style={{ fontSize: 10, color: colors.textMuted }}>{item.location}</Text>}
-        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-          <Pressable style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full, backgroundColor: isFeatured ? '#FEF3C7' : colors.borderLight }} onPress={() => handleToggleFeatured(item)}>
-            <Text style={{ fontSize: 10, fontWeight: '600', color: isFeatured ? '#D97706' : colors.textMuted }}>{isAr ? (isFeatured ? 'إلغاء التميز' : 'تمييز') : (isFeatured ? 'Unfeature' : 'Feature')}</Text>
+        <Text style={[styles.adMeta, { color: colors.textMuted }]}>
+          {item.price}₪ • {item.condition === 'new' ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used')}
+          {item.location ? ` • ${item.location}` : ''}
+        </Text>
+        <View style={styles.adActions}>
+          <Pressable style={[styles.adActionBtn, { backgroundColor: isFeatured ? '#FEF3C7' : colors.borderLight }]} onPress={() => handleToggleFeatured(item)}>
+            <MaterialIcons name={isFeatured ? 'star' : 'star-border'} size={14} color={isFeatured ? '#D97706' : colors.textMuted} />
+            <Text style={{ fontSize: 10, fontWeight: '600', color: isFeatured ? '#D97706' : colors.textMuted }}>
+              {isAr ? (isFeatured ? 'إلغاء التميز' : 'تمييز') : (isFeatured ? 'Unfeature' : 'Feature')}
+            </Text>
           </Pressable>
-          <Pressable style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full, backgroundColor: isBoosted ? '#DBEAFE' : colors.borderLight }} onPress={() => handleToggleBoost(item)}>
-            <Text style={{ fontSize: 10, fontWeight: '600', color: isBoosted ? '#2563EB' : colors.textMuted }}>{isAr ? (isBoosted ? 'إلغاء التعزيز' : 'تعزيز') : (isBoosted ? 'Unboost' : 'Boost')}</Text>
+          <Pressable style={[styles.adActionBtn, { backgroundColor: isBoosted ? '#DBEAFE' : colors.borderLight }]} onPress={() => handleToggleBoost(item)}>
+            <MaterialIcons name="bolt" size={14} color={isBoosted ? '#2563EB' : colors.textMuted} />
+            <Text style={{ fontSize: 10, fontWeight: '600', color: isBoosted ? '#2563EB' : colors.textMuted }}>
+              {isAr ? (isBoosted ? 'إلغاء التعزيز' : 'تعزيز') : (isBoosted ? 'Unboost' : 'Boost')}
+            </Text>
           </Pressable>
-          <Pressable style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full, backgroundColor: colors.primaryGhost }} onPress={() => handleEditAd(item)}>
+          <Pressable style={[styles.adActionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => handleEditAd(item)}>
+            <MaterialIcons name="edit" size={14} color={colors.primary} />
             <Text style={{ fontSize: 10, fontWeight: '600', color: colors.primary }}>{isAr ? 'تعديل' : 'Edit'}</Text>
           </Pressable>
-          <Pressable style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full, backgroundColor: '#FEE2E2' }} onPress={() => handleDeleteAd(item)}>
+          <Pressable style={[styles.adActionBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => handleDeleteAd(item)}>
+            <MaterialIcons name="delete-outline" size={14} color="#EF4444" />
             <Text style={{ fontSize: 10, fontWeight: '600', color: '#EF4444' }}>{isAr ? 'حذف' : 'Delete'}</Text>
           </Pressable>
         </View>
-        {isBoosted && (
-          <Text style={{ fontSize: 9, color: '#2563EB', marginTop: 4 }}>
-            {isAr ? `معزز حتى: ${new Date(item.boosted_until!).toLocaleDateString()}` : `Boosted until: ${new Date(item.boosted_until!).toLocaleDateString()}`}
+        {isBoosted && item.boosted_until && (
+          <Text style={[styles.adBoostedDate, { color: '#2563EB' }]}>
+            {isAr ? `⏳ معزز حتى: ${new Date(item.boosted_until).toLocaleDateString()}` : `⏳ Boosted until: ${new Date(item.boosted_until).toLocaleDateString()}`}
           </Text>
         )}
       </View>
     );
   };
 
-  if (loading) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.primary} size="large" /></View>;
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
-    <View style={{ flex: 1 }}>
-      <TextInput
-        style={{ borderWidth: 1.5, borderColor: colors.border, borderRadius: Radius.lg, padding: Spacing.md, margin: Spacing.md, color: colors.textPrimary, backgroundColor: colors.background }}
-        placeholder={isAr ? '🔍 ابحث عن إعلان...' : '🔍 Search ads...'}
-        placeholderTextColor={colors.textMuted}
-        value={search}
-        onChangeText={setSearch}
-      />
+    <View style={styles.tabContainer}>
+      <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        <MaterialIcons name="search" size={20} color={colors.textMuted} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.textPrimary }]}
+          placeholder={isAr ? '🔍 ابحث عن إعلان...' : '🔍 Search ads...'}
+          placeholderTextColor={colors.textMuted}
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <Pressable onPress={() => setSearch('')} hitSlop={8}>
+            <MaterialIcons name="close" size={18} color={colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: Spacing.md, paddingBottom: Spacing.xl }}
+        contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(false); }} colors={[colors.primary]} tintColor={colors.primary} />
         }
         ListEmptyComponent={
-          <View style={{ alignItems: 'center', padding: 40 }}>
-            <MaterialIcons name="campaign" size={44} color={colors.textMuted} />
+          <View style={styles.emptyState}>
+            <MaterialIcons name="campaign" size={48} color={colors.textMuted} />
             <Text style={{ color: colors.textMuted, marginTop: 8, fontWeight: '600' }}>{isAr ? 'لا توجد إعلانات' : 'No ads found'}</Text>
           </View>
         }
       />
-      <AdEditModal visible={editModalVisible} ad={editingAd} onClose={() => { setEditModalVisible(false); setEditingAd(null); }} onSave={handleSaveAdEdit} isAr={isAr} colors={colors} />
+      <AdEditModal
+        visible={editModalVisible}
+        ad={editingAd}
+        onClose={() => { setEditModalVisible(false); setEditingAd(null); }}
+        onSave={handleSaveAdEdit}
+        isAr={isAr}
+        colors={colors}
+      />
     </View>
   );
 }
@@ -549,13 +625,11 @@ function UsersTab({ colors, isAr, t }: any) {
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
     loadData();
   };
-
   const handleToggleVerified = async (user: UserProfile) => {
     const { error } = await adminSetUserVerified(user.id, !user.is_verified);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
     loadData();
   };
-
   const handleToggleBlocked = async (user: UserProfile) => {
     const { error } = await adminSetUserBlocked(user.id, !user.is_blocked);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
@@ -565,58 +639,83 @@ function UsersTab({ colors, isAr, t }: any) {
   const renderItem = ({ item }: { item: UserProfile }) => {
     const displayName = item.username || item.email.split('@')[0] || 'User';
     return (
-      <View style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: Radius.lg, padding: Spacing.md, marginBottom: Spacing.sm }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: item.is_admin ? colors.primary : colors.primaryGhost, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: item.is_admin ? '#fff' : colors.primary }}>{displayName.charAt(0).toUpperCase()}</Text>
+      <View style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={styles.userRow}>
+          <View style={[styles.userAvatar, { backgroundColor: item.is_admin ? colors.primary : colors.primaryGhost }]}>
+            <Text style={[styles.userAvatarText, { color: item.is_admin ? '#fff' : colors.primary }]}>
+              {displayName.charAt(0).toUpperCase()}
+            </Text>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: FontSize.md, fontWeight: '700', color: colors.textPrimary }}>{displayName}</Text>
-            <Text style={{ fontSize: FontSize.xs, color: colors.textMuted }}>{item.email}</Text>
-            <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-              {item.is_admin && <View style={{ backgroundColor: colors.primaryGhost, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}><Text style={{ fontSize: 9, color: colors.primary, fontWeight: '700' }}>Admin</Text></View>}
-              {item.is_verified && <View style={{ backgroundColor: '#DBEAFE', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}><Text style={{ fontSize: 9, color: '#2563EB', fontWeight: '700' }}>✓ {isAr ? 'موثّق' : 'Verified'}</Text></View>}
-              {item.is_blocked && <View style={{ backgroundColor: '#FEE2E2', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}><Text style={{ fontSize: 9, color: '#EF4444', fontWeight: '700' }}>{isAr ? 'محظور' : 'Blocked'}</Text></View>}
+          <View style={styles.userInfo}>
+            <Text style={[styles.userName, { color: colors.textPrimary }]}>{displayName}</Text>
+            <Text style={[styles.userEmail, { color: colors.textMuted }]}>{item.email}</Text>
+            <View style={styles.userBadges}>
+              {item.is_admin && <View style={[styles.userBadge, { backgroundColor: colors.primaryGhost }]}><Text style={[styles.userBadgeText, { color: colors.primary }]}>Admin</Text></View>}
+              {item.is_verified && <View style={[styles.userBadge, { backgroundColor: '#DBEAFE' }]}><Text style={[styles.userBadgeText, { color: '#2563EB' }]}>✓ {isAr ? 'موثّق' : 'Verified'}</Text></View>}
+              {item.is_blocked && <View style={[styles.userBadge, { backgroundColor: '#FEE2E2' }]}><Text style={[styles.userBadgeText, { color: '#EF4444' }]}>{isAr ? 'محظور' : 'Blocked'}</Text></View>}
             </View>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 6, marginTop: 10, flexWrap: 'wrap', borderTopWidth: 1, borderTopColor: colors.borderLight, paddingTop: 10 }}>
-          <Pressable style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: item.is_admin ? colors.primaryGhost : colors.borderLight }} onPress={() => handleToggleAdmin(item)}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: item.is_admin ? colors.primary : colors.textMuted }}>{isAr ? (item.is_admin ? 'إلغاء الإدارة' : 'جعله مدير') : (item.is_admin ? 'Revoke Admin' : 'Make Admin')}</Text>
+        <View style={[styles.userActions, { borderTopColor: colors.borderLight }]}>
+          <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_admin ? colors.primaryGhost : colors.borderLight }]} onPress={() => handleToggleAdmin(item)}>
+            <MaterialIcons name="admin-panel-settings" size={14} color={item.is_admin ? colors.primary : colors.textMuted} />
+            <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_admin ? colors.primary : colors.textMuted }}>
+              {isAr ? (item.is_admin ? 'إلغاء الإدارة' : 'جعله مدير') : (item.is_admin ? 'Revoke Admin' : 'Make Admin')}
+            </Text>
           </Pressable>
-          <Pressable style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: item.is_verified ? '#DBEAFE' : colors.borderLight }} onPress={() => handleToggleVerified(item)}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: item.is_verified ? '#2563EB' : colors.textMuted }}>{isAr ? (item.is_verified ? 'إلغاء التوثيق' : 'توثيق') : (item.is_verified ? 'Unverify' : 'Verify')}</Text>
+          <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_verified ? '#DBEAFE' : colors.borderLight }]} onPress={() => handleToggleVerified(item)}>
+            <MaterialIcons name="verified" size={14} color={item.is_verified ? '#2563EB' : colors.textMuted} />
+            <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_verified ? '#2563EB' : colors.textMuted }}>
+              {isAr ? (item.is_verified ? 'إلغاء التوثيق' : 'توثيق') : (item.is_verified ? 'Unverify' : 'Verify')}
+            </Text>
           </Pressable>
-          <Pressable style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: item.is_blocked ? '#FEE2E2' : colors.borderLight }} onPress={() => handleToggleBlocked(item)}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: item.is_blocked ? '#EF4444' : colors.textMuted }}>{isAr ? (item.is_blocked ? 'رفع الحظر' : 'حظر') : (item.is_blocked ? 'Unblock' : 'Block')}</Text>
+          <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_blocked ? '#FEE2E2' : colors.borderLight }]} onPress={() => handleToggleBlocked(item)}>
+            <MaterialIcons name="block" size={14} color={item.is_blocked ? '#EF4444' : colors.textMuted} />
+            <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_blocked ? '#EF4444' : colors.textMuted }}>
+              {isAr ? (item.is_blocked ? 'رفع الحظر' : 'حظر') : (item.is_blocked ? 'Unblock' : 'Block')}
+            </Text>
           </Pressable>
         </View>
       </View>
     );
   };
 
-  if (loading) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.primary} size="large" /></View>;
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
-    <View style={{ flex: 1 }}>
-      <TextInput
-        style={{ borderWidth: 1.5, borderColor: colors.border, borderRadius: Radius.lg, padding: Spacing.md, margin: Spacing.md, color: colors.textPrimary, backgroundColor: colors.background }}
-        placeholder={isAr ? '🔍 ابحث عن مستخدم...' : '🔍 Search users...'}
-        placeholderTextColor={colors.textMuted}
-        value={search}
-        onChangeText={setSearch}
-      />
+    <View style={styles.tabContainer}>
+      <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        <MaterialIcons name="search" size={20} color={colors.textMuted} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.textPrimary }]}
+          placeholder={isAr ? '🔍 ابحث عن مستخدم...' : '🔍 Search users...'}
+          placeholderTextColor={colors.textMuted}
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <Pressable onPress={() => setSearch('')} hitSlop={8}>
+            <MaterialIcons name="close" size={18} color={colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: Spacing.md, paddingBottom: Spacing.xl }}
+        contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} colors={[colors.primary]} tintColor={colors.primary} />
         }
         ListEmptyComponent={
-          <View style={{ alignItems: 'center', padding: 40 }}>
-            <MaterialIcons name="people" size={44} color={colors.textMuted} />
+          <View style={styles.emptyState}>
+            <MaterialIcons name="people" size={48} color={colors.textMuted} />
             <Text style={{ color: colors.textMuted, marginTop: 8, fontWeight: '600' }}>{isAr ? 'لا يوجد مستخدمين' : 'No users found'}</Text>
           </View>
         }
@@ -740,64 +839,89 @@ function BannersTab({ colors, isAr, t }: any) {
   };
 
   const renderItem = ({ item }: { item: Banner }) => (
-    <View style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: Radius.lg, padding: Spacing.md, marginBottom: Spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-      {item.image_url ? (
-        <Image source={{ uri: item.image_url }} style={{ width: 56, height: 44, borderRadius: Radius.md }} contentFit="cover" />
-      ) : (
-        <View style={{ width: 56, height: 44, backgroundColor: colors.surfaceTint, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' }}>
-          <MaterialIcons name="image" size={20} color={colors.textMuted} />
+    <View style={[styles.bannerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.bannerRow}>
+        {item.image_url ? (
+          <Image source={{ uri: item.image_url }} style={styles.bannerImage} contentFit="cover" />
+        ) : (
+          <View style={[styles.bannerImagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
+            <MaterialIcons name="image" size={22} color={colors.textMuted} />
+          </View>
+        )}
+        <View style={styles.bannerInfo}>
+          <Text style={[styles.bannerTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
+          <Text style={[styles.bannerPlacementText, { color: colors.textMuted }]}>{item.placement || 'home'}</Text>
         </View>
-      )}
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: FontSize.md, fontWeight: '700', color: colors.textPrimary }} numberOfLines={1}>{item.title}</Text>
-        <Text style={{ fontSize: FontSize.xs, color: colors.textMuted }}>{item.placement || 'home'}</Text>
-      </View>
-      <View style={{ flexDirection: 'row', gap: 6 }}>
-        <Pressable onPress={() => handleToggleActive(item)} hitSlop={4}>
-          <MaterialIcons name={item.is_active ? 'visibility' : 'visibility-off'} size={18} color={item.is_active ? '#22C55E' : '#EF4444'} />
-        </Pressable>
-        <Pressable onPress={() => openEditForm(item)} hitSlop={4}>
-          <MaterialIcons name="edit" size={18} color={colors.primary} />
-        </Pressable>
-        <Pressable onPress={() => handleDeleteBanner(item)} hitSlop={4}>
-          <MaterialIcons name="delete-outline" size={18} color="#EF4444" />
-        </Pressable>
+        <View style={styles.bannerActions}>
+          <Pressable onPress={() => handleToggleActive(item)} hitSlop={4}>
+            <MaterialIcons name={item.is_active ? 'visibility' : 'visibility-off'} size={20} color={item.is_active ? '#22C55E' : '#EF4444'} />
+          </Pressable>
+          <Pressable onPress={() => openEditForm(item)} hitSlop={4}>
+            <MaterialIcons name="edit" size={20} color={colors.primary} />
+          </Pressable>
+          <Pressable onPress={() => handleDeleteBanner(item)} hitSlop={4}>
+            <MaterialIcons name="delete-outline" size={20} color="#EF4444" />
+          </Pressable>
+        </View>
       </View>
     </View>
   );
 
-  if (loading) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.primary} size="large" /></View>;
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
-    <View style={{ flex: 1 }}>
-      <Pressable style={{ margin: Spacing.md, paddingVertical: 12, borderRadius: Radius.lg, backgroundColor: colors.primary, alignItems: 'center' }} onPress={() => setShowForm(true)}>
-        <Text style={{ color: '#fff', fontWeight: '700' }}>{isAr ? '+ إضافة بانر جديد' : '+ Add New Banner'}</Text>
+    <View style={styles.tabContainer}>
+      <Pressable style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => setShowForm(true)}>
+        <MaterialIcons name="add" size={20} color="#fff" />
+        <Text style={styles.addBtnText}>{isAr ? 'إضافة بانر جديد' : 'Add New Banner'}</Text>
       </Pressable>
 
       {showForm && (
-        <View style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: Radius.lg, padding: Spacing.md, marginHorizontal: Spacing.md, marginBottom: Spacing.md }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm }}>
-            <Text style={{ fontSize: FontSize.md, fontWeight: '700', color: colors.textPrimary }}>{editingBanner ? (isAr ? 'تعديل البانر' : 'Edit Banner') : (isAr ? 'إضافة بانر' : 'Add Banner')}</Text>
-            <Pressable onPress={resetForm}><MaterialIcons name="close" size={20} color={colors.textMuted} /></Pressable>
+        <View style={[styles.bannerForm, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.bannerFormHeader}>
+            <Text style={[styles.bannerFormTitle, { color: colors.textPrimary }]}>
+              {editingBanner ? (isAr ? '✏️ تعديل البانر' : '✏️ Edit Banner') : (isAr ? '➕ إضافة بانر' : '➕ Add Banner')}
+            </Text>
+            <Pressable onPress={resetForm} hitSlop={8}>
+              <MaterialIcons name="close" size={22} color={colors.textMuted} />
+            </Pressable>
           </View>
-          <TextInput style={{ borderWidth: 1.5, borderColor: colors.border, borderRadius: Radius.md, padding: Spacing.sm, color: colors.textPrimary, backgroundColor: colors.background, marginBottom: Spacing.sm }} placeholder={isAr ? 'العنوان *' : 'Title *'} placeholderTextColor={colors.textMuted} value={bnTitle} onChangeText={setBnTitle} />
-          <TextInput style={{ borderWidth: 1.5, borderColor: colors.border, borderRadius: Radius.md, padding: Spacing.sm, color: colors.textPrimary, backgroundColor: colors.background, marginBottom: Spacing.sm }} placeholder={isAr ? 'النص الفرعي' : 'Subtitle'} placeholderTextColor={colors.textMuted} value={bnSubtitle} onChangeText={setBnSubtitle} />
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: Spacing.sm }}>
-            <TextInput style={{ flex: 1, borderWidth: 1.5, borderColor: colors.border, borderRadius: Radius.md, padding: Spacing.sm, color: colors.textPrimary, backgroundColor: colors.background }} placeholder={isAr ? 'رابط الصورة *' : 'Image URL *'} placeholderTextColor={colors.textMuted} value={bnImageUrl} onChangeText={setBnImageUrl} />
-            <Pressable style={{ paddingHorizontal: 12, justifyContent: 'center', backgroundColor: colors.primaryGhost, borderRadius: Radius.md }} onPress={handlePickImage} disabled={imageUploading}>
+          <TextInput style={[styles.bannerFormInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder={isAr ? 'العنوان *' : 'Title *'} placeholderTextColor={colors.textMuted} value={bnTitle} onChangeText={setBnTitle} />
+          <TextInput style={[styles.bannerFormInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder={isAr ? 'النص الفرعي' : 'Subtitle'} placeholderTextColor={colors.textMuted} value={bnSubtitle} onChangeText={setBnSubtitle} />
+          <View style={styles.bannerFormRow}>
+            <TextInput style={[styles.bannerFormInputFlex, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder={isAr ? 'رابط الصورة *' : 'Image URL *'} placeholderTextColor={colors.textMuted} value={bnImageUrl} onChangeText={setBnImageUrl} />
+            <Pressable style={[styles.bannerFormUpload, { backgroundColor: colors.primaryGhost }]} onPress={handlePickImage} disabled={imageUploading}>
               {imageUploading ? <ActivityIndicator size="small" color={colors.primary} /> : <MaterialIcons name="upload" size={20} color={colors.primary} />}
             </Pressable>
           </View>
-          <TextInput style={{ borderWidth: 1.5, borderColor: colors.border, borderRadius: Radius.md, padding: Spacing.sm, color: colors.textPrimary, backgroundColor: colors.background, marginBottom: Spacing.sm }} placeholder={isAr ? 'رابط الوجهة (اختياري)' : 'Link URL (optional)'} placeholderTextColor={colors.textMuted} value={bnLinkUrl} onChangeText={setBnLinkUrl} />
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: Spacing.sm }}>
+          <TextInput style={[styles.bannerFormInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder={isAr ? 'رابط الوجهة (اختياري)' : 'Link URL (optional)'} placeholderTextColor={colors.textMuted} value={bnLinkUrl} onChangeText={setBnLinkUrl} />
+          <View style={styles.bannerFormPlacement}>
             {(['home', 'stores_directory'] as BannerPlacement[]).map(p => (
-              <Pressable key={p} style={{ flex: 1, paddingVertical: 8, borderRadius: Radius.md, borderWidth: 1.5, borderColor: bnPlacement === p ? colors.primary : colors.border, backgroundColor: bnPlacement === p ? colors.primary : colors.background }} onPress={() => setBnPlacement(p)}>
-                <Text style={{ textAlign: 'center', color: bnPlacement === p ? '#fff' : colors.textSecondary, fontWeight: '600', fontSize: 12 }}>{p === 'home' ? (isAr ? 'الرئيسية' : 'Home') : (isAr ? 'المتاجر' : 'Stores')}</Text>
+              <Pressable
+                key={p}
+                style={[
+                  styles.bannerFormPlacementBtn,
+                  {
+                    borderColor: bnPlacement === p ? colors.primary : colors.border,
+                    backgroundColor: bnPlacement === p ? colors.primary : colors.background,
+                  }
+                ]}
+                onPress={() => setBnPlacement(p)}
+              >
+                <Text style={{ color: bnPlacement === p ? '#fff' : colors.textSecondary, fontWeight: '600', fontSize: 12 }}>
+                  {p === 'home' ? (isAr ? '🏠 الرئيسية' : 'Home') : (isAr ? '🏪 المتاجر' : 'Stores')}
+                </Text>
               </Pressable>
             ))}
           </View>
-          <Pressable style={{ paddingVertical: 12, borderRadius: Radius.lg, backgroundColor: colors.primary, opacity: bnSaving ? 0.7 : 1 }} onPress={handleSaveBanner} disabled={bnSaving}>
-            {bnSaving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>{isAr ? 'حفظ' : 'Save'}</Text>}
+          <Pressable style={[styles.bannerFormSave, { backgroundColor: colors.primary, opacity: bnSaving ? 0.7 : 1 }]} onPress={handleSaveBanner} disabled={bnSaving}>
+            {bnSaving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>{isAr ? '💾 حفظ' : '💾 Save'}</Text>}
           </Pressable>
         </View>
       )}
@@ -806,14 +930,94 @@ function BannersTab({ colors, isAr, t }: any) {
         data={banners}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: Spacing.md, paddingBottom: Spacing.xl }}
+        contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} colors={[colors.primary]} tintColor={colors.primary} />
         }
         ListEmptyComponent={
-          <View style={{ alignItems: 'center', padding: 40 }}>
-            <MaterialIcons name="view-carousel" size={44} color={colors.textMuted} />
+          <View style={styles.emptyState}>
+            <MaterialIcons name="view-carousel" size={48} color={colors.textMuted} />
             <Text style={{ color: colors.textMuted, marginTop: 8, fontWeight: '600' }}>{isAr ? 'لا توجد بانرات' : 'No banners'}</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+// ─── Interstitials Tab ────────────────────────────────────────────────────────
+function InterstitialsTab({ colors, isAr, t }: any) {
+  const [interstitials, setInterstitials] = useState<InterstitialAd[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const { showAlert } = useAlert();
+  const abortRef = useRef<AbortController | null>(null);
+
+  const loadData = useCallback(async () => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoading(true);
+    setRefreshing(false);
+    try {
+      const timeout = new Promise((_, reject) => setTimeout(() => { controller.abort(); reject(new Error('TIMEOUT')); }, 15000));
+      const result = await Promise.race([fetchAllInterstitials({ signal: controller.signal }), timeout]);
+      const { data } = result as any;
+      if (controller.signal.aborted) return;
+      setInterstitials(data || []);
+    } catch (err: any) {
+      if (err?.name !== 'AbortError' && err?.message !== 'TIMEOUT') {
+        showAlert(isAr ? 'خطأ' : 'Error', err?.message || (isAr ? 'فشل التحميل' : 'Load failed'));
+      }
+    } finally {
+      setLoading(false);
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  }, [isAr, showAlert]);
+
+  useEffect(() => { loadData(); return () => { if (abortRef.current) abortRef.current.abort(); }; }, []);
+
+  const renderItem = ({ item }: { item: InterstitialAd }) => (
+    <View style={[styles.interCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.interRow}>
+        <View style={[styles.interIcon, { backgroundColor: colors.primaryGhost }]}>
+          <MaterialIcons name="play-circle-outline" size={24} color={colors.primary} />
+        </View>
+        <View style={styles.interInfo}>
+          <Text style={[styles.interTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+            {item.title || (isAr ? 'بدون عنوان' : 'No title')}
+          </Text>
+          <Text style={[styles.interMeta, { color: colors.textMuted }]}>
+            ⏱ {item.duration_seconds}s • {isAr ? 'تخطي بعد' : 'Skip after'} {item.skip_after_seconds}s • {isAr ? 'يظهر بعد' : 'Show after'} {item.show_after_seconds}s
+          </Text>
+        </View>
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.is_active ? '#22C55E' : '#EF4444' }} />
+      </View>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.tabContainer}>
+      <FlatList
+        data={interstitials}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} colors={[colors.primary]} tintColor={colors.primary} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <MaterialIcons name="play-circle-outline" size={48} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, marginTop: 8, fontWeight: '600' }}>{isAr ? 'لا توجد إعلانات بينية' : 'No interstitials'}</Text>
           </View>
         }
       />
@@ -830,37 +1034,49 @@ export default function AdminScreen() {
   const isAr = language === 'ar';
   const { t } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'analytics' | 'ads' | 'users' | 'banners'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'ads' | 'users' | 'banners' | 'interstitials'>('analytics');
 
   const TABS = [
     { key: 'analytics', label: isAr ? '📊 إحصائيات' : 'Analytics', icon: 'insights' },
     { key: 'ads', label: isAr ? '📢 إعلانات' : 'Ads', icon: 'storefront' },
     { key: 'users', label: isAr ? '👤 مستخدمين' : 'Users', icon: 'people' },
     { key: 'banners', label: isAr ? '🖼️ بانرات' : 'Banners', icon: 'view-carousel' },
+    { key: 'interstitials', label: isAr ? '📱 إعلانات بينية' : 'Interstitials', icon: 'play-circle-outline' },
   ];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+    <View style={[styles.mainContainer, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.primary }]}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
+      <View style={[styles.mainHeader, { backgroundColor: colors.primary }]}>
+        <Pressable style={styles.mainBackBtn} onPress={() => router.back()} hitSlop={8}>
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
         </Pressable>
-        <Text style={styles.headerTitle}>{isAr ? '⚙️ لوحة الإدارة' : '⚙️ Admin Panel'}</Text>
+        <Text style={styles.mainHeaderTitle}>{isAr ? '⚙️ لوحة الإدارة' : '⚙️ Admin Panel'}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       {/* تبويبات */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabsContainer}
+      >
         {TABS.map(tab => {
           const isActive = activeTab === tab.key;
           return (
             <Pressable
               key={tab.key}
-              style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radius.full, backgroundColor: isActive ? colors.primary : colors.surfaceTint, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+              style={[
+                styles.tabBtn,
+                {
+                  backgroundColor: isActive ? colors.primary : colors.surfaceTint,
+                }
+              ]}
               onPress={() => setActiveTab(tab.key as any)}
             >
-              <Text style={{ color: isActive ? '#fff' : colors.textSecondary, fontWeight: isActive ? '700' : '500' }}>{tab.label}</Text>
+              <Text style={[styles.tabBtnText, { color: isActive ? '#fff' : colors.textSecondary, fontWeight: isActive ? '700' : '500' }]}>
+                {tab.label}
+              </Text>
             </Pressable>
           );
         })}
@@ -872,21 +1088,79 @@ export default function AdminScreen() {
         {activeTab === 'ads' && <AdsTab colors={colors} isAr={isAr} t={t} />}
         {activeTab === 'users' && <UsersTab colors={colors} isAr={isAr} t={t} />}
         {activeTab === 'banners' && <BannersTab colors={colors} isAr={isAr} t={t} />}
+        {activeTab === 'interstitials' && <InterstitialsTab colors={colors} isAr={isAr} t={t} />}
       </AdminTabErrorBoundary>
     </View>
   );
 }
 
+// ─── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
+  // Error Boundary
+  errorFallback: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  errorFallbackText: {
+    color: '#EF4444',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  errorFallbackSub: {
+    color: '#6B7280',
+    fontSize: 12,
+    marginTop: 4,
+  },
+
+  // Common
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  tabContainer: {
+    flex: 1,
+  },
+  listContent: {
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.xl,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.md,
+    margin: Spacing.md,
+    height: 48,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FontSize.md,
+    height: '100%',
+  },
+
+  // Main
+  mainContainer: {
+    flex: 1,
+  },
+  mainHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  backBtn: {
+  mainBackBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -894,11 +1168,498 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
+  mainHeaderTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#fff',
     flex: 1,
     textAlign: 'center',
+  },
+  tabsContainer: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  tabBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+  },
+  tabBtnText: {
+    fontSize: FontSize.sm,
+  },
+
+  // Analytics
+  analyticsContainer: {
+    padding: Spacing.md,
+    gap: Spacing.md,
+    paddingBottom: 40,
+  },
+  analyticsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+  },
+  lastUpdated: {
+    fontSize: 10,
+  },
+  statsGrid3: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: Spacing.sm,
+    alignItems: 'center',
+  },
+  statIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  statLabel: {
+    fontSize: 10,
+    textAlign: 'center',
+  },
+  statsGrid2: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  statCardSmall: {
+    flex: 1,
+    minWidth: '47%',
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  statIconSmall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statContentSmall: {
+    flex: 1,
+  },
+  statValueSmall: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  statLabelSmall: {
+    fontSize: 9,
+  },
+  pageStatsCard: {
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  pageStatsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  pageStatsTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    flex: 1,
+  },
+  pageStatsHeaders: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  pageStatsHeaderLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  pageStatsEmpty: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  pageStatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: Spacing.md,
+    gap: 12,
+  },
+  pageStatIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageStatName: {
+    flex: 1,
+    fontSize: FontSize.sm,
+    fontWeight: '600',
+  },
+  pageStatUnique: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  pageStatTotal: {
+    fontSize: FontSize.sm,
+    fontWeight: '600',
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  noteBox: {
+    borderRadius: Radius.lg,
+    padding: Spacing.sm,
+    borderWidth: 1,
+  },
+  noteText: {
+    fontSize: 10,
+    textAlign: 'center',
+  },
+
+  // Ad Card
+  adCard: {
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  adHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  adTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    flex: 1,
+  },
+  adStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  adStatusText: {
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  adMeta: {
+    fontSize: FontSize.xs,
+    marginTop: 2,
+  },
+  adActions: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 8,
+    flexWrap: 'wrap',
+  },
+  adActionBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  adBoostedDate: {
+    fontSize: 9,
+    marginTop: 4,
+  },
+
+  // User Card
+  userCard: {
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  userAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userAvatarText: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+  },
+  userEmail: {
+    fontSize: FontSize.xs,
+  },
+  userBadges: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+    flexWrap: 'wrap',
+  },
+  userBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  userBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  userActions: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    flexWrap: 'wrap',
+  },
+  userActionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+
+  // Banner
+  bannerCard: {
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  bannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  bannerImage: {
+    width: 56,
+    height: 44,
+    borderRadius: Radius.md,
+  },
+  bannerImagePlaceholder: {
+    width: 56,
+    height: 44,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerInfo: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+  },
+  bannerPlacementText: {
+    fontSize: FontSize.xs,
+  },
+  bannerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  addBtn: {
+    margin: Spacing.md,
+    paddingVertical: 12,
+    borderRadius: Radius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  addBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  bannerForm: {
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  bannerFormHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  bannerFormTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+  },
+  bannerFormInput: {
+    borderWidth: 1.5,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+    fontSize: FontSize.sm,
+  },
+  bannerFormRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
+  bannerFormInputFlex: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    fontSize: FontSize.sm,
+  },
+  bannerFormUpload: {
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    borderRadius: Radius.md,
+  },
+  bannerFormPlacement: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
+  bannerFormPlacementBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    alignItems: 'center',
+  },
+  bannerFormSave: {
+    paddingVertical: 12,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+  },
+
+  // Interstitial
+  interCard: {
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  interRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  interIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  interInfo: {
+    flex: 1,
+  },
+  interTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+  },
+  interMeta: {
+    fontSize: FontSize.xs,
+  },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: Spacing.lg,
+    maxHeight: '90%',
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: 1,
+    paddingBottom: Spacing.md,
+  },
+  modalTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: '700',
+    flex: 1,
+  },
+  modalContent: {
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+  },
+  modalField: {
+    gap: 4,
+  },
+  modalLabel: {
+    fontSize: FontSize.sm,
+    fontWeight: '600',
+  },
+  modalInput: {
+    borderWidth: 1.5,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    fontSize: FontSize.sm,
+  },
+  modalConditionRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  modalConditionBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    alignItems: 'center',
+  },
+  modalSaveBtn: {
+    marginTop: Spacing.sm,
+    paddingVertical: 14,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+  },
+  modalSaveBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: FontSize.md,
   },
 });
