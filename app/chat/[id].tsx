@@ -21,7 +21,7 @@ import { updateAdStatus } from '@/services/adsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { v4 as uuidv4 } from 'uuid';
+import { generateUUID } from '@/services/chatService';
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢'] as const;
 type ReactionEmoji = typeof REACTION_EMOJIS[number];
