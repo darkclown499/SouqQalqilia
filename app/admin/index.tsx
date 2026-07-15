@@ -56,6 +56,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchStats = useCallback(async () => {
+    setLoading(false); return; // إيقاف التحميل فوراً
     try {
       const supabase = getSupabaseClient();
       const now = new Date();
@@ -104,7 +105,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         fetchAllPageStats(),
         fetchGeneralStats(),
       ]);
-      setPageStats(pages);
+      setPageStats(pages || []);
       setGeneralStats(general);
       setLastUpdated(new Date());
     } catch (err) {
@@ -249,7 +250,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       </View>
 
       {/* ── PAGE STATS SECTION (جديد) ── */}
-      {pageStats.length > 0 ? (
+      {(pageStats || []).length > 0 ? (
         <View style={[anS.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[anS.pageStatsHeader, { borderBottomColor: colors.borderLight }]}>
             <MaterialIcons name="analytics" size={20} color={colors.primary} />
@@ -257,7 +258,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
               {isAr ? 'إحصائيات الصفحات' : 'Page Statistics'}
             </Text>
           </View>
-          {pageStats.map(stat => {
+          {(pageStats || []).map(stat => {
             const pageName = isAr
               ? stat.page === 'home' ? 'الصفحة الرئيسية'
               : stat.page === 'stores' ? 'صفحة المتاجر'
