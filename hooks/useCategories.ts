@@ -1,9 +1,32 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchCategories, Category } from '@/services/categoriesService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetchCategories, Category } from '@/services/categoriesService';
 
 const CACHE_KEY = 'categories_cache_v1';
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+interface CategoriesCache {
+  data: Category[];
+  fetchedAt: number;
+}
+
+async function loadCache(): Promise<CategoriesCache | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed: CategoriesCache = JSON.parse(raw);
+    if (Date.now() - parsed.fetchedAt > CACHE_TTL_MS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function saveCache(data: Category[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ data, fetchedAt: Date.now() }));
+  } catch { /* non-critical */ }
+}
 
 export function useCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -17,39 +40,51 @@ export function useCategories() {
   }, []);
 
   const load = useCallback(async () => {
-    // Load from cache first for instant display
-    try {
-      const raw = await AsyncStorage.getItem(CACHE_KEY);
-      if (raw) {
-        const { data, fetchedAt } = JSON.parse(raw);
-        if (Date.now() - fetchedAt < CACHE_TTL_MS && data?.length > 0) {
-          if (isMounted.current) {
-            setCategories(data);
-            setLoading(false);
-          }
-        }
-      }
-    } catch { /* ignore cache errors */ }
+    if (!isMounted.current) return;
+    setLoading(true);
+    setError(null);
 
-    // Fetch fresh data
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      const { data, error } = await fetchCategories();
-      clearTimeout(timeout);
-      if (isMounted.current) {
-        if (!error && data.length > 0) {
+    // Show cached data immediately
+    const cached = await loadCache();
+    if (cached && isMounted.current) {
+      setCategories(cached.data);
+      setLoading(false);
+      // Still refresh in the background
+      fetchCategories().then(({ data, error: fetchError }) => {
+        if (!isMounted.current) return;
+        if (!fetchError && data.length > 0) {
           setCategories(data);
-          AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ data, fetchedAt: Date.now() })).catch(() => {});
+          saveCache(data);
         }
-        setError(error);
-        setLoading(false);
+      }).catch(() => {});
+      return;
+    }
+
+    // No cache, do fresh fetch with timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const { data, error: fetchError } = await fetchCategories();
+      clearTimeout(timeout);
+      if (!isMounted.current) return;
+      if (fetchError) {
+        setError(fetchError);
+      } else {
+        setCategories(data);
+        setError(null);
+        saveCache(data);
       }
     } catch (e: any) {
-      if (isMounted.current) {
+      clearTimeout(timeout);
+      if (!isMounted.current) return;
+      if (e.name === 'AbortError') {
+        setError('Request timed out. Please check your connection.');
+      } else {
         setError(e?.message ?? 'Failed to load categories');
-        setLoading(false);
       }
+    } finally {
+      if (isMounted.current) setLoading(false);
     }
   }, []);
 

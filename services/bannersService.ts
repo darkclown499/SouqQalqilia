@@ -77,15 +77,18 @@ export async function preloadBanners(): Promise<void> {
 
 /** Fetch active banners for a specific placement */
 export async function fetchActiveBanners(
-  placement: BannerPlacement = 'home'
+  placement: BannerPlacement = 'home',
+  options?: { signal?: AbortSignal }
 ): Promise<{ data: Banner[]; error: string | null }> {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('banners')
     .select('*')
     .eq('is_active', true)
     .eq('placement', placement)
     .order('position', { ascending: true });
+  if (options?.signal) query = query.abortSignal(options.signal);
+  const { data, error } = await query;
   if (error) return { data: [], error: error.message };
   return { data: data as Banner[], error: null };
 }

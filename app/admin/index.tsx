@@ -16,19 +16,21 @@ import {
   adminSetAdFeatured, adminFetchAllUsers, adminSetUserBlocked,
   adminBoostAd, adminSetUserAdmin, adminSetUserVerified, UserProfile,
 } from '@/services/adminService';
-import {
-  fetchAllBanners, createBanner, deleteBanner, toggleBannerActive, updateBanner, Banner, BannerPlacement,
-} from '@/services/bannersService';
+import { fetchAllBanners, createBanner, deleteBanner, toggleBannerActive, updateBanner, Banner, BannerPlacement } from '@/services/bannersService';
 import {
   fetchAllInterstitials, createInterstitial, updateInterstitial, deleteInterstitial, InterstitialAd,
 } from '@/services/interstitialService';
-import { adminFetchAllStores, adminCreateStore, adminUpdateStore, adminDeleteStore, Store } from '@/services/storesService';
+import {
+  adminFetchAllStores, adminCreateStore, adminUpdateStore, adminDeleteStore, Store,
+} from '@/services/storesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { Image } from 'expo-image';
 import { useCategories } from '@/hooks/useCategories';
 import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 import { getSupabaseClient } from '@/template';
+import { fetchAllActiveStores } from '@/services/storesService';
+import { fetchAllActiveAds } from '@/services/adsService';
 import { fetchPageStats, fetchGeneralStats, fetchAllPageStats, PageStats, GeneralStats } from '@/services/analyticsService';
 
 // ── Analytics Stats Component ──────────────────────────────────────────────

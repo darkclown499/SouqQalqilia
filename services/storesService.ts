@@ -30,8 +30,6 @@ export interface Store {
 }
 
 // ── Live status helper ────────────────────────────────────────────────────────
-// Returns true if the current device time is between opening_time and closing_time.
-// Handles overnight ranges (e.g. 22:00 – 02:00) correctly.
 export function checkStoreIsOpen(store: Pick<Store, 'opening_time' | 'closing_time'>): boolean {
   const { opening_time, closing_time } = store;
   if (!opening_time || !closing_time) return true;
@@ -43,8 +41,10 @@ export function checkStoreIsOpen(store: Pick<Store, 'opening_time' | 'closing_ti
   return open <= close ? (cur >= open && cur < close) : (cur >= open || cur < close);
 }
 
-// ── Fetch up to 15 featured stores (shuffled client-side) ───────────────────
-export async function fetchFeaturedStores(): Promise<{ data: Store[]; error: string | null }> {
+// ── Fetch up to 15 featured stores (with optional AbortSignal) ───────────────
+export async function fetchFeaturedStores(
+  options?: { signal?: AbortSignal }
+): Promise<{ data: Store[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('stores')
@@ -52,10 +52,11 @@ export async function fetchFeaturedStores(): Promise<{ data: Store[]; error: str
     .eq('is_active', true)
     .eq('is_featured', true)
     .order('position', { ascending: true })
-    .limit(15);
+    .limit(15)
+    .abortSignal(options?.signal ?? null);
   if (error) return { data: [], error: error.message };
-  // Fisher-Yates shuffle on the client
   const arr = (data ?? []) as Store[];
+  // Fisher-Yates shuffle
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
@@ -107,13 +108,10 @@ export async function adminDeleteStore(id: string): Promise<{ error: string | nu
 }
 
 // ── Fetch ALL active + approved stores (for grouped feed) ─────────────────────
-// Filters ONLY on is_approved so stores set is_active = true during registration
-// are visible immediately after admin approval.
 export async function fetchAllActiveStores(): Promise<{ data: Store[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('stores')
-    // alias as store_category so grouping logic can use store.store_category directly
     .select('*, store_category:store_categories(id, name, name_ar, icon, color, slug, position, image_url, is_active, created_at)')
     .eq('is_approved', true)
     .order('position', { ascending: true });

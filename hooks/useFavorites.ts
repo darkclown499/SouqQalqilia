@@ -12,15 +12,27 @@ export function useFavoriteIds() {
   const [loading, setLoading] = useState(false);
   // Guard against double-tap during async toggle
   const togglingRef = React.useRef(new Set<string>());
+  const isMounted = useRef(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data } = await fetchMyFavoriteIds();
-    setIds(new Set(data));
-    setLoading(false);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
   }, []);
 
-  useEffect(() => { load(); }, []);
+  const load = useCallback(async () => {
+    if (!isMounted.current) return;
+    setLoading(true);
+    try {
+      const { data } = await fetchMyFavoriteIds();
+      if (isMounted.current) setIds(new Set(data));
+    } catch (e) {
+      // silent — favorites are non-critical
+    } finally {
+      if (isMounted.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const toggle = useCallback(async (adId: string) => {
     // Prevent concurrent double-tap on the same ad
@@ -28,7 +40,6 @@ export function useFavoriteIds() {
     togglingRef.current.add(adId);
 
     // Read the CURRENT state inside the functional updater to avoid stale closures
-    // on rapid multi-ad toggling (W2 fix)
     let wasFav = false;
     setIds(prev => {
       wasFav = prev.has(adId);
@@ -38,8 +49,7 @@ export function useFavoriteIds() {
       return next;
     });
 
-    // Yield to the event loop so the state update above is flushed before the
-    // async network call, ensuring wasFav reflects the freshest snapshot.
+    // Yield to let the state update flush
     await Promise.resolve();
 
     const { error } = await toggleFavorite(adId, wasFav);
@@ -53,7 +63,7 @@ export function useFavoriteIds() {
         return next;
       });
     }
-  }, []);  // no dependency on `ids` — always reads latest via functional updater
+  }, []);
 
   return { ids, loading, toggle, reload: load };
 }
@@ -63,16 +73,30 @@ export function useFavoriteAds() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMounted = useRef(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await fetchMyFavoriteAds();
-    setAds(data);
-    setError(error);
-    setLoading(false);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
   }, []);
 
-  useEffect(() => { load(); }, []);
+  const load = useCallback(async () => {
+    if (!isMounted.current) return;
+    setLoading(true);
+    try {
+      const { data, error: fetchError } = await fetchMyFavoriteAds();
+      if (isMounted.current) {
+        setAds(data);
+        setError(fetchError);
+      }
+    } catch (e: any) {
+      if (isMounted.current) setError(e?.message ?? 'Failed to load favorites');
+    } finally {
+      if (isMounted.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   return { ads, loading, error, load };
 }

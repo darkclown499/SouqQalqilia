@@ -5,14 +5,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
 
 // ── Module-level ads cache ────────────────────────────────────────────────────
-// Populated by preloadAds() called from _layout.tsx right after auth.
-// Home screen reads this immediately → zero loading delay on first visit.
 export interface AdsCache {
   data: Ad[];
   fetchedAt: number;
 }
 let _adsCache: AdsCache | null = null;
-export const CACHE_TTL_MS = 90_000; // 90 seconds — exported for useAds AppState guard
+export const CACHE_TTL_MS = 90_000; // 90 seconds
 
 export function getAdsCache(): AdsCache | null {
   if (!_adsCache) return null;
@@ -28,8 +26,6 @@ export function setAdsCache(data: Ad[]): void {
 }
 
 // ── Cache invalidation listeners ─────────────────────────────────────────────
-// Any component can subscribe to be notified when the cache is cleared
-// (e.g. after a boost/edit), allowing instant feed refresh without polling.
 type CacheListener = () => void;
 const _cacheListeners = new Set<CacheListener>();
 
@@ -40,14 +36,9 @@ export function subscribeToCacheInvalidation(cb: CacheListener): () => void {
 
 export function clearAdsCache(): void {
   _adsCache = null;
-  // Notify all subscribers immediately
   _cacheListeners.forEach(cb => { try { cb(); } catch {} });
 }
 
-/**
- * Extract all image URLs from an ad array (up to `maxAds` ads × all images).
- * Returns a flat array of non-empty URL strings.
- */
 function extractImageUrls(ads: Ad[], maxAds = 50): string[] {
   const urls: string[] = [];
   ads.slice(0, maxAds).forEach(ad => {
@@ -57,68 +48,32 @@ function extractImageUrls(ads: Ad[], maxAds = 50): string[] {
   return urls;
 }
 
-/**
- * Load recently-viewed ads from AsyncStorage and extract their image URLs.
- * Silently returns [] on any error so it never blocks the startup pipeline.
- */
 async function loadRecentlyViewedUrls(): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
     if (!raw) return [];
     const recentAds: Ad[] = JSON.parse(raw);
-    return extractImageUrls(recentAds, recentAds.length); // prefetch all recently-viewed
+    return extractImageUrls(recentAds, recentAds.length);
   } catch {
     return [];
   }
 }
 
-/**
- * Prefetch ALL product image URLs into expo-image memory+disk cache.
- *
- * Combines:
- *   • Up to 50 main-feed ad images (boosted/featured first)
- *   • Recently-viewed ad images from AsyncStorage (so the 'Last Viewed'
- *     horizontal strip also renders instantly without grey placeholders)
- *
- * Deduplicates the combined set before issuing a single native batch call.
- * Awaited by the splash pipeline so the screen hides AFTER assets are cached.
- */
 async function prefetchAdImages(feedAds: Ad[], recentUrls: string[]): Promise<void> {
-  const feedUrls = extractImageUrls(feedAds, 50); // expanded to 50
-
-  // Merge + deduplicate: Set preserves insertion order, feed URLs first
+  const feedUrls = extractImageUrls(feedAds, 50);
   const combined = Array.from(new Set([...feedUrls, ...recentUrls]));
   if (combined.length === 0) return;
-
   try {
-    // 'memory-disk': cache to both layers so AdCard renders from RAM during
-    // fast scrolling without re-decoding from disk each time.
     await Image.prefetch(combined, 'memory-disk');
-  } catch {
-    // Partial failure is acceptable — images stream lazily on first view
-  }
+  } catch { /* partial failure acceptable */ }
 }
 
-/** Preload first page of ads into cache — awaited during startup pipeline.
- *
- * Fetches up to 50 ads (boosted/featured first) and combines their image
- * URLs with recently-viewed ad images from AsyncStorage before issuing a
- * single, deduplicated Image.prefetch() call. The splash screen stays
- * visible until every asset hits the memory+disk cache.
- */
 export async function preloadAds(): Promise<void> {
-  // Kick off recently-viewed hydration in parallel with the API fetch
-  // so neither waits for the other unnecessarily.
   const [{ data }, recentUrls] = await Promise.all([
     fetchAds({ limit: 50, offset: 0, sortBy: 'boosted' }),
     loadRecentlyViewedUrls(),
   ]);
-
-  if (data.length > 0) {
-    setAdsCache(data);
-  }
-
-  // Always prefetch even if cache was already warm (recently-viewed may differ)
+  if (data.length > 0) setAdsCache(data);
   await prefetchAdImages(data, recentUrls);
 }
 
@@ -162,15 +117,6 @@ export interface CreateAdInput {
   condition: 'new' | 'used';
 }
 
-/** Fetch latest active ads (with category + first image only), boosted ads first.
- *
- * Strategy for absolute boosted pinning:
- *   1. Fetch ALL currently-active boosted ads (no limit) — these always lead the list.
- *   2. Fetch regular (non-boosted) ads with pagination offset adjusted to exclude boosts.
- *   3. Merge: boosts first (sorted by furthest expiry), then regular ads.
- *
- * This guarantees boosted ads stay at the top regardless of how many new ads are posted.
- */
 export async function fetchAds(params?: {
   categoryId?: string;
   userId?: string;
@@ -189,7 +135,6 @@ export async function fetchAds(params?: {
   const sortBy = params?.sortBy ?? 'newest';
   const now = new Date().toISOString();
 
-  // Shared select fragment
   const SELECT = `
     id, user_id, category_id, title, description, price, location, phone_number, condition,
     status, views, created_at, boosted_until, serial_number, ad_type,
@@ -197,7 +142,6 @@ export async function fetchAds(params?: {
     ad_images(id, url, position, blurhash)
   `;
 
-  // ── Helper: apply common filters to a query ───────────────────────────────
   function applyFilters(q: any) {
     if (params?.categoryId) q = q.eq('category_id', params.categoryId);
     if (params?.userId)     q = q.eq('user_id', params.userId);
@@ -212,7 +156,6 @@ export async function fetchAds(params?: {
     return q;
   }
 
-  // For price sorts we use the original single-query path (price order takes precedence)
   if (sortBy === 'price_asc' || sortBy === 'price_desc') {
     let query = supabase
       .from('ads')
@@ -228,14 +171,6 @@ export async function fetchAds(params?: {
     return { data: data as Ad[], error: null };
   }
 
-  // ── Two-query approach for default / boosted sort ────────────────────────
-  //
-  // QUERY A: All currently-active boosts (boosted_until > now).
-  //          Only fetch on first page (offset === 0) to avoid duplicating boosted
-  //          ads on every subsequent "Load More" page.
-  //          No pagination — we always show ALL active boosts at the top of page 1.
-  // QUERY B: Non-boosted ads (no active boost), paginated.
-  //          offset is adjusted so page 2+ skips past the right number of regular ads.
   let regularQuery = supabase
     .from('ads')
     .select(SELECT)
@@ -243,11 +178,10 @@ export async function fetchAds(params?: {
     .or(`boosted_until.is.null,boosted_until.lte.${now}`);
   regularQuery = applyFilters(regularQuery);
   regularQuery = regularQuery
-    .order('status', { ascending: false })      // featured before active
-    .order('created_at', { ascending: false })  // newest first within group
+    .order('status', { ascending: false })
+    .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  // Only fetch boosts on the first page — prevents duplicate boost cards on "Load More"
   if (offset === 0) {
     let boostQuery = supabase
       .from('ads')
@@ -255,14 +189,13 @@ export async function fetchAds(params?: {
       .in('status', ['active', 'featured'])
       .gt('boosted_until', now);
     boostQuery = applyFilters(boostQuery);
-    boostQuery = boostQuery.order('boosted_until', { ascending: false }); // furthest expiry first
+    boostQuery = boostQuery.order('boosted_until', { ascending: false });
 
     const [{ data: boosts, error: bErr }, { data: regulars, error: rErr }] =
       await Promise.all([boostQuery, regularQuery]);
 
     if (bErr && rErr) return { data: [], error: bErr.message };
 
-    // Merge: boosts (sorted by expiry) then regular ads (deduplicate overlap)
     const boostIds = new Set((boosts ?? []).map((b: any) => b.id));
     const merged = [
       ...((boosts ?? []) as Ad[]),
@@ -271,13 +204,28 @@ export async function fetchAds(params?: {
     return { data: merged, error: rErr?.message ?? null };
   }
 
-  // Pages 2+ — only regular (non-boosted) ads
   const { data: regulars, error: rErr } = await regularQuery;
   if (rErr) return { data: [], error: rErr.message };
   return { data: (regulars ?? []) as Ad[], error: null };
 }
 
-/** Fetch a single ad by ID */
+/** Fetch ALL active ads (used by admin panel) */
+export async function fetchAllActiveAds(): Promise<{ data: Ad[]; error: string | null }> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('ads')
+    .select(`
+      id, user_id, category_id, title, description, price, location, phone_number, condition,
+      status, views, created_at, boosted_until, serial_number, ad_type,
+      categories(id, name, name_ar, icon, color),
+      ad_images(id, url, position, blurhash)
+    `)
+    .in('status', ['active', 'featured'])
+    .order('created_at', { ascending: false });
+  if (error) return { data: [], error: error.message };
+  return { data: data as Ad[], error: null };
+}
+
 export async function fetchAdById(id: string): Promise<{ data: Ad | null; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -291,13 +239,10 @@ export async function fetchAdById(id: string): Promise<{ data: Ad | null; error:
     .eq('id', id)
     .single();
   if (error) return { data: null, error: error.message };
-  // Increment views
-  // Use atomic RPC to avoid race condition when multiple users open the same ad simultaneously
   Promise.resolve(supabase.rpc('increment_ad_views', { ad_id: id })).catch(() => {});
   return { data: data as Ad, error: null };
 }
 
-/** Fetch ads by current user */
 export async function fetchMyAds(): Promise<{ data: Ad[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -313,7 +258,6 @@ export async function fetchMyAds(): Promise<{ data: Ad[]; error: string | null }
   return { data: data as Ad[], error: null };
 }
 
-/** Create a new ad */
 export async function createAd(
   input: CreateAdInput
 ): Promise<{ data: Ad | null; error: string | null }> {
@@ -321,7 +265,6 @@ export async function createAd(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: null, error: 'Not authenticated' };
 
-  // Ensure user_profiles row exists (trigger may have failed for some users)
   const { data: profile } = await supabase
     .from('user_profiles')
     .select('id')
@@ -329,7 +272,6 @@ export async function createAd(
     .maybeSingle();
 
   if (!profile) {
-    // Re-create missing profile so the FK constraint is satisfied
     await supabase.from('user_profiles').upsert({
       id: user.id,
       email: user.email ?? '',
@@ -343,12 +285,10 @@ export async function createAd(
     .select()
     .single();
   if (error) return { data: null, error: error.message };
-  // Invalidate cache so the new ad appears in the home feed immediately
   clearAdsCache();
   return { data: data as Ad, error: null };
 }
 
-/** Save image URLs for an ad */
 export async function saveAdImages(
   adId: string,
   urls: string[],
@@ -365,7 +305,6 @@ export async function saveAdImages(
   return { error: error ? error.message : null };
 }
 
-/** Mark ad as sold or deleted — also clears the ads cache so home screen refreshes */
 export async function updateAdStatus(
   adId: string,
   status: 'active' | 'sold' | 'deleted' | 'featured',
@@ -375,11 +314,10 @@ export async function updateAdStatus(
   const updates: any = { status };
   if (boostedUntil !== undefined) updates.boosted_until = boostedUntil;
   const { error } = await supabase.from('ads').update(updates).eq('id', adId);
-  if (!error) clearAdsCache(); // Force home screen to reload fresh data
+  if (!error) clearAdsCache();
   return { error: error ? error.message : null };
 }
 
-/** Update editable fields of an ad (owner only via RLS) */
 export async function updateAd(
   adId: string,
   updates: Partial<Pick<Ad, 'title' | 'description' | 'price' | 'location' | 'category_id' | 'condition' | 'phone_number'>>
@@ -393,7 +331,6 @@ export async function updateAd(
   return { error: error ? error.message : null };
 }
 
-/** Report a listing */
 export async function reportAd(
   adId: string,
   reason: string
@@ -402,14 +339,12 @@ export async function reportAd(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: 'Not authenticated' };
 
-  // Ensure user_profiles row exists before inserting report (FK constraint)
   await supabase.from('user_profiles').upsert({
     id: user.id,
     email: user.email ?? '',
     username: user.user_metadata?.username ?? user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? '',
   }, { onConflict: 'id', ignoreDuplicates: true });
 
-  // Upsert prevents duplicate-constraint errors if user tries to report twice
   const { error } = await supabase
     .from('reports')
     .upsert(

@@ -1,5 +1,8 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, ActivityIndicator, Linking } from 'react-native';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, Pressable, Dimensions,
+  ActivityIndicator, Linking, RefreshControl,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -7,209 +10,144 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as WebBrowser from 'expo-web-browser';
 import { fetchOfferCategories, OfferCategory } from '@/services/offerCategoriesService';
-import { trackPageView } from '@/services/analyticsService'; // ✅ استيراد تتبع الصفحات
+import { trackPageView } from '@/services/analyticsService';
+import { getSupabaseClient } from '@/template';
+import { Ad } from '@/services/adsService';
+import { useTheme } from '@/hooks/useTheme';
+import { useLanguage } from '@/hooks/useLanguage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const VIP_WIDTH = SCREEN_WIDTH - 24;
 
-const VIP_OFFERS = [
-  {
-    id: 'vip-1',
-    storeName: 'الراعي الرسمي',
-    title: 'مهرجان تحطيم الأسعار - خصومات تصل لـ 70% على كل الأقسام!',
-    image: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?q=80&w=1000&auto=format&fit=crop',
-    productId: 'ad-001',
-    storeId: 'store-001',
-    url: 'whatsapp://send?phone=+970590000000&text=مرحبا، شفت عرض الـ VIP بسوق قلقيلية وبدي أستفسر!'
-  },
-  {
-    id: 'vip-2',
-    storeName: 'معرض الإلكترونيات',
-    title: 'أقوى أجهزة اللابتوب بأسعار حصرية لفترة محدودة 💻',
-    image: 'https://images.unsplash.com/photo-1531297172868-942cece06ac1?q=80&w=1000&auto=format&fit=crop',
-    url: 'https://www.apple.com'
-  },
-  {
-    id: 'vip-3',
-    storeName: 'بوتيك الأناقة',
-    title: 'اشتري قطعة واحصل على الثانية مجاناً الآن 🎁',
-    image: 'https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=1000&auto=format&fit=crop',
-    url: 'https://www.zara.com'
+// ── Countdown helper ──────────────────────────────────────────────────────────
+function getCountdownText(boostedUntil: string, isAr: boolean): string {
+  const diff = new Date(boostedUntil).getTime() - Date.now();
+  if (diff <= 0) return '';
+  const totalMins = Math.floor(diff / 60000);
+  const days = Math.floor(totalMins / 1440);
+  const hours = Math.floor((totalMins % 1440) / 60);
+  const mins = totalMins % 60;
+  if (isAr) {
+    if (days > 0) return `🔥 ينتهي خلال ${days} يوم${hours > 0 ? ` و${hours} ساعة` : ''}`;
+    if (hours > 0) return `🔥 ينتهي خلال ${hours} ساعة${mins > 0 ? ` و${mins} دقيقة` : ''}`;
+    return `🔥 ينتهي خلال ${mins} دقيقة`;
+  } else {
+    if (days > 0) return `🔥 Ends in ${days}d${hours > 0 ? ` ${hours}h` : ''}`;
+    if (hours > 0) return `🔥 Ends in ${hours}h${mins > 0 ? ` ${mins}m` : ''}`;
+    return `🔥 Ends in ${mins}m`;
   }
-];
-
-const DUMMY_OFFERS = [
-  // ── مطاعم ──
-  {
-    id: '1',
-    storeName: 'KFC',
-    title: 'وجبة عائلية بروستد + بطاطس + مشروبات بسعر ٥٥ شيكل!',
-    category: 'مطاعم',
-    height: 220,
-    image: 'https://images.unsplash.com/photo-1562967914-608f82629710?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-001',
-    storeId: 'store-001',
-    url: 'whatsapp://send?phone=+970590000000&text=مرحبا، بدي أطلب وجبة العائلة'
-  },
-  {
-    id: '2',
-    storeName: 'إيلورا',
-    title: 'وجبات صحية وسلطات طازجة بأسعار منافسة 🥗',
-    category: 'مطاعم',
-    height: 200,
-    image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-002',
-    storeId: 'store-002',
-    url: 'whatsapp://send?phone=+970590000001&text=مرحبا، بدي أطلب من إيلورا'
-  },
-  {
-    id: '3',
-    storeName: 'مطعم البيك',
-    title: 'وجبة التوفير العائلية - دجاج + بطاطس + خبز بسعر ٤٠ شيكل',
-    category: 'مطاعم',
-    height: 280,
-    image: 'https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-003',
-    storeId: 'store-003',
-    url: 'whatsapp://send?phone=+970590000002&text=مرحبا، بدي وجبة العائلة'
-  },
-
-  // ── سوبرماركت ──
-  {
-    id: '4',
-    storeName: 'سوبرماركت التوفير',
-    title: 'خصم ٥٠٪ على المنظفات والمطهرات! عرض لفترة محدودة 🧹',
-    category: 'سوبرماركت',
-    height: 180,
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-004',
-    storeId: 'store-004',
-    url: 'whatsapp://send?phone=+970590000003&text=مرحبا، بدي أستفسر عن عروض المنظفات'
-  },
-  {
-    id: '5',
-    storeName: 'سوبرماركت العائلة',
-    title: 'عرض خاص: ٢+١ مجاناً على جميع المواد الغذائية 🛒',
-    category: 'سوبرماركت',
-    height: 200,
-    image: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-005',
-    storeId: 'store-005',
-    url: 'whatsapp://send?phone=+970590000004&text=مرحبا، بدي أستفسر عن العرض'
-  },
-
-  // ── إلكترونيات ──
-  {
-    id: '6',
-    storeName: 'معرض الإلكترونيات',
-    title: 'لابتوبات HP و Dell بأسعار حرق 🔥 خصم يصل لـ ٣٠٪',
-    category: 'إلكترونيات',
-    height: 190,
-    image: 'https://images.unsplash.com/photo-1531297172868-942cece06ac1?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-006',
-    storeId: 'store-006',
-    url: 'whatsapp://send?phone=+970590000005&text=مرحبا، بدي أستفسر عن عروض اللابتوبات'
-  },
-  {
-    id: '7',
-    storeName: 'أجهزة المستقبل',
-    title: 'هواتف ذكية وأجهزة لوحية بأفضل الأسعار 📱',
-    category: 'إلكترونيات',
-    height: 170,
-    image: 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-007',
-    storeId: 'store-007',
-    url: 'whatsapp://send?phone=+970590000006&text=مرحبا، بدي أستفسر عن عروض الهواتف'
-  },
-
-  // ── ملابس ──
-  {
-    id: '8',
-    storeName: 'بوتيك الأناقة',
-    title: 'تشكيلة الصيف ٢٠٢٦ وصلت! خصومات تصل لـ ٤٠٪ 👗',
-    category: 'ملابس',
-    height: 220,
-    image: 'https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-008',
-    storeId: 'store-008',
-    url: 'whatsapp://send?phone=+970590000007&text=مرحبا، بدي أستفسر عن تشكيلة الصيف'
-  },
-  {
-    id: '9',
-    storeName: 'موضة الشباب',
-    title: 'أحذية وشنط أصلية بأسعار المصنع 🎒',
-    category: 'ملابس',
-    height: 190,
-    image: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-009',
-    storeId: 'store-009',
-    url: 'whatsapp://send?phone=+970590000008&text=مرحبا، بدي أستفسر عن الأحذية'
-  },
-
-  // ── مستحضرات تجميل (جديد) ──
-  {
-    id: '10',
-    storeName: 'صيدلية الشفاء',
-    title: 'مستحضرات تجميل أصلية من أفضل الماركات العالمية 💄',
-    category: 'مستحضرات تجميل',
-    height: 200,
-    image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-010',
-    storeId: 'store-010',
-    url: 'whatsapp://send?phone=+970590000009&text=مرحبا، بدي أستفسر عن عروض التجميل'
-  },
-
-  // ── خضروات وفواكه (جديد) ──
-  {
-    id: '11',
-    storeName: 'سوق الخضار المركزي',
-    title: 'خضروات وفواكه طازجة يومياً من المزارع 🍎🥬',
-    category: 'خضروات وفواكه',
-    height: 190,
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-011',
-    storeId: 'store-011',
-    url: 'whatsapp://send?phone=+970590000010&text=مرحبا، بدي أستفسر عن الخضروات الطازجة'
-  },
-
-  // ── زينة وهدايا (جديد) ──
-  {
-    id: '12',
-    storeName: 'زينة وهدايا',
-    title: 'هدايا وأفكار مميزة للمناسبات 🎁🎈',
-    category: 'زينة وهدايا',
-    height: 210,
-    image: 'https://images.unsplash.com/photo-1513885535751-8b9238bd345a?q=80&w=600&auto=format&fit=crop',
-    productId: 'ad-012',
-    storeId: 'store-012',
-    url: 'whatsapp://send?phone=+970590000011&text=مرحبا، بدي أستفسر عن الهدايا'
-  },
-];
+}
 
 export default function OffersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  
-  const [activeCategory, setActiveCategory] = useState('الكل');
+  const { colors } = useTheme();
+  const { language } = useLanguage();
+  const isAr = language === 'ar';
+
+  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [offerCategories, setOfferCategories] = useState<OfferCategory[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+  const [boostedAds, setBoostedAds] = useState<Ad[]>([]);
+  const [loadingAds, setLoadingAds] = useState(true);
+  const [adError, setAdError] = useState<string | null>(null);
+
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [currentVipIndex, setCurrentVipIndex] = useState(0);
+
+  // ── Fetch boosted ads from backend ───────────────────────────────────────
+  const fetchBoostedAds = useCallback(async () => {
+    setAdError(null);
+    setLoadingAds(true);
+    try {
+      const supabase = getSupabaseClient();
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from('ads')
+        .select(`
+          id, user_id, category_id, title, description, price, location,
+          phone_number, condition, status, views, created_at, boosted_until,
+          serial_number, ad_type,
+          categories(id, name, name_ar, icon, color),
+          ad_images(id, url, position, blurhash),
+          user_profiles(username, email, avatar_url)
+        `)
+        .in('status', ['active', 'featured'])
+        .gt('boosted_until', now)
+        .order('boosted_until', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        setAdError(isAr ? 'فشل تحميل العروض' : 'Failed to load offers');
+      } else {
+        setBoostedAds((data ?? []) as Ad[]);
+      }
+    } catch (e: any) {
+      setAdError(e?.message ?? (isAr ? 'خطأ في الاتصال' : 'Connection error'));
+    } finally {
+      setLoadingAds(false);
+    }
+  }, [isAr]);
 
   useEffect(() => {
     fetchOfferCategories()
       .then(setOfferCategories)
       .finally(() => setIsLoadingCategories(false));
-  }, []);
+    fetchBoostedAds();
+  }, [fetchBoostedAds]);
 
-  // ✅ تسجيل زيارة صفحة العروض (فردي وإجمالي)
   useFocusEffect(
     React.useCallback(() => {
       trackPageView('offers');
     }, [])
   );
 
-  const scrollViewRef = useRef<ScrollView>(null);
-  const [currentVipIndex, setCurrentVipIndex] = useState(0);
+  // ── VIP ads: top 3 boosted ads for the carousel ──────────────────────────
+  const vipAds = useMemo(() => boostedAds.slice(0, 3), [boostedAds]);
+
+  // ── Masonry grid: remaining boosted ads ──────────────────────────────────
+  const filteredAds = useMemo(() => {
+    const remaining = boostedAds.slice(3);
+    if (activeCategory === 'all') return remaining;
+    return remaining.filter(ad => ad.categories?.name_ar === activeCategory || ad.categories?.name === activeCategory);
+  }, [boostedAds, activeCategory]);
+
+  const { leftCol, rightCol } = useMemo(() => {
+    const left: Ad[] = [];
+    const right: Ad[] = [];
+    filteredAds.forEach((item, index) => {
+      if (index % 2 === 0) left.push(item);
+      else right.push(item);
+    });
+    return { leftCol: left, rightCol: right };
+  }, [filteredAds]);
+
+  // ── Auto-scroll VIP carousel ──────────────────────────────────────────────
+  useEffect(() => {
+    if (vipAds.length <= 1) return;
+    const interval = setInterval(() => {
+      const nextIndex = (currentVipIndex + 1) % vipAds.length;
+      scrollViewRef.current?.scrollTo({
+        x: nextIndex * (VIP_WIDTH + 12),
+        animated: true,
+      });
+      setCurrentVipIndex(nextIndex);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [currentVipIndex, vipAds.length]);
+
+  const handleScrollEnd = (event: any) => {
+    const contentOffsetX = Math.abs(event.nativeEvent.contentOffset.x);
+    const newIndex = Math.round(contentOffsetX / (VIP_WIDTH + 12));
+    setCurrentVipIndex(newIndex);
+  };
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await fetchBoostedAds();
+    setIsRefreshing(false);
+  }, [fetchBoostedAds]);
 
   const handleOpenLink = async (url: string) => {
     if (!url) return;
@@ -221,179 +159,271 @@ export default function OffersScreen() {
         });
       } else {
         const supported = await Linking.canOpenURL(url);
-        if (supported) {
-          await Linking.openURL(url);
-        } else {
-          console.log("تطبيق غير متوفر لفتح هذا الرابط:", url);
-        }
+        if (supported) await Linking.openURL(url);
       }
     } catch (error) {
-      console.error("حدث خطأ أثناء فتح الرابط:", error);
+      console.error('Error opening URL:', error);
     }
   };
 
-  const handleOfferPress = (offer: any) => {
-    if (offer.productId) {
-      router.push(`/ad/${offer.productId}` as any);
-      return;
-    }
-    if (offer.url) {
-      handleOpenLink(offer.url);
-      return;
-    }
-    console.warn('لا يوجد رابط أو productId لهذا العرض');
+  const handleAdPress = useCallback((ad: Ad) => {
+    router.push(`/ad/${ad.id}` as any);
+  }, [router]);
+
+  const getAdThumb = (ad: Ad): string | null => {
+    const images = (ad.ad_images ?? []).sort((a, b) => a.position - b.position);
+    return images[0]?.url ?? null;
   };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const nextIndex = (currentVipIndex + 1) % VIP_OFFERS.length;
-      scrollViewRef.current?.scrollTo({
-        x: nextIndex * (VIP_WIDTH + 12),
-        animated: true,
-      });
-      setCurrentVipIndex(nextIndex);
-    }, 3500);
-    return () => clearInterval(interval);
-  }, [currentVipIndex]);
+  const renderAdCard = (ad: Ad) => {
+    const thumb = getAdThumb(ad);
+    const countdown = ad.boosted_until ? getCountdownText(ad.boosted_until, isAr) : '';
+    const catName = isAr ? (ad.categories?.name_ar || ad.categories?.name) : ad.categories?.name;
 
-  const handleScrollEnd = (event: any) => {
-    const contentOffsetX = Math.abs(event.nativeEvent.contentOffset.x);
-    const newIndex = Math.round(contentOffsetX / (VIP_WIDTH + 12));
-    setCurrentVipIndex(newIndex);
+    return (
+      <Pressable
+        key={ad.id}
+        style={styles.bannerCard}
+        onPress={() => handleAdPress(ad)}
+      >
+        {thumb ? (
+          <Image
+            source={{ uri: thumb }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={300}
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1F2937', alignItems: 'center', justifyContent: 'center' }]}>
+            <MaterialIcons name="image" size={36} color="#6B7280" />
+          </View>
+        )}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.85)']}
+          style={styles.gradientOverlay}
+        />
+        {countdown ? (
+          <View style={styles.fireTag}>
+            <Text style={styles.fireText}>{countdown}</Text>
+          </View>
+        ) : null}
+        <View style={styles.bannerContent}>
+          {catName ? (
+            <Text style={styles.storeName} numberOfLines={1}>{catName}</Text>
+          ) : null}
+          <Text style={styles.bannerTitle} numberOfLines={2}>{ad.title}</Text>
+          <Text style={styles.priceText}>₪{ad.price.toLocaleString()}</Text>
+        </View>
+      </Pressable>
+    );
   };
 
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 1500);
+  const renderVipCard = (ad: Ad) => {
+    const thumb = getAdThumb(ad);
+    const countdown = ad.boosted_until ? getCountdownText(ad.boosted_until, isAr) : '';
+
+    return (
+      <View key={ad.id} style={styles.vipBannerContainer}>
+        {thumb ? (
+          <Image
+            source={{ uri: thumb }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={300}
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1F2937' }]} />
+        )}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.95)']}
+          style={StyleSheet.absoluteFill}
+        />
+
+        <View style={styles.vipTag}>
+          <FontAwesome5 name="crown" size={12} color="#B45309" />
+          <Text style={styles.vipTagText}>{isAr ? 'عرض VIP' : 'VIP Offer'}</Text>
+        </View>
+
+        <View style={styles.vipContent}>
+          {countdown ? (
+            <View style={styles.countdownBadge}>
+              <Text style={styles.countdownText}>{countdown}</Text>
+            </View>
+          ) : null}
+          <Text style={styles.vipTitle} numberOfLines={2}>{ad.title}</Text>
+          <Text style={styles.vipPrice}>₪{ad.price.toLocaleString()}</Text>
+
+          <Pressable
+            style={styles.vipButton}
+            onPress={() => handleAdPress(ad)}
+          >
+            <Text style={styles.vipButtonText}>{isAr ? 'اكتشف العرض الآن' : 'View Offer'}</Text>
+            <MaterialIcons name="local-activity" size={16} color="#fff" />
+          </Pressable>
+        </View>
+      </View>
+    );
   };
 
-  const filteredOffers = useMemo(() => {
-    if (activeCategory === 'الكل') return DUMMY_OFFERS;
-    return DUMMY_OFFERS.filter(offer => offer.category === activeCategory);
-  }, [activeCategory]);
-
-  const { leftCol, rightCol } = useMemo(() => {
-    const left: typeof DUMMY_OFFERS = [];
-    const right: typeof DUMMY_OFFERS = [];
-    filteredOffers.forEach((item, index) => {
-      if (index % 2 === 0) left.push(item);
-      else right.push(item);
+  // ── Category chips based on real data ────────────────────────────────────
+  const categoryChips = useMemo(() => {
+    const cats = new Set<string>();
+    boostedAds.slice(3).forEach(ad => {
+      const name = isAr ? (ad.categories?.name_ar || ad.categories?.name) : ad.categories?.name;
+      if (name) cats.add(name);
     });
-    return { leftCol: left, rightCol: right };
-  }, [filteredOffers]);
-
-  const renderBanner = (item: typeof DUMMY_OFFERS[0]) => (
-    <Pressable 
-      key={item.id} 
-      style={[styles.bannerCard, { height: item.height }]}
-      onPress={() => handleOfferPress(item)}
-    >
-      <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
-      <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.gradientOverlay} />
-      <View style={styles.fireTag}>
-        <Text style={styles.fireText}>🔥 لقطة</Text>
-      </View>
-      <View style={styles.bannerContent}>
-        <Text style={styles.storeName} numberOfLines={1}>{item.storeName}</Text>
-        <Text style={styles.bannerTitle} numberOfLines={2}>{item.title}</Text>
-      </View>
-    </Pressable>
-  );
+    return Array.from(cats);
+  }, [boostedAds, isAr]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      
+
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={10} style={styles.headerBtn}>
           <MaterialIcons name="chevron-right" size={28} color="#111827" />
         </Pressable>
-        <Text style={styles.headerTitle}>أقوى العروض 🔥</Text>
-        <Pressable onPress={handleRefresh} disabled={isRefreshing} style={[styles.headerBtn, styles.refreshBtn]}>
-          {isRefreshing ? <ActivityIndicator size="small" color="#E11D48" /> : <MaterialIcons name="refresh" size={22} color="#111827" />}
+        <Text style={styles.headerTitle}>{isAr ? 'أقوى العروض 🔥' : 'Hot Deals 🔥'}</Text>
+        <Pressable
+          onPress={handleRefresh}
+          disabled={isRefreshing}
+          style={[styles.headerBtn, styles.refreshBtn]}
+        >
+          {isRefreshing
+            ? <ActivityIndicator size="small" color="#E11D48" />
+            : <MaterialIcons name="refresh" size={22} color="#111827" />
+          }
         </Pressable>
       </View>
 
-      <View style={styles.filtersWrapper}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rtlScrollView} contentContainerStyle={styles.filtersScrollContent}>
-          {isLoadingCategories ? (
-            [1,2,3,4,5].map(i => (
-              <View key={i} style={[styles.filterChip, { width: 80, height: 36, backgroundColor: '#E5E7EB' }]} />
-            ))
-          ) : (
-            [
-              { id: 'all', name_ar: 'الكل' },
-              ...offerCategories
-            ].map((cat) => (
-              <Pressable
-                key={cat.id || 'all'}
-                onPress={() => setActiveCategory(cat.name_ar || 'الكل')}
-                style={[styles.filterChip, activeCategory === (cat.name_ar || 'الكل') && styles.activeFilterChip, styles.rtlItem]}
-              >
-                <Text style={[styles.filterText, activeCategory === (cat.name_ar || 'الكل') && styles.activeFilterText]}>
-                  {cat.name_ar || 'الكل'}
-                </Text>
-              </Pressable>
-            ))
-          )}
-        </ScrollView>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
-        <View style={styles.vipSliderWrapper}>
+      {categoryChips.length > 0 ? (
+        <View style={styles.filtersWrapper}>
           <ScrollView
-            ref={scrollViewRef} 
             horizontal
             showsHorizontalScrollIndicator={false}
-            snapToInterval={VIP_WIDTH + 12}
-            decelerationRate="fast"
-            onMomentumScrollEnd={handleScrollEnd} 
-            style={styles.rtlScrollView}
-            contentContainerStyle={styles.vipSliderContent}
+            contentContainerStyle={styles.filtersScrollContent}
           >
-            {VIP_OFFERS.map((offer) => (
-              <View key={offer.id} style={[styles.vipBannerContainer, styles.rtlItem]}>
-                <Image source={{ uri: offer.image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
-                <LinearGradient colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.95)']} style={StyleSheet.absoluteFill} />
-                
-                <View style={styles.vipTag}>
-                  <FontAwesome5 name="crown" size={12} color="#B45309" />
-                  <Text style={styles.vipTagText}>عرض VIP</Text>
-                </View>
-                
-                <View style={styles.vipContent}>
-                  <Text style={styles.vipStoreName}>{offer.storeName}</Text>
-                  <Text style={styles.vipTitle}>{offer.title}</Text>
-                  
-                  <Pressable 
-                    style={styles.vipButton}
-                    onPress={() => handleOfferPress(offer)}
-                  >
-                    <Text style={styles.vipButtonText}>اكتشف العرض الآن</Text>
-                    <MaterialIcons name="local-activity" size={16} color="#fff" />
-                  </Pressable>
-                </View>
-              </View>
+            <Pressable
+              onPress={() => setActiveCategory('all')}
+              style={[styles.filterChip, activeCategory === 'all' && styles.activeFilterChip]}
+            >
+              <Text style={[styles.filterText, activeCategory === 'all' && styles.activeFilterText]}>
+                {isAr ? 'الكل' : 'All'}
+              </Text>
+            </Pressable>
+            {categoryChips.map((cat) => (
+              <Pressable
+                key={cat}
+                onPress={() => setActiveCategory(cat)}
+                style={[styles.filterChip, activeCategory === cat && styles.activeFilterChip]}
+              >
+                <Text style={[styles.filterText, activeCategory === cat && styles.activeFilterText]}>
+                  {cat}
+                </Text>
+              </Pressable>
             ))}
           </ScrollView>
-
-          <View style={styles.paginationContainer}>
-            {VIP_OFFERS.map((_, index) => (
-              <View key={index} style={[styles.dot, currentVipIndex === index && styles.activeDot]} />
-            ))}
-          </View>
         </View>
+      ) : null}
 
-        {filteredOffers.length > 0 ? (
-          <View style={styles.masonryContainer}>
-            <View style={styles.column}>{leftCol.map(renderBanner)}</View>
-            <View style={styles.column}>{rightCol.map(renderBanner)}</View>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={['#E11D48']}
+            tintColor="#E11D48"
+          />
+        }
+      >
+        {loadingAds ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color="#E11D48" />
+            <Text style={styles.loadingText}>
+              {isAr ? 'جاري تحميل العروض...' : 'Loading offers...'}
+            </Text>
           </View>
-        ) : (
+        ) : adError ? (
+          <View style={styles.emptyContainer}>
+            <MaterialIcons name="error-outline" size={48} color="#D1D5DB" />
+            <Text style={styles.emptyText}>{adError}</Text>
+            <Pressable style={styles.retryBtn} onPress={fetchBoostedAds}>
+              <Text style={styles.retryBtnText}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
+            </Pressable>
+          </View>
+        ) : boostedAds.length === 0 ? (
           <View style={styles.emptyContainer}>
             <MaterialIcons name="local-offer" size={48} color="#D1D5DB" />
-            <Text style={styles.emptyText}>لا توجد عروض حالياً في هذا القسم</Text>
+            <Text style={styles.emptyText}>
+              {isAr ? 'لا توجد عروض حالياً' : 'No active offers right now'}
+            </Text>
+            <Text style={styles.emptySubText}>
+              {isAr ? 'تابعنا لاحقاً لمعرفة أحدث العروض' : 'Check back later for new deals'}
+            </Text>
           </View>
+        ) : (
+          <>
+            {/* VIP Carousel */}
+            {vipAds.length > 0 ? (
+              <View style={styles.vipSliderWrapper}>
+                <ScrollView
+                  ref={scrollViewRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  snapToInterval={VIP_WIDTH + 12}
+                  decelerationRate="fast"
+                  onMomentumScrollEnd={handleScrollEnd}
+                  contentContainerStyle={styles.vipSliderContent}
+                >
+                  {vipAds.map(renderVipCard)}
+                </ScrollView>
+
+                {vipAds.length > 1 ? (
+                  <View style={styles.paginationContainer}>
+                    {vipAds.map((_, index) => (
+                      <View
+                        key={index}
+                        style={[styles.dot, currentVipIndex === index && styles.activeDot]}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* Masonry Grid */}
+            {filteredAds.length > 0 ? (
+              <View style={styles.masonryContainer}>
+                <View style={styles.column}>
+                  {leftCol.map(ad => (
+                    <View key={ad.id} style={{ height: 200, marginBottom: 12 }}>
+                      {renderAdCard(ad)}
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.column}>
+                  {rightCol.map(ad => (
+                    <View key={ad.id} style={{ height: 200, marginBottom: 12 }}>
+                      {renderAdCard(ad)}
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : filteredAds.length === 0 && boostedAds.length > 3 ? (
+              <View style={styles.emptyContainer}>
+                <MaterialIcons name="filter-list" size={40} color="#D1D5DB" />
+                <Text style={styles.emptyText}>
+                  {isAr ? 'لا توجد عروض في هذا القسم' : 'No offers in this category'}
+                </Text>
+                <Pressable onPress={() => setActiveCategory('all')}>
+                  <Text style={{ color: '#E11D48', fontWeight: '700', marginTop: 8 }}>
+                    {isAr ? 'عرض الكل' : 'Show all'}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </>
         )}
       </ScrollView>
     </View>
@@ -402,46 +432,91 @@ export default function OffersScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff' },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff',
+  },
   headerBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19 },
   refreshBtn: { backgroundColor: '#F3F4F6' },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
-  
-  filtersWrapper: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingVertical: 10 },
-  rtlScrollView: { transform: [{ scaleX: -1 }] },
-  rtlItem: { transform: [{ scaleX: -1 }] },
+
+  filtersWrapper: {
+    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingVertical: 10,
+  },
   filtersScrollContent: { paddingHorizontal: 16, gap: 8, flexDirection: 'row' },
-  filterChip: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: 'transparent' },
+  filterChip: {
+    paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: 'transparent',
+  },
   activeFilterChip: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
   filterText: { fontSize: 13, fontWeight: '700', color: '#4B5563' },
   activeFilterText: { color: '#E11D48', fontWeight: '900' },
-  
+
   scrollContent: { padding: 12, paddingBottom: 40 },
-  
+
+  loadingWrap: { alignItems: 'center', paddingTop: 60, gap: 12 },
+  loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+
   vipSliderWrapper: { marginBottom: 16 },
-  vipSliderContent: { gap: 12, flexDirection: 'row' },
-  vipBannerContainer: { width: VIP_WIDTH, height: 260, borderRadius: 20, overflow: 'hidden', backgroundColor: '#1F2937', shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8, borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.3)' },
-  vipTag: { position: 'absolute', top: 12, right: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, gap: 6 },
+  vipSliderContent: { gap: 12 },
+  vipBannerContainer: {
+    width: VIP_WIDTH, height: 260, borderRadius: 20, overflow: 'hidden',
+    backgroundColor: '#1F2937',
+    shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 8,
+    elevation: 8, borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.3)',
+  },
+  vipTag: {
+    position: 'absolute', top: 12, right: 12,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, gap: 6,
+  },
   vipTagText: { fontSize: 12, fontWeight: '900', color: '#B45309' },
-  vipContent: { flex: 1, justifyContent: 'flex-end', padding: 16, alignItems: 'flex-end' },
-  vipStoreName: { color: '#FCD34D', fontSize: 13, fontWeight: '800', marginBottom: 6 },
-  vipTitle: { color: '#ffffff', fontSize: 18, fontWeight: '900', textAlign: 'right', lineHeight: 26, marginBottom: 12 },
-  vipButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E11D48', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, gap: 8 },
+  vipContent: { flex: 1, justifyContent: 'flex-end', padding: 16, alignItems: 'flex-end', gap: 6 },
+  countdownBadge: {
+    backgroundColor: 'rgba(239,68,68,0.85)', borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  countdownText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  vipTitle: {
+    color: '#ffffff', fontSize: 17, fontWeight: '900', textAlign: 'right', lineHeight: 24,
+  },
+  vipPrice: { color: '#FCD34D', fontSize: 16, fontWeight: '800' },
+  vipButton: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#E11D48',
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, gap: 8,
+  },
   vipButtonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  
-  paginationContainer: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 12 },
+
+  paginationContainer: {
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 12,
+  },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D1D5DB' },
   activeDot: { width: 24, backgroundColor: '#E11D48' },
 
-  masonryContainer: { flexDirection: 'row-reverse', justifyContent: 'space-between' },
-  column: { width: '48.5%', gap: 12 },
-  bannerCard: { width: '100%', borderRadius: 16, overflow: 'hidden', backgroundColor: '#E5E7EB', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 4 },
+  masonryContainer: { flexDirection: 'row', justifyContent: 'space-between' },
+  column: { width: '48.5%' },
+  bannerCard: {
+    width: '100%', height: '100%', borderRadius: 16, overflow: 'hidden',
+    backgroundColor: '#E5E7EB',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 4,
+  },
   gradientOverlay: { ...StyleSheet.absoluteFillObject, top: '40%' },
-  fireTag: { position: 'absolute', top: 10, right: 10, backgroundColor: '#FEF08A', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  fireText: { fontSize: 11, fontWeight: '900', color: '#92400E' },
+  fireTag: {
+    position: 'absolute', top: 10, right: 10,
+    backgroundColor: 'rgba(239,68,68,0.88)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+  },
+  fireText: { fontSize: 10, fontWeight: '900', color: '#fff' },
   bannerContent: { flex: 1, justifyContent: 'flex-end', padding: 12, alignItems: 'flex-end' },
-  storeName: { color: '#D1D5DB', fontSize: 11, fontWeight: '700', marginBottom: 4, textAlign: 'right' },
-  bannerTitle: { color: '#fff', fontSize: 14, fontWeight: '900', lineHeight: 20, textAlign: 'right' },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
-  emptyText: { marginTop: 12, fontSize: 15, fontWeight: '600', color: '#9CA3AF' }
+  storeName: { color: '#D1D5DB', fontSize: 11, fontWeight: '700', marginBottom: 2, textAlign: 'right' },
+  bannerTitle: { color: '#fff', fontSize: 13, fontWeight: '900', lineHeight: 18, textAlign: 'right' },
+  priceText: { color: '#FCD34D', fontSize: 13, fontWeight: '800', marginTop: 2 },
+
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingTop: 60, gap: 12 },
+  emptyText: { marginTop: 4, fontSize: 15, fontWeight: '600', color: '#9CA3AF', textAlign: 'center' },
+  emptySubText: { fontSize: 13, color: '#9CA3AF', textAlign: 'center' },
+  retryBtn: {
+    marginTop: 8, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12,
+    backgroundColor: '#E11D48',
+  },
+  retryBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

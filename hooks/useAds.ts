@@ -1,17 +1,37 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Logger } from '@/utils/errorLogger';
+import { AppState, AppStateStatus } from 'react-native';
 
-// Module-level AbortController reference — cancels stale fetch when a newer
-// one starts (e.g. rapid filter changes).  One slot per hook instance is
-// enough because useAds is only mounted once in the home screen at a time.
+// Module-level AbortController reference
 let _activeController: AbortController | null = null;
 import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache, subscribeToCacheInvalidation, CACHE_TTL_MS } from '@/services/adsService';
 
-const PAGE_SIZE = 20; // Load 20 per page
+const PAGE_SIZE = 20;
+
+// ── AsyncStorage cache for My Ads (persists across tab switches) ──────────────
+const MY_ADS_CACHE_KEY = 'my_ads_cache_v1';
+const MY_ADS_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+interface MyAdsCache { data: Ad[]; fetchedAt: number }
+
+async function loadMyAdsCache(): Promise<MyAdsCache | null> {
+  try {
+    const raw = await AsyncStorage.getItem(MY_ADS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed: MyAdsCache = JSON.parse(raw);
+    if (Date.now() - parsed.fetchedAt > MY_ADS_CACHE_TTL_MS) return null;
+    return parsed;
+  } catch { return null; }
+}
+
+async function saveMyAdsCache(data: Ad[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(MY_ADS_CACHE_KEY, JSON.stringify({ data, fetchedAt: Date.now() }));
+  } catch { /* non-critical */ }
+}
 
 export function useAds(params?: { categoryId?: string; search?: string; maxPrice?: number; minPrice?: number; condition?: 'new' | 'used' | null; location?: string; sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'boosted' }) {
-  // Seed from module-level cache on first mount (no-filter only) for instant display
   const initialAds = !params?.categoryId && !params?.search && !params?.maxPrice && !params?.minPrice && !params?.condition && !params?.location && !params?.sortBy
     ? (getAdsCache()?.data ?? [])
     : [];
@@ -20,8 +40,6 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Track regular-ads count separately from boosts for correct page offset.
-  // Boosted ads are always re-fetched (no offset), so offset must only count regular ads.
   const regularCountRef = useRef(0);
   const boostCountRef = useRef(0);
 
@@ -30,17 +48,14 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     const p = overrideParams ?? params;
     const isDefault = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
 
-    // Cancel any in-flight fetch before starting a new one
     if (_activeController) { try { _activeController.abort(); } catch {} }
     _activeController = new AbortController();
     const signal = _activeController.signal;
 
-    // Reset pagination state immediately before fetch
     regularCountRef.current = 0;
     boostCountRef.current = 0;
     setHasMore(true);
 
-    // Show cached data immediately for default view
     const cached = isDefault ? getAdsCache() : null;
     if (cached) {
       setAds(cached.data);
@@ -51,9 +66,6 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
       setLoading(true);
     }
 
-    // ── Graceful Degradation: wrap fetch in try/catch ──────────────────────
-    // If Supabase is unreachable, show cached stale data rather than
-    // a blank screen. User sees an error banner, not a crash.
     let fetchedData: Ad[] = [];
     let fetchError: string | null = null;
     try {
@@ -67,19 +79,14 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
       fetchedData = result.data;
       fetchError = result.error;
     } catch (e: any) {
-      // Network error / timeout / Supabase down
-      fetchError = e?.message ?? 'حدث خطأ في الاتصال. يتم عرض البيانات المحفوظة.';
+      fetchError = e?.message ?? 'Connection error.';
       Logger.error('useAds', 'load() network error', e instanceof Error ? e : new Error(String(e)));
-      // Graceful fallback: show stale cached data so screen is not empty
       if (isDefault) {
         const staleCache = getAdsCache();
-        if (staleCache && staleCache.data.length > 0) {
-          setAds(staleCache.data);
-        }
+        if (staleCache && staleCache.data.length > 0) setAds(staleCache.data);
       }
     }
 
-    // Ignore result if this fetch was cancelled by a newer one
     if (signal.aborted) return;
 
     if (!fetchError && fetchedData.length > 0) {
@@ -89,15 +96,11 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
       setAds([]);
     }
 
-    // Track only regular (non-boosted) ads for pagination offset.
-    // Boosted ads are fetched exclusively on page 1 (offset=0) — offset must
-    // count only regular ads so "Load More" never re-fetches them.
     const now = Date.now();
     const regulars = fetchedData.filter(a => !a.boosted_until || new Date(a.boosted_until).getTime() <= now);
     const boosts = fetchedData.filter(a => a.boosted_until && new Date(a.boosted_until).getTime() > now);
     boostCountRef.current = boosts.length;
     regularCountRef.current = regulars.length;
-    // hasMore is true only when we received a full page of regular ads
     setHasMore(regulars.length === PAGE_SIZE);
 
     if (fetchError) Logger.warn('useAds', 'fetchAds returned error', { error: fetchError });
@@ -105,39 +108,29 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     setLoading(false);
   }, [params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);
 
-  // Re-fetch automatically when another screen invalidates the cache
-  // (e.g. after boosting/editing an ad). Only triggers for the default
-  // no-filter feed so filtered views are not disrupted.
   useEffect(() => {
     const unsub = subscribeToCacheInvalidation(() => {
       const p = params;
       const isDefault =
         !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice &&
         !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
-      if (isDefault) {
-        load();
-      }
+      if (isDefault) load();
     });
     return unsub;
   }, [load]);
 
-  // Re-fetch when app returns from background, but only if cache is expired.
-  // Prevents redundant API calls when user briefly locks/unlocks the screen.
   useEffect(() => {
     const p = params;
     const isDefault =
       !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice &&
       !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
-    if (!isDefault) return; // Only auto-refresh the unfiltered default feed
+    if (!isDefault) return;
 
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
-        // Only re-fetch if cache is stale (expired beyond CACHE_TTL_MS)
         const cached = getAdsCache();
         const isStale = !cached || (Date.now() - cached.fetchedAt > CACHE_TTL_MS);
-        if (isStale) {
-          load();
-        }
+        if (isStale) load();
       }
     };
 
@@ -151,8 +144,6 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     const p = currentParams ?? params;
     const sortBy = p?.sortBy ?? 'newest';
 
-    // Offset applies only to regular ads — boosted ads are always re-fetched
-    // fresh (no offset) so they stay pinned at top regardless of page number.
     let data: Ad[] = [];
     try {
       const result = await fetchAds({
@@ -175,7 +166,6 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
         const existingIds = new Set(prev.map(a => a.id));
         const newItems = data.filter(a => !existingIds.has(a.id));
         if (newItems.length > 0) {
-          // Only count new regular ads toward pagination offset
           const now = Date.now();
           const newRegulars = newItems.filter(
             a => !a.boosted_until || new Date(a.boosted_until).getTime() <= now
@@ -186,7 +176,6 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
         return prev;
       });
     }
-    // hasMore = false when the regular ads page was not full
     const now = Date.now();
     const returnedRegulars = data.filter(
       a => !a.boosted_until || new Date(a.boosted_until).getTime() <= now
@@ -198,22 +187,45 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
   return { ads, loading, loadingMore, hasMore, error, load, loadMore, setAds };
 }
 
+// ── useMyAds with AsyncStorage caching + isMounted guard ─────────────────────
 export function useMyAds() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   const load = useCallback(async () => {
+    if (!isMounted.current) return;
+
+    // Show cached data immediately to prevent count-reset-to-0 on tab switch
+    const cached = await loadMyAdsCache();
+    if (cached && isMounted.current) {
+      setAds(cached.data);
+      // Don't set loading=true if we have cached data — prevents spinner flash
+    }
+
+    if (!isMounted.current) return;
     setLoading(true);
+
     try {
-      const { data, error } = await fetchMyAds();
+      const { data, error: fetchError } = await fetchMyAds();
+      if (!isMounted.current) return;
       setAds(data);
-      setError(error);
+      setError(fetchError);
+      if (!fetchError && data.length >= 0) {
+        saveMyAdsCache(data);
+      }
     } catch (e: any) {
+      if (!isMounted.current) return;
       Logger.error('useMyAds', 'load() threw', e instanceof Error ? e : new Error(String(e)));
-      setError(e?.message ?? 'فشل تحميل إعلاناتك');
+      setError(e?.message ?? 'Failed to load your ads');
     } finally {
-      setLoading(false);
+      if (isMounted.current) setLoading(false);
     }
   }, []);
 
