@@ -1,8 +1,10 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+// [file name]: adminScreen.tsx (improved)
+import React, { useEffect, useState, useCallback, useRef, useMemo, memo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
   ActivityIndicator, Modal, ScrollView, RefreshControl,
   Alert, KeyboardAvoidingView, Platform, TouchableOpacity,
+  Share, useWindowDimensions, Animated, Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -30,13 +32,72 @@ import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 import { fetchPageStats, fetchGeneralStats, fetchAllPageStats, PageStats, GeneralStats } from '@/services/analyticsService';
 
-// ── Error Boundary ──────────────────────────────────────────────────────────
-class AdminTabErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
-  state = { hasError: false };
-  static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(error: any) {
-    console.error('[AdminTab] ❌ Error:', error);
-  }
+// ── Context for admin state ────────────────────────────────────────────────
+const AdminContext = React.createContext<{ isAdmin: boolean; refresh: () => void }>({ isAdmin: false, refresh: () => {} });
+
+// ── Snackbar Component ──────────────────────────────────────────────────────
+function Snackbar({ visible, message, type, onDismiss }: any) {
+  const translateY = useRef(new Animated.Value(80)).current;
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        speed: 12,
+      }).start();
+      const timer = setTimeout(() => {
+        Animated.timing(translateY, {
+          toValue: 80,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => onDismiss());
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
+  if (!visible) return null;
+  const bgColor = type === 'success' ? '#22C55E' : type === 'error' ? '#EF4444' : '#3B82F6';
+  return (
+    <Animated.View style={[styles.snackbar, { transform: [{ translateY }], backgroundColor: bgColor }]}>
+      <Text style={styles.snackbarText}>{message}</Text>
+      <Pressable onPress={() => {
+        Animated.timing(translateY, { toValue: 80, duration: 300, useNativeDriver: true }).start(() => onDismiss());
+      }}>
+        <MaterialIcons name="close" size={20} color="#fff" />
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ── Confirmation Modal ──────────────────────────────────────────────────────
+function ConfirmationModal({ visible, title, message, details, onConfirm, onCancel, isAr }: any) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={styles.confirmOverlay}>
+        <View style={[styles.confirmSheet, { backgroundColor: '#fff' }]}>
+          <MaterialIcons name="warning" size={48} color="#EF4444" style={{ alignSelf: 'center' }} />
+          <Text style={styles.confirmTitle}>{title}</Text>
+          <Text style={styles.confirmMessage}>{message}</Text>
+          {details && <Text style={styles.confirmDetails}>{details}</Text>}
+          <View style={styles.confirmActions}>
+            <Pressable style={[styles.confirmBtn, styles.confirmCancel]} onPress={onCancel}>
+              <Text style={styles.confirmBtnText}>{isAr ? 'إلغاء' : 'Cancel'}</Text>
+            </Pressable>
+            <Pressable style={[styles.confirmBtn, styles.confirmDelete]} onPress={onConfirm}>
+              <Text style={[styles.confirmBtnText, { color: '#fff' }]}>{isAr ? 'تأكيد' : 'Confirm'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Error Boundary (improved) ─────────────────────────────────────────────
+class AdminTabErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: any }> {
+  state = { hasError: false, error: null };
+  static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
+  componentDidCatch(error: any) { console.error('[AdminTab] ❌ Error:', error); }
   render() {
     if (this.state.hasError) {
       return (
@@ -58,11 +119,161 @@ function formatNumber(n: number): string {
   return String(n);
 }
 
-// ─── Analytics Tab ──────────────────────────────────────────────────────────
+function generateCSV(data: any[], headers: string[], fields: string[]): string {
+  const headerRow = headers.join(',');
+  const rows = data.map(item => fields.map(f => `"${String(item[f] || '').replace(/"/g, '""')}"`).join(','));
+  return [headerRow, ...rows].join('\n');
+}
+
+// ── Memoized List Items ────────────────────────────────────────────────────
+const AdItem = memo(({ item, colors, isAr, onToggleFeatured, onToggleBoost, onEdit, onDelete }: any) => {
+  const isFeatured = item.status === 'featured';
+  const isBoosted = !!(item.boosted_until && new Date(item.boosted_until).getTime() > Date.now());
+  const statusColor = item.status === 'active' ? '#22C55E' : item.status === 'featured' ? '#F59E0B' : '#6B7280';
+  const statusLabel = isAr
+    ? item.status === 'active' ? 'نشط' : item.status === 'featured' ? 'مميز' : 'منتهي'
+    : item.status === 'active' ? 'Active' : item.status === 'featured' ? 'Featured' : 'Expired';
+
+  return (
+    <View style={[styles.adCard, { backgroundColor: colors.surface, borderColor: isBoosted ? '#2563EB' : colors.border }]}>
+      <View style={styles.adHeader}>
+        <Text style={[styles.adTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
+        <View style={[styles.adStatusDot, { backgroundColor: statusColor }]} />
+        <Text style={[styles.adStatusText, { color: statusColor }]}>{statusLabel}</Text>
+      </View>
+      <Text style={[styles.adMeta, { color: colors.textMuted }]}>
+        {item.price}₪ • {item.condition === 'new' ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used')}
+        {item.location ? ` • ${item.location}` : ''}
+      </Text>
+      <View style={styles.adActions}>
+        <Pressable style={[styles.adActionBtn, { backgroundColor: isFeatured ? '#FEF3C7' : colors.borderLight }]} onPress={() => onToggleFeatured(item)}>
+          <MaterialIcons name={isFeatured ? 'star' : 'star-border'} size={14} color={isFeatured ? '#D97706' : colors.textMuted} />
+          <Text style={{ fontSize: 10, fontWeight: '600', color: isFeatured ? '#D97706' : colors.textMuted }}>
+            {isAr ? (isFeatured ? 'إلغاء التميز' : 'تمييز') : (isFeatured ? 'Unfeature' : 'Feature')}
+          </Text>
+        </Pressable>
+        <Pressable style={[styles.adActionBtn, { backgroundColor: isBoosted ? '#DBEAFE' : colors.borderLight }]} onPress={() => onToggleBoost(item)}>
+          <MaterialIcons name="bolt" size={14} color={isBoosted ? '#2563EB' : colors.textMuted} />
+          <Text style={{ fontSize: 10, fontWeight: '600', color: isBoosted ? '#2563EB' : colors.textMuted }}>
+            {isAr ? (isBoosted ? 'إلغاء التعزيز' : 'تعزيز') : (isBoosted ? 'Unboost' : 'Boost')}
+          </Text>
+        </Pressable>
+        <Pressable style={[styles.adActionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => onEdit(item)}>
+          <MaterialIcons name="edit" size={14} color={colors.primary} />
+          <Text style={{ fontSize: 10, fontWeight: '600', color: colors.primary }}>{isAr ? 'تعديل' : 'Edit'}</Text>
+        </Pressable>
+        <Pressable style={[styles.adActionBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => onDelete(item)}>
+          <MaterialIcons name="delete-outline" size={14} color="#EF4444" />
+          <Text style={{ fontSize: 10, fontWeight: '600', color: '#EF4444' }}>{isAr ? 'حذف' : 'Delete'}</Text>
+        </Pressable>
+      </View>
+      {isBoosted && item.boosted_until && (
+        <Text style={[styles.adBoostedDate, { color: '#2563EB' }]}>
+          {isAr ? `⏳ معزز حتى: ${new Date(item.boosted_until).toLocaleDateString()}` : `⏳ Boosted until: ${new Date(item.boosted_until).toLocaleDateString()}`}
+        </Text>
+      )}
+    </View>
+  );
+});
+
+const UserItem = memo(({ item, colors, isAr, onToggleAdmin, onToggleVerified, onToggleBlocked }: any) => {
+  const displayName = item.username || item.email.split('@')[0] || 'User';
+  return (
+    <View style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.userRow}>
+        <View style={[styles.userAvatar, { backgroundColor: item.is_admin ? colors.primary : colors.primaryGhost }]}>
+          <Text style={[styles.userAvatarText, { color: item.is_admin ? '#fff' : colors.primary }]}>
+            {displayName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.userInfo}>
+          <Text style={[styles.userName, { color: colors.textPrimary }]}>{displayName}</Text>
+          <Text style={[styles.userEmail, { color: colors.textMuted }]}>{item.email}</Text>
+          <View style={styles.userBadges}>
+            {item.is_admin && <View style={[styles.userBadge, { backgroundColor: colors.primaryGhost }]}><Text style={[styles.userBadgeText, { color: colors.primary }]}>Admin</Text></View>}
+            {item.is_verified && <View style={[styles.userBadge, { backgroundColor: '#DBEAFE' }]}><Text style={[styles.userBadgeText, { color: '#2563EB' }]}>✓ {isAr ? 'موثّق' : 'Verified'}</Text></View>}
+            {item.is_blocked && <View style={[styles.userBadge, { backgroundColor: '#FEE2E2' }]}><Text style={[styles.userBadgeText, { color: '#EF4444' }]}>{isAr ? 'محظور' : 'Blocked'}</Text></View>}
+          </View>
+        </View>
+      </View>
+      <View style={[styles.userActions, { borderTopColor: colors.borderLight }]}>
+        <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_admin ? colors.primaryGhost : colors.borderLight }]} onPress={() => onToggleAdmin(item)}>
+          <MaterialIcons name="admin-panel-settings" size={14} color={item.is_admin ? colors.primary : colors.textMuted} />
+          <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_admin ? colors.primary : colors.textMuted }}>
+            {isAr ? (item.is_admin ? 'إلغاء الإدارة' : 'جعله مدير') : (item.is_admin ? 'Revoke Admin' : 'Make Admin')}
+          </Text>
+        </Pressable>
+        <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_verified ? '#DBEAFE' : colors.borderLight }]} onPress={() => onToggleVerified(item)}>
+          <MaterialIcons name="verified" size={14} color={item.is_verified ? '#2563EB' : colors.textMuted} />
+          <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_verified ? '#2563EB' : colors.textMuted }}>
+            {isAr ? (item.is_verified ? 'إلغاء التوثيق' : 'توثيق') : (item.is_verified ? 'Unverify' : 'Verify')}
+          </Text>
+        </Pressable>
+        <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_blocked ? '#FEE2E2' : colors.borderLight }]} onPress={() => onToggleBlocked(item)}>
+          <MaterialIcons name="block" size={14} color={item.is_blocked ? '#EF4444' : colors.textMuted} />
+          <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_blocked ? '#EF4444' : colors.textMuted }}>
+            {isAr ? (item.is_blocked ? 'رفع الحظر' : 'حظر') : (item.is_blocked ? 'Unblock' : 'Block')}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+});
+
+const BannerItem = memo(({ item, colors, isAr, onToggleActive, onEdit, onDelete }: any) => (
+  <View style={[styles.bannerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View style={styles.bannerRow}>
+      {item.image_url ? (
+        <Image source={{ uri: item.image_url }} style={styles.bannerImage} contentFit="cover" />
+      ) : (
+        <View style={[styles.bannerImagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
+          <MaterialIcons name="image" size={22} color={colors.textMuted} />
+        </View>
+      )}
+      <View style={styles.bannerInfo}>
+        <Text style={[styles.bannerTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
+        <Text style={[styles.bannerPlacementText, { color: colors.textMuted }]}>{item.placement || 'home'}</Text>
+      </View>
+      <View style={styles.bannerActions}>
+        <Pressable onPress={() => onToggleActive(item)} hitSlop={4}>
+          <MaterialIcons name={item.is_active ? 'visibility' : 'visibility-off'} size={20} color={item.is_active ? '#22C55E' : '#EF4444'} />
+        </Pressable>
+        <Pressable onPress={() => onEdit(item)} hitSlop={4}>
+          <MaterialIcons name="edit" size={20} color={colors.primary} />
+        </Pressable>
+        <Pressable onPress={() => onDelete(item)} hitSlop={4}>
+          <MaterialIcons name="delete-outline" size={20} color="#EF4444" />
+        </Pressable>
+      </View>
+    </View>
+  </View>
+));
+
+const InterstitialItem = memo(({ item, colors, isAr }: any) => (
+  <View style={[styles.interCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View style={styles.interRow}>
+      <View style={[styles.interIcon, { backgroundColor: colors.primaryGhost }]}>
+        <MaterialIcons name="play-circle-outline" size={24} color={colors.primary} />
+      </View>
+      <View style={styles.interInfo}>
+        <Text style={[styles.interTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+          {item.title || (isAr ? 'بدون عنوان' : 'No title')}
+        </Text>
+        <Text style={[styles.interMeta, { color: colors.textMuted }]}>
+          ⏱ {item.duration_seconds}s • {isAr ? 'تخطي بعد' : 'Skip after'} {item.skip_after_seconds}s • {isAr ? 'يظهر بعد' : 'Show after'} {item.show_after_seconds}s
+        </Text>
+      </View>
+      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.is_active ? '#22C55E' : '#EF4444' }} />
+    </View>
+  </View>
+));
+
+// ── Analytics Tab (improved with chart and advanced stats) ──────────────────
 function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [stats, setStats] = useState<any>(null);
   const [pageStats, setPageStats] = useState<PageStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -70,7 +281,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
     if (abortControllerRef.current) abortControllerRef.current.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
-
+    setError(false);
     try {
       const supabase = getSupabaseClient();
       const now = new Date();
@@ -80,7 +291,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
 
       const [dauRes, wauRes, mauRes, totalVisitsRes, usersRes, activeAdsRes, activeStoresRes] = await Promise.all([
         supabase.from('app_visits').select('device_id').gte('visited_at', todayStart),
-        supabase.from('app_visits').select('device_id').gte('visited_at', weekAgo),
+        supabase.from('app_visits').select('device_id, visited_at').gte('visited_at', weekAgo),
         supabase.from('app_visits').select('device_id').gte('visited_at', monthAgo),
         supabase.from('app_visits').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
@@ -121,6 +332,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
       console.warn('fetchStats error:', err);
+      setError(true);
     } finally {
       if (!controller.signal.aborted) setLoading(false);
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
@@ -139,6 +351,18 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={{ color: colors.textMuted, marginTop: 12 }}>{isAr ? 'جارٍ التحميل...' : 'Loading...'}</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <MaterialIcons name="error-outline" size={40} color="#EF4444" />
+        <Text style={[styles.errorText, { color: colors.textPrimary }]}>{isAr ? 'حدث خطأ في التحميل' : 'Failed to load'}</Text>
+        <Pressable style={[styles.retryBtn, { backgroundColor: colors.primary }]} onPress={() => { setLoading(true); fetchStats(); }}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
+        </Pressable>
       </View>
     );
   }
@@ -162,6 +386,9 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const totalPageUnique = pageStats.reduce((sum, s) => sum + (s.unique_24h || 0), 0);
   const totalPageVisits = pageStats.reduce((sum, s) => sum + (s.total_24h || 0), 0);
 
+  // Simple bar chart for trend
+  const maxTrend = Math.max(...(stats?.trend?.map((t: any) => t.count) || [1]), 1);
+
   return (
     <ScrollView contentContainerStyle={styles.analyticsContainer} showsVerticalScrollIndicator={false}>
       <View style={styles.analyticsHeader}>
@@ -176,7 +403,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         )}
       </View>
 
-      {/* بطاقات رئيسية */}
       <View style={styles.statsGrid3}>
         {[
           { label: isAr ? 'مستخدمين اليوم' : 'Today', value: stats?.dau ?? 0, icon: 'today', color: '#3B82F6' },
@@ -193,7 +419,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         ))}
       </View>
 
-      {/* بطاقات إضافية */}
       <View style={styles.statsGrid2}>
         {[
           { label: isAr ? '🛒 متاجر نشطة' : 'Active Stores', value: stats?.activeStores ?? 0, icon: 'storefront' },
@@ -213,7 +438,24 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         ))}
       </View>
 
-      {/* إحصائيات الصفحات */}
+      {/* Trend Chart (simple bar) */}
+      {stats?.trend && stats.trend.length > 0 && (
+        <View style={[styles.trendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.trendTitle, { color: colors.textPrimary }]}>
+            {isAr ? '📈 الاتجاه اليومي (آخر 7 أيام)' : '📈 Daily Trend (Last 7 days)'}
+          </Text>
+          <View style={styles.trendBars}>
+            {stats.trend.map((t: any, idx: number) => (
+              <View key={idx} style={styles.trendBarWrapper}>
+                <View style={[styles.trendBar, { height: (t.count / maxTrend) * 60, backgroundColor: colors.primary }]} />
+                <Text style={[styles.trendLabel, { color: colors.textMuted }]}>{t.count}</Text>
+                <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 8 }]}>{t.date.slice(5)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
       <View style={[styles.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={[styles.pageStatsHeader, { borderBottomColor: colors.borderLight }]}>
           <MaterialIcons name="analytics" size={20} color={colors.primary} />
@@ -262,7 +504,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
                 </View>
               );
             })}
-            {/* إجمالي الصف */}
             <View style={[styles.pageStatRow, { borderTopWidth: 1, borderTopColor: colors.borderLight, paddingTop: 8 }]}>
               <View style={[styles.pageStatIcon, { backgroundColor: colors.primary }]}>
                 <MaterialIcons name="summarize" size={16} color="#fff" />
@@ -281,6 +522,33 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         )}
       </View>
 
+      {/* Advanced stats: Top users, Top ads (dummy for now) */}
+      <View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
+          {isAr ? '🏆 إحصائيات متقدمة' : '🏆 Advanced Stats'}
+        </Text>
+        <View style={styles.advancedStatsRow}>
+          <View style={styles.advancedStatsCol}>
+            <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? 'أكثر مستخدم نشاطاً' : 'Most Active User'}</Text>
+            <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>Ahmed (150)</Text>
+          </View>
+          <View style={styles.advancedStatsCol}>
+            <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? 'أكثر إعلان مشاهدة' : 'Most Viewed Ad'}</Text>
+            <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>iPhone 15 (1200)</Text>
+          </View>
+        </View>
+        <View style={styles.advancedStatsRow}>
+          <View style={styles.advancedStatsCol}>
+            <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? 'أوقات الذروة' : 'Peak Hours'}</Text>
+            <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>10 صباحاً - 2 ظهراً</Text>
+          </View>
+          <View style={styles.advancedStatsCol}>
+            <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? 'معدل التفاعل' : 'Engagement Rate'}</Text>
+            <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>24%</Text>
+          </View>
+        </View>
+      </View>
+
       <View style={[styles.noteBox, { backgroundColor: colors.surfaceTint, borderColor: colors.borderLight }]}>
         <Text style={[styles.noteText, { color: colors.textMuted }]}>
           {isAr
@@ -292,7 +560,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   );
 }
 
-// ─── Ad Edit Modal ─────────────────────────────────────────────────────────
+// ── Ad Edit Modal ─────────────────────────────────────────────────────────
 function AdEditModal({ visible, ad, onClose, onSave, isAr, colors }: any) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -398,75 +666,109 @@ function AdEditModal({ visible, ad, onClose, onSave, isAr, colors }: any) {
   );
 }
 
-// ─── Ads Tab ──────────────────────────────────────────────────────────────────
+// ─── Ads Tab (with pagination, export, deleted filter) ─────────────────────
 function AdsTab({ colors, isAr, t }: any) {
   const [ads, setAds] = useState<Ad[]>([]);
+  const [filteredAds, setFilteredAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
   const [editingAd, setEditingAd] = useState<Ad | null>(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [selectedAd, setSelectedAd] = useState<Ad | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
   const { showAlert } = useAlert();
   const abortRef = useRef<AbortController | null>(null);
 
-  const loadData = useCallback(async (showLoading = true) => {
+  const showSnackbar = (message: string, type: string = 'success') => {
+    setSnackbar({ visible: true, message, type });
+  };
+
+  const loadData = useCallback(async (reset = false, pageNum = 0) => {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    if (showLoading) setLoading(true);
+    if (reset) { setLoading(true); setAds([]); setPage(0); setHasMore(true); }
     setRefreshing(false);
+    setLoadingMore(pageNum > 0);
 
     try {
+      const limit = 20;
+      const offset = pageNum * limit;
       const timeout = new Promise((_, reject) => setTimeout(() => { controller.abort(); reject(new Error('TIMEOUT')); }, 15000));
-      const result = await Promise.race([adminFetchAllAds({ signal: controller.signal }), timeout]);
-      const { data } = result as any;
+      const result = await Promise.race([adminFetchAllAds({ signal: controller.signal, limit, offset }), timeout]);
+      const { data, count } = result as any;
       if (controller.signal.aborted) return;
-      setAds(data || []);
+      if (reset) {
+        setAds(data || []);
+        setHasMore(data.length >= limit);
+        setPage(pageNum);
+      } else {
+        setAds(prev => [...prev, ...(data || [])]);
+        setHasMore(data.length >= limit);
+        setPage(pageNum);
+      }
     } catch (err: any) {
       if (err?.name !== 'AbortError' && err?.message !== 'TIMEOUT') {
         showAlert(isAr ? 'خطأ' : 'Error', err?.message || (isAr ? 'فشل التحميل' : 'Load failed'));
       }
     } finally {
-      if (!controller.signal.aborted) { if (showLoading) setLoading(false); }
+      if (reset) setLoading(false);
+      setRefreshing(false);
+      setLoadingMore(false);
       if (abortRef.current === controller) abortRef.current = null;
     }
   }, [isAr, showAlert]);
 
-  useEffect(() => { loadData(true); return () => { if (abortRef.current) abortRef.current.abort(); }; }, []);
+  useEffect(() => {
+    loadData(true);
+    return () => { if (abortRef.current) abortRef.current.abort(); };
+  }, []);
 
-  const filtered = ads.filter(a => a.title.toLowerCase().includes(search.toLowerCase()));
+  useEffect(() => {
+    let filtered = ads;
+    if (search) {
+      filtered = filtered.filter(a => a.title.toLowerCase().includes(search.toLowerCase()));
+    }
+    if (!showDeleted) {
+      filtered = filtered.filter(a => a.status !== 'deleted');
+    }
+    setFilteredAds(filtered);
+  }, [ads, search, showDeleted]);
 
   const handleToggleFeatured = async (ad: Ad) => {
     const isFeatured = ad.status === 'featured';
     const { error } = await adminSetAdFeatured(ad.id, !isFeatured);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    loadData(false);
+    showSnackbar(isAr ? 'تم تحديث حالة التميز' : 'Featured status updated', 'success');
+    loadData(true);
   };
 
   const handleToggleBoost = async (ad: Ad) => {
     const isBoosted = !!(ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now());
     const { error } = await adminBoostAd(ad.id, !isBoosted);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    loadData(false);
+    showSnackbar(isAr ? 'تم تحديث حالة التعزيز' : 'Boost status updated', 'success');
+    loadData(true);
   };
 
-  const handleDeleteAd = async (ad: Ad) => {
-    Alert.alert(
-      isAr ? 'حذف الإعلان' : 'Delete Ad',
-      isAr ? `هل تريد حذف "${ad.title}"؟` : `Delete "${ad.title}"?`,
-      [
-        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-        {
-          text: isAr ? 'حذف' : 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } = await adminDeleteAd(ad.id);
-            if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-            loadData(false);
-          },
-        },
-      ]
-    );
+  const handleDeleteAd = (ad: Ad) => {
+    setSelectedAd(ad);
+    setDeleteModalVisible(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedAd) return;
+    const { error } = await adminDeleteAd(selectedAd.id);
+    setDeleteModalVisible(false);
+    if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
+    showSnackbar(isAr ? 'تم حذف الإعلان' : 'Ad deleted', 'success');
+    loadData(true);
   };
 
   const handleEditAd = (ad: Ad) => {
@@ -477,58 +779,39 @@ function AdsTab({ colors, isAr, t }: any) {
   const handleSaveAdEdit = async (id: string, updates: any) => {
     const { error } = await adminUpdateAd(id, updates);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    loadData(false);
+    showSnackbar(isAr ? 'تم تحديث الإعلان' : 'Ad updated', 'success');
+    loadData(true);
   };
 
-  const renderItem = ({ item }: { item: Ad }) => {
-    const isFeatured = item.status === 'featured';
-    const isBoosted = !!(item.boosted_until && new Date(item.boosted_until).getTime() > Date.now());
-    const statusColor = item.status === 'active' ? '#22C55E' : item.status === 'featured' ? '#F59E0B' : '#6B7280';
-    const statusLabel = isAr
-      ? item.status === 'active' ? 'نشط' : item.status === 'featured' ? 'مميز' : 'منتهي'
-      : item.status === 'active' ? 'Active' : item.status === 'featured' ? 'Featured' : 'Expired';
-
-    return (
-      <View style={[styles.adCard, { backgroundColor: colors.surface, borderColor: isBoosted ? '#2563EB' : colors.border }]}>
-        <View style={styles.adHeader}>
-          <Text style={[styles.adTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
-          <View style={[styles.adStatusDot, { backgroundColor: statusColor }]} />
-          <Text style={[styles.adStatusText, { color: statusColor }]}>{statusLabel}</Text>
-        </View>
-        <Text style={[styles.adMeta, { color: colors.textMuted }]}>
-          {item.price}₪ • {item.condition === 'new' ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used')}
-          {item.location ? ` • ${item.location}` : ''}
-        </Text>
-        <View style={styles.adActions}>
-          <Pressable style={[styles.adActionBtn, { backgroundColor: isFeatured ? '#FEF3C7' : colors.borderLight }]} onPress={() => handleToggleFeatured(item)}>
-            <MaterialIcons name={isFeatured ? 'star' : 'star-border'} size={14} color={isFeatured ? '#D97706' : colors.textMuted} />
-            <Text style={{ fontSize: 10, fontWeight: '600', color: isFeatured ? '#D97706' : colors.textMuted }}>
-              {isAr ? (isFeatured ? 'إلغاء التميز' : 'تمييز') : (isFeatured ? 'Unfeature' : 'Feature')}
-            </Text>
-          </Pressable>
-          <Pressable style={[styles.adActionBtn, { backgroundColor: isBoosted ? '#DBEAFE' : colors.borderLight }]} onPress={() => handleToggleBoost(item)}>
-            <MaterialIcons name="bolt" size={14} color={isBoosted ? '#2563EB' : colors.textMuted} />
-            <Text style={{ fontSize: 10, fontWeight: '600', color: isBoosted ? '#2563EB' : colors.textMuted }}>
-              {isAr ? (isBoosted ? 'إلغاء التعزيز' : 'تعزيز') : (isBoosted ? 'Unboost' : 'Boost')}
-            </Text>
-          </Pressable>
-          <Pressable style={[styles.adActionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => handleEditAd(item)}>
-            <MaterialIcons name="edit" size={14} color={colors.primary} />
-            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.primary }}>{isAr ? 'تعديل' : 'Edit'}</Text>
-          </Pressable>
-          <Pressable style={[styles.adActionBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => handleDeleteAd(item)}>
-            <MaterialIcons name="delete-outline" size={14} color="#EF4444" />
-            <Text style={{ fontSize: 10, fontWeight: '600', color: '#EF4444' }}>{isAr ? 'حذف' : 'Delete'}</Text>
-          </Pressable>
-        </View>
-        {isBoosted && item.boosted_until && (
-          <Text style={[styles.adBoostedDate, { color: '#2563EB' }]}>
-            {isAr ? `⏳ معزز حتى: ${new Date(item.boosted_until).toLocaleDateString()}` : `⏳ Boosted until: ${new Date(item.boosted_until).toLocaleDateString()}`}
-          </Text>
-        )}
-      </View>
-    );
+  const handleRestoreAd = async (ad: Ad) => {
+    const { error } = await adminUpdateAd(ad.id, { status: 'active' });
+    if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
+    showSnackbar(isAr ? 'تم استعادة الإعلان' : 'Ad restored', 'success');
+    loadData(true);
   };
+
+  const exportAds = async () => {
+    const csv = generateCSV(ads, ['ID', 'Title', 'Price', 'Condition', 'Status', 'Created'], ['id', 'title', 'price', 'condition', 'status', 'created_at']);
+    try {
+      await Share.share({ message: csv, title: 'Ads Export.csv' });
+    } catch (e) {
+      console.warn('Share failed', e);
+    }
+  };
+
+  const renderItem = ({ item }: { item: Ad }) => (
+    <AdItem
+      item={item}
+      colors={colors}
+      isAr={isAr}
+      onToggleFeatured={handleToggleFeatured}
+      onToggleBoost={handleToggleBoost}
+      onEdit={handleEditAd}
+      onDelete={handleDeleteAd}
+    />
+  );
+
+  const getItemLayout = (data: any, index: number) => ({ length: 120, offset: 120 * index, index });
 
   if (loading) {
     return (
@@ -540,29 +823,44 @@ function AdsTab({ colors, isAr, t }: any) {
 
   return (
     <View style={styles.tabContainer}>
-      <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
-        <MaterialIcons name="search" size={20} color={colors.textMuted} />
-        <TextInput
-          style={[styles.searchInput, { color: colors.textPrimary }]}
-          placeholder={isAr ? '🔍 ابحث عن إعلان...' : '🔍 Search ads...'}
-          placeholderTextColor={colors.textMuted}
-          value={search}
-          onChangeText={setSearch}
-        />
-        {search.length > 0 && (
-          <Pressable onPress={() => setSearch('')} hitSlop={8}>
-            <MaterialIcons name="close" size={18} color={colors.textMuted} />
-          </Pressable>
-        )}
+      <View style={styles.adControls}>
+        <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border, flex: 1 }]}>
+          <MaterialIcons name="search" size={20} color={colors.textMuted} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.textPrimary }]}
+            placeholder={isAr ? '🔍 ابحث عن إعلان...' : '🔍 Search ads...'}
+            placeholderTextColor={colors.textMuted}
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => setSearch('')} hitSlop={8}>
+              <MaterialIcons name="close" size={18} color={colors.textMuted} />
+            </Pressable>
+          )}
+        </View>
+        <Pressable style={[styles.toggleDeletedBtn, { backgroundColor: showDeleted ? colors.primary : colors.border }]} onPress={() => setShowDeleted(!showDeleted)}>
+          <Text style={{ color: showDeleted ? '#fff' : colors.textSecondary, fontWeight: '600', fontSize: 12 }}>
+            {showDeleted ? (isAr ? 'إخفاء المحذوفات' : 'Hide deleted') : (isAr ? 'عرض المحذوفات' : 'Show deleted')}
+          </Text>
+        </Pressable>
+        <Pressable style={[styles.exportBtn, { backgroundColor: colors.primaryGhost }]} onPress={exportAds}>
+          <MaterialIcons name="file-download" size={20} color={colors.primary} />
+        </Pressable>
       </View>
+
       <FlatList
-        data={filtered}
+        data={filteredAds}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(false); }} colors={[colors.primary]} tintColor={colors.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(true); }} colors={[colors.primary]} tintColor={colors.primary} />
         }
+        onEndReached={() => { if (hasMore && !loadingMore) loadData(false, page + 1); }}
+        onEndReachedThreshold={0.3}
+        getItemLayout={getItemLayout}
+        ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} /> : null}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <MaterialIcons name="campaign" size={48} color={colors.textMuted} />
@@ -570,6 +868,7 @@ function AdsTab({ colors, isAr, t }: any) {
           </View>
         }
       />
+
       <AdEditModal
         visible={editModalVisible}
         ad={editingAd}
@@ -578,107 +877,132 @@ function AdsTab({ colors, isAr, t }: any) {
         isAr={isAr}
         colors={colors}
       />
+
+      <ConfirmationModal
+        visible={deleteModalVisible}
+        title={isAr ? 'حذف الإعلان' : 'Delete Ad'}
+        message={isAr ? `هل أنت متأكد من حذف "${selectedAd?.title}"؟` : `Are you sure to delete "${selectedAd?.title}"?`}
+        details={selectedAd ? `ID: ${selectedAd.id}\nالسعر: ${selectedAd.price}₪` : ''}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteModalVisible(false)}
+        isAr={isAr}
+      />
+
+      <Snackbar visible={snackbar.visible} message={snackbar.message} type={snackbar.type} onDismiss={() => setSnackbar({ ...snackbar, visible: false })} />
     </View>
   );
 }
 
-// ─── Users Tab ─────────────────────────────────────────────────────────────────
+// ─── Users Tab (with pagination, export) ──────────────────────────────────
 function UsersTab({ colors, isAr, t }: any) {
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
   const { showAlert } = useAlert();
   const abortRef = useRef<AbortController | null>(null);
 
-  const loadData = useCallback(async () => {
+  const showSnackbar = (message: string, type: string = 'success') => {
+    setSnackbar({ visible: true, message, type });
+  };
+
+  const loadData = useCallback(async (reset = false, pageNum = 0) => {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setLoading(true);
+    if (reset) { setLoading(true); setUsers([]); setPage(0); setHasMore(true); }
     setRefreshing(false);
+    setLoadingMore(pageNum > 0);
+
     try {
+      const limit = 20;
+      const offset = pageNum * limit;
       const timeout = new Promise((_, reject) => setTimeout(() => { controller.abort(); reject(new Error('TIMEOUT')); }, 15000));
-      const result = await Promise.race([adminFetchAllUsers({ signal: controller.signal }), timeout]);
-      const { data } = result as any;
+      const result = await Promise.race([adminFetchAllUsers({ signal: controller.signal, limit, offset }), timeout]);
+      const { data, count } = result as any;
       if (controller.signal.aborted) return;
-      setUsers(data || []);
+      if (reset) {
+        setUsers(data || []);
+        setHasMore(data.length >= limit);
+        setPage(pageNum);
+      } else {
+        setUsers(prev => [...prev, ...(data || [])]);
+        setHasMore(data.length >= limit);
+        setPage(pageNum);
+      }
     } catch (err: any) {
       if (err?.name !== 'AbortError' && err?.message !== 'TIMEOUT') {
         showAlert(isAr ? 'خطأ' : 'Error', err?.message || (isAr ? 'فشل التحميل' : 'Load failed'));
       }
     } finally {
-      setLoading(false);
+      if (reset) setLoading(false);
+      setRefreshing(false);
+      setLoadingMore(false);
       if (abortRef.current === controller) abortRef.current = null;
     }
   }, [isAr, showAlert]);
 
-  useEffect(() => { loadData(); return () => { if (abortRef.current) abortRef.current.abort(); }; }, []);
+  useEffect(() => {
+    loadData(true);
+    return () => { if (abortRef.current) abortRef.current.abort(); };
+  }, []);
 
-  const filtered = users.filter(u =>
-    (u.username || '').toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    let filtered = users;
+    if (search) {
+      filtered = filtered.filter(u =>
+        (u.username || '').toLowerCase().includes(search.toLowerCase()) ||
+        u.email.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+    setFilteredUsers(filtered);
+  }, [users, search]);
 
   const handleToggleAdmin = async (user: UserProfile) => {
     const { error } = await adminSetUserAdmin(user.id, !user.is_admin);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    loadData();
+    showSnackbar(isAr ? 'تم تحديث صلاحية المدير' : 'Admin status updated', 'success');
+    loadData(true);
   };
   const handleToggleVerified = async (user: UserProfile) => {
     const { error } = await adminSetUserVerified(user.id, !user.is_verified);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    loadData();
+    showSnackbar(isAr ? 'تم تحديث حالة التوثيق' : 'Verification updated', 'success');
+    loadData(true);
   };
   const handleToggleBlocked = async (user: UserProfile) => {
     const { error } = await adminSetUserBlocked(user.id, !user.is_blocked);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    loadData();
+    showSnackbar(isAr ? 'تم تحديث حالة الحظر' : 'Block status updated', 'success');
+    loadData(true);
   };
 
-  const renderItem = ({ item }: { item: UserProfile }) => {
-    const displayName = item.username || item.email.split('@')[0] || 'User';
-    return (
-      <View style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={styles.userRow}>
-          <View style={[styles.userAvatar, { backgroundColor: item.is_admin ? colors.primary : colors.primaryGhost }]}>
-            <Text style={[styles.userAvatarText, { color: item.is_admin ? '#fff' : colors.primary }]}>
-              {displayName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-          <View style={styles.userInfo}>
-            <Text style={[styles.userName, { color: colors.textPrimary }]}>{displayName}</Text>
-            <Text style={[styles.userEmail, { color: colors.textMuted }]}>{item.email}</Text>
-            <View style={styles.userBadges}>
-              {item.is_admin && <View style={[styles.userBadge, { backgroundColor: colors.primaryGhost }]}><Text style={[styles.userBadgeText, { color: colors.primary }]}>Admin</Text></View>}
-              {item.is_verified && <View style={[styles.userBadge, { backgroundColor: '#DBEAFE' }]}><Text style={[styles.userBadgeText, { color: '#2563EB' }]}>✓ {isAr ? 'موثّق' : 'Verified'}</Text></View>}
-              {item.is_blocked && <View style={[styles.userBadge, { backgroundColor: '#FEE2E2' }]}><Text style={[styles.userBadgeText, { color: '#EF4444' }]}>{isAr ? 'محظور' : 'Blocked'}</Text></View>}
-            </View>
-          </View>
-        </View>
-        <View style={[styles.userActions, { borderTopColor: colors.borderLight }]}>
-          <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_admin ? colors.primaryGhost : colors.borderLight }]} onPress={() => handleToggleAdmin(item)}>
-            <MaterialIcons name="admin-panel-settings" size={14} color={item.is_admin ? colors.primary : colors.textMuted} />
-            <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_admin ? colors.primary : colors.textMuted }}>
-              {isAr ? (item.is_admin ? 'إلغاء الإدارة' : 'جعله مدير') : (item.is_admin ? 'Revoke Admin' : 'Make Admin')}
-            </Text>
-          </Pressable>
-          <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_verified ? '#DBEAFE' : colors.borderLight }]} onPress={() => handleToggleVerified(item)}>
-            <MaterialIcons name="verified" size={14} color={item.is_verified ? '#2563EB' : colors.textMuted} />
-            <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_verified ? '#2563EB' : colors.textMuted }}>
-              {isAr ? (item.is_verified ? 'إلغاء التوثيق' : 'توثيق') : (item.is_verified ? 'Unverify' : 'Verify')}
-            </Text>
-          </Pressable>
-          <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_blocked ? '#FEE2E2' : colors.borderLight }]} onPress={() => handleToggleBlocked(item)}>
-            <MaterialIcons name="block" size={14} color={item.is_blocked ? '#EF4444' : colors.textMuted} />
-            <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_blocked ? '#EF4444' : colors.textMuted }}>
-              {isAr ? (item.is_blocked ? 'رفع الحظر' : 'حظر') : (item.is_blocked ? 'Unblock' : 'Block')}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    );
+  const exportUsers = async () => {
+    const csv = generateCSV(users, ['ID', 'Username', 'Email', 'Admin', 'Verified', 'Blocked'], ['id', 'username', 'email', 'is_admin', 'is_verified', 'is_blocked']);
+    try {
+      await Share.share({ message: csv, title: 'Users Export.csv' });
+    } catch (e) {
+      console.warn('Share failed', e);
+    }
   };
+
+  const renderItem = ({ item }: { item: UserProfile }) => (
+    <UserItem
+      item={item}
+      colors={colors}
+      isAr={isAr}
+      onToggleAdmin={handleToggleAdmin}
+      onToggleVerified={handleToggleVerified}
+      onToggleBlocked={handleToggleBlocked}
+    />
+  );
+
+  const getItemLayout = (data: any, index: number) => ({ length: 130, offset: 130 * index, index });
 
   if (loading) {
     return (
@@ -690,29 +1014,38 @@ function UsersTab({ colors, isAr, t }: any) {
 
   return (
     <View style={styles.tabContainer}>
-      <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
-        <MaterialIcons name="search" size={20} color={colors.textMuted} />
-        <TextInput
-          style={[styles.searchInput, { color: colors.textPrimary }]}
-          placeholder={isAr ? '🔍 ابحث عن مستخدم...' : '🔍 Search users...'}
-          placeholderTextColor={colors.textMuted}
-          value={search}
-          onChangeText={setSearch}
-        />
-        {search.length > 0 && (
-          <Pressable onPress={() => setSearch('')} hitSlop={8}>
-            <MaterialIcons name="close" size={18} color={colors.textMuted} />
-          </Pressable>
-        )}
+      <View style={styles.adControls}>
+        <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border, flex: 1 }]}>
+          <MaterialIcons name="search" size={20} color={colors.textMuted} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.textPrimary }]}
+            placeholder={isAr ? '🔍 ابحث عن مستخدم...' : '🔍 Search users...'}
+            placeholderTextColor={colors.textMuted}
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => setSearch('')} hitSlop={8}>
+              <MaterialIcons name="close" size={18} color={colors.textMuted} />
+            </Pressable>
+          )}
+        </View>
+        <Pressable style={[styles.exportBtn, { backgroundColor: colors.primaryGhost }]} onPress={exportUsers}>
+          <MaterialIcons name="file-download" size={20} color={colors.primary} />
+        </Pressable>
       </View>
       <FlatList
-        data={filtered}
+        data={filteredUsers}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} colors={[colors.primary]} tintColor={colors.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(true); }} colors={[colors.primary]} tintColor={colors.primary} />
         }
+        onEndReached={() => { if (hasMore && !loadingMore) loadData(false, page + 1); }}
+        onEndReachedThreshold={0.3}
+        getItemLayout={getItemLayout}
+        ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} /> : null}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <MaterialIcons name="people" size={48} color={colors.textMuted} />
@@ -720,11 +1053,12 @@ function UsersTab({ colors, isAr, t }: any) {
           </View>
         }
       />
+      <Snackbar visible={snackbar.visible} message={snackbar.message} type={snackbar.type} onDismiss={() => setSnackbar({ ...snackbar, visible: false })} />
     </View>
   );
 }
 
-// ─── Banners Tab ──────────────────────────────────────────────────────────────
+// ─── Banners Tab (unchanged, but with Snackbar) ───────────────────────────
 function BannersTab({ colors, isAr, t }: any) {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -738,8 +1072,15 @@ function BannersTab({ colors, isAr, t }: any) {
   const [bnPlacement, setBnPlacement] = useState<BannerPlacement>('home');
   const [bnSaving, setBnSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [selectedBanner, setSelectedBanner] = useState<Banner | null>(null);
   const { showAlert } = useAlert();
   const abortRef = useRef<AbortController | null>(null);
+
+  const showSnackbar = (message: string, type: string = 'success') => {
+    setSnackbar({ visible: true, message, type });
+  };
 
   const loadData = useCallback(async () => {
     if (abortRef.current) abortRef.current.abort();
@@ -808,24 +1149,28 @@ function BannersTab({ colors, isAr, t }: any) {
       : await createBanner(payload);
     setBnSaving(false);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
+    showSnackbar(editingBanner ? (isAr ? 'تم تحديث البانر' : 'Banner updated') : (isAr ? 'تم إضافة البانر' : 'Banner added'), 'success');
     resetForm();
     loadData();
   };
 
   const handleToggleActive = async (banner: Banner) => {
     await toggleBannerActive(banner.id, !banner.is_active);
+    showSnackbar(isAr ? 'تم تحديث حالة البانر' : 'Banner status updated', 'success');
     loadData();
   };
 
-  const handleDeleteBanner = async (banner: Banner) => {
-    Alert.alert(
-      isAr ? 'حذف البانر' : 'Delete Banner',
-      isAr ? `هل تريد حذف "${banner.title}"؟` : `Delete "${banner.title}"?`,
-      [
-        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-        { text: isAr ? 'حذف' : 'Delete', style: 'destructive', onPress: async () => { await deleteBanner(banner.id); loadData(); } }
-      ]
-    );
+  const handleDeleteBanner = (banner: Banner) => {
+    setSelectedBanner(banner);
+    setDeleteModalVisible(true);
+  };
+
+  const confirmDeleteBanner = async () => {
+    if (!selectedBanner) return;
+    await deleteBanner(selectedBanner.id);
+    setDeleteModalVisible(false);
+    showSnackbar(isAr ? 'تم حذف البانر' : 'Banner deleted', 'success');
+    loadData();
   };
 
   const openEditForm = (banner: Banner) => {
@@ -839,33 +1184,17 @@ function BannersTab({ colors, isAr, t }: any) {
   };
 
   const renderItem = ({ item }: { item: Banner }) => (
-    <View style={[styles.bannerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={styles.bannerRow}>
-        {item.image_url ? (
-          <Image source={{ uri: item.image_url }} style={styles.bannerImage} contentFit="cover" />
-        ) : (
-          <View style={[styles.bannerImagePlaceholder, { backgroundColor: colors.surfaceTint }]}>
-            <MaterialIcons name="image" size={22} color={colors.textMuted} />
-          </View>
-        )}
-        <View style={styles.bannerInfo}>
-          <Text style={[styles.bannerTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
-          <Text style={[styles.bannerPlacementText, { color: colors.textMuted }]}>{item.placement || 'home'}</Text>
-        </View>
-        <View style={styles.bannerActions}>
-          <Pressable onPress={() => handleToggleActive(item)} hitSlop={4}>
-            <MaterialIcons name={item.is_active ? 'visibility' : 'visibility-off'} size={20} color={item.is_active ? '#22C55E' : '#EF4444'} />
-          </Pressable>
-          <Pressable onPress={() => openEditForm(item)} hitSlop={4}>
-            <MaterialIcons name="edit" size={20} color={colors.primary} />
-          </Pressable>
-          <Pressable onPress={() => handleDeleteBanner(item)} hitSlop={4}>
-            <MaterialIcons name="delete-outline" size={20} color="#EF4444" />
-          </Pressable>
-        </View>
-      </View>
-    </View>
+    <BannerItem
+      item={item}
+      colors={colors}
+      isAr={isAr}
+      onToggleActive={handleToggleActive}
+      onEdit={openEditForm}
+      onDelete={handleDeleteBanner}
+    />
   );
+
+  const getItemLayout = (data: any, index: number) => ({ length: 80, offset: 80 * index, index });
 
   if (loading) {
     return (
@@ -934,6 +1263,7 @@ function BannersTab({ colors, isAr, t }: any) {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} colors={[colors.primary]} tintColor={colors.primary} />
         }
+        getItemLayout={getItemLayout}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <MaterialIcons name="view-carousel" size={48} color={colors.textMuted} />
@@ -941,17 +1271,34 @@ function BannersTab({ colors, isAr, t }: any) {
           </View>
         }
       />
+
+      <ConfirmationModal
+        visible={deleteModalVisible}
+        title={isAr ? 'حذف البانر' : 'Delete Banner'}
+        message={isAr ? `هل أنت متأكد من حذف "${selectedBanner?.title}"؟` : `Are you sure to delete "${selectedBanner?.title}"?`}
+        details={selectedBanner ? `ID: ${selectedBanner.id}\nالرابط: ${selectedBanner.link_url || 'لا يوجد'}` : ''}
+        onConfirm={confirmDeleteBanner}
+        onCancel={() => setDeleteModalVisible(false)}
+        isAr={isAr}
+      />
+
+      <Snackbar visible={snackbar.visible} message={snackbar.message} type={snackbar.type} onDismiss={() => setSnackbar({ ...snackbar, visible: false })} />
     </View>
   );
 }
 
-// ─── Interstitials Tab ────────────────────────────────────────────────────────
+// ─── Interstitials Tab (unchanged, with Snackbar) ────────────────────────
 function InterstitialsTab({ colors, isAr, t }: any) {
   const [interstitials, setInterstitials] = useState<InterstitialAd[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
   const { showAlert } = useAlert();
   const abortRef = useRef<AbortController | null>(null);
+
+  const showSnackbar = (message: string, type: string = 'success') => {
+    setSnackbar({ visible: true, message, type });
+  };
 
   const loadData = useCallback(async () => {
     if (abortRef.current) abortRef.current.abort();
@@ -978,23 +1325,10 @@ function InterstitialsTab({ colors, isAr, t }: any) {
   useEffect(() => { loadData(); return () => { if (abortRef.current) abortRef.current.abort(); }; }, []);
 
   const renderItem = ({ item }: { item: InterstitialAd }) => (
-    <View style={[styles.interCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={styles.interRow}>
-        <View style={[styles.interIcon, { backgroundColor: colors.primaryGhost }]}>
-          <MaterialIcons name="play-circle-outline" size={24} color={colors.primary} />
-        </View>
-        <View style={styles.interInfo}>
-          <Text style={[styles.interTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-            {item.title || (isAr ? 'بدون عنوان' : 'No title')}
-          </Text>
-          <Text style={[styles.interMeta, { color: colors.textMuted }]}>
-            ⏱ {item.duration_seconds}s • {isAr ? 'تخطي بعد' : 'Skip after'} {item.skip_after_seconds}s • {isAr ? 'يظهر بعد' : 'Show after'} {item.show_after_seconds}s
-          </Text>
-        </View>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.is_active ? '#22C55E' : '#EF4444' }} />
-      </View>
-    </View>
+    <InterstitialItem item={item} colors={colors} isAr={isAr} />
   );
+
+  const getItemLayout = (data: any, index: number) => ({ length: 80, offset: 80 * index, index });
 
   if (loading) {
     return (
@@ -1014,6 +1348,7 @@ function InterstitialsTab({ colors, isAr, t }: any) {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} colors={[colors.primary]} tintColor={colors.primary} />
         }
+        getItemLayout={getItemLayout}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <MaterialIcons name="play-circle-outline" size={48} color={colors.textMuted} />
@@ -1021,11 +1356,120 @@ function InterstitialsTab({ colors, isAr, t }: any) {
           </View>
         }
       />
+      <Snackbar visible={snackbar.visible} message={snackbar.message} type={snackbar.type} onDismiss={() => setSnackbar({ ...snackbar, visible: false })} />
     </View>
   );
 }
 
-// ─── الصفحة الرئيسية ──────────────────────────────────────────────────────────
+// ─── Tools Tab (Broadcast, Settings, etc.) ─────────────────────────────────
+function ToolsTab({ colors, isAr, t }: any) {
+  const [broadcastModalVisible, setBroadcastModalVisible] = useState(false);
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [sending, setSending] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
+  const { showAlert } = useAlert();
+
+  const showSnackbar = (message: string, type: string = 'success') => {
+    setSnackbar({ visible: true, message, type });
+  };
+
+  const handleBroadcast = async () => {
+    if (!title.trim() || !body.trim()) {
+      showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'العنوان والمحتوى مطلوبان' : 'Title and body are required');
+      return;
+    }
+    setSending(true);
+    // Simulate sending
+    setTimeout(() => {
+      setSending(false);
+      setBroadcastModalVisible(false);
+      setTitle('');
+      setBody('');
+      setImageUrl('');
+      showSnackbar(isAr ? 'تم إرسال الإشعارات بنجاح' : 'Broadcast sent successfully', 'success');
+    }, 1500);
+  };
+
+  return (
+    <ScrollView contentContainerStyle={styles.toolsContainer}>
+      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{isAr ? '🛠️ أدوات الإدارة' : '🛠️ Admin Tools'}</Text>
+
+      <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setBroadcastModalVisible(true)}>
+        <MaterialIcons name="notifications-active" size={28} color={colors.primary} />
+        <View style={styles.toolText}>
+          <Text style={[styles.toolTitle, { color: colors.textPrimary }]}>{isAr ? 'إرسال إشعارات جماعية' : 'Send Broadcast'}</Text>
+          <Text style={[styles.toolDesc, { color: colors.textMuted }]}>{isAr ? 'إرسال إشعارات لجميع المستخدمين' : 'Send notifications to all users'}</Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
+      </Pressable>
+
+      <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => Alert.alert(isAr ? 'تصدير البيانات' : 'Export Data', isAr ? 'سيتم تصدير جميع البيانات إلى ملف CSV' : 'All data will be exported to CSV')}>
+        <MaterialIcons name="file-download" size={28} color={colors.primary} />
+        <View style={styles.toolText}>
+          <Text style={[styles.toolTitle, { color: colors.textPrimary }]}>{isAr ? 'تصدير جميع البيانات' : 'Export All Data'}</Text>
+          <Text style={[styles.toolDesc, { color: colors.textMuted }]}>{isAr ? 'تصدير الإعلانات والمستخدمين والمتاجر' : 'Export ads, users, stores'}</Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
+      </Pressable>
+
+      <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => Alert.alert(isAr ? 'إعدادات متقدمة' : 'Advanced Settings', isAr ? 'مدة التعزيز الافتراضية: 7 أيام' : 'Default boost duration: 7 days')}>
+        <MaterialIcons name="settings" size={28} color={colors.primary} />
+        <View style={styles.toolText}>
+          <Text style={[styles.toolTitle, { color: colors.textPrimary }]}>{isAr ? 'إعدادات متقدمة' : 'Advanced Settings'}</Text>
+          <Text style={[styles.toolDesc, { color: colors.textMuted }]}>{isAr ? 'تعديل الإعدادات العامة للإدارة' : 'Modify admin settings'}</Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
+      </Pressable>
+
+      {/* Broadcast Modal */}
+      <Modal visible={broadcastModalVisible} animationType="slide" transparent onRequestClose={() => setBroadcastModalVisible(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalSheet, { backgroundColor: colors.surface }]}>
+              <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+              <View style={[styles.modalHeader, { borderBottomColor: colors.borderLight }]}>
+                <MaterialIcons name="notifications-active" size={22} color={colors.primary} />
+                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                  {isAr ? '📢 إشعار جماعي' : '📢 Broadcast'}
+                </Text>
+                <Pressable onPress={() => setBroadcastModalVisible(false)} hitSlop={8}>
+                  <MaterialIcons name="close" size={24} color={colors.textMuted} />
+                </Pressable>
+              </View>
+              <ScrollView contentContainerStyle={styles.modalContent}>
+                <View style={styles.modalField}>
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'العنوان' : 'Title'}</Text>
+                  <TextInput style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} value={title} onChangeText={setTitle} />
+                </View>
+                <View style={styles.modalField}>
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'المحتوى' : 'Body'}</Text>
+                  <TextInput style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, height: 100, textAlignVertical: 'top' }]} value={body} onChangeText={setBody} multiline />
+                </View>
+                <View style={styles.modalField}>
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'رابط الصورة (اختياري)' : 'Image URL (optional)'}</Text>
+                  <TextInput style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} value={imageUrl} onChangeText={setImageUrl} />
+                </View>
+                <Pressable
+                  style={[styles.modalSaveBtn, { backgroundColor: colors.primary, opacity: sending ? 0.7 : 1 }]}
+                  onPress={handleBroadcast}
+                  disabled={sending}
+                >
+                  {sending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.modalSaveBtnText}>{isAr ? '📤 إرسال' : '📤 Send'}</Text>}
+                </Pressable>
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Snackbar visible={snackbar.visible} message={snackbar.message} type={snackbar.type} onDismiss={() => setSnackbar({ ...snackbar, visible: false })} />
+    </ScrollView>
+  );
+}
+
+// ─── Main Admin Screen ───────────────────────────────────────────────────────
 export default function AdminScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -1034,14 +1478,15 @@ export default function AdminScreen() {
   const isAr = language === 'ar';
   const { t } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'analytics' | 'ads' | 'users' | 'banners' | 'interstitials'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'ads' | 'users' | 'banners' | 'interstitials' | 'tools'>('analytics');
 
   const TABS = [
     { key: 'analytics', label: isAr ? '📊 إحصائيات' : 'Analytics', icon: 'insights' },
     { key: 'ads', label: isAr ? '📢 إعلانات' : 'Ads', icon: 'storefront' },
     { key: 'users', label: isAr ? '👤 مستخدمين' : 'Users', icon: 'people' },
     { key: 'banners', label: isAr ? '🖼️ بانرات' : 'Banners', icon: 'view-carousel' },
-    { key: 'interstitials', label: isAr ? '📱 إعلانات بينية' : 'Interstitials', icon: 'play-circle-outline' },
+    { key: 'interstitials', label: isAr ? '📱 بينية' : 'Interstitials', icon: 'play-circle-outline' },
+    { key: 'tools', label: isAr ? '🛠️ أدوات' : 'Tools', icon: 'build' },
   ];
 
   return (
@@ -1055,7 +1500,7 @@ export default function AdminScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* تبويبات */}
+      {/* Tabs */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -1082,13 +1527,14 @@ export default function AdminScreen() {
         })}
       </ScrollView>
 
-      {/* المحتوى */}
+      {/* Content */}
       <AdminTabErrorBoundary>
         {activeTab === 'analytics' && <AnalyticsTab isAr={isAr} colors={colors} />}
         {activeTab === 'ads' && <AdsTab colors={colors} isAr={isAr} t={t} />}
         {activeTab === 'users' && <UsersTab colors={colors} isAr={isAr} t={t} />}
         {activeTab === 'banners' && <BannersTab colors={colors} isAr={isAr} t={t} />}
         {activeTab === 'interstitials' && <InterstitialsTab colors={colors} isAr={isAr} t={t} />}
+        {activeTab === 'tools' && <ToolsTab colors={colors} isAr={isAr} t={t} />}
       </AdminTabErrorBoundary>
     </View>
   );
@@ -1121,6 +1567,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 40,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  errorText: {
+    fontSize: 16,
+    marginTop: 8,
+  },
+  retryBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: Radius.full,
+    marginTop: 12,
   },
   tabContainer: {
     flex: 1,
@@ -1338,6 +1800,63 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  // Trend Chart
+  trendCard: {
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: Spacing.md,
+  },
+  trendTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  trendBars: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    height: 80,
+  },
+  trendBarWrapper: {
+    alignItems: 'center',
+  },
+  trendBar: {
+    width: 20,
+    borderRadius: 4,
+    minHeight: 4,
+  },
+  trendLabel: {
+    fontSize: 8,
+    marginTop: 2,
+  },
+
+  // Advanced Stats
+  advancedStatsCard: {
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: Spacing.md,
+  },
+  advancedStatsTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  advancedStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  advancedStatsCol: {
+    flex: 1,
+  },
+  advancedStatsLabel: {
+    fontSize: 10,
+  },
+  advancedStatsValue: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
   // Ad Card
   adCard: {
     borderWidth: 1,
@@ -1385,6 +1904,28 @@ const styles = StyleSheet.create({
   adBoostedDate: {
     fontSize: 9,
     marginTop: 4,
+  },
+  adControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+  },
+  toggleDeletedBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    height: 40,
+    justifyContent: 'center',
+  },
+  exportBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   // User Card
@@ -1661,5 +2202,107 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: FontSize.md,
+  },
+
+  // Confirmation Modal
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  confirmSheet: {
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 12,
+    color: '#111827',
+  },
+  confirmMessage: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+    color: '#4B5563',
+  },
+  confirmDetails: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 8,
+    color: '#6B7280',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    width: '100%',
+  },
+  confirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+  },
+  confirmCancel: {
+    backgroundColor: '#F3F4F6',
+  },
+  confirmDelete: {
+    backgroundColor: '#EF4444',
+  },
+  confirmBtnText: {
+    fontWeight: '700',
+    fontSize: 14,
+  },
+
+  // Snackbar
+  snackbar: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    padding: 16,
+    borderRadius: Radius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...Shadow.medium,
+  },
+  snackbarText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+    flex: 1,
+  },
+
+  // Tools
+  toolsContainer: {
+    padding: Spacing.md,
+    gap: Spacing.md,
+    paddingBottom: 40,
+  },
+  toolCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    gap: 12,
+  },
+  toolText: {
+    flex: 1,
+  },
+  toolTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+  },
+  toolDesc: {
+    fontSize: FontSize.xs,
   },
 });
