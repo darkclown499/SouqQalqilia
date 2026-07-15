@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   Linking,
+  RefreshControl,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -43,122 +44,139 @@ export default function CategoryDetailScreen() {
   const [category, setCategory] = useState<StoreCategory | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // ── Load category & stores ──
-  useEffect(() => {
+  // ── Load category & stores ──────────────────────────────────────────────
+  const loadCategoryData = useCallback(async () => {
     if (!slug) return;
 
-    setLoading(true);
+    try {
+      setLoadError(null);
+      const [catsRes, storesRes] = await Promise.all([
+        fetchStoreCategories(),
+        fetchAllActiveStores(),
+      ]);
 
-    Promise.all([fetchStoreCategories(), fetchAllActiveStores()])
-      .then(([catsRes, storesRes]) => {
-        const found = catsRes.data.find((c: StoreCategory) => c.slug === slug);
-        setCategory(found || null);
+      const found = catsRes.data.find((c: StoreCategory) => c.slug === slug);
+      setCategory(found || null);
 
-        if (found) {
-          const filtered = storesRes.data.filter(
-            (s: Store) =>
-              s.store_category_id === found.id ||
-              s.category_id === found.id
-          );
-          setStores(filtered);
-        } else {
-          setStores([]);
-        }
-      })
-      .catch((err) => {
-        console.error('Error loading category:', err);
+      if (found) {
+        const filtered = storesRes.data.filter(
+          (s: Store) =>
+            s.store_category_id === found.id ||
+            s.category_id === found.id
+        );
+        setStores(filtered);
+      } else {
         setStores([]);
-      })
-      .finally(() => setLoading(false));
-  }, [slug]);
+      }
+    } catch (err) {
+      console.error('Error loading category:', err);
+      setLoadError(isAr ? 'فشل تحميل التصنيف' : 'Failed to load category');
+      setStores([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [slug, isAr]);
 
-  // ── Load ads ──
+  // ── Initial load ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    setLoading(true);
+    loadCategoryData();
+  }, [loadCategoryData]);
+
+  // ── Load ads when category is available ──────────────────────────────────
   useEffect(() => {
     if (category?.id) {
       loadAds({ categoryId: category.id });
     }
   }, [category?.id, loadAds]);
 
-  // ── Navigate ──
+  // ── Refresh (pull-to-refresh) ────────────────────────────────────────────
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadCategoryData();
+  }, [loadCategoryData]);
+
+  // ── Navigate ──────────────────────────────────────────────────────────────
   const handleStorePress = (storeId: string) => {
     router.push(`/store/${storeId}` as any);
   };
 
- // ── Render Store Card (Grid) ──
-const renderStore = ({ item }: { item: Store }) => {
-  const name = isAr ? item.name_ar || item.name : item.name;
-  const isOpen = checkStoreIsOpen(item);
-  const wa = item.whatsapp || item.phone;
-  const isVIP = item.is_featured === true || (item as any).is_vip === true; // ✅ التحقق من VIP
+  // ── Render Store Card (Grid) ─────────────────────────────────────────────
+  const renderStore = ({ item }: { item: Store }) => {
+    const name = isAr ? item.name_ar || item.name : item.name;
+    const isOpen = checkStoreIsOpen(item);
+    const wa = item.whatsapp || item.phone;
+    const isVIP = item.is_featured === true || (item as any).is_vip === true;
 
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.storeCard,
-        {
-          backgroundColor: colors.surface,
-          borderColor: isVIP ? '#FFD700' : colors.border, // ✅ إطار ذهبي لـ VIP
-          opacity: pressed ? 0.85 : 1,
-        },
-      ]}
-      onPress={() => handleStorePress(item.id)}
-    >
-      {/* حاوية الشعار مع شارة VIP */}
-      <View style={styles.logoWrapper}>
-        {item.logo_url ? (
-          <Image source={{ uri: item.logo_url }} style={styles.storeLogo} contentFit="cover" />
-        ) : (
-          <View style={[styles.storeLogoPlaceholder, { backgroundColor: colors.primaryGhost }]}>
-            <Text style={styles.storeLogoEmoji}>🏪</Text>
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          styles.storeCard,
+          {
+            backgroundColor: colors.surface,
+            borderColor: isVIP ? '#FFD700' : colors.border,
+            opacity: pressed ? 0.85 : 1,
+          },
+        ]}
+        onPress={() => handleStorePress(item.id)}
+      >
+        <View style={styles.logoWrapper}>
+          {item.logo_url ? (
+            <Image source={{ uri: item.logo_url }} style={styles.storeLogo} contentFit="cover" />
+          ) : (
+            <View style={[styles.storeLogoPlaceholder, { backgroundColor: colors.primaryGhost }]}>
+              <Text style={styles.storeLogoEmoji}>🏪</Text>
+            </View>
+          )}
+
+          {isVIP && (
+            <View style={styles.vipBadge}>
+              <MaterialIcons name="stars" size={10} color="#FFD700" />
+              <Text style={styles.vipBadgeText}>VIP</Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={[styles.storeName, { color: colors.textPrimary }]} numberOfLines={2}>
+          {name}
+        </Text>
+
+        <Text style={[styles.storeAddress, { color: colors.textMuted }]} numberOfLines={1}>
+          {item.address || (isAr ? 'قلقيلية' : 'Qalqilya')}
+        </Text>
+
+        <View style={styles.storeMeta}>
+          <View style={[styles.statusBadge, { backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2' }]}>
+            <View style={[styles.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
+            <Text style={[styles.statusText, { color: isOpen ? '#16A34A' : '#DC2626' }]}>
+              {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+            </Text>
           </View>
-        )}
-
-        {/* ✅ شارة VIP (تظهر فقط إذا كان المتجر VIP) */}
-        {isVIP && (
-          <View style={styles.vipBadge}>
-            <MaterialIcons name="stars" size={10} color="#FFD700" />
-            <Text style={styles.vipBadgeText}>VIP</Text>
-          </View>
-        )}
-      </View>
-
-      <Text style={[styles.storeName, { color: colors.textPrimary }]} numberOfLines={2}>
-        {name}
-      </Text>
-
-      <Text style={[styles.storeAddress, { color: colors.textMuted }]} numberOfLines={1}>
-        {item.address || (isAr ? 'قلقيلية' : 'Qalqilya')}
-      </Text>
-
-      <View style={styles.storeMeta}>
-        <View style={[styles.statusBadge, { backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2' }]}>
-          <View style={[styles.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
-          <Text style={[styles.statusText, { color: isOpen ? '#16A34A' : '#DC2626' }]}>
-            {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+          <Text style={[styles.hoursText, { color: colors.textMuted }]}>
+            {item.opening_time} - {item.closing_time}
           </Text>
         </View>
-        <Text style={[styles.hoursText, { color: colors.textMuted }]}>
-          {item.opening_time} - {item.closing_time}
-        </Text>
-      </View>
 
-      {wa && (
-        <Pressable
-          style={styles.waBtn}
-          onPress={() =>
-            Linking.openURL(`https://wa.me/${wa.replace(/[^0-9]/g, '')}`).catch(() => {})
-          }
-        >
-          <Text style={styles.waEmoji}>💬</Text>
-          <Text style={styles.waText}>{isAr ? 'واتساب' : 'WhatsApp'}</Text>
-        </Pressable>
-      )}
-    </Pressable>
-  );
-};
+        {wa && (
+          <Pressable
+            style={styles.waBtn}
+            onPress={() =>
+              Linking.openURL(`https://wa.me/${wa.replace(/[^0-9]/g, '')}`).catch(() => {})
+            }
+          >
+            <Text style={styles.waEmoji}>💬</Text>
+            <Text style={styles.waText}>{isAr ? 'واتساب' : 'WhatsApp'}</Text>
+          </Pressable>
+        )}
+      </Pressable>
+    );
+  };
 
-  // ── Render Ad (Horizontal Strip) ──
+  // ── Render Ad Strip ──────────────────────────────────────────────────────
   const renderAdStrip = useCallback(() => {
     if (ads.length === 0) return null;
 
@@ -179,30 +197,65 @@ const renderStore = ({ item }: { item: Store }) => {
             </View>
           )}
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.adScrollContent}
+          contentContainerStyle={[
+            styles.adScrollContent,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
           snapToInterval={CARD_WIDTH + 12}
           decelerationRate="fast"
         />
       </View>
     );
-  }, [ads, favIds, user, toggleFav, CARD_WIDTH]);
+  }, [ads, favIds, user, toggleFav, CARD_WIDTH, isRTL]);
 
-  // ── Loading ──
-  if (loading) {
+  // ── Loading ──────────────────────────────────────────────────────────────
+  if (loading && !refreshing) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <ActivityIndicator color={colors.primary} size="large" />
+        <Text style={[styles.loadingText, { color: colors.textMuted }]}>
+          {isAr ? 'جارٍ تحميل التصنيف...' : 'Loading category...'}
+        </Text>
       </View>
     );
   }
 
-  // ── Category not found ──
+  // ── Error ─────────────────────────────────────────────────────────────────
+  if (loadError && !category) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <View style={[styles.header, { backgroundColor: colors.primary }]}>
+          <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
+            <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#fff" />
+          </Pressable>
+          <Text style={styles.headerTitle}>{isAr ? 'خطأ' : 'Error'}</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.center}>
+          <MaterialIcons name="error-outline" size={48} color={colors.error} />
+          <Text style={[styles.errorText, { color: colors.error }]}>{loadError}</Text>
+          <Pressable
+            style={[styles.retryBtn, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              setLoadError(null);
+              setLoading(true);
+              loadCategoryData();
+            }}
+          >
+            <Text style={styles.retryBtnText}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Category not found ────────────────────────────────────────────────────
   if (!category) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <View style={[styles.header, { backgroundColor: colors.primary }]}>
           <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
-            <MaterialIcons name="chevron-left" size={24} color="#fff" />
+            <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#fff" />
           </Pressable>
           <Text style={styles.headerTitle}>{isAr ? 'تصنيف غير موجود' : 'Category Not Found'}</Text>
           <View style={{ width: 40 }} />
@@ -217,7 +270,7 @@ const renderStore = ({ item }: { item: Store }) => {
     );
   }
 
-  // ── Main UI ──
+  // ── Main UI ──────────────────────────────────────────────────────────────
   const categoryName = isAr ? category.name_ar || category.name : category.name;
 
   return (
@@ -225,7 +278,7 @@ const renderStore = ({ item }: { item: Store }) => {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
-          <MaterialIcons name="chevron-left" size={24} color="#fff" />
+          <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#fff" />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>
           {categoryName}
@@ -233,7 +286,7 @@ const renderStore = ({ item }: { item: Store }) => {
         <Text style={styles.storeCount}>{stores.length}</Text>
       </View>
 
-      {/* ✅ Main FlatList: Stores as primary content */}
+      {/* Main FlatList */}
       <FlatList
         data={stores}
         keyExtractor={(item) => item.id}
@@ -246,26 +299,14 @@ const renderStore = ({ item }: { item: Store }) => {
         ]}
         columnWrapperStyle={styles.columnWrapper}
         showsVerticalScrollIndicator={false}
-        refreshing={loading}
-        onRefresh={() => {
-          // Re-fetch logic if needed
-          setLoading(true);
-          Promise.all([fetchStoreCategories(), fetchAllActiveStores()])
-            .then(([catsRes, storesRes]) => {
-              const found = catsRes.data.find((c: StoreCategory) => c.slug === slug);
-              if (found) {
-                const filtered = storesRes.data.filter(
-                  (s: Store) =>
-                    s.store_category_id === found.id ||
-                    s.category_id === found.id
-                );
-                setStores(filtered);
-              } else {
-                setStores([]);
-              }
-            })
-            .finally(() => setLoading(false));
-        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
         ListHeaderComponent={renderAdStrip}
         ListEmptyComponent={
           <EmptyState
@@ -300,7 +341,7 @@ function checkStoreIsOpen(store: Store): boolean {
 // ─── Styles ──────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
 
   header: {
     flexDirection: 'row',
@@ -357,7 +398,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // ✅ Store Card - 2-column grid
   storeCard: {
     width: '48%',
     borderRadius: Radius.xl,
@@ -368,7 +408,6 @@ const styles = StyleSheet.create({
     ...Shadow.xs,
   },
 
-  // ✅ الأنماط الخاصة بالشعار وشارة VIP (جديدة)
   logoWrapper: {
     position: 'relative',
     width: 56,
@@ -442,4 +481,9 @@ const styles = StyleSheet.create({
   waText: { fontSize: 11, fontWeight: '700', color: '#25D366' },
 
   emptyText: { fontSize: 16, fontWeight: '500', textAlign: 'center', marginTop: 12 },
+
+  loadingText: { fontSize: FontSize.md, fontWeight: '500', marginTop: 8 },
+  errorText: { fontSize: FontSize.md, fontWeight: '600', textAlign: 'center' },
+  retryBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: Radius.full, marginTop: 8 },
+  retryBtnText: { color: '#fff', fontWeight: '700', fontSize: FontSize.sm },
 });
