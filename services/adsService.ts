@@ -393,19 +393,6 @@ export async function updateAd(
   return { error: error ? error.message : null };
 }
 
-/** Fetch all active ads (admin / analytics use) */
-export async function fetchAllActiveAds(): Promise<{ data: Ad[]; error: string | null }> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('ads')
-    .select('id, title, status, created_at, user_id')
-    .in('status', ['active', 'featured'])
-    .order('created_at', { ascending: false })
-    .limit(500);
-  if (error) return { data: [], error: error.message };
-  return { data: data as Ad[], error: null };
-}
-
 /** Report a listing */
 export async function reportAd(
   adId: string,
