@@ -910,6 +910,7 @@ const editModal = StyleSheet.create({
 });
 
 export default function AdminScreen() {
+  console.log('✅ AdminScreen loaded successfully');
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { showAlert } = useAlert();

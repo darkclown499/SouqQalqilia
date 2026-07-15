@@ -35,6 +35,9 @@ export default function LoginScreen() {
   const isAr = language === 'ar';
   const router = useRouter();
 
+  const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Pre-warm browser for OAuth
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -419,10 +422,6 @@ export default function LoginScreen() {
     if (googleLoading) return;
     setGoogleLoading(true);
     const supabase = getSupabaseClient();
-
-    // FIX: Use refs to clean up subscription and poll
-    const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
-    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     if (Platform.OS === 'web') {
       try {
