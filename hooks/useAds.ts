@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { Logger } from '@/utils/errorLogger';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSupabaseClient } from '@/template';
 
 // Module-level AbortController reference — cancels stale fetch when a newer
 // one starts (e.g. rapid filter changes).  One slot per hook instance is
@@ -202,18 +204,47 @@ export function useMyAds() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (isMounted.current) setLoading(true);
+    // Show cached ads immediately to prevent count jumping to 0
     try {
-      const { data, error } = await fetchMyAds();
-      setAds(data);
-      setError(error);
+      const raw = await AsyncStorage.getItem('my_ads_cache_v1');
+      if (raw) {
+        const { data: cached, userId } = JSON.parse(raw);
+        const supabase = getSupabaseClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && userId === user.id && Array.isArray(cached) && cached.length > 0) {
+          if (isMounted.current) setAds(cached);
+        }
+      }
+    } catch { /* ignore */ }
+
+    try {
+      const { data, error: fetchError } = await fetchMyAds();
+      if (isMounted.current) {
+        setAds(data);
+        setError(fetchError);
+        // Persist to cache
+        if (!fetchError) {
+          const supabase = getSupabaseClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            AsyncStorage.setItem('my_ads_cache_v1', JSON.stringify({ data, userId: user.id })).catch(() => {});
+          }
+        }
+      }
     } catch (e: any) {
       Logger.error('useMyAds', 'load() threw', e instanceof Error ? e : new Error(String(e)));
-      setError(e?.message ?? 'فشل تحميل إعلاناتك');
+      if (isMounted.current) setError(e?.message ?? 'فشل تحميل إعلاناتك');
     } finally {
-      setLoading(false);
+      if (isMounted.current) setLoading(false);
     }
   }, []);
 

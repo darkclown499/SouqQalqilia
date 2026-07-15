@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   fetchMyFavoriteIds,
   fetchMyFavoriteAds,
@@ -15,12 +15,17 @@ export function useFavoriteIds() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await fetchMyFavoriteIds();
-    setIds(new Set(data));
-    setLoading(false);
+    try {
+      const { data } = await fetchMyFavoriteIds();
+      setIds(new Set(data));
+    } catch (e) {
+      console.warn('useFavoriteIds load error:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const toggle = useCallback(async (adId: string) => {
     // Prevent concurrent double-tap on the same ad

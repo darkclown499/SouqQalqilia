@@ -43,8 +43,8 @@ export function checkStoreIsOpen(store: Pick<Store, 'opening_time' | 'closing_ti
   return open <= close ? (cur >= open && cur < close) : (cur >= open || cur < close);
 }
 
-// ── Fetch up to 15 featured stores (shuffled client-side) ───────────────────
-export async function fetchFeaturedStores(): Promise<{ data: Store[]; error: string | null }> {
+// ── Fetch featured stores with AbortController support ───────────────────────
+export async function fetchFeaturedStores(options?: { signal?: AbortSignal }): Promise<{ data: Store[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('stores')
@@ -53,6 +53,7 @@ export async function fetchFeaturedStores(): Promise<{ data: Store[]; error: str
     .eq('is_featured', true)
     .order('position', { ascending: true })
     .limit(15);
+  if (options?.signal?.aborted) return { data: [], error: null };
   if (error) return { data: [], error: error.message };
   // Fisher-Yates shuffle on the client
   const arr = (data ?? []) as Store[];

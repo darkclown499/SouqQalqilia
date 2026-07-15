@@ -36,17 +36,12 @@ export async function requestNotificationPermissions(): Promise<void> {
   if (!Notifications || Platform.OS === 'web') return;
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    console.log('[PushToken] Current permission status:', existingStatus);
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
-      console.log('[PushToken] After requesting permission:', finalStatus);
     }
-    if (finalStatus !== 'granted') {
-      console.warn('[PushToken] Permission denied — notifications will not work.');
-      return;
-    }
+    if (finalStatus !== 'granted') return;
     await registerPushToken();
   } catch (e: any) {
     console.error('[PushToken] requestNotificationPermissions error:', e?.message ?? e);
@@ -56,15 +51,9 @@ export async function requestNotificationPermissions(): Promise<void> {
 export async function registerPushToken(): Promise<void> {
   if (!Notifications || Platform.OS === 'web') return;
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: EAS_PROJECT_ID,
-    });
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
     const newToken: string | undefined = tokenData?.data;
-    if (!newToken) {
-      console.warn('[PushToken] getExpoPushTokenAsync returned empty token.');
-      return;
-    }
-    console.log('[PushToken] ✅ Expo Push Token:', newToken);
+    if (!newToken) return;
 
     let cached: string | null = null;
     try {
@@ -72,18 +61,14 @@ export async function registerPushToken(): Promise<void> {
       cached = await AsyncStorage.getItem(PUSH_TOKEN_CACHE_KEY);
     } catch { /* optional cache */ }
 
-    if (cached === newToken) {
-      console.log('[PushToken] Token unchanged — skipping DB write.');
-      return;
-    }
+    if (cached === newToken) return;
 
     await savePushToken(newToken);
-    console.log('[PushToken] ✅ Token saved to database.');
 
     try {
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
       await AsyncStorage.setItem(PUSH_TOKEN_CACHE_KEY, newToken);
-    } catch { /* cache write failure is non-critical */ }
+    } catch { /* non-critical */ }
   } catch (e: any) {
     console.error('[PushToken] registerPushToken error:', e?.message ?? e);
   }
@@ -182,13 +167,7 @@ export function useMessages(
           });
         }
       )
-      .subscribe((status: any) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`[Realtime] Subscribed to messages:${conversationId}`);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.warn(`[Realtime] Error subscribing to messages:${conversationId}`);
-        }
-      });
+      .subscribe();
 
     realtimeChannelRef.current = channel;
     return () => {
@@ -438,6 +417,12 @@ export function useConversations() {
   const prevUnreadRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const _storeVersion = useChatReadStore();
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   const setBadge = useCallback(async (count: number) => {
     if (!Notifications || Platform.OS === 'web') return;
@@ -448,38 +433,49 @@ export function useConversations() {
     try {
       const convResult = await fetchMyConversations();
       const merged = mergeWithLocalReadState(convResult.data);
-      setConversations(merged);
-      const real = computeUnreadCount(merged);
-      setUnreadCount(real);
-      prevUnreadRef.current = real;
-      await setBadge(real);
+      if (isMounted.current) {
+        setConversations(merged);
+        const real = computeUnreadCount(merged);
+        setUnreadCount(real);
+        prevUnreadRef.current = real;
+        await setBadge(real);
+      }
     } catch (_) {}
   }, [setBadge]);
 
   const load = useCallback(async (showSpinner = false) => {
-    const supabaseCheck = getSupabaseClient();
-    const { data: { user: currentUser } } = await supabaseCheck.auth.getUser();
+    // Guard: don't crash if auth fails
+    let currentUser: any = null;
+    try {
+      const supabaseCheck = getSupabaseClient();
+      const { data: { user } } = await supabaseCheck.auth.getUser();
+      currentUser = user;
+    } catch { /* not authenticated or network issue */ }
+
     if (!currentUser) {
-      setConversations([]);
-      setUnreadCount(0);
-      if (showSpinner) setLoading(false);
+      if (isMounted.current) {
+        setConversations([]);
+        setUnreadCount(0);
+        if (showSpinner) setLoading(false);
+      }
       return;
     }
 
-    if (showSpinner) setLoading(true);
+    if (showSpinner && isMounted.current) setLoading(true);
 
     try {
-      const [convResult] = await Promise.all([fetchMyConversations()]);
+      const convResult = await fetchMyConversations();
       const merged = mergeWithLocalReadState(convResult.data);
-      setConversations(merged);
-      if (showSpinner) setLoading(false);
-
-      const newCount = computeUnreadCount(merged);
-      setUnreadCount(newCount);
-      prevUnreadRef.current = newCount;
-      await setBadge(newCount);
+      if (isMounted.current) {
+        setConversations(merged);
+        if (showSpinner) setLoading(false);
+        const newCount = computeUnreadCount(merged);
+        setUnreadCount(newCount);
+        prevUnreadRef.current = newCount;
+        await setBadge(newCount);
+      }
     } catch {
-      if (showSpinner) setLoading(false);
+      if (isMounted.current && showSpinner) setLoading(false);
     }
   }, [setBadge]);
 
