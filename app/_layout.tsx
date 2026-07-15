@@ -213,7 +213,7 @@ function InAppChatBanner() {
           .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`, { referencedTable: 'conversations' })
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (!data) return;
         if (activeChatId && activeChatId === data.conversation_id) return;
