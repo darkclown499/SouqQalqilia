@@ -17,12 +17,10 @@ import {
 } from '@/services/storeCategoriesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
-import {
-  getLocalCategories,
-  addLocalCategory,
-  deleteLocalCategory,
-  LocalCategory,
-} from '@/services/localCategoriesService';
+// استيراد الخدمة كاملة ككائن
+import * as LocalCategoryService from '@/services/localCategoriesService';
+// استيراد النوع (إذا كان مصدراً)
+import type { LocalCategory } from '@/services/localCategoriesService';
 
 // ── Add/Edit Product Modal ────────────────────────────────────────────────────
 interface ProductForm {
@@ -496,8 +494,18 @@ export default function StoreDashboardScreen() {
       showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'الاسم بالعربية والإنجليزية مطلوب' : 'Both Arabic and English names are required');
       return;
     }
+
+    // التحقق من وجود الدالة
+    if (typeof LocalCategoryService.addLocalCategory !== 'function') {
+      showAlert(
+        isAr ? 'خطأ في الخدمة' : 'Service Error',
+        isAr ? 'دالة إضافة التصنيف غير متوفرة. تأكد من تهيئة الخدمة.' : 'Add category function is not available. Check service initialization.'
+      );
+      return;
+    }
+
     try {
-      const newCat = await addLocalCategory(
+      const newCat = await LocalCategoryService.addLocalCategory(
         store.id,
         newCategoryName.trim(),
         newCategoryNameAr.trim(),
@@ -524,6 +532,15 @@ export default function StoreDashboardScreen() {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لم يتم تحميل المتجر' : 'Store not loaded');
       return;
     }
+
+    if (typeof LocalCategoryService.deleteLocalCategory !== 'function') {
+      showAlert(
+        isAr ? 'خطأ في الخدمة' : 'Service Error',
+        isAr ? 'دالة حذف التصنيف غير متوفرة.' : 'Delete category function is not available.'
+      );
+      return;
+    }
+
     showAlert(
       isAr ? 'تأكيد الحذف' : 'Confirm Delete',
       isAr ? 'هل تريد حذف هذا التصنيف؟' : 'Delete this category?',
@@ -534,7 +551,7 @@ export default function StoreDashboardScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const success = await deleteLocalCategory(store.id, id);
+              const success = await LocalCategoryService.deleteLocalCategory(store.id, id);
               if (success) {
                 setCustomCategories(prev => prev.filter(c => c.id !== id));
                 showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم حذف التصنيف' : 'Category deleted');
@@ -598,7 +615,10 @@ export default function StoreDashboardScreen() {
   // ── Load local categories when store changes ──
   useEffect(() => {
     if (store?.id) {
-      getLocalCategories(store.id).then(setCustomCategories).catch(console.error);
+      // استخدام الدالة من خلال الكائن المستورد
+      LocalCategoryService.getLocalCategories(store.id)
+        .then(setCustomCategories)
+        .catch(console.error);
     }
   }, [store?.id]);
 
