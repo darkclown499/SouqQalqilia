@@ -6,7 +6,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { preloadAds } from '@/services/adsService';
 import { preloadBanners } from '@/services/bannersService';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Stack, router, useSegments, useRouter } from 'expo-router'; // ✅ أضفنا useRouter
+import { Stack, router, useSegments, useRouter, usePathname } from 'expo-router';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -27,6 +27,8 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 if (Platform.OS !== 'web') {
   try {
     const Notifications = require('expo-notifications');
+    
+    // ── 1. معالج الإشعارات (يعمل على كل المنصات) ──
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
@@ -34,6 +36,8 @@ if (Platform.OS !== 'web') {
         shouldSetBadge: true,
       }),
     });
+
+    // ── 2. ✅ إنشاء قناة إشعارات لأندرويد (ضروري للمنصات الحديثة) ──
     if (Platform.OS === 'android') {
       Notifications.setNotificationChannelAsync('messages', {
         name: 'الرسائل',
@@ -119,7 +123,7 @@ function InAppChatBanner() {
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
   const segments = useSegments();
-  const router = useRouter(); // ✅ استخدمنا useRouter هنا
+  const router = useRouter();
   const [banner, setBanner] = useState<BannerPayload | null>(null);
 
   // Reanimated shared values
@@ -369,6 +373,29 @@ function isVersionOutdated(current: string, minimum: string): boolean {
   return cPat < mPat;
 }
 
+// ── Admin Guard: يسمح بالدخول من الويب فقط، ويعيد التوجيه من الأجهزة الأخرى ──
+function AdminGuard() {
+  const pathname = usePathname();
+  const { user } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
+    if (isAdminRoute) {
+      // إذا كان المستخدم على الويب، نسمح بالدخول بدون صلاحية
+      if (Platform.OS === 'web') {
+        return;
+      }
+      // على الأجهزة (Android/iOS)، نمنع الدخول إذا لم يكن مديراً
+      if (!user || !user.is_admin) {
+        router.replace('/');
+      }
+    }
+  }, [pathname, user]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const [forceUpdate, setForceUpdate] = useState<{ required: boolean; minVersion: string } | null>(null);
   const [appIsReady, setAppIsReady] = useState(false);
@@ -556,6 +583,7 @@ export default function RootLayout() {
           <ThemeProvider>
             <LanguageProvider>
               <AuthProvider>
+                <AdminGuard />
                 <InAppChatBanner />
                 <Stack screenOptions={{
                   headerShown: false,
