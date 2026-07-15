@@ -338,7 +338,6 @@ export default function LoginScreen() {
         if (friendlyError) {
           showAlert(t.loginFailed, friendlyError);
           if (error.includes('RequestRateLimitReached') || error.includes('rate limit')) {
-            startLoginCooldown(30);
           }
         }
         return;
