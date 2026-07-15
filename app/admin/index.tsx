@@ -955,8 +955,8 @@ export default function AdminScreen() {
   const [bnSaving, setBnSaving] = useState(false);
 
   // Derived: split by placement for dual-section UI
-  const homeBanners = banners.filter(b => !b.placement || b.placement === 'home');
-  const storesBanners = banners.filter(b => b.placement === 'stores_directory');
+  const homeBanners = (banners || []).filter(b => !b.placement || b.placement === 'home');
+const storesBanners = (banners || []).filter(b => b.placement === 'stores_directory');
 
   // Interstitial form
   const [showInterForm, setShowInterForm] = useState(false);
@@ -970,43 +970,40 @@ export default function AdminScreen() {
   const [inSaving, setInSaving] = useState(false);
 
   const loadData = useCallback(async () => {
-    // 🔄 تعطيل جلب البيانات مؤقتاً للاختبار
+    setLoading(false); return; // السطر المسؤول عن إيقاف التحميل اللانهائي وفتح التصميم
+    
+    setLoading(true);
+    if (tab === 'stores') {
+      const { data } = await adminFetchAllStores();
+      setStores(data || []);
+    } else if (tab === 'ads') {
+      const { data } = await adminFetchAllAds();
+      setAds(data || []);
+    } else if (tab === 'users') {
+      const { data } = await adminFetchAllUsers();
+      setUsers(data || []);
+    } else if (tab === 'banners') {
+      const { data } = await fetchAllBanners();
+      setBanners(data || []);
+    } else if (tab === 'analytics') {
+      setLoading(false);
+      return;
+    } else {
+      const { data } = await fetchAllInterstitials();
+      setInterstitials(data || []);
+    }
     setLoading(false);
-    return;
-
-    // // الكود الأصلي (معلّق)
-    // setLoading(true);
-    // if (tab === 'stores') {
-    //   const { data } = await adminFetchAllStores();
-    //   setStores(data);
-    // } else if (tab === 'ads') {
-    //   const { data } = await adminFetchAllAds();
-    //   setAds(data);
-    // } else if (tab === 'users') {
-    //   const { data } = await adminFetchAllUsers();
-    //   setUsers(data);
-    // } else if (tab === 'banners') {
-    //   const { data } = await fetchAllBanners();
-    //   setBanners(data);
-    // } else if (tab === 'analytics') {
-    //   setLoading(false);
-    //   return;
-    // } else {
-    //   const { data } = await fetchAllInterstitials();
-    //   setInterstitials(data);
-    // }
-    // setLoading(false);
   }, [tab]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   const filteredAds = adSearch.trim()
-    ? ads.filter(a =>
+    ? (ads || []).filter(a =>
         a.title.toLowerCase().includes(adSearch.toLowerCase()) ||
         String(a.serial_number ?? '').includes(adSearch) ||
         a.id.toLowerCase().includes(adSearch.toLowerCase())
       )
-    : ads;
+    : (ads || []);
 
   // ── Ad handlers ──
   const handleDeleteAd = (adId: string, title: string) => {
