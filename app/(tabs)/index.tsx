@@ -1037,12 +1037,12 @@ export default function HomeScreen() {
           contentContainerStyle={[
             styles.catContent,
             {
-              flexDirection: 'row', // ✅ ثابت ← لضمان البدء من اليمين عند RTL
+              flexDirection: isRTL ? 'row-reverse' : 'row', // ✅ استخدام row-reverse عند RTL
               paddingHorizontal: hPad,
             }
           ]}
         >
-          {/* زر "الكل" دائماً في البداية */}
+          {/* زر "الكل" دائماً في البداية (سيظهر على اليمين عند RTL مع row-reverse) */}
           <Pressable
             style={[styles.catChip, selectedCategory === null
               ? { backgroundColor: colors.primary, borderColor: colors.primary }
@@ -1053,8 +1053,8 @@ export default function HomeScreen() {
             <Text style={[styles.catChipText, { color: selectedCategory === null ? '#fff' : colors.textSecondary, fontWeight: selectedCategory === null ? '700' : '500' }]}>{t.all}</Text>
           </Pressable>
 
-          {/* التصنيفات مع عكس الترتيب عند RTL */}
-          {(isRTL ? [...categories].reverse() : categories).map(cat => {
+          {/* التصنيفات بالترتيب الأصلي (بدون عكس) لأن row-reverse يقوم بالعكس */}
+          {categories.map(cat => {
             const isSelected = selectedCategory === cat.id;
             return (
               <Pressable
@@ -1672,7 +1672,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   catContent: {
-    flexDirection: 'row', // ✅ ثابت (بدون row-reverse)
+    flexDirection: 'row', // سيتم تغييره ديناميكياً عبر contentContainerStyle
     gap: Spacing.sm,
     alignItems: 'center',
   },
