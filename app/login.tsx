@@ -110,7 +110,7 @@ export default function LoginScreen() {
     }, 1000);
   }, []);
 
-  // FIX: Cleanup loginCooldownRef on unmount
+  // Cleanup loginCooldownRef on unmount
   useEffect(() => {
     return () => {
       if (loginCooldownRef.current) {
@@ -193,20 +193,27 @@ export default function LoginScreen() {
 
   const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
 
-  // FIX: Add friendly error mapper for SMS
+  // Friendly error mapper for SMS (now from server)
   const mapSmsError = useCallback((error: string): string => {
     if (error.includes('RequestRateLimitReached') || error.includes('rate limit') || error.includes('429')) {
       return isAr
         ? 'تم تجاوز عدد المحاولات. يرجى الانتظار دقيقة ثم المحاولة مجدداً.'
         : 'Too many attempts. Please wait a moment and try again.';
     }
-    if (error.includes('invalid phone number')) {
+    if (error.includes('invalid phone number') || error.includes('غير صالح')) {
       return isAr ? 'رقم الهاتف غير صحيح.' : 'Invalid phone number.';
     }
-    return error;
+    if (error.includes('expired') || error.includes('انتهت')) {
+      return isAr ? 'انتهت صلاحية الرمز. اطلب رمزاً جديداً.' : 'Code expired. Please request a new one.';
+    }
+    if (error.includes('incorrect') || error.includes('غير صحيح')) {
+      return isAr ? 'الرمز غير صحيح.' : 'Incorrect code.';
+    }
+    // Generic fallback
+    return error || (isAr ? 'حدث خطأ، حاول مجدداً.' : 'An error occurred, please try again.');
   }, [isAr]);
 
-  // ── Phone: Send code ──────────────────────────────────────────────────────
+  // ── Phone: Send code via Supabase Edge Function ──────────────────────────
   const handleSendPhoneCode = async () => {
     if (!phoneEulaAccepted) {
       return showAlert(
@@ -227,6 +234,7 @@ export default function LoginScreen() {
     if (phoneLoading || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setPhoneLoading(true);
+
     try {
       const supabase = getSupabaseClient();
       const { data, error } = await supabase.functions.invoke('sms-auth', {
@@ -240,12 +248,13 @@ export default function LoginScreen() {
         } catch {}
         throw new Error(msg);
       }
-      if (!data?.success) throw new Error(data?.error ?? (isAr ? 'فشل إرسال الرمز' : 'Failed to send code'));
+      if (!data?.success) throw new Error(data?.error || (isAr ? 'فشل إرسال الرمز' : 'Failed to send code'));
+
       setFullPhoneForOtp(fullPhone);
       setPhoneStep('otp');
       setPhoneResend(60);
     } catch (e: any) {
-      const friendly = mapSmsError(e?.message ?? '');
+      const friendly = mapSmsError(e?.message || '');
       showAlert(isAr ? 'خطأ' : 'Error', friendly);
     } finally {
       setPhoneLoading(false);
@@ -253,7 +262,7 @@ export default function LoginScreen() {
     }
   };
 
-  // ── Phone: Verify OTP ─────────────────────────────────────────────────────
+  // ── Phone: Verify OTP via Supabase Edge Function ──────────────────────────
   const handleVerifyPhoneOtp = async () => {
     if (!phoneOtp || phoneOtp.length < 6)
       return showAlert(isAr ? 'الرمز مطلوب' : 'Code Required', isAr ? 'أدخل رمز التحقق المكون من 6 أرقام' : 'Enter the 6-digit code');
@@ -261,6 +270,7 @@ export default function LoginScreen() {
       return showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'أعد إرسال الرمز' : 'Please resend the code');
     if (phoneLoading) return;
     setPhoneLoading(true);
+
     try {
       const supabase = getSupabaseClient();
       const { data, error } = await supabase.functions.invoke('sms-auth', {
@@ -285,7 +295,7 @@ export default function LoginScreen() {
           const { data: profile } = await supabase
             .from('user_profiles')
             .select('username')
-            .eq('id', data.session.user?.id ?? data.user?.id ?? '')
+            .eq('id', data.session.user?.id || data.user?.id || '')
             .maybeSingle();
           const hasName = profile?.username && profile.username.trim().length > 0;
           if (hasName) router.replace('/(tabs)');
@@ -294,10 +304,10 @@ export default function LoginScreen() {
           router.replace('/(tabs)');
         }
       } else {
-        throw new Error(data?.error ?? 'No session returned');
+        throw new Error(data?.error || 'No session returned');
       }
     } catch (e: any) {
-      const friendly = mapSmsError(e?.message ?? (isAr ? 'الرمز غير صحيح' : 'Incorrect code'));
+      const friendly = mapSmsError(e?.message || (isAr ? 'فشل التحقق' : 'Verification failed'));
       showAlert(isAr ? 'فشل التحقق' : 'Verification Failed', friendly);
     } finally {
       setPhoneLoading(false);
@@ -325,12 +335,6 @@ export default function LoginScreen() {
 
   // ── Email: Login ───────────────────────────────────────────────────────────
   const handleLogin = async () => {
-    console.error('Login error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-// واعرض رسالة ودية للمستخدم
-const friendlyError = mapAuthError(error);
-if (friendlyError) {
-  showAlert(t.loginFailed, friendlyError);
-}
     if (!email.trim() || !password) return showAlert(t.missingFields, t.fillAllFields);
     if (!isValidEmail(email)) return showAlert(isAr ? 'بريد غير صحيح' : 'Invalid Email', isAr ? 'أدخل بريداً إلكترونياً صحيحاً' : 'Enter a valid email address');
     if (operationLoading || isSubmittingRef.current) return;
@@ -349,7 +353,6 @@ if (friendlyError) {
           }
         }
         return;
-
       }
       if (u) router.replace('/(tabs)');
     } finally { isSubmittingRef.current = false; }
@@ -568,6 +571,14 @@ if (friendlyError) {
   // ── Segment tab widths for iOS only ──────────────────────────────────────
   const segW = (cardMaxW - 32) / 2;
 
+  // ── Handler for phone resend ──────────────────────────────────────────────
+  const handleResendPhone = useCallback(() => {
+    setPhoneOtp('');
+    setFullPhoneForOtp('');
+    setPhoneStep('input');
+    isSubmittingRef.current = false;
+  }, []);
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0A0F0D' : '#0A6E5C'} />
@@ -693,8 +704,8 @@ if (friendlyError) {
                 otp={phoneOtp} setOtp={setPhoneOtp}
                 resendCooldown={phoneResend} loading={phoneLoading}
                 onVerify={handleVerifyPhoneOtp}
-                onResend={() => { setPhoneOtp(''); setFullPhoneForOtp(''); setPhoneStep('input'); isSubmittingRef.current = false; }}
-                onBack={() => setPhoneStep('input')}
+                onResend={handleResendPhone}
+                onBack={() => { setPhoneStep('input'); }}
                 colors={colors} isAr={isAr}
               />
             )
@@ -731,7 +742,7 @@ if (friendlyError) {
                 <OtpPanel
                   email={email} otp={otp} setOtp={setOtp}
                   resendCooldown={resendCooldown} loading={operationLoading}
-                  verifying={verifying} // FIX: pass verifying to disable button
+                  verifying={verifying}
                   onVerify={handleVerifyOTP} onResend={handleResendOTP}
                   onBack={() => setEmailMode('register')}
                   colors={colors} t={t} isAr={isAr}
@@ -839,7 +850,6 @@ const PhoneInputPanel = React.memo(function PhoneInputPanel({
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode) ?? COUNTRY_CODES[0];
 
-  // FIX: memoize onPress handlers
   const handleToggleEula = useCallback(() => {
     setEulaAccepted(!eulaAccepted);
   }, [eulaAccepted, setEulaAccepted]);
@@ -912,7 +922,6 @@ const PhoneInputPanel = React.memo(function PhoneInputPanel({
         </Pressable>
       </Modal>
 
-      {/* FIX: added textAlign for RTL */}
       <Text style={[s.phoneHint, { color: colors.textMuted, textAlign: isAr ? 'right' : 'left' }]}>
         {isAr ? 'أدخل الرقم بدون صفر أو رمز الدولة — مثال: 591234567' : 'Enter number without 0 or country code — e.g. 591234567'}
       </Text>
@@ -984,7 +993,6 @@ const PhoneOtpPanel = React.memo(function PhoneOtpPanel({
   };
 
   return (
-    // FIX: added keyboardShouldPersistTaps to prevent keyboard dismissal
     <View style={s.panelBody} keyboardShouldPersistTaps="handled">
       <View style={s.panelHeader}>
         <View style={[s.panelIconWrap, { backgroundColor: '#E8F0FE' }]}>
@@ -1053,7 +1061,6 @@ const LoginPanel = React.memo(function LoginPanel({
 }: any) {
   const isDisabled = loading || (cooldown ?? 0) > 0;
 
-  // FIX: memoize rightElement for password
   const passwordRightElement = useMemo(() => (
     <Pressable onPress={togglePassword} hitSlop={8}>
       <MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} />
@@ -1123,7 +1130,6 @@ const RegisterPanel = React.memo(function RegisterPanel({
   eulaAccepted, setEulaAccepted, onOpenEula, loading, onSend,
   colors, t, isAr, router
 }: any) {
-  // FIX: memoize rightElements
   const passwordRightElement = useMemo(() => (
     <Pressable onPress={togglePassword} hitSlop={8}>
       <MaterialIcons name={showPassword ? 'visibility' : 'visibility-off'} size={18} color={colors.textMuted} />
@@ -1212,7 +1218,6 @@ const OtpPanel = React.memo(function OtpPanel({
   email, otp, setOtp, resendCooldown, loading, verifying,
   onVerify, onResend, onBack, colors, t, isAr
 }: any) {
-  // FIX: memoize rightElement (none needed here)
   return (
     <View style={s.panelBody}>
       <View style={s.panelHeader}>
@@ -1240,7 +1245,7 @@ const OtpPanel = React.memo(function OtpPanel({
       <Pressable
         style={({ pressed }) => [s.primaryBtn, { backgroundColor: colors.primary, opacity: pressed || loading ? 0.85 : 1 }]}
         onPress={onVerify}
-        disabled={loading || verifying}  // FIX: disable while verifying
+        disabled={loading || verifying}
       >
         {loading || verifying ? <ActivityIndicator size="small" color="#fff" /> : (
           <><MaterialIcons name="verified" size={16} color="#fff" /><Text style={s.primaryBtnText}>{t.verifyCreate}</Text></>
