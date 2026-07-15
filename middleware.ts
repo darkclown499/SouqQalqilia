@@ -13,7 +13,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  // (اختياري) يمكنك إضافة تحقق إضافي من is_admin هنا
+  // (اختياري) يمكنك إضافة تحقق إضافي من is_admin  هنا
   return res;
 }
 
