@@ -53,6 +53,7 @@ export interface Conversation {
   ads?: { title: string; status?: string; user_id?: string };
   buyer?: { username: string; email: string; avatar_url?: string | null };
   seller?: { username: string; email: string; avatar_url?: string | null };
+  unread_count?: number; // ✅ مهم لـ ConversationsBottomSheet
 }
 
 export interface Message {
@@ -63,11 +64,10 @@ export interface Message {
   image_url?: string | null;
   message_type?: 'text' | 'image';
   read_at?: string | null;
-  delivered_at?: string | null;   // Set when recipient's device first polls the message
+  delivered_at?: string | null;
   created_at: string;
-  // Local-only status flags (not persisted to DB)
-  _pending?: boolean;   // Optimistic: not yet confirmed by DB
-  _failed?: boolean;    // Send failed, sitting in offline queue
+  _pending?: boolean;
+  _failed?: boolean;
 }
 
 export async function fetchMyConversations(): Promise<{ data: Conversation[]; error: string | null }> {
@@ -331,7 +331,6 @@ export async function uploadChatImage(
 }
 
 // ── Client-side UUID v4 generator ────────────────────────────────────────────
-// Avoids dependency on external packages; works on all React Native targets.
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = Math.random() * 16 | 0;
@@ -353,11 +352,8 @@ export async function sendMessage(
 
   const messageType = imageUrl ? 'image' : 'text';
   const messageContent = imageUrl ? (content || '📷 صورة') : content;
-  // Use caller-provided UUID or generate a new one.
-  // Upsert on `id` means a retry after a dropped response won't create a duplicate row.
   const messageId = clientMessageId ?? generateUUID();
 
-  // Upsert message — idempotent: safe to retry on network failure
   const { data, error } = await supabase
     .from('messages')
     .upsert({
@@ -373,7 +369,6 @@ export async function sendMessage(
 
   if (error) return { data: null, recipientId: null, isBuyerSending: false, error: error.message };
 
-  // Update conversation last_message (parallel with recipient lookup)
   const lastMsgContent = imageUrl ? (content || '📷 صورة') : content;
   const [, convResult] = await Promise.all([
     supabase
@@ -447,7 +442,6 @@ export async function markMessagesRead(
       body: { action: 'reset_badge', user_id: currentUserId },
     }).catch(() => {});
   } catch (e: any) {
-    // Re-throw so callers (MessagePreview rollback, etc.) know the call failed
     throw e;
   }
 }

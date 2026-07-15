@@ -90,8 +90,6 @@ export async function registerPushToken(): Promise<void> {
 }
 
 // ─── Adaptive polling intervals ───────────────────────────────────────────────
-// Active (screen focused + app foreground): 2500ms  → fast, responsive
-// Inactive (app backgrounded OR screen unfocused):  8000ms → saves ~60% battery
 const BASE_POLL_MS     = 2500;
 const INACTIVE_POLL_MS = 8000;
 const MAX_BACKOFF_MS   = 32_000;
@@ -101,12 +99,6 @@ function nextBackoff(currentMs: number): number {
 }
 
 // ─── useMessages ──────────────────────────────────────────────────────────────
-// Visibility-based adaptive polling:
-// • App active + screen focused  → 2500ms  (full responsiveness)
-// • App backgrounded             → 8000ms  (battery saving mode)
-// • Network failure              → exponential backoff up to 32s
-// Incremental fetch: only messages newer than last known timestamp
-
 export interface UseMessagesResult {
   messages: Message[];
   loading: boolean;
@@ -125,7 +117,6 @@ export interface UseMessagesResult {
 export function useMessages(
   conversationId: string,
   isBuyer: boolean | null,
-  /** Current user ID — used to auto-mark messages as delivered on first poll */
   currentUserId?: string,
 ): UseMessagesResult {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -139,15 +130,13 @@ export function useMessages(
   const pollingRef = useRef(false);
   const currentPollDelayRef = useRef(BASE_POLL_MS);
   const failureCountRef = useRef(0);
-  // Visibility tracking — both must be true for fast polling
-  const isAppActiveRef = useRef(true);    // AppState === 'active'
-  const isScreenFocusedRef = useRef(true); // screen is in foreground (always true for now, extendable)
+  const isAppActiveRef = useRef(true);
+  const isScreenFocusedRef = useRef(true);
 
   // ─── Realtime subscription for read receipts ──────────────────────────────
   const realtimeChannelRef = useRef<any>(null);
 
   const setupRealtimeSubscription = useCallback(() => {
-    // Clean up existing subscription
     if (realtimeChannelRef.current) {
       realtimeChannelRef.current.unsubscribe();
       realtimeChannelRef.current = null;
@@ -156,8 +145,6 @@ export function useMessages(
     if (!conversationId || !currentUserId) return;
 
     const supabase = getSupabaseClient();
-
-    // Create a channel for this conversation
     const channel = supabase
       .channel(`messages:${conversationId}`)
       .on(
@@ -170,25 +157,19 @@ export function useMessages(
         },
         (payload: any) => {
           const updated = payload.new as Message;
-          // Only react to changes in read_at or delivered_at fields
           const old = payload.old as Message;
           const readChanged = updated.read_at !== old.read_at;
           const deliveredChanged = updated.delivered_at !== old.delivered_at;
 
           if (!readChanged && !deliveredChanged) return;
 
-          // Update the local messages state
           setMessages(prev => {
             const existing = prev.find(m => m.id === updated.id);
             if (!existing) return prev;
-
-            // Only update if the timestamp actually changed
             const needsUpdate =
               (readChanged && updated.read_at !== existing.read_at) ||
               (deliveredChanged && updated.delivered_at !== existing.delivered_at);
-
             if (!needsUpdate) return prev;
-
             return prev.map(m =>
               m.id === updated.id
                 ? {
@@ -210,7 +191,6 @@ export function useMessages(
       });
 
     realtimeChannelRef.current = channel;
-
     return () => {
       if (realtimeChannelRef.current) {
         realtimeChannelRef.current.unsubscribe();
@@ -219,11 +199,10 @@ export function useMessages(
     };
   }, [conversationId, currentUserId]);
 
-  /** Effective poll interval based on current visibility */
   const getEffectivePollMs = useCallback((): number => {
     const isVisible = isAppActiveRef.current && isScreenFocusedRef.current;
     if (!isVisible) return INACTIVE_POLL_MS;
-    if (currentPollDelayRef.current > BASE_POLL_MS) return currentPollDelayRef.current; // backoff active
+    if (currentPollDelayRef.current > BASE_POLL_MS) return currentPollDelayRef.current;
     return BASE_POLL_MS;
   }, []);
 
@@ -235,13 +214,12 @@ export function useMessages(
 
   const pollSilent = useCallback(async () => {
     if (!conversationId || pollingRef.current) return;
-    if (!isAppActiveRef.current) return; // never poll when backgrounded
+    if (!isAppActiveRef.current) return;
     pollingRef.current = true;
     try {
       const since = lastCreatedAtRef.current;
 
       if (since) {
-        // ── Incremental fetch ──────────────────────────────────────────────
         const { data: newMsgs, typing, error } = await fetchMessagesSince(
           conversationId, since, isBuyer, currentUserId,
         );
@@ -264,15 +242,9 @@ export function useMessages(
         setMessages(prev => {
           const existingIds = new Set(prev.map(m => m.id));
           const trulyNew = newMsgs.filter(m => !existingIds.has(m.id));
-
-          // ── Sync delivered_at + read_at on MY sent messages ───────────────
-          // When the other side marks a message as delivered/read, the next
-          // incremental poll by the sender sees the updated row via newMsgs.
-          // We also re-fetch existing message rows to catch status changes.
           const updated = prev.map(m => {
             const fresh = newMsgs.find(nm => nm.id === m.id);
             if (!fresh) return m;
-            // Only update status fields — never downgrade
             return {
               ...m,
               delivered_at: fresh.delivered_at ?? m.delivered_at,
@@ -295,7 +267,6 @@ export function useMessages(
         }
 
       } else {
-        // ── Full fetch (first poll / after unmount) ────────────────────────
         const { data, error } = await fetchMessages(conversationId);
         if (error) {
           failureCountRef.current += 1;
@@ -313,7 +284,6 @@ export function useMessages(
         if (data.length > 0) {
           setMessages(data);
           lastCreatedAtRef.current = data[data.length - 1].created_at;
-          // Auto-mark incoming messages as delivered on first load
           if (currentUserId) {
             markMessagesDelivered(conversationId, currentUserId).catch(() => {});
           }
@@ -357,10 +327,6 @@ export function useMessages(
     });
   }, []);
 
-  /**
-   * Immediately mark all messages from the other party as delivered in local state.
-   * Provides instant UI feedback before the DB response.
-   */
   const markDeliveredLocally = useCallback((uid: string) => {
     setMessages(prev =>
       prev.map(m =>
@@ -371,9 +337,6 @@ export function useMessages(
     );
   }, []);
 
-  /**
-   * Immediately mark all messages from the other party as read in local state.
-   */
   const markReadLocally = useCallback((uid: string) => {
     setMessages(prev =>
       prev.map(m =>
@@ -388,7 +351,7 @@ export function useMessages(
     setMessages(prev => prev.filter(m => m.id !== id));
   }, []);
 
-  // ─── Main effect: fetch initial messages + polling + realtime ─────────────
+  // ─── Main effect ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!conversationId) return;
 
@@ -396,7 +359,6 @@ export function useMessages(
     currentPollDelayRef.current = BASE_POLL_MS;
     failureCountRef.current = 0;
 
-    // 1. Initial fetch
     fetchMessages(conversationId).then(({ data }) => {
       setMessages(data);
       if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
@@ -406,13 +368,9 @@ export function useMessages(
       }
     });
 
-    // 2. Polling interval
     intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
-
-    // 3. Realtime subscription for read receipts
     const cleanupRealtime = setupRealtimeSubscription();
 
-    // 4. App state listener for adaptive polling
     const handleAppState = (state: AppStateStatus) => {
       const wasActive = isAppActiveRef.current;
       isAppActiveRef.current = state === 'active';
@@ -422,7 +380,7 @@ export function useMessages(
         failureCountRef.current = 0;
         if (intervalRef.current) clearInterval(intervalRef.current);
         intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
-        pollSilentRef.current(); // immediate poll on resume
+        pollSilentRef.current();
       } else if (state !== 'active') {
         if (intervalRef.current) clearInterval(intervalRef.current);
         intervalRef.current = setInterval(() => pollSilentRef.current(), INACTIVE_POLL_MS);
@@ -430,7 +388,6 @@ export function useMessages(
     };
     const appStateSub = AppState.addEventListener('change', handleAppState);
 
-    // ─── Cleanup ──────────────────────────────────────────────────────────────
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       appStateSub.remove();
@@ -466,26 +423,20 @@ export function useMessages(
 }
 
 // ─── Global unread refresh bridge ─────────────────────────────────────────────
-// Module-level reference — only one instance should own it at a time.
-// _layout.tsx mounts first and registers its refreshUnread. When messages.tsx
-// also mounts (tab activated), it overrides the reference. On unmount, only
-// clear if the current reference still belongs to this instance.
 let _globalRefreshUnread: (() => Promise<void>) | null = null;
-let _globalRefreshInstance = 0; // monotonic counter prevents stale teardown
+let _globalRefreshInstance = 0;
 
 export function triggerUnreadRefresh(): void {
   _globalRefreshUnread?.().catch(() => {});
 }
 
 // ─── useConversations ─────────────────────────────────────────────────────────
-
 export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const prevUnreadRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Subscribe to the chat read store — re-compute badge when user marks a conv read
   const _storeVersion = useChatReadStore();
 
   const setBadge = useCallback(async (count: number) => {
@@ -495,7 +446,6 @@ export function useConversations() {
 
   const refreshUnread = useCallback(async () => {
     try {
-      // Re-fetch conversations so mergeWithLocalReadState can protect local marks
       const convResult = await fetchMyConversations();
       const merged = mergeWithLocalReadState(convResult.data);
       setConversations(merged);
@@ -520,16 +470,10 @@ export function useConversations() {
 
     try {
       const [convResult] = await Promise.all([fetchMyConversations()]);
-
-      // ── Local-First merge: protect optimistic read marks ───────────────
-      // mergeWithLocalReadState() forces unread_count to 0 for any conversation
-      // the user has already swiped-to-read, UNLESS a new message arrived after
-      // the mark (server count grew → the store entry is evicted automatically).
       const merged = mergeWithLocalReadState(convResult.data);
       setConversations(merged);
       if (showSpinner) setLoading(false);
 
-      // Compute badge from the merged list (locally-read convs already have count=0)
       const newCount = computeUnreadCount(merged);
       setUnreadCount(newCount);
       prevUnreadRef.current = newCount;
@@ -543,8 +487,6 @@ export function useConversations() {
     const myInstance = ++_globalRefreshInstance;
     _globalRefreshUnread = refreshUnread;
     return () => {
-      // Only clear the reference if this instance is still the active owner.
-      // Prevents _layout.tsx unmounting from nullifying messages.tsx registration.
       if (_globalRefreshInstance === myInstance) {
         _globalRefreshUnread = null;
       }
@@ -559,22 +501,9 @@ export function useConversations() {
     };
   }, [load]);
 
-  // ── Stable ref to latest conversations ──────────────────────────────────────
-  // Allows the store-version effect to read the current list without
-  // adding `conversations` to its deps (which would create an infinite loop).
   const conversationsRef = useRef<Conversation[]>([]);
   useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
 
-  // ── Re-compute badge whenever the store version changes ──────────────────
-  // Fires synchronously after markConversationRead() or rollbackConversationRead().
-  //
-  // ⚠️  DO NOT call setConversations(merged) here and do NOT include
-  //     `conversations` in this effect's deps — both would create an infinite
-  //     loop: setConversations → new array ref → effect re-runs → ∞.
-  //
-  //     MessagePreview reads the store directly via shouldOverrideServerCount(),
-  //     so row-level UI (badge, unread bar) already updates on its own.
-  //     This effect only needs to sync the numeric badge counter.
   useEffect(() => {
     const current = conversationsRef.current;
     if (current.length === 0) return;
@@ -586,7 +515,7 @@ export function useConversations() {
       setBadge(newCount);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [_storeVersion, setBadge]); // ← intentionally omits `conversations`
+  }, [_storeVersion, setBadge]);
 
   return {
     conversations,
@@ -594,7 +523,5 @@ export function useConversations() {
     reload: () => load(true),
     unreadCount,
     refreshUnread,
-    // Legacy alias — kept for backward compat with messages.tsx
-    markConversationReadLocally: (_id: string) => { /* now handled via store */ },
   };
 }

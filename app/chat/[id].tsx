@@ -5,9 +5,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router'; // <-- ADDED useFocusEffect
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications'; // <-- ADDED expo-notifications
+import * as Notifications from 'expo-notifications';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { useMessages, triggerUnreadRefresh } from '@/hooks/useChat';
 import {
@@ -340,16 +340,12 @@ export default function ChatScreen() {
     return () => { if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current); };
   }, [messages.length, user?.id, doMark]);
 
-  // ----- NEW: useFocusEffect to mark read and dismiss notifications when screen comes into focus -----
+  // ----- useFocusEffect: mark read and dismiss notifications -----
   useFocusEffect(
     useCallback(() => {
-      // 1. Ensure all unread messages are marked as read
       doMark();
-
-      // 2. Dismiss all system notifications
       Notifications.dismissAllNotificationsAsync().catch(() => {});
-
-      return () => {}; // optional cleanup
+      return () => {};
     }, [doMark])
   );
 
@@ -469,7 +465,10 @@ export default function ChatScreen() {
     setMenuVisible(false);
     showAlert(isAr ? 'حذف المحادثة' : 'Delete', isAr ? 'حذف المحادثة نهائياً؟' : 'Permanently delete?', [
       { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-      { text: isAr ? 'حذف' : 'Delete', style: 'destructive', onPress: async () => { setActionLoading(true); const { error } = await deleteConversation(id); setActionLoading(false); if (!error) router.replace('/(tabs)/messages'); else showAlert(isAr ? 'خطأ' : 'Error', error?.message || isAr ? 'فشل الحذف' : 'Delete failed'); } },
+      { text: isAr ? 'حذف' : 'Delete', style: 'destructive', onPress: async () => { setActionLoading(true); const { error } = await deleteConversation(id); setActionLoading(false); if (!error) {
+        // ✅ العودة إلى الصفحة الرئيسية (بدلاً من تبويب الرسائل المحذوف)
+        router.replace('/(tabs)');
+      } else showAlert(isAr ? 'خطأ' : 'Error', error?.message || isAr ? 'فشل الحذف' : 'Delete failed'); } },
     ]);
   }, [id, isAr, showAlert, router]);
 

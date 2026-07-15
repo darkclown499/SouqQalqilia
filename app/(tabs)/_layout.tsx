@@ -8,44 +8,9 @@ import Animated, {
 import * as Notifications from 'expo-notifications';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useConversations } from '@/hooks/useChat';
-// ✅ تم حذف trackEvent لأنه غير مستخدم
+// ✅ تم إزالة useConversations لأن تبويب الرسائل قد حُذف
 import { useAuth, getSupabaseClient } from '@/template';
-import { useMemo, useCallback, useEffect, useRef } from 'react'; // ✅ تم إضافة useRef
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ✅ تم إصلاح RTL في UnreadBadge بإضافة isRTL واستخدام left/right ديناميكياً
-// ─────────────────────────────────────────────────────────────────────────────
-function UnreadBadge({ count, isRTL }: { count: number; isRTL: boolean }) {
-  if (count <= 0) return null;
-  return (
-    <View style={[badge.wrap, isRTL ? { left: -8 } : { right: -8 }]}>
-      <Text style={badge.text}>{count > 99 ? '99+' : String(count)}</Text>
-    </View>
-  );
-}
-
-const badge = StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    top: -5,
-    backgroundColor: '#EF4444',
-    borderRadius: 99,
-    minWidth: 17,
-    height: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 1.5,
-    borderColor: '#fff',
-  },
-  text: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '800',
-    lineHeight: 12,
-  },
-});
+import { useMemo, useCallback, useEffect, useRef } from 'react';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -53,7 +18,6 @@ export default function TabLayout() {
   const { t, language, isRTL } = useLanguage();
   const isAr = language === 'ar';
   const { user } = useAuth();
-  const { unreadCount } = useConversations();
 
   // ─── TabBar Style ───────────────────────────────────────────────────────────
   const tabBarStyle = useMemo(() => ({
@@ -125,15 +89,13 @@ export default function TabLayout() {
   }, [colors, postAnimStyle, animatePost]);
 
   // ─── Push Notifications Registration ─────────────────────────────────────
-  // ✅ استخدام useRef لمنع تكرار التسجيل أثناء التركيب
   const registeredRef = useRef(false);
 
   const registerForPushNotifications = useCallback(async () => {
     if (!user || Platform.OS === 'web') return;
-    if (registeredRef.current) return; // ✅ منع التسجيل المتكرر
+    if (registeredRef.current) return;
 
     try {
-      // 1. Request permission
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
       if (existingStatus !== 'granted') {
@@ -145,9 +107,8 @@ export default function TabLayout() {
         return;
       }
 
-      // 2. Get Expo push token
       const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1', // استبدل بمعرف المشروع الخاص بك
+        projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1',
       });
       const token = tokenData.data;
       if (!token) {
@@ -157,7 +118,6 @@ export default function TabLayout() {
 
       console.log('[Push] ✅ Expo Push Token:', token);
 
-      // 3. Save token to user profile in Supabase
       const supabase = getSupabaseClient();
       const { error } = await supabase
         .from('user_profiles')
@@ -166,18 +126,15 @@ export default function TabLayout() {
 
       if (error) {
         console.error('[Push] ❌ Failed to save token:', error.message);
-        // ✅ تسجيل الخطأ في نظام التحليلات لو كان موجوداً
-        // trackError('push_token_save_failed', { error: error.message, userId: user.id });
       } else {
         console.log('[Push] ✅ Token saved to database.');
-        registeredRef.current = true; // ✅ تم التسجيل بنجاح
+        registeredRef.current = true;
       }
     } catch (e: any) {
       console.error('[Push] ❌ registerForPushNotifications error:', e?.message ?? e);
     }
   }, [user]);
 
-  // Run once when user becomes available
   useEffect(() => {
     registerForPushNotifications();
   }, [registerForPushNotifications]);
@@ -216,19 +173,7 @@ export default function TabLayout() {
           tabBarButton: PostButton,
         }}
       />
-      <Tabs.Screen
-        name="messages"
-        options={{
-          title: t.messages || (isAr ? 'الرسائل' : 'Messages'),
-          tabBarIcon: ({ color, focused }) => (
-            <View style={styles.iconWithBadge}>
-              <MaterialIcons name={focused ? 'chat' : 'chat-outline'} size={24} color={color} />
-              {/* ✅ تم تمرير isRTL إلى UnreadBadge */}
-              <UnreadBadge count={unreadCount} isRTL={isRTL} />
-            </View>
-          ),
-        }}
-      />
+      {/* ✅ تم حذف تبويب "messages" نهائياً */}
       <Tabs.Screen
         name="stores"
         options={{
@@ -278,13 +223,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconWithBadge: {
-    position: 'relative',
-    width: 24,
-    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },

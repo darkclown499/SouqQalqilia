@@ -31,6 +31,7 @@ import { getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useConversations } from '@/hooks/useChat'; // ✅ استيراد useConversations
 
 // ── Featured Stores Strip ───────────────────────────────────────────────────
 function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
@@ -93,7 +94,6 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
 
   if (!loading && stores.length === 0) return null;
 
-  // ✅ useCallback مع dependencies صحيحة
   const renderStoreItem = useCallback(({ item: store }: { item: StoreType }) => {
     const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
     const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
@@ -335,6 +335,253 @@ function buildFeedRows(ads: Ad[], numCols: number): FeedRow[] {
   return rows;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ COMPONENT: ConversationsBottomSheet – يعرض جميع المحادثات مع شارة للغير مقروء
+// ─────────────────────────────────────────────────────────────────────────────
+function ConversationsBottomSheet({
+  visible,
+  onClose,
+  onConversationPress,
+  colors,
+  isRTL,
+  isAr,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConversationPress: (conversationId: string) => void;
+  colors: any;
+  isRTL: boolean;
+  isAr: boolean;
+}) {
+  const { user } = useAuth();
+  const { conversations, loading, reload, unreadCount } = useConversations();
+
+  // إعادة التحميل عند فتح الشيت
+  useEffect(() => {
+    if (visible && user) {
+      reload();
+    }
+  }, [visible, user]);
+
+  const renderItem = useCallback(({ item }: { item: any }) => {
+    const otherId = item.buyer_id === user?.id ? item.seller_id : item.buyer_id;
+    const otherName = item.buyer_id === user?.id ? item.seller_name : item.buyer_name;
+    const displayName = otherName || 'مستخدم';
+    const lastMessage = item.last_message || '';
+    const lastMessageTime = item.last_message_at ? new Date(item.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const unread = item.unread_count || 0;
+
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          cbStyles.item,
+          {
+            backgroundColor: pressed ? colors.primaryGhost : colors.background,
+            borderColor: colors.borderLight,
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+          },
+        ]}
+        onPress={() => onConversationPress(item.id)}
+      >
+        <View style={[cbStyles.avatar, { backgroundColor: colors.primary }]}>
+          <Text style={cbStyles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+        </View>
+        <View style={[cbStyles.body, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+          <Text style={[cbStyles.name, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+            {displayName}
+          </Text>
+          <Text style={[cbStyles.lastMsg, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+            {lastMessage || (isAr ? 'لا توجد رسائل' : 'No messages')}
+          </Text>
+          {lastMessageTime ? (
+            <Text style={[cbStyles.time, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+              {lastMessageTime}
+            </Text>
+          ) : null}
+        </View>
+        {unread > 0 ? (
+          <View style={[cbStyles.badge, { backgroundColor: '#EF4444' }]}>
+            <Text style={cbStyles.badgeText}>{unread > 9 ? '9+' : String(unread)}</Text>
+          </View>
+        ) : null}
+      </Pressable>
+    );
+  }, [user, colors, isRTL, onConversationPress]);
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={cbStyles.overlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={[cbStyles.sheet, { backgroundColor: colors.surface }]}>
+          <View style={[cbStyles.handle, { backgroundColor: colors.border }]} />
+          <View style={[cbStyles.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
+            <MaterialIcons name="chat-bubble-outline" size={20} color={colors.primary} />
+            <Text style={[cbStyles.title, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
+              {isAr ? 'المحادثات' : 'Conversations'}
+            </Text>
+            {unreadCount > 0 ? (
+              <View style={[cbStyles.totalBadge, { backgroundColor: '#EF4444' }]}>
+                <Text style={cbStyles.totalBadgeText}>{unreadCount}</Text>
+              </View>
+            ) : null}
+            <Pressable onPress={onClose} hitSlop={10}>
+              <MaterialIcons name="close" size={22} color={colors.textMuted} />
+            </Pressable>
+          </View>
+
+          {loading ? (
+            <View style={cbStyles.loadingWrap}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : conversations.length === 0 ? (
+            <View style={cbStyles.emptyWrap}>
+              <MaterialIcons name="chat-bubble-outline" size={44} color={colors.textMuted} />
+              <Text style={[cbStyles.emptyText, { color: colors.textMuted }]}>
+                {isAr ? 'لا توجد محادثات' : 'No conversations'}
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={conversations}
+              keyExtractor={(item) => item.id}
+              renderItem={renderItem}
+              contentContainerStyle={cbStyles.listContent}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const cbStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.52)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingBottom: 48,
+    maxHeight: '75%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 24,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    marginBottom: 4,
+  },
+  title: {
+    fontSize: FontSize.lg,
+    fontWeight: '700',
+  },
+  totalBadge: {
+    borderRadius: 99,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  totalBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  loadingWrap: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyWrap: {
+    padding: 48,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: FontSize.md,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  listContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
+    gap: Spacing.sm,
+    paddingBottom: 8,
+  },
+  item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: Spacing.md,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  avatarText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  body: {
+    flex: 1,
+    gap: 2,
+  },
+  name: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+  },
+  lastMsg: {
+    fontSize: FontSize.xs,
+    lineHeight: 16,
+  },
+  time: {
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  badge: {
+    borderRadius: 99,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    marginLeft: 4,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const searchHeight = scrollY.interpolate({
@@ -356,6 +603,7 @@ export default function HomeScreen() {
   const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
   const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
+  const { unreadCount } = useConversations(); // ✅ للحصول على العدد الإجمالي للرسائل غير المقروءة
 
   const [isOnline, setIsOnline] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -383,62 +631,10 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isApplyingFilter, setIsApplyingFilter] = useState(false);
 
-  const [notifModalVisible, setNotifModalVisible] = useState(false);
-  const [unreadMessages, setUnreadMessages] = useState<Array<{
-    id: string;
-    conversationId: string;
-    senderName: string;
-    messagePreview: string;
-    createdAt: string;
-  }>>([]);
-  const [notifLoading, setNotifLoading] = useState(false);
+  // ✅ حالة جديدة لفتح شيت المحادثات
+  const [conversationsSheetVisible, setConversationsSheetVisible] = useState(false);
 
   const requestIdRef = useRef(0);
-
-  const fetchUnreadMessages = useCallback(async () => {
-    if (!user) return;
-    setNotifLoading(true);
-    try {
-      const supabase = getSupabaseClient();
-      const { data } = await supabase
-        .from('messages')
-        .select(`
-          id, content, message_type, conversation_id, created_at,
-          conversations!inner(buyer_id, seller_id),
-          user_profiles!messages_sender_id_fkey(username, email)
-        `)
-        .neq('sender_id', user.id)
-        .is('read_at', null)
-        .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`, { referencedTable: 'conversations' })
-        .order('created_at', { ascending: false });
-
-      if (data) {
-        const uniqueConversationsMap = new Map();
-        data.forEach(m => {
-          if (!uniqueConversationsMap.has(m.conversation_id)) {
-            uniqueConversationsMap.set(m.conversation_id, m);
-          }
-        });
-        const latestMessages = Array.from(uniqueConversationsMap.values());
-        setUnreadMessages(latestMessages.map((m: any) => ({
-          id: m.id,
-          conversationId: m.conversation_id,
-          senderName: m.user_profiles?.username || m.user_profiles?.email?.split('@')[0] || 'مستخدم',
-          messagePreview: m.message_type === 'image' ? '📷 صورة' : (m.content?.slice(0, 60) ?? ''),
-          createdAt: m.created_at,
-        })));
-      }
-    } catch (e) {
-      console.error("Error fetching unread:", e);
-    } finally {
-      setNotifLoading(false);
-    }
-  }, [user]);
-
-  const handleBellPress = useCallback(() => {
-    setNotifModalVisible(true);
-    fetchUnreadMessages();
-  }, [fetchUnreadMessages]);
 
   const appStartTime = useRef(Date.now());
   const interstitialShown = useRef(false);
@@ -680,7 +876,6 @@ export default function HomeScreen() {
 
   const activeCardWidth = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
 
-  // ✅ useCallback مع dependencies صحيحة
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
     const cols = item.ads.length;
     return (
@@ -715,6 +910,17 @@ export default function HomeScreen() {
       onPress={handleFeaturedStorePress}
     />
   ), [isAr, isRTL, colors, handleFeaturedStorePress]);
+
+  // ✅ معالج ضغط الجرس: فتح شيت المحادثات
+  const handleBellPress = useCallback(() => {
+    setConversationsSheetVisible(true);
+  }, []);
+
+  // ✅ معالج اختيار محادثة من الشيت
+  const handleConversationPress = useCallback((conversationId: string) => {
+    setConversationsSheetVisible(false);
+    router.push(`/chat/${conversationId}` as any);
+  }, [router]);
 
   const ListHeader = useMemo(() => (
     <>
@@ -963,12 +1169,13 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
 
+            {/* ✅ زر الجرس المعدل */}
             <Pressable style={styles.headerIconBtn} onPress={handleBellPress} hitSlop={6}>
               <MaterialCommunityIcons name="bell" size={20} color="#fff" />
-              {unreadMessages.length > 0 && !notifModalVisible ? (
+              {unreadCount > 0 ? (
                 <View style={styles.filterDot}>
                   <Text style={styles.filterDotText}>
-                    {unreadMessages.length > 9 ? '9+' : String(unreadMessages.length)}
+                    {unreadCount > 9 ? '9+' : String(unreadCount)}
                   </Text>
                 </View>
               ) : null}
@@ -1087,75 +1294,17 @@ export default function HomeScreen() {
 
       <InterstitialAdOverlay ad={activeInterstitial} visible={interstitialVisible} onClose={() => setInterstitialVisible(false)} />
 
-      {/* ── NOTIFICATION MODAL ── */}
-      <Modal
-        visible={notifModalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setNotifModalVisible(false)}
-      >
-        <View style={nStyles.overlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setNotifModalVisible(false)} />
-          <View style={[nStyles.sheet, { backgroundColor: colors.surface }]}>
-            <View style={[nStyles.handle, { backgroundColor: colors.border }]} />
+      {/* ── Conversations Bottom Sheet ── */}
+      <ConversationsBottomSheet
+        visible={conversationsSheetVisible}
+        onClose={() => setConversationsSheetVisible(false)}
+        onConversationPress={handleConversationPress}
+        colors={colors}
+        isRTL={isRTL}
+        isAr={isAr}
+      />
 
-            <View style={[nStyles.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
-              <View style={[nStyles.titleIcon, { backgroundColor: colors.primaryGhost }]}>
-                <MaterialIcons name="notifications" size={20} color={colors.primary} />
-              </View>
-              <Text style={[nStyles.titleText, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
-                {isAr ? 'الرسائل غير المقروءة' : 'Unread Messages'}
-              </Text>
-              <Pressable onPress={() => setNotifModalVisible(false)} hitSlop={10}>
-                <MaterialIcons name="close" size={22} color={colors.textMuted} />
-              </Pressable>
-            </View>
-
-            {notifLoading ? (
-              <View style={nStyles.loadingWrap}>
-                <ActivityIndicator color={colors.primary} />
-              </View>
-            ) : unreadMessages.length === 0 ? (
-              <View style={nStyles.emptyWrap}>
-                <MaterialIcons name="mark-chat-read" size={44} color={colors.textMuted} />
-                <Text style={[nStyles.emptyText, { color: colors.textMuted }]}>
-                  {isAr ? 'لا توجد رسائل غير مقروءة' : 'No unread messages'}
-                </Text>
-              </View>
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={nStyles.listContent}>
-                {unreadMessages.map((msg) => (
-                  <Pressable
-                    key={msg.id}
-                    style={({ pressed }) => [nStyles.notifItem, { backgroundColor: pressed ? colors.primaryGhost : colors.background, borderColor: colors.borderLight }]}
-                    onPress={() => {
-                      setNotifModalVisible(false);
-                      router.push(`/chat/${msg.conversationId}` as any);
-                    }}
-                  >
-                    <View style={[nStyles.notifAvatar, { backgroundColor: colors.primary }]}>
-                      <Text style={nStyles.notifAvatarText}>
-                        {msg.senderName.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={[nStyles.notifBody, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-                      <Text style={[nStyles.notifTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
-                        {isAr ? `تم إرسال رسالة من ${msg.senderName}` : `Message from ${msg.senderName}`}
-                      </Text>
-                      <Text style={[nStyles.notifPreview, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
-                        {msg.messagePreview}
-                      </Text>
-                    </View>
-                    <MaterialIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={18} color={colors.textMuted} />
-                  </Pressable>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── FILTER BOTTOM SHEET ── */}
+      {/* ── FILTER BOTTOM SHEET ── (بدون تغيير) ── */}
       {filterVisible ? (
         <View style={[StyleSheet.absoluteFillObject, { zIndex: 100 }]} pointerEvents="box-none">
           <Pressable style={fStyles.overlay} onPress={() => setFilterVisible(false)} />
@@ -1244,7 +1393,7 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* ── AREA PICKER MODAL ── */}
+      {/* ── AREA PICKER MODAL ── (بدون تغيير) ── */}
       {areaPickerVisible ? (
         <View style={[StyleSheet.absoluteFillObject, { zIndex: 200 }]} pointerEvents="box-none">
           <Pressable style={fStyles.overlay} onPress={() => setAreaPickerVisible(false)} />
@@ -1626,49 +1775,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   errorText: { flex: 1, fontSize: FontSize.sm, fontWeight: '500' },
-});
-
-// ── Notification Modal Styles ─────────────────────────────────────────────────
-const nStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.52)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingTop: 12, paddingBottom: 48,
-    maxHeight: '75%',
-    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15, shadowRadius: 20, elevation: 24,
-  },
-  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
-  titleRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md,
-    borderBottomWidth: 1, marginBottom: 4,
-  },
-  titleIcon: {
-    width: 38, height: 38, borderRadius: 19,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  titleText: { fontSize: FontSize.lg, fontWeight: '700' },
-  loadingWrap: { padding: 40, alignItems: 'center' },
-  emptyWrap: { padding: 48, alignItems: 'center', gap: 12 },
-  emptyText: { fontSize: FontSize.md, fontWeight: '600', textAlign: 'center' },
-  listContent: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: Spacing.sm, paddingBottom: 8 },
-  notifItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: Spacing.md, borderRadius: Radius.xl, borderWidth: 1,
-  },
-  notifAvatar: {
-    width: 40, height: 40, borderRadius: 20,
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  notifAvatarText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  notifBody: { flex: 1, gap: 3 },
-  notifTitle: { fontSize: FontSize.sm, fontWeight: '700', lineHeight: 18 },
-  notifPreview: { fontSize: FontSize.xs, lineHeight: 16 },
 });
 
 // ── Filter Sheet Styles ────────────────────────────────────────────────────────
