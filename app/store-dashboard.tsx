@@ -17,8 +17,28 @@ import {
 } from '@/services/storeCategoriesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
-// استيراد الدوال مباشرة
-import { getLocalCategories, addLocalCategory, deleteLocalCategory, type LocalCategory } from '@/services/localCategoriesService';
+import type { LocalCategory } from '@/services/localCategoriesService';
+
+// ── الخريطة الثابتة للتصنيفات الفرعية حسب نوع المتجر ──
+const SUBCATEGORIES_MAP: Record<string, string[]> = {
+  'مستحضرات تجميل': ['مكياج', 'عناية بالبشرة', 'عطور', 'عناية بالشعر', 'عناية بالجسم', 'أدوات ومعدات تجميل', 'عدسات لاصقة'],
+  'خضراوات وفواكه': ['خضراوات طازجة', 'فواكه طازجة', 'ورقيات وأعشاب', 'تمور', 'فواكه مجففة ومكسرات', 'بقوليات وحبوب'],
+  'إلكترونيات': ['هواتف ذكية', 'حواسيب ولابتوب', 'شاشات وأجهزة تلفاز', 'أجهزة منزلية ومطبخ', 'أجهزة صوتية وسماعات', 'كاميرات ومعدات تصوير', 'إكسسوارات وقطع غيار إلكترونية', 'أجهزة شبكات وراوترات'],
+  'حيوانات': ['قطط', 'طيور', 'كلاب', 'أسماك زينة', 'مواشي وحيوانات مزرعة', 'مستلزمات وأكل حيوانات', 'خدمات وعيادات بيطرية'],
+  'أثاث': ['غرف جلوس وطواقم كنب', 'غرف نوم', 'أثاث مكتبي', 'مطابخ', 'أثاث خارجي وحدائق', 'سجاد ومفروشات', 'ديكور وإضاءة'],
+  'زينة وهدايا': ['ورود ونباتات زينة', 'تحف وإكسسوارات منزلية', 'هدايا جاهزة ومخصصة', 'تغليف وبطاقات', 'لوازم حفلات وأعياد ميلاد', 'شموع ومعطرات جو'],
+  'وظائف': ['هندسة', 'طب وصحة', 'تعليم وتدريب', 'مبيعات وتسويق', 'تكنولوجيا وبرمجة', 'حرف ومهن يدوية', 'مطاعم وضيافة', 'إدارة وسكرتاريا', 'تصميم وفنون', 'نقل وتوصيل'],
+  'مأكولات وحلويات': ['وجبات سريعة', 'حلويات شرقية وغربية', 'مخبوزات ومعجنات', 'مشروبات وعصائر', 'مأكولات شعبية', 'طبخ منزلي وتواصي', 'مجمدات'],
+  'رياضة': ['أجهزة لياقة بدنية', 'ملابس وأحذية رياضية', 'دراجات هوائية وسكوترات', 'مكملات غذائية', 'معدات تخييم ورحلات', 'رياضات مائية', 'أدوات صيد وفروسية'],
+  'سيارات ومركبات': ['سيارات مستعملة', 'سيارات جديدة', 'دراجات نارية', 'قطع غيار وإكسسوارات سيارات', 'إيجار سيارات', 'شاحنات ومعدات ثقيلة', 'لوحات سيارات مميزة', 'خدمات صيانة وغسيل'],
+  'موضة': ['ملابس نسائية', 'ملابس رجالية', 'ملابس أطفال ومواليد', 'أحذية', 'حقائب وإكسسوارات', 'ملابس رياضية', 'ساعات ومجوهرات'],
+  'ألعاب وترفيه': ['ألعاب فيديو وأجهزة كونسول', 'ألعاب أطفال تعليمية وترفيهية', 'تذاكر فعاليات ورحلات', 'بطاقات ألعاب واشتراكات', 'ألعاب لوحية وورقية', 'آلات ومعدات موسيقية'],
+  'أخرى': ['خدمات عامة وصيانة منزلية', 'معدات صناعية', 'مفقودات', 'متفرقات', 'كتب ومجلات', 'خردوات', 'أدوات ومعدات زراعية'],
+  'عقارات': ['شقق للبيع', 'شقق للإيجار', 'أراضي للبيع والاستثمار', 'محلات ومكاتب تجارية', 'شاليهات واستراحات', 'فلل وقصور', 'سكن طلاب وموظفين'],
+  'صيدليات': ['أدوية وعلاجات', 'مكملات وفيتامينات', 'منتجات عناية شخصية', 'معدات وأجهزة طبية', 'منتجات أطفال ورضع', 'مستحضرات تجميل طبية'],
+  'سوبرماركت': ['معلبات ومواد تموينية', 'ألبان وأجبان', 'لحوم ودواجن وأسماك', 'منظفات وأدوات منزلية', 'بهارات وتوابل', 'سناكس وتسالي', 'مشروبات غازية وعصائر'],
+  // إضافة المزيد حسب الحاجة
+};
 
 // ── Add/Edit Product Modal ────────────────────────────────────────────────────
 interface ProductForm {
@@ -36,27 +56,6 @@ const EMPTY_FORM: ProductForm = {
   price: '', category_label_ar: '',
   image_url: '', is_available: true, position: '0',
 };
-
-// ── Product category map by store type ────────────────────────────────────────
-const PRODUCT_CATEGORY_MAP: Record<string, string[]> = {
-  'مطاعم':      ['وجبات رئيسية', 'مقبلات', 'مشروبات', 'حلويات', 'عروض'],
-  'سوبرماركت':  ['مواد غذائية', 'معلبات', 'ألبان وأجبان', 'منظفات', 'تسالي'],
-  'صيدليات':    ['أدوية طبية', 'عناية بالبشرة', 'عناية بالطفل', 'فيتامينات', 'مستلزمات'],
-  'مخابز':      ['خبز بأنواعه', 'معجنات', 'كيك', 'بسكويت', 'عروض'],
-  'كافيهات':    ['قهوة', 'مشروبات باردة', 'عصائر', 'حلويات', 'وجبات خفيفة'],
-  'برجر':       ['برجر', 'وجبات', 'بطاطس', 'مشروبات', 'عروض'],
-  'بيتزا':      ['بيتزا', 'باستا', 'مقبلات', 'مشروبات', 'عروض'],
-  'دجاج':       ['وجبات دجاج', 'قطع مفردة', 'بروستد', 'مشروبات', 'عروض'],
-  'مشويات':     ['مشويات', 'كباب', 'شاورما', 'مقبلات', 'مشروبات'],
-  'فلافل':      ['فلافل', 'فول', 'سندويشات', 'مشروبات', 'وجبات'],
-  'عصائر':      ['عصائر طازجة', 'سموذي', 'مشروبات باردة', 'آيس كريم', 'إضافات'],
-  'حلويات':     ['حلويات شرقية', 'حلويات غربية', 'كيك', 'شوكولاتة', 'عروض'],
-  'إلكترونيات': ['جوالات', 'لابتوبات', 'إكسسوارات', 'أجهزة منزلية', 'صيانة'],
-  'أزياء':      ['رجالي', 'نسائي', 'ولادي', 'أحذية', 'إكسسوارات'],
-  'أثاث':       ['غرف نوم', 'صالونات', 'مطابخ', 'مكتبي', 'ديكور'],
-  'تجميل':      ['عناية بالبشرة', 'مكياج', 'عطور', 'شعر', 'أظافر'],
-};
-const DEFAULT_PRODUCT_CATEGORIES = ['قسم عام', 'عروض', 'منتجات متنوعة', 'أخرى'];
 
 // ── Product Modal Component ───────────────────────────────────────────────────
 function ProductModal({
@@ -469,81 +468,14 @@ export default function StoreDashboardScreen() {
 
   // ── Custom categories state ──
   const [customCategories, setCustomCategories] = useState<LocalCategory[]>([]);
-  const [showCategoryForm, setShowCategoryForm] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryNameAr, setNewCategoryNameAr] = useState('');
+  // ── حالة اختيار التصنيفات الجاهزة ──
+  const [selectedSubcategories, setSelectedSubcategories] = useState<Set<string>>(new Set());
 
   // ── WhatsApp edit modal state ──
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [whatsappPrefix, setWhatsappPrefix] = useState('972');
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [savingWhatsApp, setSavingWhatsApp] = useState(false);
-
-  // ── Add custom category ──
-  const handleAddCategory = useCallback(async () => {
-    if (!store?.id) {
-      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لم يتم تحميل المتجر' : 'Store not loaded');
-      return;
-    }
-    if (!newCategoryName.trim() || !newCategoryNameAr.trim()) {
-      showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'الاسم بالعربية والإنجليزية مطلوب' : 'Both Arabic and English names are required');
-      return;
-    }
-
-    try {
-      const newCat = await addLocalCategory(
-        store.id,
-        newCategoryName.trim(),
-        newCategoryNameAr.trim(),
-        'category',
-        '#6B7280'
-      );
-      if (newCat) {
-        setCustomCategories(prev => [...prev, newCat]);
-        setNewCategoryName('');
-        setNewCategoryNameAr('');
-        setShowCategoryForm(false);
-        showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم إضافة التصنيف' : 'Category added');
-      } else {
-        throw new Error('Failed to add category');
-      }
-    } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر إضافة التصنيف' : 'Could not add category'));
-    }
-  }, [store?.id, newCategoryName, newCategoryNameAr, isAr, showAlert]);
-
-  // ── Delete custom category ──
-  const handleDeleteCategory = useCallback((id: string) => {
-    if (!store?.id) {
-      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لم يتم تحميل المتجر' : 'Store not loaded');
-      return;
-    }
-
-    showAlert(
-      isAr ? 'تأكيد الحذف' : 'Confirm Delete',
-      isAr ? 'هل تريد حذف هذا التصنيف؟' : 'Delete this category?',
-      [
-        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-        {
-          text: isAr ? 'حذف' : 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const success = await deleteLocalCategory(store.id, id);
-              if (success) {
-                setCustomCategories(prev => prev.filter(c => c.id !== id));
-                showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم حذف التصنيف' : 'Category deleted');
-              } else {
-                throw new Error('Delete failed');
-              }
-            } catch (e: any) {
-              showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر حذف التصنيف' : 'Could not delete category'));
-            }
-          },
-        },
-      ]
-    );
-  }, [store?.id, isAr, showAlert]);
 
   // ── Load data ──
   const loadData = useCallback(async () => {
@@ -588,15 +520,122 @@ export default function StoreDashboardScreen() {
     };
   }, [user]);
 
-  // ── Load local categories ──
+  // ── Load custom categories from supabase directly ──
+  const loadCustomCategories = useCallback(async (storeId: string) => {
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase
+        .from('local_categories')
+        .select('*')
+        .eq('store_id', storeId);
+      if (error) throw error;
+      setCustomCategories(data || []);
+      // تحديث التصنيفات المحددة
+      const selectedNames = new Set((data || []).map(c => c.name_ar));
+      setSelectedSubcategories(selectedNames);
+    } catch (e) {
+      console.warn('loadCustomCategories error:', e);
+    }
+  }, []);
+
+  // ── Add a subcategory directly to database ──
+  const addSubcategory = useCallback(async (nameAr: string) => {
+    if (!store?.id) return false;
+    try {
+      const supabase = getSupabaseClient();
+      // تحقق من وجود التصنيف مسبقاً
+      const { data: existing, error: checkError } = await supabase
+        .from('local_categories')
+        .select('id')
+        .eq('store_id', store.id)
+        .eq('name_ar', nameAr)
+        .maybeSingle();
+      if (checkError) throw checkError;
+      if (existing) return true; // موجود مسبقاً
+
+      const newCat = {
+        store_id: store.id,
+        name: nameAr, // اسم انجليزي مؤقت
+        name_ar: nameAr,
+        type: 'category',
+        color: '#6B7280',
+        created_at: new Date().toISOString(),
+      };
+      const { data, error } = await supabase
+        .from('local_categories')
+        .insert(newCat)
+        .select()
+        .single();
+      if (error) throw error;
+      if (data) {
+        setCustomCategories(prev => [...prev, data]);
+        setSelectedSubcategories(prev => new Set(prev).add(nameAr));
+      }
+      return true;
+    } catch (e) {
+      console.warn('addSubcategory error:', e);
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر إضافة التصنيف' : 'Could not add category'));
+      return false;
+    }
+  }, [store?.id, isAr, showAlert]);
+
+  // ── Delete subcategory directly from database ──
+  const deleteSubcategory = useCallback(async (id: string, nameAr: string) => {
+    if (!store?.id) return;
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase
+        .from('local_categories')
+        .delete()
+        .eq('id', id)
+        .eq('store_id', store.id);
+      if (error) throw error;
+      setCustomCategories(prev => prev.filter(c => c.id !== id));
+      setSelectedSubcategories(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(nameAr);
+        return newSet;
+      });
+      showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم حذف التصنيف' : 'Category deleted');
+    } catch (e: any) {
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر حذف التصنيف' : 'Could not delete category'));
+    }
+  }, [store?.id, isAr, showAlert]);
+
+  // ── Add all subcategories at once ──
+  const addAllSubcategories = useCallback(async () => {
+    if (!store?.id) return;
+    const available = getAvailableSubcategories();
+    let added = 0;
+    for (const name of available) {
+      const success = await addSubcategory(name);
+      if (success) added++;
+    }
+    if (added > 0) {
+      showAlert(isAr ? 'تم' : 'Done', `${isAr ? 'تم إضافة' : 'Added'} ${added} ${isAr ? 'تصنيف' : 'categories'}`);
+    } else {
+      showAlert(isAr ? 'معلومة' : 'Info', isAr ? 'جميع التصنيفات موجودة مسبقاً' : 'All categories already exist');
+    }
+  }, [store?.id, addSubcategory, isAr, showAlert]);
+
+  // ── Get available subcategories based on store category ──
+  const getAvailableSubcategories = useCallback(() => {
+    if (!storeCategory) return [];
+    // حاول المطابقة باستخدام name_ar، name، أو slug
+    const key = storeCategory.name_ar || storeCategory.name || storeCategory.slug;
+    return SUBCATEGORIES_MAP[key] || [];
+  }, [storeCategory]);
+
+  const availableSubcategories = useMemo(() => getAvailableSubcategories(), [getAvailableSubcategories]);
+
+  // ── Load categories when store loads ──
   useEffect(() => {
     if (store?.id) {
-      getLocalCategories(store.id)
-        .then(setCustomCategories)
-        .catch(console.error);
+      loadCustomCategories(store.id);
     }
-  }, [store?.id]);
+  }, [store?.id, loadCustomCategories]);
 
+  // ── Load data on mount ──
   useEffect(() => {
     const cleanup = loadData();
     return () => {
@@ -723,6 +762,7 @@ export default function StoreDashboardScreen() {
   const storeName = useMemo(() => isAr ? (store?.name_ar || store?.name) : store?.name, [store, isAr]);
   const availableCount = useMemo(() => products.filter(p => p.is_available).length, [products]);
 
+  // ── Render loading, error, no store ──
   if (loading) {
     return (
       <View style={[s.loadingScreen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -834,61 +874,85 @@ export default function StoreDashboardScreen() {
           contentContainerStyle={s.tabContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ── Custom categories ── */}
+          {/* ── إدارة التصنيفات الجاهزة ── */}
           <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: Spacing.md }]}>
             <View style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={[s.catBadgeText, { color: colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' }]}>
-                {isAr ? 'تصنيفات المتجر المخصصة' : 'Custom Categories'}
+                {isAr ? 'تصنيفات المتجر الجاهزة' : 'Store Subcategories'}
               </Text>
-              <Pressable onPress={() => setShowCategoryForm(!showCategoryForm)} style={{ flexDirection: rtl, alignItems: 'center', gap: 4 }}>
-                <MaterialIcons name={showCategoryForm ? 'remove-circle-outline' : 'add-circle-outline'} size={22} color={colors.primary} />
-                <Text style={{ color: colors.primary, fontSize: FontSize.sm, fontWeight: '600' }}>
-                  {showCategoryForm ? (isAr ? 'إلغاء' : 'Cancel') : (isAr ? 'إضافة' : 'Add')}
-                </Text>
-              </Pressable>
+              {availableSubcategories.length > 0 && (
+                <Pressable
+                  style={{ flexDirection: rtl, alignItems: 'center', gap: 4 }}
+                  onPress={addAllSubcategories}
+                >
+                  <MaterialIcons name="playlist-add" size={22} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontSize: FontSize.sm, fontWeight: '600' }}>
+                    {isAr ? 'إضافة الكل' : 'Add All'}
+                  </Text>
+                </Pressable>
+              )}
             </View>
 
-            {showCategoryForm && (
-              <View style={{ gap: 8, marginTop: 8 }}>
-                <TextInput
-                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
-                  placeholder={isAr ? 'الاسم (عربي)' : 'Name (Arabic)'}
-                  placeholderTextColor={colors.textMuted}
-                  value={newCategoryNameAr}
-                  onChangeText={setNewCategoryNameAr}
-                />
-                <TextInput
-                  style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
-                  placeholder={isAr ? 'الاسم (إنجليزي)' : 'Name (English)'}
-                  placeholderTextColor={colors.textMuted}
-                  value={newCategoryName}
-                  onChangeText={setNewCategoryName}
-                />
-                <Pressable
-                  style={[pm.saveBtn, { backgroundColor: colors.primary, paddingVertical: 10, borderRadius: Radius.lg }]}
-                  onPress={handleAddCategory}
-                >
-                  <Text style={{ color: '#fff', fontWeight: '700' }}>{isAr ? 'حفظ التصنيف' : 'Save Category'}</Text>
-                </Pressable>
-              </View>
-            )}
-
-            {customCategories.length === 0 ? (
+            {availableSubcategories.length === 0 ? (
               <Text style={{ color: colors.textMuted, fontSize: FontSize.sm, marginTop: 8, textAlign }}>
-                {isAr ? 'لا توجد تصنيفات مخصصة بعد' : 'No custom categories yet'}
+                {isAr ? 'لا توجد تصنيفات جاهزة لهذا النوع من المتاجر' : 'No subcategories available for this store type'}
               </Text>
             ) : (
               <View style={{ marginTop: 8, gap: 6 }}>
-                {customCategories.map(cat => (
-                  <View key={cat.id} style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
-                    <Text style={{ color: colors.textPrimary, fontSize: FontSize.sm }}>
-                      {isAr ? cat.name_ar : cat.name}
-                    </Text>
-                    <Pressable onPress={() => handleDeleteCategory(cat.id)} hitSlop={8}>
-                      <MaterialIcons name="delete-outline" size={18} color="#EF4444" />
-                    </Pressable>
-                  </View>
-                ))}
+                {availableSubcategories.map(name => {
+                  const isAdded = selectedSubcategories.has(name);
+                  return (
+                    <View
+                      key={name}
+                      style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}
+                    >
+                      <Text style={{ color: colors.textPrimary, fontSize: FontSize.sm }}>
+                        {name}
+                      </Text>
+                      <View style={{ flexDirection: rtl, gap: 8 }}>
+                        {isAdded ? (
+                          <Pressable
+                            onPress={() => {
+                              const cat = customCategories.find(c => c.name_ar === name);
+                              if (cat) deleteSubcategory(cat.id, name);
+                            }}
+                            hitSlop={8}
+                          >
+                            <MaterialIcons name="check-circle" size={20} color="#16a34a" />
+                          </Pressable>
+                        ) : (
+                          <Pressable
+                            onPress={() => addSubcategory(name)}
+                            hitSlop={8}
+                          >
+                            <MaterialIcons name="add-circle-outline" size={20} color={colors.primary} />
+                          </Pressable>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* عرض التصنيفات المضافة كقائمة */}
+            {customCategories.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={{ color: colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600', textAlign }}>
+                  {isAr ? 'التصنيفات المضافة حالياً' : 'Added Categories'}
+                </Text>
+                <View style={{ marginTop: 6, gap: 4 }}>
+                  {customCategories.map(cat => (
+                    <View key={cat.id} style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}>
+                      <Text style={{ color: colors.textPrimary, fontSize: FontSize.sm }}>
+                        {isAr ? cat.name_ar : cat.name}
+                      </Text>
+                      <Pressable onPress={() => deleteSubcategory(cat.id, cat.name_ar)} hitSlop={8}>
+                        <MaterialIcons name="delete-outline" size={18} color="#EF4444" />
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
               </View>
             )}
           </View>
