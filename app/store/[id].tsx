@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
-  ActivityIndicator, Modal, Linking, Platform, Share, TextInput
+  ActivityIndicator, Modal, Linking, Platform, Share, TextInput, Alert
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -55,19 +55,25 @@ function ProductCard({
     <View style={[pc.card, { opacity: unavailable ? 0.6 : 1 }]}>
       <View style={pc.imgWrap}>
         {product.image_url ? (
-          <Image source={{ uri: product.image_url }} style={pc.img} contentFit="cover" transition={200} />
+          <Image
+            source={{ uri: product.image_url }}
+            style={pc.img}
+            contentFit="cover"   // يمكن تغييرها إلى 'contain' لعرض الصورة كاملة بدون قص
+            transition={200}
+          />
         ) : (
-          <View style={[pc.imgFallback, { backgroundColor: '#F9FAFB' }]}>
+          <View style={[pc.imgFallback, { backgroundColor: '#F3F4F6' }]}>
             <MaterialIcons name="fastfood" size={32} color="#D1D5DB" />
           </View>
         )}
         
         {!unavailable ? (
-          <Pressable style={[pc.addCircle, { backgroundColor: colors.primary, shadowColor: colors.primary }]} onPress={onAdd} hitSlop={8}>
-            <MaterialIcons name="shopping-bag" size={18} color="#fff" />
-            <View style={pc.addCircleCheck}>
-              <MaterialIcons name="check" size={8} color={colors.primary} />
-            </View>
+          <Pressable
+            style={[pc.addCircle, { backgroundColor: colors.primary }]}
+            onPress={onAdd}
+            hitSlop={8}
+          >
+            <MaterialIcons name="add" size={20} color="#fff" />
             {qty > 0 ? (
               <View style={pc.qtyBadge}>
                 <Text style={pc.qtyBadgeText}>{qty}</Text>
@@ -107,34 +113,96 @@ const pc = StyleSheet.create({
     backgroundColor: '#fff',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
-    overflow: 'visible',
+    overflow: 'hidden', // لجعل الزوايا الدائرية تؤثر على الصورة أيضاً
   },
-  imgWrap: { width: '100%', height: 110, padding: 10, position: 'relative', borderTopLeftRadius: 16, borderTopRightRadius: 16 },
-  img: { width: '100%', height: '100%', borderRadius: 8 },
-  imgFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
+  imgWrap: {
+    width: '100%',
+    height: 120, // زادت قليلاً
+    position: 'relative',
+    backgroundColor: '#F9FAFB',
+  },
+  img: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#F9FAFB',
+  },
+  imgFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   addCircle: {
-    position: 'absolute', bottom: -12, left: 12,
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: '#BE123C',
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#BE123C', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 6, elevation: 4, zIndex: 10,
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 10,
   },
-  addCircleCheck: { position: 'absolute', top: 6, right: 6, backgroundColor: '#fff', width: 12, height: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-  qtyBadge: { position: 'absolute', top: -6, right: -6, backgroundColor: '#111827', minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  qtyBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  body: { paddingHorizontal: 12, paddingTop: 16, paddingBottom: 12, gap: 4 },
-  name: { fontSize: 13, fontWeight: '800', lineHeight: 18, color: '#111827' },
-  desc: { fontSize: 10, lineHeight: 14, minHeight: 28, color: '#6B7280' },
-  priceRow: { alignItems: 'center', gap: 4, marginTop: 4 },
-  priceLabel: { fontSize: 11, color: '#9CA3AF' },
-  price: { fontSize: 15, fontWeight: '900', color: '#BE123C' },
+  qtyBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#111827',
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  qtyBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  body: {
+    paddingHorizontal: 12,
+    paddingTop: 14,
+    paddingBottom: 12,
+    gap: 4,
+  },
+  name: {
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 18,
+    color: '#111827',
+  },
+  desc: {
+    fontSize: 10,
+    lineHeight: 14,
+    minHeight: 28,
+    color: '#6B7280',
+  },
+  priceRow: {
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  priceLabel: {
+    fontSize: 11,
+    color: '#9CA3AF',
+  },
+  price: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#BE123C',
+  },
 });
 
 // ── Product Section Styles ──
