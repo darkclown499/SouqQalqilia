@@ -171,7 +171,7 @@ export default function LoginScreen() {
     ]).start();
   }, []);
 
-  // Phone resend cooldown
+  // Phone resend cooldown – ✅ fixed dependency
   useEffect(() => {
     if (phoneResend <= 0) {
       if (phoneResendRef.current) { clearInterval(phoneResendRef.current); phoneResendRef.current = null; }
@@ -179,9 +179,9 @@ export default function LoginScreen() {
     }
     phoneResendRef.current = setInterval(() => setPhoneResend(v => v <= 1 ? 0 : v - 1), 1000);
     return () => { if (phoneResendRef.current) clearInterval(phoneResendRef.current); };
-  }, [phoneResend > 0]);
+  }, [phoneResend]);
 
-  // Email OTP resend cooldown
+  // Email OTP resend cooldown – ✅ fixed dependency
   useEffect(() => {
     if (resendCooldown <= 0) {
       if (cooldownRef.current) { clearInterval(cooldownRef.current); cooldownRef.current = null; }
@@ -189,7 +189,7 @@ export default function LoginScreen() {
     }
     cooldownRef.current = setInterval(() => setResendCooldown(v => v <= 1 ? 0 : v - 1), 1000);
     return () => { if (cooldownRef.current) clearInterval(cooldownRef.current); };
-  }, [resendCooldown > 0]);
+  }, [resendCooldown]);
 
   const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
 
