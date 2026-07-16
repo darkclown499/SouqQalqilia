@@ -4,7 +4,7 @@ import React, {
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Dimensions, FlatList,
   ActivityIndicator, Modal, TextInput, Platform, NativeScrollEvent,
-  NativeSyntheticEvent, Image as RNImage, Linking, RefreshControl,
+  NativeSyntheticEvent, Linking, RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -153,7 +153,7 @@ const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRT
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. QUICK STORE CATEGORY CARD
+// 2. QUICK STORE CATEGORY CARD (تم استبدال RNImage بـ expo-image)
 // ─────────────────────────────────────────────────────────────────────────────
 const QuickStoreCatCard = React.memo(({ cat, isAr, isSelected, onPress }: any) => {
   const nameAr = cat.name_ar || cat.name;
@@ -169,7 +169,12 @@ const QuickStoreCatCard = React.memo(({ cat, isAr, isSelected, onPress }: any) =
         {isSelected && (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: activeColor, opacity: 0.12, borderRadius: 14 }]} />
         )}
-        <RNImage source={{ uri: targetImageUrl }} style={{ width: 48, height: 48 }} resizeMode="contain" />
+        <Image
+          source={{ uri: targetImageUrl }}
+          style={{ width: 48, height: 48 }}
+          contentFit="contain"
+          transition={100}
+        />
       </View>
       <Text style={[qc.label, isSelected && { color: activeColor }]} numberOfLines={2}>
         {isAr ? nameAr : cat.name}
@@ -658,7 +663,7 @@ export default function StoresScreen() {
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState('');
 
-  const isMounted = useRef(true);
+  const isMountedRef = useRef(true);
 
   // ── Local banners ──
   const LOCAL_BANNERS = useMemo(() => [
@@ -668,20 +673,34 @@ export default function StoresScreen() {
     { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
   ], []);
 
-  // ── Load data function ──
+  // ── Load data function (مضاف إليه isMountedRef و timeout) ──
   const loadData = useCallback(async (showLoading = true) => {
+    if (!isMountedRef.current) return;
     if (showLoading) setLoading(true);
     setError(null);
+
     try {
       setBanners(shuffleArray(LOCAL_BANNERS));
 
-      const [storesRes, ratingsMap, catsRes] = await Promise.all([
-        fetchAllActiveStores(),
-        fetchAllStoreRatings(),
-        fetchStoreCategories(),
+      // مهلة زمنية 30 ثانية كحد أقصى
+      const TIMEOUT = 30000;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timeout')), TIMEOUT)
+      );
+
+      const [storesRes, ratingsMap, catsRes] = await Promise.race([
+        Promise.all([
+          fetchAllActiveStores(),
+          fetchAllStoreRatings(),
+          fetchStoreCategories(),
+        ]),
+        timeoutPromise,
       ]);
 
+      if (!isMountedRef.current) return;
+
       const shuffledStores = shuffleArray(storesRes.data);
+      if (!isMountedRef.current) return;
       setStores(shuffledStores);
       setRatings(ratingsMap);
       setStoreCategories(catsRes.data);
@@ -689,12 +708,14 @@ export default function StoresScreen() {
       const featuredIds = shuffledStores
         .filter((storeItem: any) => storeItem.is_featured === true)
         .map((storeItem: any) => storeItem.id);
+      if (!isMountedRef.current) return;
       setFeaturedStoreIds(new Set(featuredIds));
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error('Failed to load stores data:', err);
       setError(isAr ? 'فشل تحميل المتاجر، يرجى المحاولة لاحقاً' : 'Failed to load stores, please try again');
     } finally {
-      if (showLoading) setLoading(false);
+      if (isMountedRef.current && showLoading) setLoading(false);
     }
   }, [LOCAL_BANNERS, isAr]);
 
@@ -711,7 +732,7 @@ export default function StoresScreen() {
       .eq('id', user.id)
       .single()
       .then(({ data }) => {
-        if (isMounted.current && isNameInvalid(data?.username ?? '')) {
+        if (isMountedRef.current && isNameInvalid(data?.username ?? '')) {
           setEditName(data?.username ?? '');
           setNameGateVisible(true);
         }
@@ -724,13 +745,13 @@ export default function StoresScreen() {
       .eq('owner_id', user.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (isMounted.current) {
+        if (isMountedRef.current) {
           setOwnerStore(data ?? null);
           setOwnerStoreLoading(false);
         }
       })
       .catch(() => {
-        if (isMounted.current) {
+        if (isMountedRef.current) {
           setOwnerStore(null);
           setOwnerStoreLoading(false);
         }
@@ -738,9 +759,9 @@ export default function StoresScreen() {
   }, [user]);
 
   useEffect(() => {
-    isMounted.current = true;
+    isMountedRef.current = true;
     return () => {
-      isMounted.current = false;
+      isMountedRef.current = false;
     };
   }, []);
 
@@ -752,7 +773,7 @@ export default function StoresScreen() {
   // ── Focus: re-shuffle banners only ──
   useFocusEffect(
     useCallback(() => {
-      if (isMounted.current) {
+      if (isMountedRef.current) {
         trackPageView('stores');
       }
       setBanners(shuffleArray(LOCAL_BANNERS));
@@ -952,7 +973,7 @@ export default function StoresScreen() {
                   {selectedCatId === null && (
                     <View style={[StyleSheet.absoluteFill, { backgroundColor: '#B91C1C', opacity: 0.12, borderRadius: 14 }]} />
                   )}
-                  <RNImage source={{ uri: get3DIconUrl('الكل') }} style={{ width: 48, height: 48 }} resizeMode="contain" />
+                  <Image source={{ uri: get3DIconUrl('الكل') }} style={{ width: 48, height: 48 }} contentFit="contain" />
                 </View>
                 <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]} numberOfLines={2}>{isAr ? 'الكل' : 'All'}</Text>
               </Pressable>
