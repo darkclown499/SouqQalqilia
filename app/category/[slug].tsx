@@ -19,12 +19,11 @@ import { useAds } from '@/hooks/useAds';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useAuth } from '@/template';
+import { useAuth, getSupabaseClient } from '@/template';
 import { useResponsive } from '@/hooks/useResponsive';
 
 import { fetchAllActiveStores, Store } from '@/services/storesService';
 import { fetchStoreCategories, StoreCategory } from '@/services/storeCategoriesService';
-import { getCategoryBySlug, Category } from '@/services/categoriesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
 // ─── Category Detail Screen ────────────────────────────────────────────────
@@ -43,17 +42,17 @@ export default function CategoryDetailScreen() {
   const { ads, loading: adsLoading, load: loadAds } = useAds();
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [category, setCategory] = useState<Category | StoreCategory | null>(null);
+  const [category, setCategory] = useState<any | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  
+
   // ✅ تحديد نوع التصنيف من الـ URL
   const categoryType = useMemo(() => {
-    // نبحث عن معامل type في الـ URL
-    const params = new URLSearchParams(window.location.search);
-    return params.get('type') || 'product'; // افتراضي: product
+    // في React Native، نستخدم useLocalSearchParams للحصول على المعاملات
+    const params = useLocalSearchParams<{ type?: string }>();
+    return params.type || 'product';
   }, []);
 
   const isStoreCategory = categoryType === 'store';
@@ -64,6 +63,7 @@ export default function CategoryDetailScreen() {
 
     try {
       setLoadError(null);
+      const supabase = getSupabaseClient();
 
       if (isStoreCategory) {
         // ── تحميل تصنيف متجر ────────────────────────────────────────────────
@@ -87,8 +87,19 @@ export default function CategoryDetailScreen() {
         }
       } else {
         // ── تحميل تصنيف منتج ────────────────────────────────────────────────
-        const { data: productCategory } = await getCategoryBySlug(slug);
-        setCategory(productCategory || null);
+        // جلب التصنيف من جدول categories
+        const { data: catData, error: catError } = await supabase
+          .from('categories')
+          .select('*')
+          .eq('slug', slug)
+          .single();
+
+        if (catError) {
+          console.error('Error fetching product category:', catError);
+          setCategory(null);
+        } else {
+          setCategory(catData);
+        }
         setStores([]); // لا نحتاج متاجر لتصنيفات المنتجات
       }
     } catch (err) {
