@@ -56,6 +56,7 @@ function EmojiPicker({ visible, onSelect, onDismiss, isDark }: { visible: boolea
   );
 }
 
+
 const emojiStyles = StyleSheet.create({
   picker: { flexDirection: 'row', alignItems: 'center', borderRadius: 28, paddingHorizontal: 10, paddingVertical: 8, gap: 2, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 12, elevation: 16, alignSelf: 'center', marginBottom: 4 },
   emojiBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
