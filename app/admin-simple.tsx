@@ -32,6 +32,8 @@ import { fetchAllPageStats, PageStats } from '@/services/analyticsService';
 import {
   adminFetchAllStores, adminUpdateStore, Store,
 } from '@/services/storesService';
+import { pickImage, uploadImage } from '@/services/imageService';
+
 // مكتبات الرسوم البيانية (تأكد من تثبيتها: npm install victory-native react-native-svg)
 
 // ─── واجهات الأنواع ──────────────────────────────────────────────────────────
@@ -278,6 +280,51 @@ const BannerItem = memo(({ item, colors, isAr, onToggleActive, onEdit, onDelete 
     </View>
   </View>
 ));
+
+// ─── عنصر المتجر ─────────────────────────────────────────────────────────────
+const StoreItem = memo(({ item, colors, isAr, onToggleActive, onToggleFeatured, onToggleApproved }: any) => {
+  const statusColor = item.is_active ? '#22C55E' : '#EF4444';
+  const statusLabel = item.is_active ? (isAr ? 'نشط' : 'Active') : (isAr ? 'غير نشط' : 'Inactive');
+  const featuredLabel = item.is_featured ? (isAr ? 'مميز' : 'Featured') : (isAr ? 'عادي' : 'Normal');
+  const approvedLabel = item.is_approved ? (isAr ? 'موافق' : 'Approved') : (isAr ? 'قيد المراجعة' : 'Pending');
+
+  return (
+    <View style={[styles.storeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.storeRow}>
+        <View style={styles.storeInfo}>
+          <Text style={[styles.storeName, { color: colors.textPrimary }]} numberOfLines={1}>
+            {item.name || (isAr ? 'بدون اسم' : 'No name')}
+          </Text>
+          <Text style={[styles.storeOwner, { color: colors.textSecondary }]}>
+            {isAr ? 'المالك: ' : 'Owner: '}{item.owner?.username || item.owner?.email || (isAr ? 'غير معروف' : 'Unknown')}
+          </Text>
+          <View style={styles.storeBadges}>
+            <View style={[styles.storeBadge, { backgroundColor: statusColor + '20' }]}>
+              <Text style={{ color: statusColor, fontSize: 10, fontWeight: '600' }}>{statusLabel}</Text>
+            </View>
+            <View style={[styles.storeBadge, { backgroundColor: item.is_featured ? '#FEF3C7' : colors.borderLight }]}>
+              <Text style={{ color: item.is_featured ? '#D97706' : colors.textMuted, fontSize: 10, fontWeight: '600' }}>{featuredLabel}</Text>
+            </View>
+            <View style={[styles.storeBadge, { backgroundColor: item.is_approved ? '#DBEAFE' : '#FEE2E2' }]}>
+              <Text style={{ color: item.is_approved ? '#2563EB' : '#EF4444', fontSize: 10, fontWeight: '600' }}>{approvedLabel}</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.storeActions}>
+          <Pressable style={[styles.storeActionBtn, { backgroundColor: item.is_active ? colors.primaryGhost : colors.borderLight }]} onPress={() => onToggleActive(item)}>
+            <MaterialIcons name={item.is_active ? 'visibility' : 'visibility-off'} size={18} color={item.is_active ? colors.primary : colors.textMuted} />
+          </Pressable>
+          <Pressable style={[styles.storeActionBtn, { backgroundColor: item.is_featured ? '#FEF3C7' : colors.borderLight }]} onPress={() => onToggleFeatured(item)}>
+            <MaterialIcons name="star" size={18} color={item.is_featured ? '#D97706' : colors.textMuted} />
+          </Pressable>
+          <Pressable style={[styles.storeActionBtn, { backgroundColor: item.is_approved ? '#DBEAFE' : colors.borderLight }]} onPress={() => onToggleApproved(item)}>
+            <MaterialIcons name="verified" size={18} color={item.is_approved ? '#2563EB' : colors.textMuted} />
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+});
 
 // عنصر الإعلان البيني
 const InterstitialItem = memo(({ item, colors, isAr }: any) => (
@@ -2081,6 +2128,38 @@ export default function AdminScreen() {
 
 // ─── الأنماط النهائية (جميع الأنماط المطلوبة) ──────────────────────────────────
 const styles = StyleSheet.create({
+
+
+  // trendCard, trendTitle, trendBars, trendBarWrapper, trendBar, trendLabel
+trendCard: {
+  borderRadius: Radius.lg,
+  borderWidth: 1,
+  padding: Spacing.md,
+  marginBottom: Spacing.md,
+},
+trendTitle: {
+  fontSize: FontSize.md,
+  fontWeight: '700',
+  marginBottom: 8,
+},
+trendBars: {
+  flexDirection: 'row',
+  justifyContent: 'space-around',
+  alignItems: 'flex-end',
+  height: 80,
+},
+trendBarWrapper: {
+  alignItems: 'center',
+},
+trendBar: {
+  width: 20,
+  borderRadius: 4,
+  minHeight: 4,
+},
+trendLabel: {
+  fontSize: 8,
+  marginTop: 2,
+},
   // Store Card
 storeCard: {
   borderWidth: 1,
