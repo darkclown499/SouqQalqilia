@@ -94,7 +94,7 @@ function FontScalePicker({ level, onChange, isRTL, colors }: {
     <View style={[fpS.wrap, { borderBottomColor: colors.borderLight }]}>
       <View style={[fpS.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <View style={[fpS.iconBox, { backgroundColor: '#EEF2FF' }]}>
-          <MaterialIcons name="format-size" size={20} color="#4F46E5" />
+          <MaterialIcons name="format-size" size={20} color="#4F465E" />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[fpS.label, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
@@ -560,10 +560,13 @@ export default function ProfileScreen() {
 
     const loadData = async () => {
       try {
-        load();
+        await load();                 // ✅ انتظر حتى يكتمل تحميل الإعلانات
+        if (signal.aborted) return;
+
         setEditName(user.username || '');
         const admin = await checkIsAdmin();
-        if (!signal.aborted) setIsAdmin(admin);
+        if (signal.aborted) return;
+        setIsAdmin(admin);
 
         const supabase = getSupabaseClient();
         const { data: storeData } = await supabase
@@ -571,7 +574,8 @@ export default function ProfileScreen() {
           .select('id, name, name_ar, is_approved')
           .eq('owner_id', user.id)
           .maybeSingle();
-        if (!signal.aborted) setOwnerStore(storeData as any);
+        if (signal.aborted) return;
+        setOwnerStore(storeData as any);
 
         const { data: profileData } = await supabase
           .from('user_profiles')
@@ -579,7 +583,8 @@ export default function ProfileScreen() {
           .eq('id', user.id)
           .single();
 
-        if (!signal.aborted && profileData) {
+        if (signal.aborted) return;
+        if (profileData) {
           if (!profileData.avatar_url) {
             try {
               const { data: { user: freshUser } } = await supabase.auth.getUser();
