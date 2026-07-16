@@ -547,7 +547,7 @@ const CategoryBlock = React.memo(({ cat, stores, ratings, isAr, isRTL, onStorePr
 
   const handleViewAll = useCallback(() => {
     const slug = cat.slug || cat.id;
-    router.push(`/category/${slug}` as any);
+    router.push(`/category/${slug}?type=store` as any);
   }, [cat, router]);
 
   const renderItem = useCallback(({ item }: any) => (

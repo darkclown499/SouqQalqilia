@@ -29,8 +29,8 @@ export default function CategoriesScreen() {
 
       const localizedName = getCategoryName(cat, language);
       const result = router.push(
-        `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(localizedName)}`
-      );
+      `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(localizedName)}&type=product`
+    );
 
       // ✅ إصلاح الخطأ: التأكد من أن `result` هو Promise قبل استدعاء `.finally()`
       if (result && typeof result.then === 'function') {

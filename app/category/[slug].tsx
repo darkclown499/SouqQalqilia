@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 
 import { fetchAllActiveStores, Store } from '@/services/storesService';
 import { fetchStoreCategories, StoreCategory } from '@/services/storeCategoriesService';
+import { getCategoryBySlug, Category } from '@/services/categoriesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
 // ─── Category Detail Screen ────────────────────────────────────────────────
@@ -41,35 +42,54 @@ export default function CategoryDetailScreen() {
 
   const { ads, loading: adsLoading, load: loadAds } = useAds();
 
-  const [category, setCategory] = useState<StoreCategory | null>(null);
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [category, setCategory] = useState<Category | StoreCategory | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  
+  // ✅ تحديد نوع التصنيف من الـ URL
+  const categoryType = useMemo(() => {
+    // نبحث عن معامل type في الـ URL
+    const params = new URLSearchParams(window.location.search);
+    return params.get('type') || 'product'; // افتراضي: product
+  }, []);
 
-  // ── Load category & stores ──────────────────────────────────────────────
+  const isStoreCategory = categoryType === 'store';
+
+  // ── Load category data ────────────────────────────────────────────────────
   const loadCategoryData = useCallback(async () => {
     if (!slug) return;
 
     try {
       setLoadError(null);
-      const [catsRes, storesRes] = await Promise.all([
-        fetchStoreCategories(),
-        fetchAllActiveStores(),
-      ]);
 
-      const found = catsRes.data.find((c: StoreCategory) => c.slug === slug);
-      setCategory(found || null);
+      if (isStoreCategory) {
+        // ── تحميل تصنيف متجر ────────────────────────────────────────────────
+        const [catsRes, storesRes] = await Promise.all([
+          fetchStoreCategories(),
+          fetchAllActiveStores(),
+        ]);
 
-      if (found) {
-        const filtered = storesRes.data.filter(
-          (s: Store) =>
-            s.store_category_id === found.id ||
-            s.category_id === found.id
-        );
-        setStores(filtered);
+        const found = catsRes.data.find((c: StoreCategory) => c.slug === slug);
+        setCategory(found || null);
+
+        if (found) {
+          const filtered = storesRes.data.filter(
+            (s: Store) =>
+              s.store_category_id === found.id ||
+              s.category_id === found.id
+          );
+          setStores(filtered);
+        } else {
+          setStores([]);
+        }
       } else {
-        setStores([]);
+        // ── تحميل تصنيف منتج ────────────────────────────────────────────────
+        const { data: productCategory } = await getCategoryBySlug(slug);
+        setCategory(productCategory || null);
+        setStores([]); // لا نحتاج متاجر لتصنيفات المنتجات
       }
     } catch (err) {
       console.error('Error loading category:', err);
@@ -79,22 +99,25 @@ export default function CategoryDetailScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [slug, isAr]);
+  }, [slug, isAr, isStoreCategory]);
 
-  // ── Initial load ─────────────────────────────────────────────────────────
+  // ── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
     loadCategoryData();
   }, [loadCategoryData]);
 
-  // ── Load ads when category is available ──────────────────────────────────
+  // ── Load ads (only for product categories) ───────────────────────────────
   useEffect(() => {
-    if (category?.id) {
+    if (!isStoreCategory && category?.id) {
       loadAds({ categoryId: category.id });
+    } else {
+      // إذا كان تصنيف متجر، لا نحمل إعلانات
+      loadAds({ categoryId: undefined });
     }
-  }, [category?.id, loadAds]);
+  }, [category?.id, loadAds, isStoreCategory]);
 
-  // ── Refresh (pull-to-refresh) ────────────────────────────────────────────
+  // ── Refresh ───────────────────────────────────────────────────────────────
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     loadCategoryData();
@@ -105,7 +128,7 @@ export default function CategoryDetailScreen() {
     router.push(`/store/${storeId}` as any);
   };
 
-  // ── Render Store Card (Grid) ─────────────────────────────────────────────
+  // ── Render Store Card ─────────────────────────────────────────────────────
   const renderStore = ({ item }: { item: Store }) => {
     const name = isAr ? item.name_ar || item.name : item.name;
     const isOpen = checkStoreIsOpen(item);
@@ -178,7 +201,8 @@ export default function CategoryDetailScreen() {
 
   // ── Render Ad Strip ──────────────────────────────────────────────────────
   const renderAdStrip = useCallback(() => {
-    if (ads.length === 0) return null;
+    // ✅ عرض الإعلانات فقط إذا كان التصنيف من نوع "منتج"
+    if (isStoreCategory || ads.length === 0) return null;
 
     return (
       <View style={styles.adStrip}>
@@ -206,7 +230,7 @@ export default function CategoryDetailScreen() {
         />
       </View>
     );
-  }, [ads, favIds, user, toggleFav, CARD_WIDTH, isRTL]);
+  }, [ads, favIds, user, toggleFav, CARD_WIDTH, isRTL, isStoreCategory]);
 
   // ── Loading ──────────────────────────────────────────────────────────────
   if (loading && !refreshing) {
@@ -271,7 +295,8 @@ export default function CategoryDetailScreen() {
   }
 
   // ── Main UI ──────────────────────────────────────────────────────────────
-  const categoryName = isAr ? category.name_ar || category.name : category.name;
+  const categoryName = isAr ? (category as any).name_ar || category.name : category.name;
+  const displayMode = isStoreCategory ? 'stores' : 'products';
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -283,21 +308,23 @@ export default function CategoryDetailScreen() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {categoryName}
         </Text>
-        <Text style={styles.storeCount}>{stores.length}</Text>
+        <Text style={styles.storeCount}>
+          {isStoreCategory ? stores.length : ads.length}
+        </Text>
       </View>
 
       {/* Main FlatList */}
       <FlatList
-        data={stores}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        key="stores-grid"
-        renderItem={renderStore}
+        data={isStoreCategory ? stores : []}
+        keyExtractor={(item) => (item as Store).id}
+        numColumns={isStoreCategory ? 2 : 1}
+        key={isStoreCategory ? 'stores-grid' : 'ads-list'}
+        renderItem={isStoreCategory ? renderStore : undefined}
         contentContainerStyle={[
           styles.listContent,
           { paddingHorizontal: hPad },
         ]}
-        columnWrapperStyle={styles.columnWrapper}
+        columnWrapperStyle={isStoreCategory ? styles.columnWrapper : undefined}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -310,12 +337,16 @@ export default function CategoryDetailScreen() {
         ListHeaderComponent={renderAdStrip}
         ListEmptyComponent={
           <EmptyState
-            icon="store-off"
-            title={isAr ? 'لا توجد متاجر' : 'No stores'}
+            icon={isStoreCategory ? 'store-off' : 'search-off'}
+            title={
+              isStoreCategory
+                ? (isAr ? 'لا توجد متاجر' : 'No stores')
+                : (isAr ? 'لا توجد إعلانات' : 'No ads')
+            }
             subtitle={
-              isAr
-                ? 'لا توجد متاجر في هذا التصنيف حالياً'
-                : 'No stores in this category at the moment'
+              isStoreCategory
+                ? (isAr ? 'لا توجد متاجر في هذا التصنيف حالياً' : 'No stores in this category at the moment')
+                : (isAr ? 'لا توجد إعلانات في هذا التصنيف' : 'No ads in this category')
             }
           />
         }
