@@ -17,6 +17,7 @@ import {
 } from '@/services/storeCategoriesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+import { addLocalCategory, updateLocalCategory, deleteLocalCategory } from '@/services/localCategoriesService';
 import type { LocalCategory } from '@/services/localCategoriesService';
 
 // ── الخريطة الثابتة للتصنيفات الفرعية حسب نوع المتجر ──
@@ -471,6 +472,14 @@ export default function StoreDashboardScreen() {
   // ── حالة اختيار التصنيفات الجاهزة ──
   const [selectedSubcategories, setSelectedSubcategories] = useState<Set<string>>(new Set());
 
+  // ── Custom Category Modal state ──
+  const [catModalVisible, setCatModalVisible] = useState(false);
+  const [catModalMode, setCatModalMode] = useState<'add' | 'edit'>('add');
+  const [editingCat, setEditingCat] = useState<LocalCategory | null>(null);
+  const [catFormName, setCatFormName] = useState('');
+  const [catFormNameAr, setCatFormNameAr] = useState('');
+  const [savingCat, setSavingCat] = useState(false);
+
   // ── WhatsApp edit modal state ──
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [whatsappPrefix, setWhatsappPrefix] = useState('972');
@@ -537,6 +546,89 @@ export default function StoreDashboardScreen() {
       console.warn('loadCustomCategories error:', e);
     }
   }, []);
+
+  // ── Open add category modal ──
+  const openAddCatModal = useCallback(() => {
+    setCatModalMode('add');
+    setEditingCat(null);
+    setCatFormName('');
+    setCatFormNameAr('');
+    setCatModalVisible(true);
+  }, []);
+
+  // ── Open edit category modal ──
+  const openEditCatModal = useCallback((cat: LocalCategory) => {
+    setCatModalMode('edit');
+    setEditingCat(cat);
+    setCatFormName(cat.name);
+    setCatFormNameAr(cat.name_ar);
+    setCatModalVisible(true);
+  }, []);
+
+  // ── Save category (add or edit) ──
+  const handleSaveCategory = useCallback(async () => {
+    if (!catFormNameAr.trim()) {
+      showAlert(isAr ? 'تنبيه' : 'Alert', isAr ? 'يرجى إدخال الاسم بالعربية' : 'Please enter Arabic name');
+      return;
+    }
+    if (!catFormName.trim()) {
+      showAlert(isAr ? 'تنبيه' : 'Alert', isAr ? 'يرجى إدخال الاسم بالإنجليزية' : 'Please enter English name');
+      return;
+    }
+    setSavingCat(true);
+    try {
+      if (catModalMode === 'add') {
+        if (!store?.id) return;
+        const { data, error } = await addLocalCategory(store.id, catFormName, catFormNameAr);
+        if (error) throw new Error(error);
+        if (data) {
+          setCustomCategories(prev => [...prev, data]);
+          setSelectedSubcategories(prev => new Set(prev).add(data.name_ar));
+        }
+        showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم إضافة التصنيف' : 'Category added');
+      } else if (catModalMode === 'edit' && editingCat) {
+        const { error } = await updateLocalCategory(editingCat.id, catFormName, catFormNameAr);
+        if (error) throw new Error(error);
+        setCustomCategories(prev =>
+          prev.map(c => c.id === editingCat.id ? { ...c, name: catFormName, name_ar: catFormNameAr } : c)
+        );
+        showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم تعديل التصنيف' : 'Category updated');
+      }
+      setCatModalVisible(false);
+    } catch (e: any) {
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر الحفظ' : 'Could not save'));
+    } finally {
+      setSavingCat(false);
+    }
+  }, [catModalMode, editingCat, catFormName, catFormNameAr, store?.id, isAr, showAlert]);
+
+  // ── Confirm delete category ──
+  const handleDeleteCategoryConfirm = useCallback((cat: LocalCategory) => {
+    showAlert(
+      isAr ? 'حذف التصنيف' : 'Delete Category',
+      isAr ? `هل تريد حذف تصنيف "${cat.name_ar}"؟` : `Delete category "${cat.name}"?`,
+      [
+        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isAr ? 'حذف' : 'Delete', style: 'destructive',
+          onPress: async () => {
+            const { error } = await deleteLocalCategory(cat.id);
+            if (error) {
+              showAlert(isAr ? 'خطأ' : 'Error', error);
+              return;
+            }
+            setCustomCategories(prev => prev.filter(c => c.id !== cat.id));
+            setSelectedSubcategories(prev => {
+              const s = new Set(prev);
+              s.delete(cat.name_ar);
+              return s;
+            });
+            showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم حذف التصنيف' : 'Category deleted');
+          },
+        },
+      ]
+    );
+  }, [isAr, showAlert]);
 
   // ── Add a subcategory directly to database ──
   const addSubcategory = useCallback(async (nameAr: string) => {
@@ -874,84 +966,110 @@ export default function StoreDashboardScreen() {
           contentContainerStyle={s.tabContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ── إدارة التصنيفات الجاهزة ── */}
+          {/* ── إدارة التصنيفات الديناميكية ── */}
           <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: Spacing.md }]}>
+            {/* عنوان + زر إضافة */}
             <View style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={[s.catBadgeText, { color: colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' }]}>
-                {isAr ? 'تصنيفات المتجر الجاهزة' : 'Store Subcategories'}
+                {isAr ? 'تصنيفات المتجر' : 'Store Categories'}
               </Text>
-              {availableSubcategories.length > 0 && (
+              <View style={{ flexDirection: rtl, gap: 8, alignItems: 'center' }}>
+                {availableSubcategories.length > 0 && (
+                  <Pressable
+                    style={{ flexDirection: rtl, alignItems: 'center', gap: 4 }}
+                    onPress={addAllSubcategories}
+                  >
+                    <MaterialIcons name="playlist-add" size={20} color={colors.primary} />
+                    <Text style={{ color: colors.primary, fontSize: FontSize.xs, fontWeight: '600' }}>
+                      {isAr ? 'إضافة جاهز' : 'Add Preset'}
+                    </Text>
+                  </Pressable>
+                )}
                 <Pressable
-                  style={{ flexDirection: rtl, alignItems: 'center', gap: 4 }}
-                  onPress={addAllSubcategories}
+                  style={[cat.addBtn, { backgroundColor: colors.primary }]}
+                  onPress={openAddCatModal}
                 >
-                  <MaterialIcons name="playlist-add" size={22} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontSize: FontSize.sm, fontWeight: '600' }}>
-                    {isAr ? 'إضافة الكل' : 'Add All'}
-                  </Text>
+                  <MaterialIcons name="add" size={16} color="#fff" />
+                  <Text style={cat.addBtnText}>{isAr ? 'تصنيف جديد' : 'New'}</Text>
                 </Pressable>
-              )}
+              </View>
             </View>
 
-            {availableSubcategories.length === 0 ? (
-              <Text style={{ color: colors.textMuted, fontSize: FontSize.sm, marginTop: 8, textAlign }}>
-                {isAr ? 'لا توجد تصنيفات جاهزة لهذا النوع من المتاجر' : 'No subcategories available for this store type'}
-              </Text>
+            {/* قائمة التصنيفات المضافة */}
+            {customCategories.length === 0 ? (
+              <View style={cat.emptyWrap}>
+                <MaterialIcons name="category" size={28} color={colors.textMuted} />
+                <Text style={{ color: colors.textMuted, fontSize: FontSize.sm, textAlign: 'center' }}>
+                  {isAr ? 'لا توجد تصنيفات بعد. أضف أول تصنيف!' : 'No categories yet. Add your first!'}
+                </Text>
+              </View>
             ) : (
-              <View style={{ marginTop: 8, gap: 6 }}>
-                {availableSubcategories.map(name => {
-                  const isAdded = selectedSubcategories.has(name);
-                  return (
-                    <View
-                      key={name}
-                      style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}
-                    >
-                      <Text style={{ color: colors.textPrimary, fontSize: FontSize.sm }}>
-                        {name}
-                      </Text>
-                      <View style={{ flexDirection: rtl, gap: 8 }}>
-                        {isAdded ? (
-                          <Pressable
-                            onPress={() => {
-                              const cat = customCategories.find(c => c.name_ar === name);
-                              if (cat) deleteSubcategory(cat.id, name);
-                            }}
-                            hitSlop={8}
-                          >
-                            <MaterialIcons name="check-circle" size={20} color="#16a34a" />
-                          </Pressable>
-                        ) : (
-                          <Pressable
-                            onPress={() => addSubcategory(name)}
-                            hitSlop={8}
-                          >
-                            <MaterialIcons name="add-circle-outline" size={20} color={colors.primary} />
-                          </Pressable>
-                        )}
-                      </View>
+              <View style={{ marginTop: 10, gap: 6 }}>
+                {customCategories.map((c, idx) => (
+                  <View
+                    key={c.id}
+                    style={[
+                      cat.row,
+                      { flexDirection: rtl, borderBottomColor: colors.borderLight },
+                      idx === customCategories.length - 1 && { borderBottomWidth: 0 },
+                    ]}
+                  >
+                    <View style={[cat.indexBadge, { backgroundColor: colors.primaryGhost }]}>
+                      <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '800' }}>{idx + 1}</Text>
                     </View>
-                  );
-                })}
+                    <View style={{ flex: 1, gap: 1 }}>
+                      <Text style={{ color: colors.textPrimary, fontSize: FontSize.sm, fontWeight: '700' }}>
+                        {isAr ? c.name_ar : c.name}
+                      </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: FontSize.xs }}>
+                        {isAr ? c.name : c.name_ar}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: rtl, gap: 6 }}>
+                      <Pressable
+                        style={[cat.iconBtn, { backgroundColor: colors.primaryGhost, borderColor: colors.primary }]}
+                        onPress={() => openEditCatModal(c)}
+                        hitSlop={6}
+                      >
+                        <MaterialIcons name="edit" size={14} color={colors.primary} />
+                      </Pressable>
+                      <Pressable
+                        style={[cat.iconBtn, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]}
+                        onPress={() => handleDeleteCategoryConfirm(c)}
+                        hitSlop={6}
+                      >
+                        <MaterialIcons name="delete-outline" size={14} color="#EF4444" />
+                      </Pressable>
+                    </View>
+                  </View>
+                ))}
               </View>
             )}
 
-            {/* عرض التصنيفات المضافة كقائمة */}
-            {customCategories.length > 0 && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={{ color: colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600', textAlign }}>
-                  {isAr ? 'التصنيفات المضافة حالياً' : 'Added Categories'}
+            {/* التصنيفات الجاهزة (preset) */}
+            {availableSubcategories.length > 0 && (
+              <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.borderLight, paddingTop: 10 }}>
+                <Text style={{ color: colors.textSecondary, fontSize: FontSize.xs, fontWeight: '600', marginBottom: 6, textAlign }}>
+                  {isAr ? 'تصنيفات جاهزة لنوع متجرك:' : 'Preset categories for your store type:'}
                 </Text>
-                <View style={{ marginTop: 6, gap: 4 }}>
-                  {customCategories.map(cat => (
-                    <View key={cat.id} style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}>
-                      <Text style={{ color: colors.textPrimary, fontSize: FontSize.sm }}>
-                        {isAr ? cat.name_ar : cat.name}
-                      </Text>
-                      <Pressable onPress={() => deleteSubcategory(cat.id, cat.name_ar)} hitSlop={8}>
-                        <MaterialIcons name="delete-outline" size={18} color="#EF4444" />
-                      </Pressable>
-                    </View>
-                  ))}
+                <View style={{ gap: 4 }}>
+                  {availableSubcategories.map(name => {
+                    const isAdded = selectedSubcategories.has(name);
+                    return (
+                      <View key={name} style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}>
+                        <Text style={{ color: isAdded ? colors.textMuted : colors.textPrimary, fontSize: FontSize.sm, textDecorationLine: isAdded ? 'line-through' : 'none' }}>
+                          {name}
+                        </Text>
+                        {isAdded ? (
+                          <MaterialIcons name="check-circle" size={18} color="#16a34a" />
+                        ) : (
+                          <Pressable onPress={() => addSubcategory(name)} hitSlop={8}>
+                            <MaterialIcons name="add-circle-outline" size={18} color={colors.primary} />
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
               </View>
             )}
@@ -1094,6 +1212,73 @@ export default function StoreDashboardScreen() {
         />
       ) : null}
 
+      {/* ── Category Add/Edit Modal ── */}
+      <Modal visible={catModalVisible} animationType="slide" transparent onRequestClose={() => setCatModalVisible(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={pm.overlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setCatModalVisible(false)} />
+            <View style={[pm.sheet, { backgroundColor: colors.surface, paddingBottom: 40 }]}>
+              <View style={[pm.handle, { backgroundColor: colors.border }]} />
+              <View style={[pm.titleRow, { flexDirection: rtl, borderBottomColor: colors.borderLight }]}>
+                <MaterialIcons name={catModalMode === 'add' ? 'add-circle-outline' : 'edit'} size={22} color={colors.primary} />
+                <Text style={[pm.titleText, { color: colors.textPrimary, flex: 1, textAlign }]}>
+                  {catModalMode === 'add'
+                    ? (isAr ? 'إضافة تصنيف جديد' : 'Add New Category')
+                    : (isAr ? 'تعديل التصنيف' : 'Edit Category')}
+                </Text>
+                <Pressable onPress={() => setCatModalVisible(false)} hitSlop={10}>
+                  <MaterialIcons name="close" size={22} color={colors.textMuted} />
+                </Pressable>
+              </View>
+
+              <View style={[pm.content, { gap: 14 }]}>
+                <View style={pm.field}>
+                  <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>
+                    {isAr ? 'الاسم بالعربية *' : 'Arabic Name *'}
+                  </Text>
+                  <TextInput
+                    style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: 'right' }]}
+                    placeholder={isAr ? 'مثال: مشروبات، وجبات...' : 'e.g. مشروبات'}
+                    placeholderTextColor={colors.textMuted}
+                    value={catFormNameAr}
+                    onChangeText={setCatFormNameAr}
+                    autoFocus
+                  />
+                </View>
+
+                <View style={pm.field}>
+                  <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign }]}>
+                    {isAr ? 'الاسم بالإنجليزية *' : 'English Name *'}
+                  </Text>
+                  <TextInput
+                    style={[pm.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: 'left' }]}
+                    placeholder="e.g. Beverages, Meals..."
+                    placeholderTextColor={colors.textMuted}
+                    value={catFormName}
+                    onChangeText={setCatFormName}
+                  />
+                </View>
+              </View>
+
+              <Pressable
+                style={[pm.saveBtn, { backgroundColor: colors.primary, opacity: savingCat ? 0.7 : 1 }]}
+                onPress={handleSaveCategory}
+                disabled={savingCat}
+              >
+                {savingCat
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <MaterialIcons name="check" size={20} color="#fff" />}
+                <Text style={pm.saveBtnText}>
+                  {savingCat
+                    ? (isAr ? 'جاري الحفظ...' : 'Saving...')
+                    : (isAr ? 'حفظ التصنيف' : 'Save Category')}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* ── WhatsApp Edit Modal ── */}
       <Modal visible={showWhatsAppModal} transparent animationType="slide" onRequestClose={() => setShowWhatsAppModal(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -1194,6 +1379,27 @@ export default function StoreDashboardScreen() {
     </View>
   );
 }
+
+const cat = StyleSheet.create({
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 6,
+  },
+  addBtnText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
+  emptyWrap: { alignItems: 'center', paddingVertical: 20, gap: 8 },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 8, borderBottomWidth: 1,
+  },
+  indexBadge: {
+    width: 24, height: 24, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  iconBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1.5,
+  },
+});
 
 const s = StyleSheet.create({
   container: { flex: 1 },

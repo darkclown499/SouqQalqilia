@@ -20,6 +20,7 @@ import { Spacing, FontSize, Radius } from '@/constants/theme';
 import { Dimensions } from 'react-native';
 import { shortenUrl } from '@/utils/shortenUrl';
 import { getLocalCategories, LocalCategory } from '@/services/localCategoriesService';
+import { useRef } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 
@@ -301,6 +302,8 @@ export default function StoreDetailScreen() {
   const isFavorited = favoriteIds.has(id ?? '');
   const [shareLoading, setShareLoading] = useState(false);
   const [customCategories, setCustomCategories] = useState<LocalCategory[]>([]);
+  const [activeCatId, setActiveCatId] = useState<string | null>(null);
+  const catScrollRef = useRef<any>(null);
 
   // ── Cart state ──────────────────────────────────────────────────────────────
   const [cart, setCart] = useState<Record<string, CartItem>>({});
@@ -315,16 +318,14 @@ export default function StoreDetailScreen() {
   const cartTotal = useMemo(() => cartItems.reduce((s, i) => s + i.product.price * i.qty, 0), [cartItems]);
   const cartCount = useMemo(() => cartItems.reduce((s, i) => s + i.qty, 0), [cartItems]);
 
-  // ── Group products by category ────────────────────────────────────────────
-  const groupedProducts = useMemo(() => {
-    const map = new Map<string, StoreProduct[]>();
-    
-    for (const cat of customCategories) {
-      const catName = isAr ? cat.name_ar : cat.name;
-      const items = products.filter(p => p.custom_category_id === cat.id);
-      if (items.length > 0) {
-        map.set(catName, items);
-      }
+  // ── Group products by category (all groups, unfiltered) ────────────────────
+  const allGroupedProducts = useMemo(() => {
+    const map = new Map<string, { id: string | null; items: StoreProduct[] }>();
+
+    for (const c of customCategories) {
+      const catName = isAr ? c.name_ar : c.name;
+      const items = products.filter(p => p.custom_category_id === c.id);
+      if (items.length > 0) map.set(catName, { id: c.id, items });
     }
 
     for (const p of products) {
@@ -333,28 +334,30 @@ export default function StoreDetailScreen() {
         ? (p.category_label_ar || p.category_label || '')
         : (p.category_label || p.category_label_ar || '');
       if (label) {
-        if (!map.has(label)) {
-          map.set(label, []);
-        }
-        const existingItems = map.get(label) || [];
-        if (!existingItems.some(item => item.id === p.id)) {
-          map.get(label)!.push(p);
-        }
+        if (!map.has(label)) map.set(label, { id: null, items: [] });
+        const existing = map.get(label)!;
+        if (!existing.items.some(i => i.id === p.id)) existing.items.push(p);
       }
     }
 
-    const uncategorized = products.filter(p => 
-      !p.custom_category_id && 
-      !(isAr ? (p.category_label_ar || p.category_label || '') : (p.category_label || p.category_label_ar || ''))
+    const uncategorized = products.filter(p =>
+      !p.custom_category_id &&
+      !(isAr ? (p.category_label_ar || p.category_label || '') : (p.category_label || p.category_label_ar || '')),
     );
-    
-    const result: { label: string; items: StoreProduct[] }[] = [];
-    map.forEach((items, label) => result.push({ label, items }));
+
+    const result: { id: string | null; label: string; items: StoreProduct[] }[] = [];
+    map.forEach(({ id, items }, label) => result.push({ id, label, items }));
     if (uncategorized.length > 0) {
-      result.push({ label: isAr ? 'منتجات أخرى' : 'Other Products', items: uncategorized });
+      result.push({ id: '__uncategorized__', label: isAr ? 'منتجات أخرى' : 'Other Products', items: uncategorized });
     }
     return result;
   }, [products, customCategories, isAr]);
+
+  // ── Filtered groups based on active tab ─────────────────────────────────────
+  const groupedProducts = useMemo(() => {
+    if (!activeCatId) return allGroupedProducts;
+    return allGroupedProducts.filter(g => g.id === activeCatId);
+  }, [allGroupedProducts, activeCatId]);
 
   // ── Load data ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -670,6 +673,45 @@ export default function StoreDetailScreen() {
             <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
           ) : null}
         </View>
+
+        {/* ── Category Filter Bar ── */}
+        {allGroupedProducts.length > 1 ? (
+          <View style={cf.wrapper}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              ref={catScrollRef}
+              contentContainerStyle={[cf.scroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+            >
+              {/* All tab */}
+              <Pressable
+                style={[cf.chip, !activeCatId && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                onPress={() => setActiveCatId(null)}
+              >
+                <Text style={[cf.chipText, { color: !activeCatId ? '#fff' : colors.textSecondary }]}>
+                  {isAr ? 'الكل' : 'All'}
+                </Text>
+              </Pressable>
+              {allGroupedProducts.map(g => {
+                const isActive = activeCatId === g.id;
+                return (
+                  <Pressable
+                    key={g.id ?? g.label}
+                    style={[cf.chip, isActive && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    onPress={() => setActiveCatId(g.id)}
+                  >
+                    <Text style={[cf.chipText, { color: isActive ? '#fff' : colors.textSecondary }]} numberOfLines={1}>
+                      {g.label}
+                    </Text>
+                    <View style={[cf.countBadge, { backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.primaryGhost }]}>
+                      <Text style={[cf.countText, { color: isActive ? '#fff' : colors.primary }]}>{g.items.length}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
 
         {/* ── PRODUCTS ── */}
         {products.length === 0 ? (
@@ -1034,6 +1076,48 @@ whatsappIcon: {
     color: '#fff', fontSize: 15, fontWeight: '800',
     backgroundColor: 'rgba(255,255,255,0.20)',
     borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4, overflow: 'hidden',
+  },
+});
+
+const cf = StyleSheet.create({
+  wrapper: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#fff',
+  },
+  scroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    flexShrink: 0,
+    backgroundColor: '#fff',
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  countBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  countText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
 });
 
