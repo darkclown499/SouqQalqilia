@@ -58,7 +58,7 @@ function ProductCard({
           <Image
             source={{ uri: product.image_url }}
             style={pc.img}
-            contentFit="cover"   // يمكن تغييرها إلى 'contain' لعرض الصورة كاملة بدون قص
+            contentFit="cover"
             transition={200}
           />
         ) : (
@@ -119,11 +119,11 @@ const pc = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
-    overflow: 'hidden', // لجعل الزوايا الدائرية تؤثر على الصورة أيضاً
+    overflow: 'hidden',
   },
   imgWrap: {
     width: '100%',
-    height: 120, // زادت قليلاً
+    height: 120,
     position: 'relative',
     backgroundColor: '#F9FAFB',
   },
@@ -358,6 +358,9 @@ export default function StoreDetailScreen() {
     return allGroupedProducts.filter(g => g.id === activeCatId);
   }, [allGroupedProducts, activeCatId]);
 
+  // ── Category filter styles (dynamic for dark mode) ─────────────────────────
+  const cfStyles = useMemo(() => getCfStyles(colors), [colors]);
+
   // ── Load data ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id) {
@@ -379,15 +382,24 @@ export default function StoreDetailScreen() {
       fetchStoreProducts(id),
       fetchStoreRating(id),
       getLocalCategories(id),
-    ]).then(([storeRes, productsRes, ratingRes, categoriesRes]) => {
-      if (storeRes.data) {
-        setStore(storeRes.data);
-        setIsOpen(checkStoreIsOpen(storeRes.data));
-      }
-      setProducts(productsRes.data);
-      setRating(ratingRes);
-      setCustomCategories(categoriesRes);
-    }).finally(() => setLoading(false));
+    ])
+      .then(([storeRes, productsRes, ratingRes, categoriesRes]) => {
+        if (storeRes.data) {
+          setStore(storeRes.data);
+          setIsOpen(checkStoreIsOpen(storeRes.data));
+        }
+        setProducts(productsRes.data);
+        setRating(ratingRes);
+        setCustomCategories(categoriesRes);
+      })
+      .catch((error) => {
+        console.error('خطأ في التحميل:', error);
+        Alert.alert(
+          isAr ? 'خطأ' : 'Error',
+          isAr ? 'حدث خطأ أثناء تحميل بيانات المتجر' : 'Failed to load store data'
+        );
+      })
+      .finally(() => setLoading(false));
   }, [id]);
 
   useEffect(() => {
@@ -452,7 +464,7 @@ export default function StoreDetailScreen() {
         }
       }).catch(() => {});
 
-    const userName = user?.username || user?.email?.split('@')[0] || 'عميل';
+    const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
     const orderTypeLabel = isAr ? ORDER_LABELS[orderType].ar : ORDER_LABELS[orderType].en;
     const storeName = isAr ? (store.name_ar || store.name) : store.name;
 
@@ -570,7 +582,7 @@ export default function StoreDetailScreen() {
                 <Pressable 
                   style={s.headerBtn} 
                   onPress={() => {
-                    const userName = user?.username || user?.email?.split('@')[0] || isAr ? 'عميل' : 'Customer';
+                    const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
                     const msg = isAr 
                       ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
                       : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
@@ -621,37 +633,36 @@ export default function StoreDetailScreen() {
             <Text style={s.storeNameTxt}>{storeName}</Text>
             
             {/* WhatsApp button - improved */}
-<Pressable
-  style={({ pressed }) => [
-    s.whatsappBtn,
-    {
-      opacity: pressed ? 0.85 : 1,
-      transform: [{ scale: pressed ? 0.97 : 1 }],
-    }
-  ]}
-  onPress={() => {
-    const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
-    const storeName = isAr ? (store.name_ar || store.name) : store.name;
-    const msg = isAr 
-      ? `مرحباً! 👋\nأنا ${userName} من تطبيق سوق قلقيلية.\nأود الاستفسار عن منتجاتكم في متجر "${storeName}".\n\nهل يمكنكم مساعدتي؟`
-      : `Hello! 👋\nI'm ${userName} from Souq Qalqilya app.\nI would like to inquire about your products at "${storeName}".\n\nCan you help me?`;
-    const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
-    if (phone) {
-      Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-    } else {
-      Alert.alert(
-        isAr ? 'رقم غير متوفر' : 'Number not available',
-        isAr ? 'لا يوجد رقم واتساب مسجل لهذا المتجر' : 'No WhatsApp number registered for this store'
-      );
-    }
-  }}
->
-  <MaterialCommunityIcons name="whatsapp" size={22} color="#fff" style={s.whatsappIcon} />
-  <Text style={s.whatsappBtnText}>
-    {isAr ? 'تواصل واتساب' : 'WhatsApp'}
-  </Text>
-</Pressable>
-
+            <Pressable
+              style={({ pressed }) => [
+                s.whatsappBtn,
+                {
+                  opacity: pressed ? 0.85 : 1,
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                }
+              ]}
+              onPress={() => {
+                const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
+                const storeName = isAr ? (store.name_ar || store.name) : store.name;
+                const msg = isAr 
+                  ? `مرحباً! 👋\nأنا ${userName} من تطبيق سوق قلقيلية.\nأود الاستفسار عن منتجاتكم في متجر "${storeName}".\n\nهل يمكنكم مساعدتي؟`
+                  : `Hello! 👋\nI'm ${userName} from Souq Qalqilya app.\nI would like to inquire about your products at "${storeName}".\n\nCan you help me?`;
+                const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
+                if (phone) {
+                  Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+                } else {
+                  Alert.alert(
+                    isAr ? 'رقم غير متوفر' : 'Number not available',
+                    isAr ? 'لا يوجد رقم واتساب مسجل لهذا المتجر' : 'No WhatsApp number registered for this store'
+                  );
+                }
+              }}
+            >
+              <MaterialCommunityIcons name="whatsapp" size={22} color="#fff" style={s.whatsappIcon} />
+              <Text style={s.whatsappBtnText}>
+                {isAr ? 'تواصل واتساب' : 'WhatsApp'}
+              </Text>
+            </Pressable>
 
             {/* Location */}
             <View style={s.locationRow}>
@@ -675,19 +686,19 @@ export default function StoreDetailScreen() {
 
         {/* ── Category Filter Bar ── */}
         {allGroupedProducts.length > 1 ? (
-          <View style={cf.wrapper}>
+          <View style={cfStyles.wrapper}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               ref={catScrollRef}
-              contentContainerStyle={[cf.scroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              contentContainerStyle={[cfStyles.scroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
             >
               {/* All tab */}
               <Pressable
-                style={[cf.chip, !activeCatId && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                style={[cfStyles.chip, !activeCatId && { backgroundColor: colors.primary, borderColor: colors.primary }]}
                 onPress={() => setActiveCatId(null)}
               >
-                <Text style={[cf.chipText, { color: !activeCatId ? '#fff' : colors.textSecondary }]}>
+                <Text style={[cfStyles.chipText, { color: !activeCatId ? '#fff' : colors.textSecondary }]}>
                   {isAr ? 'الكل' : 'All'}
                 </Text>
               </Pressable>
@@ -696,14 +707,14 @@ export default function StoreDetailScreen() {
                 return (
                   <Pressable
                     key={g.id ?? g.label}
-                    style={[cf.chip, isActive && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    style={[cfStyles.chip, isActive && { backgroundColor: colors.primary, borderColor: colors.primary }]}
                     onPress={() => setActiveCatId(g.id)}
                   >
-                    <Text style={[cf.chipText, { color: isActive ? '#fff' : colors.textSecondary }]} numberOfLines={1}>
+                    <Text style={[cfStyles.chipText, { color: isActive ? '#fff' : colors.textSecondary }]} numberOfLines={1}>
                       {g.label}
                     </Text>
-                    <View style={[cf.countBadge, { backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.primaryGhost }]}>
-                      <Text style={[cf.countText, { color: isActive ? '#fff' : colors.primary }]}>{g.items.length}</Text>
+                    <View style={[cfStyles.countBadge, { backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.primaryGhost }]}>
+                      <Text style={[cfStyles.countText, { color: isActive ? '#fff' : colors.primary }]}>{g.items.length}</Text>
                     </View>
                   </Pressable>
                 );
@@ -958,35 +969,80 @@ export default function StoreDetailScreen() {
   );
 }
 
+// ── Helper to generate dynamic category filter styles ──────────────────────
+function getCfStyles(colors: any) {
+  return StyleSheet.create({
+    wrapper: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderLight || '#E5E7EB',
+      backgroundColor: colors.background,
+    },
+    scroll: {
+      flexDirection: 'row',
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      borderRadius: 20,
+      borderWidth: 1.5,
+      borderColor: colors.border || '#E5E7EB',
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      flexShrink: 0,
+      backgroundColor: colors.surface,
+    },
+    chipText: {
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    countBadge: {
+      minWidth: 20,
+      height: 20,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 5,
+    },
+    countText: {
+      fontSize: 11,
+      fontWeight: '800',
+    },
+  });
+}
+
 const s = StyleSheet.create({
   whatsappBtn: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 10,
-  backgroundColor: '#25D366',
-  paddingHorizontal: 28,
-  paddingVertical: 14,
-  borderRadius: 30,
-  marginTop: 12,
-  marginBottom: 8,
-  shadowColor: '#25D366',
-  shadowOffset: { width: 0, height: 6 },
-  shadowOpacity: 0.4,
-  shadowRadius: 12,
-  elevation: 8,
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.15)',
-},
-whatsappBtnText: {
-  color: '#fff',
-  fontSize: 16,
-  fontWeight: '700',
-  letterSpacing: 0.3,
-},
-whatsappIcon: {
-  marginRight: 4,
-},
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#25D366',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 30,
+    marginTop: 12,
+    marginBottom: 8,
+    shadowColor: '#25D366',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  whatsappBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  whatsappIcon: {
+    marginRight: 4,
+  },
   container: { flex: 1 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
 
@@ -1075,48 +1131,6 @@ whatsappIcon: {
     color: '#fff', fontSize: 15, fontWeight: '800',
     backgroundColor: 'rgba(255,255,255,0.20)',
     borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4, overflow: 'hidden',
-  },
-});
-
-const cf = StyleSheet.create({
-  wrapper: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    backgroundColor: '#fff',
-  },
-  scroll: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    flexShrink: 0,
-    backgroundColor: '#fff',
-  },
-  chipText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  countBadge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 5,
-  },
-  countText: {
-    fontSize: 11,
-    fontWeight: '800',
   },
 });
 
