@@ -128,12 +128,14 @@ export async function fetchAds(params?: {
   sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'boosted';
   limit?: number;
   offset?: number;
+  signal?: AbortSignal; // ✅ add AbortSignal support
 }): Promise<{ data: Ad[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const limit = params?.limit ?? 20;
   const offset = params?.offset ?? 0;
   const sortBy = params?.sortBy ?? 'newest';
   const now = new Date().toISOString();
+  const signal = params?.signal;
 
   const SELECT = `
     id, user_id, category_id, title, description, price, location, phone_number, condition,
@@ -156,6 +158,14 @@ export async function fetchAds(params?: {
     return q;
   }
 
+  // Build query with abortSignal
+  const buildQuery = (baseQuery: any, abortSignal?: AbortSignal) => {
+    if (abortSignal) {
+      return baseQuery.abortSignal(abortSignal);
+    }
+    return baseQuery;
+  };
+
   if (sortBy === 'price_asc' || sortBy === 'price_desc') {
     let query = supabase
       .from('ads')
@@ -166,6 +176,7 @@ export async function fetchAds(params?: {
       .order('status', { ascending: false })
       .order('price', { ascending: sortBy === 'price_asc' })
       .range(offset, offset + limit - 1);
+    query = buildQuery(query, signal);
     const { data, error } = await query;
     if (error) return { data: [], error: error.message };
     return { data: data as Ad[], error: null };
@@ -191,6 +202,10 @@ export async function fetchAds(params?: {
     boostQuery = applyFilters(boostQuery);
     boostQuery = boostQuery.order('boosted_until', { ascending: false });
 
+    // Apply abortSignal to both queries
+    boostQuery = buildQuery(boostQuery, signal);
+    regularQuery = buildQuery(regularQuery, signal);
+
     const [{ data: boosts, error: bErr }, { data: regulars, error: rErr }] =
       await Promise.all([boostQuery, regularQuery]);
 
@@ -204,15 +219,16 @@ export async function fetchAds(params?: {
     return { data: merged, error: rErr?.message ?? null };
   }
 
+  regularQuery = buildQuery(regularQuery, signal);
   const { data: regulars, error: rErr } = await regularQuery;
   if (rErr) return { data: [], error: rErr.message };
   return { data: (regulars ?? []) as Ad[], error: null };
 }
 
 /** Fetch ALL active ads (used by admin panel) */
-export async function fetchAllActiveAds(): Promise<{ data: Ad[]; error: string | null }> {
+export async function fetchAllActiveAds(params?: { signal?: AbortSignal }): Promise<{ data: Ad[]; error: string | null }> {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('ads')
     .select(`
       id, user_id, category_id, title, description, price, location, phone_number, condition,
@@ -222,13 +238,19 @@ export async function fetchAllActiveAds(): Promise<{ data: Ad[]; error: string |
     `)
     .in('status', ['active', 'featured'])
     .order('created_at', { ascending: false });
+
+  if (params?.signal) {
+    query = query.abortSignal(params.signal);
+  }
+
+  const { data, error } = await query;
   if (error) return { data: [], error: error.message };
   return { data: data as Ad[], error: null };
 }
 
-export async function fetchAdById(id: string): Promise<{ data: Ad | null; error: string | null }> {
+export async function fetchAdById(id: string, params?: { signal?: AbortSignal }): Promise<{ data: Ad | null; error: string | null }> {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('ads')
     .select(`
       *,
@@ -238,22 +260,35 @@ export async function fetchAdById(id: string): Promise<{ data: Ad | null; error:
     `)
     .eq('id', id)
     .single();
+
+  if (params?.signal) {
+    query = query.abortSignal(params.signal);
+  }
+
+  const { data, error } = await query;
   if (error) return { data: null, error: error.message };
+  // Increment view count in background (no need to await)
   Promise.resolve(supabase.rpc('increment_ad_views', { ad_id: id })).catch(() => {});
   return { data: data as Ad, error: null };
 }
 
-export async function fetchMyAds(): Promise<{ data: Ad[]; error: string | null }> {
+export async function fetchMyAds(params?: { signal?: AbortSignal }): Promise<{ data: Ad[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: [], error: 'Not authenticated' };
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('ads')
     .select(`*, categories(id, name, name_ar, icon, color), ad_images(id, url, position, blurhash)`)
     .eq('user_id', user.id)
     .neq('status', 'deleted')
     .order('created_at', { ascending: false });
+
+  if (params?.signal) {
+    query = query.abortSignal(params.signal);
+  }
+
+  const { data, error } = await query;
   if (error) return { data: [], error: error.message };
   return { data: data as Ad[], error: null };
 }

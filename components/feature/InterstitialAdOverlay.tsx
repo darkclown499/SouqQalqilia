@@ -24,11 +24,44 @@ export function InterstitialAdOverlay({ ad, visible, onClose }: Props) {
   const progressRef = useRef<Animated.CompositeAnimation | null>(null);
   const skipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMounted = useRef(true);
+
+  // Cleanup function for all timers and animations
+  const cleanup = () => {
+    if (skipTimerRef.current) {
+      clearTimeout(skipTimerRef.current);
+      skipTimerRef.current = null;
+    }
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    if (countIntervalRef.current) {
+      clearInterval(countIntervalRef.current);
+      countIntervalRef.current = null;
+    }
+    if (progressRef.current) {
+      progressRef.current.stop();
+      progressRef.current = null;
+    }
+    progressAnim.setValue(0);
+    setCanSkip(false);
+    setCountdown(0);
+  };
 
   useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      cleanup();
+    };
+  }, []);
+
+  useEffect(() => {
+    // Reset everything when hidden or ad changes
     if (!visible || !ad) {
-      setCanSkip(false);
-      progressAnim.setValue(0);
+      cleanup();
       return;
     }
 
@@ -37,39 +70,52 @@ export function InterstitialAdOverlay({ ad, visible, onClose }: Props) {
 
     // Countdown for skip button
     setCountdown(ad.skip_after_seconds);
-    const countInterval = setInterval(() => {
+    countIntervalRef.current = setInterval(() => {
       setCountdown(prev => {
-        if (prev <= 1) { clearInterval(countInterval); return 0; }
+        if (prev <= 1) {
+          if (countIntervalRef.current) clearInterval(countIntervalRef.current);
+          return 0;
+        }
         return prev - 1;
       });
     }, 1000);
 
-    // Enable skip button
+    // Enable skip button after skip_after_seconds
     skipTimerRef.current = setTimeout(() => {
-      setCanSkip(true);
+      if (isMounted.current) {
+        setCanSkip(true);
+      }
     }, skipAfter);
 
-    // Auto close
+    // Auto close after full duration
     closeTimerRef.current = setTimeout(() => {
-      onClose();
+      if (isMounted.current) {
+        onClose();
+      }
     }, total);
 
-    // Progress bar
+    // Progress bar animation
     progressAnim.setValue(0);
     progressRef.current = Animated.timing(progressAnim, {
       toValue: 1,
       duration: total,
       useNativeDriver: false,
     });
-    progressRef.current.start();
+    progressRef.current.start(() => {
+      // Animation finished callback (optional)
+    });
 
+    // Cleanup when this effect re-runs or component unmounts
     return () => {
-      clearInterval(countInterval);
-      if (skipTimerRef.current) clearTimeout(skipTimerRef.current);
-      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-      progressRef.current?.stop();
+      cleanup();
     };
-  }, [visible, ad]);
+  }, [visible, ad, onClose, progressAnim]);
+
+  // Handle skip press - close immediately and clean up
+  const handleSkip = () => {
+    cleanup();
+    onClose();
+  };
 
   if (!ad) return null;
 
@@ -105,7 +151,7 @@ export function InterstitialAdOverlay({ ad, visible, onClose }: Props) {
           {/* Skip / countdown */}
           <View style={styles.topRight}>
             {canSkip ? (
-              <Pressable style={styles.skipBtn} onPress={onClose}>
+              <Pressable style={styles.skipBtn} onPress={handleSkip}>
                 <Text style={styles.skipText}>Skip</Text>
                 <MaterialIcons name="close" size={14} color="#fff" />
               </Pressable>

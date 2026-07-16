@@ -45,7 +45,6 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   const shimmer = React.useRef(new Animated.Value(0.35)).current;
   const isMounted = React.useRef(true);
 
-  // ✅ move renderStoreItem to top (before any useEffect)
   const renderStoreItem = useCallback(({ item: store }: { item: StoreType }) => {
     const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
     const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
@@ -830,6 +829,7 @@ export default function HomeScreen() {
     setAppliedCondition(null);
   }, []);
 
+  // ✅ FIX: Remove router.push from handleAdView (AdCard already does it)
   const handleAdView = useCallback((ad: Ad) => {
     addToRecentlyViewed(ad);
     setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
@@ -908,14 +908,15 @@ export default function HomeScreen() {
     router.push(`/store/${storeId}` as any);
   }, [router]);
 
-  const featuredStoresNode = useMemo(() => (
+  // ✅ FIX: Remove useMemo to preserve internal state of FeaturedStoresStrip
+  const featuredStoresNode = (
     <FeaturedStoresStrip
       isAr={isAr}
       isRTL={isRTL}
       colors={colors}
       onPress={handleFeaturedStorePress}
     />
-  ), [isAr, isRTL, colors, handleFeaturedStorePress]);
+  );
 
   const handleBellPress = useCallback(() => {
     setConversationsSheetVisible(true);
@@ -932,7 +933,7 @@ export default function HomeScreen() {
     return { length: height, offset: height * index, index };
   }, [rowHeight, cardGap]);
 
-  // ✅ ListHeader: remove setSortBy from deps
+  // ✅ FIX: Add setSortBy back to deps and move banner dots inside bannerWrap
   const ListHeader = useMemo(() => (
     <>
       {error ? (
@@ -946,8 +947,9 @@ export default function HomeScreen() {
       ) : null}
 
       {currentBanner ? (
+        // ✅ FIX: Add position: 'relative' to bannerWrap
         <Pressable
-          style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md }]}
+          style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md, position: 'relative' }]}
           onPress={() => {
             trackEvent('banner_click').catch(() => {});
             if (currentBanner.link_url?.trim()) {
@@ -977,23 +979,23 @@ export default function HomeScreen() {
               ) : null}
             </View>
           ) : null}
+
+          {/* ✅ FIX: Banner dots INSIDE the banner wrapper */}
+          {banners.length > 1 && (
+            <View style={[styles.bannerDots, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              {banners.map((_, idx) => (
+                <View
+                  key={idx}
+                  style={[
+                    styles.bannerDot,
+                    idx === featuredIndex && styles.bannerDotActive,
+                  ]}
+                />
+              ))}
+            </View>
+          )}
         </Pressable>
       ) : null}
-
-      {/* ✅ Banner dots - fixed */}
-      {banners.length > 1 && (
-        <View style={[styles.bannerDots, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          {banners.map((_, idx) => (
-            <View
-              key={idx}
-              style={[
-                styles.bannerDot,
-                idx === featuredIndex && styles.bannerDotActive,
-              ]}
-            />
-          ))}
-        </View>
-      )}
 
       {featuredStoresNode}
 
@@ -1156,7 +1158,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, error, hPad, isAr]); // ✅ removed setSortBy
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, error, hPad, isAr, setSortBy]); // ✅ added setSortBy back
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -1271,7 +1273,7 @@ export default function HomeScreen() {
           updateCellsBatchingPeriod={30}
           key={numColumns}
           removeClippedSubviews={false}
-          getItemLayout={getItemLayout} // ✅ use defined useCallback
+          getItemLayout={getItemLayout}
           refreshControl={
             <RefreshControl
               refreshing={loading}
@@ -1577,11 +1579,11 @@ const styles = StyleSheet.create({
   },
   sortChipText: { fontSize: FontSize.xs },
 
+  // ✅ FIX: bannerWrap now has position: 'relative' in the component
   bannerWrap: {
     borderRadius: Radius.xl,
     overflow: 'hidden',
     marginBottom: Spacing.lg,
-    position: 'relative',
     backgroundColor: '#0A6E5C',
     ...Shadow.lg,
   },

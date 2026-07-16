@@ -355,12 +355,12 @@ export const AdCard = memo(function AdCard({
   }, [rawLocation, colors.primary, QALQILYA_LOCATIONS_SET]);
   const { locationLabel, locationIconColor, locationIconName } = locationDerived;
 
+  // ── FIX: Eliminate double navigation ──────────────────────────────────────
+  // If onAdPress is provided, we assume it handles navigation, so we don't push.
+  // If not, we fall back to direct navigation.
   const handlePress = useCallback(() => {
-    // If a parent-provided handler exists, delegate routing entirely to it.
-    // Otherwise fall back to direct navigation — prevents double-push race conditions.
     if (onAdPress) {
       onAdPress(ad);
-      router.push(`/ad/${ad.id}`);
     } else {
       router.push(`/ad/${ad.id}`);
     }
