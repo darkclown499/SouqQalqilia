@@ -487,47 +487,55 @@ export default function StoreDashboardScreen() {
   const [savingWhatsApp, setSavingWhatsApp] = useState(false);
 
   // ── Load data ──
-  const loadData = useCallback(async () => {
-    if (!user) return;
-    setError(null);
-    setLoading(true);
-    let isMounted = true;
+ const isMountedRef = useRef(true);
 
-    try {
-      const supabase = getSupabaseClient();
-      const { data: storeData, error: storeError } = await supabase
-        .from('stores')
-        .select('*, store_categories(id, name, name_ar, icon, color, slug, position, is_active, image_url, created_at)')
-        .eq('owner_id', user.id)
-        .maybeSingle();
-      if (storeError) throw storeError;
-      if (!isMounted) return;
+const loadData = useCallback(async () => {
+  if (!user) return;
+  setError(null);
+  setLoading(true);
 
-      setStore(storeData);
-      if (storeData?.store_categories) {
-        setStoreCategory(storeData.store_categories as StoreCategory);
-      } else if (storeData?.store_category_id) {
-        const { data: cats } = await fetchStoreCategories();
-        const cat = cats.find(c => c.id === storeData.store_category_id);
-        if (cat && isMounted) setStoreCategory(cat);
-      }
+  try {
+    const supabase = getSupabaseClient();
+    const { data: storeData, error: storeError } = await supabase
+      .from('stores')
+      .select('*, store_categories(id, name, name_ar, icon, color, slug, position, is_active, image_url, created_at)')
+      .eq('owner_id', user.id)
+      .maybeSingle();
+    if (storeError) throw storeError;
+    if (!isMountedRef.current) return;
 
-      if (storeData && isMounted) {
-        const { data: prods, error: prodError } = await fetchStoreProducts(storeData.id, true);
-        if (prodError) throw prodError;
-        if (isMounted) setProducts(prods || []);
-      }
-    } catch (e: any) {
-      if (isMounted) {
-        setError(e?.message || 'Failed to load store data');
-      }
-    } finally {
-      if (isMounted) setLoading(false);
+    setStore(storeData);
+    if (storeData?.store_categories) {
+      setStoreCategory(storeData.store_categories as StoreCategory);
+    } else if (storeData?.store_category_id) {
+      const { data: cats } = await fetchStoreCategories();
+      if (!isMountedRef.current) return;
+      const cat = cats.find(c => c.id === storeData.store_category_id);
+      if (cat) setStoreCategory(cat);
     }
-    return () => {
-      isMounted = false;
-    };
-  }, [user]);
+
+    if (storeData) {
+      const { data: prods, error: prodError } = await fetchStoreProducts(storeData.id, true);
+      if (prodError) throw prodError;
+      if (!isMountedRef.current) return;
+      setProducts(prods || []);
+    }
+  } catch (e: any) {
+    if (isMountedRef.current) {
+      setError(e?.message || 'Failed to load store data');
+    }
+  } finally {
+    if (isMountedRef.current) setLoading(false);
+  }
+}, [user]);
+
+useEffect(() => {
+  isMountedRef.current = true;
+  loadData();
+  return () => {
+    isMountedRef.current = false;
+  };
+}, [loadData]);
 
   // ── Load custom categories from supabase directly ──
   const loadCustomCategories = useCallback(async (storeId: string) => {
@@ -728,12 +736,7 @@ export default function StoreDashboardScreen() {
   }, [store?.id, loadCustomCategories]);
 
   // ── Load data on mount ──
-  useEffect(() => {
-    const cleanup = loadData();
-    return () => {
-      if (typeof cleanup === 'function') cleanup();
-    };
-  }, [loadData]);
+
 
   // ── Delete product ──
   const handleDeleteProduct = useCallback((product: StoreProduct) => {
