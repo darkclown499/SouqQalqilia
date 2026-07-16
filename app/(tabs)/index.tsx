@@ -139,7 +139,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
         </View>
       </Pressable>
     );
-  }, [colors, isAr, isRTL, onPress]);
+  }, [colors.surface, isAr, isRTL, onPress]);
 
   React.useEffect(() => {
     isMounted.current = true;
@@ -609,7 +609,9 @@ export default function HomeScreen() {
   const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
   const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
-  const { conversations, loading: convLoading, reload, unreadCount } = useConversations();
+  const { conversations, loading: convLoading, reload, unreadCount } = useConversations({
+  enabled: !!user
+});
 
   const [isOnline, setIsOnline] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -831,14 +833,14 @@ export default function HomeScreen() {
 
   // ✅ FIX: Remove router.push from handleAdView (AdCard already does it)
   const handleAdView = useCallback((ad: Ad) => {
-    addToRecentlyViewed(ad);
-    setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
-  }, []);
+  addToRecentlyViewed(ad);
+  setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
+  router.push(`/ad/${ad.id}`);
+}, [router]);
 
-  const handleRecentAdPress = useCallback((ad: Ad) => {
-    handleAdView(ad);
-    router.push(`/ad/${ad.id}`);
-  }, [handleAdView, router]);
+const handleRecentAdPress = useCallback((ad: Ad) => {
+  handleAdView(ad);
+}, [handleAdView]);
 
   const handleRemoveRecent = useCallback((adId: string) => {
     removeFromRecentlyViewed(adId);
@@ -909,14 +911,14 @@ export default function HomeScreen() {
   }, [router]);
 
   // ✅ FIX: Remove useMemo to preserve internal state of FeaturedStoresStrip
-  const featuredStoresNode = (
-    <FeaturedStoresStrip
-      isAr={isAr}
-      isRTL={isRTL}
-      colors={colors}
-      onPress={handleFeaturedStorePress}
-    />
-  );
+  const featuredStoresNode = useMemo(() => (
+  <FeaturedStoresStrip
+    isAr={isAr}
+    isRTL={isRTL}
+    colors={colors}
+    onPress={handleFeaturedStorePress}
+  />
+), [isAr, isRTL, colors, handleFeaturedStorePress]);
 
   const handleBellPress = useCallback(() => {
     setConversationsSheetVisible(true);
@@ -946,58 +948,44 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {currentBanner ? (
-        // ✅ FIX: Add position: 'relative' to bannerWrap
-        <Pressable
-          style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md, position: 'relative' }]}
-          onPress={() => {
-            trackEvent('banner_click').catch(() => {});
-            if (currentBanner.link_url?.trim()) {
-              Linking.openURL(currentBanner.link_url.trim()).catch(() => {});
-            } else {
-              router.push('/search');
-            }
-          }}
-        >
-          <Image
-            source={{ uri: currentBanner.image_url }}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-            transition={300}
-            cachePolicy="disk"
-            priority="high"
-          />
-          {(currentBanner.title || currentBanner.subtitle) ? (
-            <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-              <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
-                {currentBanner.title}
-              </Text>
-              {currentBanner.subtitle ? (
-                <Text style={[styles.bannerSubtitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
-                  {currentBanner.subtitle}
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
+      {/* البانر مع position: relative */}
+{currentBanner ? (
+  <Pressable
+    style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md, position: 'relative' }]}
+    onPress={() => {
+      trackEvent('banner_click').catch(() => {});
+      if (currentBanner.link_url?.trim()) {
+        Linking.openURL(currentBanner.link_url.trim()).catch(() => {});
+      } else {
+        router.push('/search');
+      }
+    }}
+  >
+    <Image
+      source={{ uri: currentBanner.image_url }}
+      style={StyleSheet.absoluteFill}
+      contentFit="cover"
+      transition={300}
+      cachePolicy="disk"
+      priority="high"
+    />
+    {(currentBanner.title || currentBanner.subtitle) ? (
+      <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+        <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
+          {currentBanner.title}
+        </Text>
+        {currentBanner.subtitle ? (
+          <Text style={[styles.bannerSubtitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+            {currentBanner.subtitle}
+          </Text>
+        ) : null}
+      </View>
+    ) : null}
+  </Pressable>  {/* ✅ تم إغلاق Pressable هنا */}
+) : null}
 
-          {/* ✅ FIX: Banner dots INSIDE the banner wrapper */}
-          {banners.length > 1 && (
-            <View style={[styles.bannerDots, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              {banners.map((_, idx) => (
-                <View
-                  key={idx}
-                  style={[
-                    styles.bannerDot,
-                    idx === featuredIndex && styles.bannerDotActive,
-                  ]}
-                />
-              ))}
-            </View>
-          )}
-        </Pressable>
-      ) : null}
-
-      {featuredStoresNode}
+{/* ✅ featuredStoresNode يظهر خارج البانر */}
+{featuredStoresNode}
 
       {recentlyViewed.length > 0 ? (
         <View style={styles.recentSection}>
@@ -1614,22 +1602,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  bannerDots: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    flexDirection: 'row',
-    gap: 5,
-  },
-  bannerDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.38)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  bannerDotActive: { backgroundColor: '#fff', width: 22, borderRadius: 4 },
 
   recentSection: { marginBottom: Spacing.lg },
   recentList: {
