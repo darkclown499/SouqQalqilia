@@ -20,7 +20,7 @@ function cleanupDedup() {
 // Errors that mean the token is permanently dead and should be purged from DB.
 const PERMANENT_TOKEN_ERRORS = new Set([
   'DeviceNotRegistered',
-  'InvalidCredentials',
+  'InvalidCredentials',      // ✅ Added: also treat as permanent error
   'MessageTooBig',
   'MessageRateExceeded',
 ]);
@@ -350,8 +350,10 @@ serve(async (req) => {
         } else {
           const ticket = result?.data;
           if (ticket?.status === 'error') {
-            console.error(`[push-notify:reset_badge] Ticket error: ${ticket.message} (${ticket.details?.error})`);
-            if (ticket.details?.error === 'DeviceNotRegistered') {
+            const errorCode = ticket.details?.error || 'Unknown';
+            console.error(`[push-notify:reset_badge] Ticket error: ${ticket.message} (${errorCode})`);
+            // ✅ Handle both DeviceNotRegistered and InvalidCredentials
+            if (errorCode === 'DeviceNotRegistered' || errorCode === 'InvalidCredentials') {
               await supabaseAdmin.from('user_profiles').update({ push_token: null }).eq('id', user_id);
               console.log(`[push-notify:reset_badge] Cleared stale token for user=${user_id}`);
             }
@@ -495,7 +497,8 @@ serve(async (req) => {
     if (ticket?.status === 'error') {
       const errorCode: string = ticket.details?.error ?? 'Unknown';
       console.error(`[push-notify] Expo ticket error: code=${errorCode} msg=${ticket.message}`);
-      if (errorCode === 'DeviceNotRegistered') {
+      // ✅ Handle both DeviceNotRegistered and InvalidCredentials
+      if (errorCode === 'DeviceNotRegistered' || errorCode === 'InvalidCredentials') {
         await supabaseAdmin.from('user_profiles').update({ push_token: null }).eq('id', recipient_id);
         console.log(`[push-notify] Cleared stale token for recipient=${recipient_id}`);
       }

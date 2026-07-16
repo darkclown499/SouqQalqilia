@@ -7,7 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { useMessages, triggerUnreadRefresh } from '@/hooks/useChat';
@@ -24,6 +23,14 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+
+// ---- Import Notifications safely for web ----
+let Notifications: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    Notifications = require('expo-notifications');
+  } catch (_) {}
+}
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢'] as const;
 type ReactionEmoji = typeof REACTION_EMOJIS[number];
@@ -369,8 +376,7 @@ export default function ChatScreen() {
         // تحديث الحالة المحلية
         markReadLocally(user.id);
         triggerUnreadRefresh();
-        // تصفير البادج محلياً
-        await Notifications.setBadgeCountAsync(0);
+        // ❌ لا نضع setBadgeCountAsync هنا — سيكون فقط في useFocusEffect
       }
     } catch (e) { }
   }, [id, user?.id, markReadLocally]);
@@ -394,9 +400,10 @@ export default function ChatScreen() {
   useFocusEffect(
     useCallback(() => {
       doMark();
-      Notifications.dismissAllNotificationsAsync().catch(() => {});
-      // إعادة تعيين البادج إلى 0 أيضاً
-      Notifications.setBadgeCountAsync(0).catch(() => {});
+      if (Platform.OS !== 'web' && Notifications) {
+        Notifications.dismissAllNotificationsAsync().catch(() => {});
+        Notifications.setBadgeCountAsync(0).catch(() => {});
+      }
       return () => {};
     }, [doMark])
   );

@@ -134,70 +134,12 @@ export function useMessages(
   const isScreenFocusedRef = useRef(true);
 
   // ─── Realtime subscription for read receipts ──────────────────────────────
-  const realtimeChannelRef = useRef<any>(null);
-
+  // ❌ DISABLED because the backend does not support Realtime.
+  // All updates are handled via polling.
   const setupRealtimeSubscription = useCallback(() => {
-    if (realtimeChannelRef.current) {
-      realtimeChannelRef.current.unsubscribe();
-      realtimeChannelRef.current = null;
-    }
-
-    if (!conversationId || !currentUserId) return;
-
-    const supabase = getSupabaseClient();
-    const channel = supabase
-      .channel(`messages:${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload: any) => {
-          const updated = payload.new as Message;
-          const old = payload.old as Message;
-          const readChanged = updated.read_at !== old.read_at;
-          const deliveredChanged = updated.delivered_at !== old.delivered_at;
-
-          if (!readChanged && !deliveredChanged) return;
-
-          setMessages(prev => {
-            const existing = prev.find(m => m.id === updated.id);
-            if (!existing) return prev;
-            const needsUpdate =
-              (readChanged && updated.read_at !== existing.read_at) ||
-              (deliveredChanged && updated.delivered_at !== existing.delivered_at);
-            if (!needsUpdate) return prev;
-            return prev.map(m =>
-              m.id === updated.id
-                ? {
-                    ...m,
-                    read_at: updated.read_at ?? m.read_at,
-                    delivered_at: updated.delivered_at ?? m.delivered_at,
-                  }
-                : m
-            );
-          });
-        }
-      )
-      .subscribe((status: any) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`[Realtime] Subscribed to messages:${conversationId}`);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.warn(`[Realtime] Error subscribing to messages:${conversationId}`);
-        }
-      });
-
-    realtimeChannelRef.current = channel;
-    return () => {
-      if (realtimeChannelRef.current) {
-        realtimeChannelRef.current.unsubscribe();
-        realtimeChannelRef.current = null;
-      }
-    };
-  }, [conversationId, currentUserId]);
+    // No-op: Realtime is disabled.
+    return () => {};
+  }, []);
 
   const getEffectivePollMs = useCallback((): number => {
     const isVisible = isAppActiveRef.current && isScreenFocusedRef.current;
@@ -369,7 +311,7 @@ export function useMessages(
     });
 
     intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
-    const cleanupRealtime = setupRealtimeSubscription();
+    const cleanupRealtime = setupRealtimeSubscription(); // no-op
 
     const handleAppState = (state: AppStateStatus) => {
       const wasActive = isAppActiveRef.current;
@@ -391,7 +333,7 @@ export function useMessages(
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       appStateSub.remove();
-      if (cleanupRealtime) cleanupRealtime();
+      cleanupRealtime();
       lastCreatedAtRef.current = null;
       pollingRef.current = false;
     };
@@ -441,7 +383,9 @@ export function useConversations(options?: { enabled?: boolean }) {
 
   const setBadge = useCallback(async (count: number) => {
     if (!Notifications || Platform.OS === 'web') return;
-    try { await Notifications.setBadgeCountAsync(count); } catch (_) {}
+    try {
+      await Notifications.setBadgeCountAsync(count);
+    } catch (_) {}
   }, []);
 
   const refreshUnread = useCallback(async () => {
@@ -452,9 +396,14 @@ export function useConversations(options?: { enabled?: boolean }) {
       const merged = mergeWithLocalReadState(convResult.data);
       setConversations(merged);
       const real = computeUnreadCount(merged);
-      setUnreadCount(real);
-      prevUnreadRef.current = real;
-      await setBadge(real);
+      // Only update badge if count changed
+      if (real !== prevUnreadRef.current) {
+        setUnreadCount(real);
+        prevUnreadRef.current = real;
+        await setBadge(real);
+      } else {
+        setUnreadCount(real); // still update state
+      }
     } catch (_) {}
   }, [enabled, setBadge]);
 
@@ -469,7 +418,9 @@ export function useConversations(options?: { enabled?: boolean }) {
       if (isMountedRef.current) {
         setConversations([]);
         setUnreadCount(0);
+        prevUnreadRef.current = 0;
         if (showSpinner) setLoading(false);
+        await setBadge(0);
       }
       return;
     }
@@ -487,7 +438,9 @@ export function useConversations(options?: { enabled?: boolean }) {
       if (isMountedRef.current) {
         setConversations([]);
         setUnreadCount(0);
+        prevUnreadRef.current = 0;
         if (showSpinner) setLoading(false);
+        await setBadge(0);
       }
       return;
     }
@@ -502,9 +455,14 @@ export function useConversations(options?: { enabled?: boolean }) {
       if (showSpinner) setLoading(false);
 
       const newCount = computeUnreadCount(merged);
-      setUnreadCount(newCount);
-      prevUnreadRef.current = newCount;
-      await setBadge(newCount);
+      // Only update badge if count changed
+      if (newCount !== prevUnreadRef.current) {
+        setUnreadCount(newCount);
+        prevUnreadRef.current = newCount;
+        await setBadge(newCount);
+      } else {
+        setUnreadCount(newCount);
+      }
     } catch {
       if (isMountedRef.current && showSpinner) setLoading(false);
     }
@@ -530,7 +488,9 @@ export function useConversations(options?: { enabled?: boolean }) {
       // Also clear conversations and counts when disabled
       setConversations([]);
       setUnreadCount(0);
+      prevUnreadRef.current = 0;
       setLoading(false);
+      setBadge(0);
       return;
     }
 
@@ -539,7 +499,7 @@ export function useConversations(options?: { enabled?: boolean }) {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [enabled, load]);
+  }, [enabled, load, setBadge]);
 
   const conversationsRef = useRef<Conversation[]>([]);
   useEffect(() => { conversationsRef.current = conversations; }, [conversations]);

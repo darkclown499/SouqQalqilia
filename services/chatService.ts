@@ -418,7 +418,11 @@ export async function notifyRecipient(
   } catch (_) {}
 }
 
-/** Mark all messages in a conversation as read (for the current user, messages not sent by them) */
+/**
+ * Mark all messages in a conversation as read (for the current user, messages not sent by them).
+ * ❌ This function NO LONGER resets the app badge remotely — that is now handled
+ *    locally in the ChatScreen's useFocusEffect to avoid loops.
+ */
 export async function markMessagesRead(
   conversationId: string,
   currentUserId: string
@@ -437,10 +441,10 @@ export async function markMessagesRead(
       throw new Error(error.message);
     }
 
-    // Reset app icon badge — fire-and-forget, non-critical
-    supabase.functions.invoke('push-notify', {
-      body: { action: 'reset_badge', user_id: currentUserId },
-    }).catch(() => {});
+    // ✅ REMOVED: reset_badge invocation — badge reset is now handled
+    // exclusively in the UI layer (ChatScreen useFocusEffect) to avoid loops.
+    // The unread count will be refreshed via triggerUnreadRefresh() which calls
+    // fetchMyConversations and updates the badge count there.
   } catch (e: any) {
     throw e;
   }
