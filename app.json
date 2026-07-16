@@ -35,7 +35,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "minSdkVersion": 29,
+      "minSdkVersion": 21,
       "targetSdkVersion": 35,
       "compileSdkVersion": 35,
       "allowBackup": false,

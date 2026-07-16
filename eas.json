@@ -9,7 +9,8 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleDebug"
+        "gradleCommand": ":app:assembleDebug",
+        "abi": "all"
       },
       "ios": {
         "simulator": true
@@ -23,7 +24,8 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "abi": "all"
       },
       "ios": {
         "simulator": false
@@ -40,11 +42,13 @@
       "android": {
         "buildType": "app-bundle",
         "credentialsSource": "remote",
-        "gradleCommand": ":app:bundleRelease"
+        "gradleCommand": ":app:bundleRelease",
+        "abi": "all"
       },
       "ios": {
         "credentialsSource": "remote",
-        "image": "latest"
+        "image": "latest",
+        "simulator": false
       },
       "env": {
         "APP_VARIANT": "production"
