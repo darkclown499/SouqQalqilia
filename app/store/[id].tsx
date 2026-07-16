@@ -20,7 +20,6 @@ import { Spacing, FontSize, Radius } from '@/constants/theme';
 import { Dimensions } from 'react-native';
 import { shortenUrl } from '@/utils/shortenUrl';
 import { getLocalCategories, LocalCategory } from '@/services/localCategoriesService';
-import { useRef } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 
