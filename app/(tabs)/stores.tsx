@@ -16,16 +16,14 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth, getSupabaseClient } from '@/template';
 import {
   fetchAllActiveStores, fetchAllStoreRatings,
-  checkStoreIsOpen, Store, fetchFeaturedStores,
+  checkStoreIsOpen, Store,
 } from '@/services/storesService';
 import {
   fetchStoreCategories,
   StoreCategory,
 } from '@/services/storeCategoriesService';
-import { getBannersCache, setBannersCache, fetchActiveBanners, Banner } from '@/services/bannersService';
-import { FontSize, Radius, Spacing } from '@/constants/theme';
+import { Banner } from '@/services/bannersService';
 import { trackPageView } from '@/services/analyticsService';
-import NetInfo from '@react-native-community/netinfo';
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
 function shuffleArray<T>(array: T[]): T[] {
@@ -39,8 +37,6 @@ function shuffleArray<T>(array: T[]): T[] {
 
 // ── Screen width ──────────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get('window');
-const CARD_GAP = 12;
-const SIDE_PAD = 16;
 
 // ── Module-level fallback category ────────────────────────────────────────────
 const FALLBACK_CAT: StoreCategory = {
@@ -80,8 +76,11 @@ const get3DIconUrl = (name: string) => {
   }
 };
 
+// ── Banner placeholder fallback ──────────────────────────────────────────────
+const BANNER_FALLBACK = 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80';
+
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. BANNER CAROUSEL (مع تحسين المؤقت)
+// 1. BANNER CAROUSEL
 // ─────────────────────────────────────────────────────────────────────────────
 const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRTL: boolean }) => {
   const [activeIdx, setActiveIdx] = useState(0);
@@ -133,15 +132,13 @@ const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRT
         {displayBanners.map((banner, i) => (
           <View key={banner.id || i} style={{ width: SCREEN_W, height: BANNER_H }}>
             <View style={bc.slide}>
-              {banner.image_url ? (
-                <Image
-                  source={{ uri: banner.image_url }}
-                  cachePolicy="disk"
-                  contentFit="cover"
-                  style={StyleSheet.absoluteFill}
-                  transition={300}
-                />
-              ) : null}
+              <Image
+                source={{ uri: banner.image_url || BANNER_FALLBACK }}
+                cachePolicy="disk"
+                contentFit="cover"
+                style={StyleSheet.absoluteFill}
+                transition={300}
+              />
             </View>
           </View>
         ))}
@@ -156,7 +153,7 @@ const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRT
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. QUICK STORE CATEGORY CARD (مع memo)
+// 2. QUICK STORE CATEGORY CARD
 // ─────────────────────────────────────────────────────────────────────────────
 const QuickStoreCatCard = React.memo(({ cat, isAr, isSelected, onPress }: any) => {
   const nameAr = cat.name_ar || cat.name;
@@ -182,7 +179,7 @@ const QuickStoreCatCard = React.memo(({ cat, isAr, isSelected, onPress }: any) =
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. VIP STORE CARD (مع memo)
+// 3. VIP STORE CARD
 // ─────────────────────────────────────────────────────────────────────────────
 const VIPStoreCard = React.memo(({ store, rating, isAr, onPress }: any) => {
   const isOpen = checkStoreIsOpen(store);
@@ -245,7 +242,7 @@ const VIPStoreCard = React.memo(({ store, rating, isAr, onPress }: any) => {
   );
 });
 
-// ── VIP Stores Strip (مع تحسين المؤقت) ──────────────────────────────────────
+// ── VIP Stores Strip ────────────────────────────────────────────────────────
 const VIPStoresStrip = React.memo(({ stores, ratings, isAr, isRTL, onStorePress }: any) => {
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(0);
@@ -265,7 +262,7 @@ const VIPStoresStrip = React.memo(({ stores, ratings, isAr, isRTL, onStorePress 
       autoScrollTimer.current = setInterval(() => {
         if (repeatedStores.length === 0) return;
 
-        let nextOffset = scrollX.current + CARD_WIDTH + 14; // gap = 14
+        let nextOffset = scrollX.current + CARD_WIDTH + 14;
         const maxOffset = (repeatedStores.length - 1) * (CARD_WIDTH + 14);
 
         if (nextOffset > maxOffset) {
@@ -378,61 +375,7 @@ const vip = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. PREMIUM STORE CARD (مع memo)
-// ─────────────────────────────────────────────────────────────────────────────
-const PremiumStoreCard = React.memo(({ store, rating, isAr, onPress }: any) => {
-  const isOpen = checkStoreIsOpen(store);
-  const name = isAr ? (store.name_ar || store.name) : store.name;
-
-  return (
-    <Pressable style={psc.card} onPress={onPress}>
-      <View style={psc.imageWrap}>
-        <Image source={{ uri: store.logo_url }} style={psc.logoImg} contentFit="contain" />
-      </View>
-      <View style={psc.infoWrap}>
-        <Text style={psc.name} numberOfLines={1}>{name}</Text>
-        <Text style={psc.address} numberOfLines={1}>{store.address || (isAr ? 'قلقيلية' : 'Qalqilya')}</Text>
-        <View style={psc.bottomRow}>
-          <Text style={[psc.statusText, { color: isOpen ? '#059669' : '#EA580C' }]}>
-            {isOpen ? (isAr ? 'مفتوح ' : 'Open ') : (isAr ? 'يغلق قريبا ' : 'Closing soon ')}
-            <Text style={psc.timeText}>{isAr ? 'حتى 00:00' : 'until 00:00'}</Text>
-          </Text>
-          {rating.avg > 0 && (
-            <View style={psc.ratingWrap}>
-              <Text style={psc.ratingCount}>(+{rating.count}) </Text>
-              <Text style={psc.ratingScore}>{rating.avg.toFixed(1)} </Text>
-              <MaterialIcons name="star" size={14} color="#1A1A1A" />
-            </View>
-          )}
-        </View>
-      </View>
-    </Pressable>
-  );
-});
-
-const psc = StyleSheet.create({
-  card: {
-    width: Math.min(170, SCREEN_W * 0.45),
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    marginRight: 12, marginLeft: 4, marginBottom: 8, overflow: 'hidden',
-    borderWidth: 1, borderColor: '#F3F4F6',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
-  },
-  imageWrap: { height: 110, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  logoImg: { width: '100%', height: '100%' },
-  infoWrap: { padding: 12 },
-  name: { fontSize: 14, fontWeight: '800', color: '#1A1A1A', textAlign: 'center', marginBottom: 4 },
-  address: { fontSize: 11, color: '#9CA3AF', textAlign: 'center', marginBottom: 12 },
-  bottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10 },
-  statusText: { fontSize: 11, fontWeight: '800' },
-  timeText: { color: '#9CA3AF', fontWeight: '500' },
-  ratingWrap: { flexDirection: 'row', alignItems: 'center' },
-  ratingScore: { fontSize: 12, fontWeight: '800', color: '#1A1A1A' },
-  ratingCount: { fontSize: 11, color: '#9CA3AF' },
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 5. STORE VERTICAL CARD (مع memo)
+// 4. STORE VERTICAL CARD
 // ─────────────────────────────────────────────────────────────────────────────
 const StoreVerticalCard = React.memo(({ store, rating, isAr, onPress }: any) => {
   const isOpen = checkStoreIsOpen(store);
@@ -441,53 +384,53 @@ const StoreVerticalCard = React.memo(({ store, rating, isAr, onPress }: any) => 
 
   return (
     <Pressable
-      style={({ pressed }) => [svc.card, { opacity: pressed ? 0.9 : 1 }]}
+      style={({ pressed }) => [svcStyles.card, { opacity: pressed ? 0.9 : 1 }]}
       onPress={onPress}
     >
-      <View style={svc.imageWrap}>
+      <View style={svcStyles.imageWrap}>
         {store.banner_url || store.logo_url ? (
           <Image
             source={{ uri: store.banner_url || store.logo_url }}
-            style={svc.image}
+            style={svcStyles.image}
             contentFit="cover"
             transition={200}
           />
         ) : (
-          <View style={svc.imagePlaceholder}>
+          <View style={svcStyles.imagePlaceholder}>
             <MaterialIcons name="storefront" size={32} color="#D1D5DB" />
           </View>
         )}
         {store.is_featured && (
-          <View style={svc.vipBadge}>
+          <View style={svcStyles.vipBadge}>
             <MaterialIcons name="stars" size={10} color="#FFD700" />
-            <Text style={svc.vipBadgeText}>VIP</Text>
+            <Text style={svcStyles.vipBadgeText}>VIP</Text>
           </View>
         )}
       </View>
 
-      <View style={svc.infoWrap}>
-        <View style={svc.headerRow}>
-          <Text style={svc.name} numberOfLines={1}>{name}</Text>
-          <View style={[svc.statusBadge, { backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2' }]}>
-            <View style={[svc.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
-            <Text style={[svc.statusText, { color: isOpen ? '#16A34A' : '#DC2626' }]}>
+      <View style={svcStyles.infoWrap}>
+        <View style={svcStyles.headerRow}>
+          <Text style={svcStyles.name} numberOfLines={1}>{name}</Text>
+          <View style={[svcStyles.statusBadge, { backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2' }]}>
+            <View style={[svcStyles.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
+            <Text style={[svcStyles.statusText, { color: isOpen ? '#16A34A' : '#DC2626' }]}>
               {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
             </Text>
           </View>
         </View>
 
-        <Text style={svc.address} numberOfLines={1}>
+        <Text style={svcStyles.address} numberOfLines={1}>
           <MaterialIcons name="location-on" size={12} color="#9CA3AF" />
           {address}
         </Text>
 
-        <View style={svc.footerRow}>
-          <View style={svc.ratingWrap}>
+        <View style={svcStyles.footerRow}>
+          <View style={svcStyles.ratingWrap}>
             <MaterialIcons name="star" size={14} color="#F59E0B" />
-            <Text style={svc.ratingText}>{rating?.avg?.toFixed(1) ?? '0.0'}</Text>
-            <Text style={svc.ratingCount}>({rating?.count ?? 0})</Text>
+            <Text style={svcStyles.ratingText}>{rating?.avg?.toFixed(1) ?? '0.0'}</Text>
+            <Text style={svcStyles.ratingCount}>({rating?.count ?? 0})</Text>
           </View>
-          <Text style={svc.hours}>
+          <Text style={svcStyles.hours}>
             <MaterialIcons name="access-time" size={12} color="#9CA3AF" />
             {store.opening_time} - {store.closing_time}
           </Text>
@@ -497,7 +440,7 @@ const StoreVerticalCard = React.memo(({ store, rating, isAr, onPress }: any) => 
   );
 });
 
-const svc = StyleSheet.create({
+const svcStyles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     backgroundColor: '#fff',
@@ -585,7 +528,7 @@ const svc = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 6. CATEGORY BLOCK (مع تحسينات الأداء)
+// 5. CATEGORY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
 const CategoryBlock = React.memo(({ cat, stores, ratings, isAr, isRTL, onStorePress, colors }: any) => {
   const catName = isAr ? (cat.name_ar || cat.name) : cat.name;
@@ -612,14 +555,14 @@ const CategoryBlock = React.memo(({ cat, stores, ratings, isAr, isRTL, onStorePr
   ), [ratings, isAr, onStorePress]);
 
   return (
-    <View style={s.categoryContainer}>
-      <View style={[s.catHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <Text style={[s.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+    <View style={styles.categoryContainer}>
+      <View style={[styles.catHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+        <Text style={[styles.catTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
           {catName}
         </Text>
         {hasMore && (
           <Pressable onPress={handleViewAll} hitSlop={6}>
-            <Text style={[s.catMoreText, { color: colors.primary }]}>
+            <Text style={[styles.catMoreText, { color: colors.primary }]}>
               {isAr ? 'عرض الكل' : 'View All'}
             </Text>
           </Pressable>
@@ -639,28 +582,28 @@ const CategoryBlock = React.memo(({ cat, stores, ratings, isAr, isRTL, onStorePr
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7. REGISTER CTA BANNER
+// 6. REGISTER CTA BANNER
 // ─────────────────────────────────────────────────────────────────────────────
 function RegisterStoreCTA({ isAr, isRTL, onPress }: {
   isAr: boolean; isRTL: boolean; onPress: () => void;
 }) {
   return (
     <Pressable
-      style={({ pressed }) => [cta.wrap, { opacity: pressed ? 0.9 : 1 }]}
+      style={({ pressed }) => [ctaStyles.wrap, { opacity: pressed ? 0.9 : 1 }]}
       onPress={onPress}
     >
-      <LinearGradient colors={['#B91C1C', '#991B1B', '#7F1D1D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cta.gradient}>
-        <View style={cta.deco1} />
-        <View style={cta.deco2} />
-        <View style={[cta.content, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          <View style={cta.iconWrap}>
+      <LinearGradient colors={['#B91C1C', '#991B1B', '#7F1D1D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={ctaStyles.gradient}>
+        <View style={ctaStyles.deco1} />
+        <View style={ctaStyles.deco2} />
+        <View style={[ctaStyles.content, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={ctaStyles.iconWrap}>
             <MaterialIcons name="storefront" size={26} color="#FFFFFF" />
           </View>
-          <View style={[cta.textCol, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-            <Text style={[cta.title, { textAlign: isRTL ? 'right' : 'left' }]}>
+          <View style={[ctaStyles.textCol, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+            <Text style={[ctaStyles.title, { textAlign: isRTL ? 'right' : 'left' }]}>
               {isAr ? 'سجّل متجرك معنا 🛒' : 'Register Your Store 🛒'}
             </Text>
-            <Text style={[cta.sub, { textAlign: isRTL ? 'right' : 'left' }]}>
+            <Text style={[ctaStyles.sub, { textAlign: isRTL ? 'right' : 'left' }]}>
               {isAr ? 'انضم وابدأ البيع عبر التطبيق اليوم' : 'Join and start selling today'}
             </Text>
           </View>
@@ -671,7 +614,7 @@ function RegisterStoreCTA({ isAr, isRTL, onPress }: {
   );
 }
 
-const cta = StyleSheet.create({
+const ctaStyles = StyleSheet.create({
   wrap: { marginHorizontal: 16, marginBottom: 20, borderRadius: 16, shadowColor: '#B91C1C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 3 },
   gradient: { borderRadius: 16, overflow: 'hidden', padding: 16 },
   deco1: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.06)', top: -40, right: -20 },
@@ -702,10 +645,10 @@ export default function StoresScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ownerStore, setOwnerStore] = useState<any>(undefined);
+  const [ownerStore, setOwnerStore] = useState<any>(null);
+  const [ownerStoreLoading, setOwnerStoreLoading] = useState(true);
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const storeSearchInputRef = useRef<any>(null);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const scrollRef = useRef<any>(null);
   const catScrollRef = useRef<any>(null);
@@ -715,7 +658,9 @@ export default function StoresScreen() {
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState('');
 
-  // ── Local banners (will be shuffled on each focus) ──
+  const isMounted = useRef(true);
+
+  // ── Local banners ──
   const LOCAL_BANNERS = useMemo(() => [
     { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
     { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
@@ -723,12 +668,11 @@ export default function StoresScreen() {
     { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
   ], []);
 
-  // ── Load data function (can be called for initial load and refresh) ──
+  // ── Load data function ──
   const loadData = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     setError(null);
     try {
-      // Shuffle banners on every load
       setBanners(shuffleArray(LOCAL_BANNERS));
 
       const [storesRes, ratingsMap, catsRes] = await Promise.all([
@@ -743,8 +687,8 @@ export default function StoresScreen() {
       setStoreCategories(catsRes.data);
 
       const featuredIds = shuffledStores
-        .filter((store: any) => store.is_featured === true)
-        .map((store: any) => store.id);
+        .filter((storeItem: any) => storeItem.is_featured === true)
+        .map((storeItem: any) => storeItem.id);
       setFeaturedStoreIds(new Set(featuredIds));
     } catch (err) {
       console.error('Failed to load stores data:', err);
@@ -756,14 +700,18 @@ export default function StoresScreen() {
 
   // ── Load owner store and check name ──
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setOwnerStoreLoading(false);
+      return;
+    }
+    setOwnerStoreLoading(true);
     getSupabaseClient()
       .from('user_profiles')
       .select('username')
       .eq('id', user.id)
       .single()
       .then(({ data }) => {
-        if (isNameInvalid(data?.username ?? '')) {
+        if (isMounted.current && isNameInvalid(data?.username ?? '')) {
           setEditName(data?.username ?? '');
           setNameGateVisible(true);
         }
@@ -775,25 +723,43 @@ export default function StoresScreen() {
       .select('*')
       .eq('owner_id', user.id)
       .maybeSingle()
-      .then(({ data }) => setOwnerStore(data ?? null))
-      .catch(() => setOwnerStore(null));
+      .then(({ data }) => {
+        if (isMounted.current) {
+          setOwnerStore(data ?? null);
+          setOwnerStoreLoading(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted.current) {
+          setOwnerStore(null);
+          setOwnerStoreLoading(false);
+        }
+      });
   }, [user]);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   // ── Initial load ──
   useEffect(() => {
     loadData(true);
   }, []);
 
-  // ── Focus: re-shuffle banners only (avoid full reload) ──
+  // ── Focus: re-shuffle banners only ──
   useFocusEffect(
     useCallback(() => {
-      trackPageView('stores');
-      // Shuffle banners every time screen is focused
+      if (isMounted.current) {
+        trackPageView('stores');
+      }
       setBanners(shuffleArray(LOCAL_BANNERS));
     }, [LOCAL_BANNERS])
   );
 
-  // ── Refresh handler (pull-to-refresh) ──
+  // ── Refresh handler ──
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData(false);
@@ -819,13 +785,13 @@ export default function StoresScreen() {
     const catMap = new Map(storeCategories.map(c => [c.id, c]));
     const map = new Map<string, { cat: StoreCategory; stores: Store[] }>();
 
-    for (const store of stores) {
-      const joinedCat = (store as any).store_category as StoreCategory | null | undefined;
-      const storeCatId = (store as any).store_category_id as string | null | undefined;
+    for (const storeItem of stores) {
+      const joinedCat = (storeItem as any).store_category as StoreCategory | null | undefined;
+      const storeCatId = (storeItem as any).store_category_id as string | null | undefined;
       const cat: StoreCategory = (joinedCat && joinedCat.id) ? joinedCat : (storeCatId ? catMap.get(storeCatId) : undefined) ?? FALLBACK_CAT;
 
       if (!map.has(cat.id)) map.set(cat.id, { cat, stores: [] });
-      map.get(cat.id)!.stores.push(store);
+      map.get(cat.id)!.stores.push(storeItem);
     }
     return Array.from(map.values()).filter(g => g.stores.length > 0).sort((a, b) => a.cat.position - b.cat.position);
   }, [stores, storeCategories]);
@@ -836,10 +802,10 @@ export default function StoresScreen() {
     return groupedStores
       .map(group => ({
         ...group,
-        stores: group.stores.filter(store => {
-          const name = ((store as any).name || '').toLowerCase();
-          const nameAr = ((store as any).name_ar || '').toLowerCase();
-          const address = ((store as any).address || '').toLowerCase();
+        stores: group.stores.filter(storeItem => {
+          const name = ((storeItem as any).name || '').toLowerCase();
+          const nameAr = ((storeItem as any).name_ar || '').toLowerCase();
+          const address = ((storeItem as any).address || '').toLowerCase();
           return name.includes(q) || nameAr.includes(q) || address.includes(q);
         }),
       }))
@@ -852,11 +818,11 @@ export default function StoresScreen() {
   }, [filteredGroupedStores, selectedCatId]);
 
   return (
-    <View style={[s.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       
       {/* ── Header ── */}
-      <View style={[s.header, { backgroundColor: '#FFFFFF', paddingTop: insets.top + 8, paddingBottom: 15 }]}>
-        <View style={[s.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+      <View style={[styles.header, { backgroundColor: '#FFFFFF', paddingTop: insets.top + 8, paddingBottom: 15 }]}>
+        <View style={[styles.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
           
           {isSearchVisible ? (
             <View style={{ flex: 1, flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 12, paddingHorizontal: 12, height: 44 }}>
@@ -884,7 +850,7 @@ export default function StoresScreen() {
                 <MaterialCommunityIcons name="whatsapp" size={28} color="#25D366" />
               </Pressable>
 
-              <View style={[s.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: '#F3F4F6', borderColor: 'transparent', paddingVertical: 6, paddingHorizontal: 16 }]}>
+              <View style={[styles.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: '#F3F4F6', borderColor: 'transparent', paddingVertical: 6, paddingHorizontal: 16 }]}>
                 <Text style={{ fontSize: 13, color: '#1A1A1A', fontWeight: '800' }}>
                   {isAr ? 'استنو المفاجئات 🎁' : 'Wait for Surprises 🎁'}
                 </Text>
@@ -914,27 +880,27 @@ export default function StoresScreen() {
       >
         <BannerCarousel banners={banners} isRTL={isRTL} />
 
-        {ownerStore !== undefined && ownerStore !== null && (
+        {ownerStore !== null && !ownerStoreLoading && (
           <Pressable
-            style={[s.ownerCard, {
+            style={[styles.ownerCard, {
               backgroundColor: ownerStore.is_approved ? colors.surface : '#F3F4F6',
               borderColor: ownerStore.is_approved ? colors.primary : '#D1D5DB',
             }]}
             onPress={() => router.push('/store-dashboard' as any)}
           >
-            <View style={[s.ownerIconWrap, { backgroundColor: ownerStore.is_approved ? colors.primaryGhost : '#E5E7EB' }]}>
+            <View style={[styles.ownerIconWrap, { backgroundColor: ownerStore.is_approved ? colors.primaryGhost : '#E5E7EB' }]}>
               <MaterialIcons name="storefront" size={20} color={ownerStore.is_approved ? colors.primary : '#4B5563'} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[s.ownerName, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+              <Text style={[styles.ownerName, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
                 {isAr ? ((ownerStore as any).name_ar || ownerStore.name) : ownerStore.name}
               </Text>
-              <View style={[s.ownerBadge, {
+              <View style={[styles.ownerBadge, {
                 backgroundColor: ownerStore.is_approved ? '#D1FAE5' : '#FEE2E2',
                 flexDirection: isRTL ? 'row-reverse' : 'row',
               }]}>
                 <MaterialIcons name={ownerStore.is_approved ? 'check-circle' : 'info'} size={12} color={ownerStore.is_approved ? '#16a34a' : '#EF4444'} />
-                <Text style={[s.ownerBadgeText, { color: ownerStore.is_approved ? '#16a34a' : '#EF4444' }]}>
+                <Text style={[styles.ownerBadgeText, { color: ownerStore.is_approved ? '#16a34a' : '#EF4444' }]}>
                   {ownerStore.is_approved ? (isAr ? 'متجرك مفعّل ✓' : 'Active ✓') : (isAr ? 'متجرك غير مفعّل' : 'Store Inactive')}
                 </Text>
               </View>
@@ -943,22 +909,22 @@ export default function StoresScreen() {
           </Pressable>
         )}
 
-        {ownerStore === null && user && (
+        {ownerStore === null && user && !ownerStoreLoading && (
           <View style={{ marginTop: 16 }}>
             <RegisterStoreCTA isAr={isAr} isRTL={isRTL} onPress={() => router.push('/register-store' as any)} />
           </View>
         )}
 
         {storeCategories.length > 0 && (
-          <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>
               {isAr ? 'شو ناقصك اليوم؟ 🤔' : "What are you craving today? 🤔"}
             </Text>
             <ScrollView
               ref={catScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[s.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              contentContainerStyle={[styles.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
               onContentSizeChange={() => {
                 if (isRTL && catScrollRef.current) {
                   catScrollRef.current.scrollToEnd({ animated: false });
@@ -1006,7 +972,7 @@ export default function StoresScreen() {
 
         {/* ── VIP Section ── */}
         <VIPStoresStrip 
-          stores={stores.filter(s => featuredStoreIds.has(s.id))} 
+          stores={stores.filter(storeItem => featuredStoreIds.has(storeItem.id))} 
           ratings={ratings} 
           isAr={isAr} 
           isRTL={isRTL} 
@@ -1014,30 +980,30 @@ export default function StoresScreen() {
         />
 
         {loading ? (
-          <View style={s.loadingWrap}>
+          <View style={styles.loadingWrap}>
             <ActivityIndicator color={colors.primary} size="large" />
-            <Text style={[s.loadingText, { color: colors.textMuted }]}>{isAr ? 'جارٍ تحميل المتاجر...' : 'Loading stores...'}</Text>
+            <Text style={[styles.loadingText, { color: colors.textMuted }]}>{isAr ? 'جارٍ تحميل المتاجر...' : 'Loading stores...'}</Text>
           </View>
         ) : error ? (
-          <View style={[s.emptyWrap, { paddingTop: 40 }]}>
-            <View style={[s.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
+          <View style={[styles.emptyWrap, { paddingTop: 40 }]}>
+            <View style={[styles.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
               <MaterialIcons name="error-outline" size={44} color={colors.error || '#EF4444'} />
             </View>
-            <Text style={[s.emptyTitle, { color: colors.textPrimary }]}>{isAr ? 'حدث خطأ' : 'Error'}</Text>
-            <Text style={[s.emptySub, { color: colors.textMuted }]}>{error}</Text>
-            <Pressable style={[s.clearFilterBtn, { borderColor: colors.primary }]} onPress={handleRefresh}>
-              <Text style={[s.clearFilterText, { color: colors.primary }]}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
+            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>{isAr ? 'حدث خطأ' : 'Error'}</Text>
+            <Text style={[styles.emptySub, { color: colors.textMuted }]}>{error}</Text>
+            <Pressable style={[styles.clearFilterBtn, { borderColor: colors.primary }]} onPress={handleRefresh}>
+              <Text style={[styles.clearFilterText, { color: colors.primary }]}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
             </Pressable>
           </View>
         ) : displayedGroups.length === 0 ? (
-          <View style={s.emptyWrap}>
-            <View style={[s.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
+          <View style={styles.emptyWrap}>
+            <View style={[styles.emptyIllus, { backgroundColor: colors.surfaceTint }]}>
               <MaterialIcons name={searchQuery.trim() ? 'search-off' : 'store'} size={44} color={colors.textMuted} />
             </View>
-            <Text style={[s.emptyTitle, { color: colors.textPrimary }]}>
+            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
               {searchQuery.trim() ? (isAr ? 'لا يوجد نتائج' : 'No Results Found') : (isAr ? 'لا توجد متاجر بعد' : 'No Stores Yet')}
             </Text>
-            <Text style={[s.emptySub, { color: colors.textMuted }]}>
+            <Text style={[styles.emptySub, { color: colors.textMuted }]}>
               {searchQuery.trim()
                 ? (isAr ? 'عذراً، لا يوجد متاجر مطابقة لبحثك' : 'Sorry, no stores match your search')
                 : selectedCatId
@@ -1045,8 +1011,8 @@ export default function StoresScreen() {
                   : (isAr ? 'ترقبوا إضافة متاجر قريباً' : 'Stores are coming soon')}
             </Text>
             {(selectedCatId || searchQuery.trim()) && (
-              <Pressable style={[s.clearFilterBtn, { borderColor: colors.primary }]} onPress={() => { setSelectedCatId(null); setSearchQuery(''); }}>
-                <Text style={[s.clearFilterText, { color: colors.primary }]}>{isAr ? 'عرض كل المتاجر' : 'Show all stores'}</Text>
+              <Pressable style={[styles.clearFilterBtn, { borderColor: colors.primary }]} onPress={() => { setSelectedCatId(null); setSearchQuery(''); }}>
+                <Text style={[styles.clearFilterText, { color: colors.primary }]}>{isAr ? 'عرض كل المتاجر' : 'Show all stores'}</Text>
               </Pressable>
             )}
           </View>
@@ -1067,15 +1033,15 @@ export default function StoresScreen() {
       </ScrollView>
 
       <Modal visible={nameGateVisible} animationType="fade" transparent onRequestClose={() => {}}>
-        <View style={g.overlay}>
-          <View style={[g.card, { backgroundColor: colors.surface }]}>
-            <View style={[g.iconWrap, { backgroundColor: colors.primaryGhost }]}>
+        <View style={gStyles.overlay}>
+          <View style={[gStyles.card, { backgroundColor: colors.surface }]}>
+            <View style={[gStyles.iconWrap, { backgroundColor: colors.primaryGhost }]}>
               <MaterialIcons name="person" size={36} color={colors.primary} />
             </View>
-            <Text style={[g.title, { color: colors.textPrimary }]}>{isAr ? 'أكمل ملفك الشخصي' : 'Complete Your Profile'}</Text>
-            <Text style={[g.subtitle, { color: colors.textSecondary }]}>{isAr ? 'يرجى كتابة اسمك الحقيقي (بدون أرقام) للمتابعة' : 'Please enter your real name (no digits) to continue'}</Text>
+            <Text style={[gStyles.title, { color: colors.textPrimary }]}>{isAr ? 'أكمل ملفك الشخصي' : 'Complete Your Profile'}</Text>
+            <Text style={[gStyles.subtitle, { color: colors.textSecondary }]}>{isAr ? 'يرجى كتابة اسمك الحقيقي (بدون أرقام) للمتابعة' : 'Please enter your real name (no digits) to continue'}</Text>
             <TextInput
-              style={[g.input, { borderColor: nameError ? colors.error : colors.border, color: colors.textPrimary, backgroundColor: colors.background, textAlign: isRTL ? 'right' : 'left' }]}
+              style={[gStyles.input, { borderColor: nameError ? colors.error : colors.border, color: colors.textPrimary, backgroundColor: colors.background, textAlign: isRTL ? 'right' : 'left' }]}
               placeholder={isAr ? 'اكتب اسمك الحقيقي' : 'Enter your real name'}
               placeholderTextColor={colors.textMuted}
               value={editName}
@@ -1083,11 +1049,11 @@ export default function StoresScreen() {
               autoFocus
               maxLength={40}
             />
-            {nameError ? <Text style={[g.errorText, { color: colors.error }]}>{nameError}</Text> : null}
-            <Pressable style={[g.saveBtn, { backgroundColor: colors.primary, opacity: savingName ? 0.7 : 1 }]} onPress={handleSaveName} disabled={savingName}>
+            {nameError ? <Text style={[gStyles.errorText, { color: colors.error }]}>{nameError}</Text> : null}
+            <Pressable style={[gStyles.saveBtn, { backgroundColor: colors.primary, opacity: savingName ? 0.7 : 1 }]} onPress={handleSaveName} disabled={savingName}>
               {savingName
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <><MaterialIcons name="check" size={18} color="#fff" /><Text style={g.saveBtnText}>{isAr ? 'حفظ الاسم' : 'Save Name'}</Text></>
+                : <><MaterialIcons name="check" size={18} color="#fff" /><Text style={gStyles.saveBtnText}>{isAr ? 'حفظ الاسم' : 'Save Name'}</Text></>
               }
             </Pressable>
           </View>
@@ -1119,13 +1085,11 @@ const qc = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '700', color: '#1A1A1A', textAlign: 'center', lineHeight: 18 },
 });
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 15 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerIconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
   locationCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 12 },
-  locationName: { fontSize: 14, color: '#fff', fontWeight: '800' },
   ownerCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1.5, padding: 12, marginHorizontal: 16, marginTop: 16 },
   ownerIconWrap: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   ownerName: { fontSize: 14, fontWeight: '700' },
@@ -1142,48 +1106,13 @@ const s = StyleSheet.create({
   emptySub: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
   clearFilterBtn: { borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, marginTop: 4 },
   clearFilterText: { fontSize: 14, fontWeight: '700' },
-  storeSearchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 16, marginBottom: 10, gap: 10, borderRadius: 16, paddingHorizontal: 14, height: 50, borderWidth: 1 },
-  storeSearchIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  storeSearchInput: { flex: 1, fontSize: 13, fontWeight: '600' },
-  locationTextWrap: { alignItems: 'center' },
-  locationTitle: { fontSize: 13, color: '#1A1A1A', fontWeight: '800' },
-  locationSubtitle: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
-  homeIconWrap: { backgroundColor: '#F3F4F6', padding: 6, borderRadius: 15 },
-  floatingButtonsWrap: { position: 'absolute', bottom: 20, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', zIndex: 100 },
-  supportFab: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 },
-  scrollTopFab: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#B91C1C', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
   categoryContainer: { paddingHorizontal: 16, marginBottom: 20 },
   catHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   catTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
   catMoreText: { fontSize: 13, fontWeight: '700' },
-  catGridHorizontal: { paddingHorizontal: 2, gap: 12, alignItems: 'center' },
-  gridCardFeatured: { borderColor: '#FFD700', borderWidth: 2, shadowColor: '#FFD700', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 4 },
-  featuredBadge: { position: 'absolute', top: 4, right: 4, flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#FFD700', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, zIndex: 5 },
-  featuredBadgeText: { color: '#1A1A1A', fontSize: 8, fontWeight: '800' },
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  gridCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  logoWrap: { width: 70, height: 70, borderRadius: 35, overflow: 'hidden', marginBottom: 8, backgroundColor: '#F9FAFB' },
-  logoImg: { width: '100%', height: '100%' },
-  storeName: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
-  storeAddress: { fontSize: 10, color: '#6B7280', marginBottom: 8 },
-  footerRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: 4 },
-  ratingText: { fontSize: 11, fontWeight: 'bold' },
 });
 
-const g = StyleSheet.create({
+const gStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 },
   card: { width: '100%', borderRadius: 24, padding: 24, gap: 12, alignItems: 'center' },
   iconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
