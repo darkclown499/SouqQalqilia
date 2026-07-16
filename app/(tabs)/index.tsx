@@ -345,6 +345,10 @@ function ConversationsBottomSheet({
   colors,
   isRTL,
   isAr,
+  conversations,   // جديد
+  loading,         // جديد
+  unreadCount,     // جديد
+  reload,          // جديد
 }: {
   visible: boolean;
   onClose: () => void;
@@ -352,9 +356,12 @@ function ConversationsBottomSheet({
   colors: any;
   isRTL: boolean;
   isAr: boolean;
+  conversations: any[];
+  loading: boolean;
+  unreadCount: number;
+  reload: () => void;
 }) {
   const { user } = useAuth();
-  const { conversations, loading, reload, unreadCount } = useConversations();
 
   // إعادة التحميل عند فتح الشيت
   useEffect(() => {
@@ -603,7 +610,7 @@ export default function HomeScreen() {
   const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
   const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
-  const { unreadCount } = useConversations();
+  const { conversations, loading: convLoading, reload, unreadCount } = useConversations();
 
   const [isOnline, setIsOnline] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -1130,7 +1137,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, setSortBy, error, hPad, isAr, currentBanner]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, setSortBy, error, hPad, isAr]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -1246,11 +1253,10 @@ export default function HomeScreen() {
           updateCellsBatchingPeriod={30}
           key={numColumns}
           removeClippedSubviews={false}
-          getItemLayout={(_data, index) => ({
-            length: rowHeight,
-            offset: rowHeight * index,
-            index,
-          })}
+         getItemLayout={useCallback((_data: any, index: number) => {
+  const height = rowHeight + cardGap; // ✅ نضيف الفجوة بين الصفوف
+  return { length: height, offset: height * index, index };
+}, [rowHeight, cardGap])}
           refreshControl={
             <RefreshControl
               refreshing={loading}
@@ -1297,13 +1303,17 @@ export default function HomeScreen() {
 
       {/* ── Conversations Bottom Sheet ── */}
       <ConversationsBottomSheet
-        visible={conversationsSheetVisible}
-        onClose={() => setConversationsSheetVisible(false)}
-        onConversationPress={handleConversationPress}
-        colors={colors}
-        isRTL={isRTL}
-        isAr={isAr}
-      />
+  visible={conversationsSheetVisible}
+  onClose={() => setConversationsSheetVisible(false)}
+  onConversationPress={handleConversationPress}
+  colors={colors}
+  isRTL={isRTL}
+  isAr={isAr}
+  conversations={conversations}      // ✅ جديد
+  loading={convLoading}              // ✅ جديد
+  unreadCount={unreadCount}          // ✅ جديد
+  reload={reload}                    // ✅ جديد
+/>
 
       {/* ── FILTER BOTTOM SHEET ── */}
       {filterVisible ? (
