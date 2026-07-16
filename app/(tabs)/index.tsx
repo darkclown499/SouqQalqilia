@@ -45,55 +45,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   const shimmer = React.useRef(new Animated.Value(0.35)).current;
   const isMounted = React.useRef(true);
 
-  React.useEffect(() => {
-    isMounted.current = true;
-    return () => { isMounted.current = false; };
-  }, []);
-
-  React.useEffect(() => {
-    setLoading(true);
-    const controller = new AbortController();
-    fetchFeaturedStores({ signal: controller.signal })
-      .then(({ data }) => {
-        if (isMounted.current) {
-          setStores(shuffleArray(data));
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (err.name === 'AbortError') return;
-        if (isMounted.current) setLoading(false);
-        console.warn('fetchFeaturedStores error:', err);
-      });
-    return () => controller.abort();
-  }, []);
-
-  React.useEffect(() => {
-    if (!loading) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, { toValue: 0.85, duration: 650, useNativeDriver: true }),
-        Animated.timing(shimmer, { toValue: 0.35, duration: 650, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [loading]);
-
-  React.useEffect(() => {
-    if (stores.length <= 1) return;
-    const timer = setInterval(() => {
-      scrollIndex.current = (scrollIndex.current + 1) % stores.length;
-      flatListRef.current?.scrollToOffset({
-        offset: scrollIndex.current * 164,
-        animated: true,
-      });
-    }, 3500);
-    return () => clearInterval(timer);
-  }, [stores]);
-
-  if (!loading && stores.length === 0) return null;
-
+  // ✅ move renderStoreItem to top (before any useEffect)
   const renderStoreItem = useCallback(({ item: store }: { item: StoreType }) => {
     const bannerImage = store.banner || store.banner_url || store.cover || store.cover_url || store.logo_url;
     const isOpen = checkStoreIsOpen ? checkStoreIsOpen(store) : true;
@@ -189,6 +141,55 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
       </Pressable>
     );
   }, [colors, isAr, isRTL, onPress]);
+
+  React.useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
+  React.useEffect(() => {
+    setLoading(true);
+    const controller = new AbortController();
+    fetchFeaturedStores({ signal: controller.signal })
+      .then(({ data }) => {
+        if (isMounted.current) {
+          setStores(shuffleArray(data));
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        if (isMounted.current) setLoading(false);
+        console.warn('fetchFeaturedStores error:', err);
+      });
+    return () => controller.abort();
+  }, []);
+
+  React.useEffect(() => {
+    if (!loading) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 0.85, duration: 650, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0.35, duration: 650, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [loading]);
+
+  React.useEffect(() => {
+    if (stores.length <= 1) return;
+    const timer = setInterval(() => {
+      scrollIndex.current = (scrollIndex.current + 1) % stores.length;
+      flatListRef.current?.scrollToOffset({
+        offset: scrollIndex.current * 164,
+        animated: true,
+      });
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [stores]);
+
+  if (!loading && stores.length === 0) return null;
 
   return (
     <View style={{ marginBottom: 28, marginTop: 8 }}>
@@ -345,10 +346,10 @@ function ConversationsBottomSheet({
   colors,
   isRTL,
   isAr,
-  conversations,   // جديد
-  loading,         // جديد
-  unreadCount,     // جديد
-  reload,          // جديد
+  conversations,
+  loading,
+  unreadCount,
+  reload,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -363,7 +364,6 @@ function ConversationsBottomSheet({
 }) {
   const { user } = useAuth();
 
-  // إعادة التحميل عند فتح الشيت
   useEffect(() => {
     if (visible && user) {
       reload();
@@ -917,17 +917,22 @@ export default function HomeScreen() {
     />
   ), [isAr, isRTL, colors, handleFeaturedStorePress]);
 
-  // معالج ضغط الجرس: فتح شيت المحادثات
   const handleBellPress = useCallback(() => {
     setConversationsSheetVisible(true);
   }, []);
 
-  // معالج اختيار محادثة من الشيت
   const handleConversationPress = useCallback((conversationId: string) => {
     setConversationsSheetVisible(false);
     router.push(`/chat/${conversationId}` as any);
   }, [router]);
 
+  // ✅ تعريف getItemLayout كـ useCallback خارج JSX
+  const getItemLayout = useCallback((_data: any, index: number) => {
+    const height = rowHeight + cardGap;
+    return { length: height, offset: height * index, index };
+  }, [rowHeight, cardGap]);
+
+  // ✅ ListHeader: remove setSortBy from deps
   const ListHeader = useMemo(() => (
     <>
       {error ? (
@@ -974,6 +979,22 @@ export default function HomeScreen() {
           ) : null}
         </Pressable>
       ) : null}
+
+      {/* ✅ Banner dots - fixed */}
+      {banners.length > 1 && (
+        <View style={[styles.bannerDots, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          {banners.map((_, idx) => (
+            <View
+              key={idx}
+              style={[
+                styles.bannerDot,
+                idx === featuredIndex && styles.bannerDotActive,
+              ]}
+            />
+          ))}
+        </View>
+      )}
+
       {featuredStoresNode}
 
       {recentlyViewed.length > 0 ? (
@@ -1044,12 +1065,11 @@ export default function HomeScreen() {
           contentContainerStyle={[
             styles.catContent,
             {
-              flexDirection: isRTL ? 'row-reverse' : 'row', // ✅ استخدام row-reverse عند RTL
+              flexDirection: isRTL ? 'row-reverse' : 'row',
               paddingHorizontal: hPad,
             }
           ]}
         >
-          {/* زر "الكل" دائماً في البداية (سيظهر على اليمين عند RTL مع row-reverse) */}
           <Pressable
             style={[styles.catChip, selectedCategory === null
               ? { backgroundColor: colors.primary, borderColor: colors.primary }
@@ -1060,7 +1080,6 @@ export default function HomeScreen() {
             <Text style={[styles.catChipText, { color: selectedCategory === null ? '#fff' : colors.textSecondary, fontWeight: selectedCategory === null ? '700' : '500' }]}>{t.all}</Text>
           </Pressable>
 
-          {/* التصنيفات بالترتيب الأصلي (بدون عكس) لأن row-reverse يقوم بالعكس */}
           {categories.map(cat => {
             const isSelected = selectedCategory === cat.id;
             return (
@@ -1137,11 +1156,10 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, setSortBy, error, hPad, isAr]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, error, hPad, isAr]); // ✅ removed setSortBy
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      {/* ── HEADER ── */}
       <View style={[styles.header, { backgroundColor: colors.primary, overflow: 'hidden' }]}>
         <View style={styles.headerDeco1} pointerEvents="none" />
         <View style={styles.headerDeco2} pointerEvents="none" />
@@ -1253,10 +1271,7 @@ export default function HomeScreen() {
           updateCellsBatchingPeriod={30}
           key={numColumns}
           removeClippedSubviews={false}
-         getItemLayout={useCallback((_data: any, index: number) => {
-  const height = rowHeight + cardGap; // ✅ نضيف الفجوة بين الصفوف
-  return { length: height, offset: height * index, index };
-}, [rowHeight, cardGap])}
+          getItemLayout={getItemLayout} // ✅ use defined useCallback
           refreshControl={
             <RefreshControl
               refreshing={loading}
@@ -1301,21 +1316,20 @@ export default function HomeScreen() {
 
       <InterstitialAdOverlay ad={activeInterstitial} visible={interstitialVisible} onClose={() => setInterstitialVisible(false)} />
 
-      {/* ── Conversations Bottom Sheet ── */}
       <ConversationsBottomSheet
-  visible={conversationsSheetVisible}
-  onClose={() => setConversationsSheetVisible(false)}
-  onConversationPress={handleConversationPress}
-  colors={colors}
-  isRTL={isRTL}
-  isAr={isAr}
-  conversations={conversations}      // ✅ جديد
-  loading={convLoading}              // ✅ جديد
-  unreadCount={unreadCount}          // ✅ جديد
-  reload={reload}                    // ✅ جديد
-/>
+        visible={conversationsSheetVisible}
+        onClose={() => setConversationsSheetVisible(false)}
+        onConversationPress={handleConversationPress}
+        colors={colors}
+        isRTL={isRTL}
+        isAr={isAr}
+        conversations={conversations}
+        loading={convLoading}
+        unreadCount={unreadCount}
+        reload={reload}
+      />
 
-      {/* ── FILTER BOTTOM SHEET ── */}
+      {/* Filter sheet */}
       {filterVisible ? (
         <View style={[StyleSheet.absoluteFillObject, { zIndex: 100 }]} pointerEvents="box-none">
           <Pressable style={fStyles.overlay} onPress={() => setFilterVisible(false)} />
@@ -1404,7 +1418,7 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* ── AREA PICKER MODAL ── */}
+      {/* Area picker */}
       {areaPickerVisible ? (
         <View style={[StyleSheet.absoluteFillObject, { zIndex: 200 }]} pointerEvents="box-none">
           <Pressable style={fStyles.overlay} onPress={() => setAreaPickerVisible(false)} />
@@ -1682,7 +1696,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   catContent: {
-    flexDirection: 'row', // سيتم تغييره ديناميكياً عبر contentContainerStyle
+    flexDirection: 'row',
     gap: Spacing.sm,
     alignItems: 'center',
   },
