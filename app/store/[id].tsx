@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
-  ActivityIndicator, Modal, Linking, Platform, Share, TextInput, Alert
+  ActivityIndicator, Modal, Linking, Platform, Share, TextInput
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
@@ -20,6 +20,8 @@ import { Spacing, FontSize, Radius } from '@/constants/theme';
 import { Dimensions } from 'react-native';
 import { shortenUrl } from '@/utils/shortenUrl';
 import { getLocalCategories, LocalCategory } from '@/services/localCategoriesService';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const BANNER_H = 240;
@@ -506,7 +508,7 @@ export default function StoreDetailScreen() {
                     if (phone) {
                       Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
                     } else {
-                      Alert.alert(isAr ? 'رقم غير متوفر' : 'Number not available', isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
+                      alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
                     }
                   }}
                 >
@@ -524,19 +526,14 @@ export default function StoreDetailScreen() {
 
           {/* Overlap: logo + status badge (left) */}
           <View style={s.overlapWrapper}>
-            {/* Status badge - now positioned slightly below the logo */}
-            <View style={[s.sideBadge, { left: 16, top: 65 }]}>  {/* ✅ ضبط top إلى 65 */}
-              <LinearGradient
-                colors={isOpen ? ['#16A34A', '#22C55E'] : ['#6B7280', '#9CA3AF']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={s.modernPill}
-              >
-                <View style={[s.statusDot, { backgroundColor: '#fff' }]} />
-                <Text style={s.modernPillText}>
+            {/* Status badge (left) - only one instance */}
+            <View style={[s.sideBadge, { left: 16, top: 25 }]}>
+              <View style={[s.modernPill, { borderColor: isOpen ? '#16A34A' : colors.textMuted }]}>
+                <View style={[s.statusDot, { backgroundColor: isOpen ? '#16A34A' : colors.textMuted }]} />
+                <Text style={[s.modernPillText, { color: isOpen ? '#16A34A' : colors.textMuted, marginLeft: 4 }]}>
                   {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
                 </Text>
-              </LinearGradient>
+              </View>
             </View>
 
             {/* Logo */}
@@ -554,36 +551,37 @@ export default function StoreDetailScreen() {
             <Text style={s.storeNameTxt}>{storeName}</Text>
             
             {/* WhatsApp button - improved */}
-            <Pressable
-              style={({ pressed }) => [
-                s.whatsappBtn,
-                {
-                  opacity: pressed ? 0.85 : 1,
-                  transform: [{ scale: pressed ? 0.97 : 1 }],
-                }
-              ]}
-              onPress={() => {
-                const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
-                const storeName = isAr ? (store.name_ar || store.name) : store.name;
-                const msg = isAr 
-                  ? `مرحباً! 👋\nأنا ${userName} من تطبيق سوق قلقيلية.\nأود الاستفسار عن منتجاتكم في متجر "${storeName}".\n\nهل يمكنكم مساعدتي؟`
-                  : `Hello! 👋\nI'm ${userName} from Souq Qalqilya app.\nI would like to inquire about your products at "${storeName}".\n\nCan you help me?`;
-                const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
-                if (phone) {
-                  Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-                } else {
-                  Alert.alert(
-                    isAr ? 'رقم غير متوفر' : 'Number not available',
-                    isAr ? 'لا يوجد رقم واتساب مسجل لهذا المتجر' : 'No WhatsApp number registered for this store'
-                  );
-                }
-              }}
-            >
-              <MaterialCommunityIcons name="whatsapp" size={22} color="#fff" style={s.whatsappIcon} />
-              <Text style={s.whatsappBtnText}>
-                {isAr ? 'تواصل واتساب' : 'WhatsApp'}
-              </Text>
-            </Pressable>
+<Pressable
+  style={({ pressed }) => [
+    s.whatsappBtn,
+    {
+      opacity: pressed ? 0.85 : 1,
+      transform: [{ scale: pressed ? 0.97 : 1 }],
+    }
+  ]}
+  onPress={() => {
+    const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
+    const storeName = isAr ? (store.name_ar || store.name) : store.name;
+    const msg = isAr 
+      ? `مرحباً! 👋\nأنا ${userName} من تطبيق سوق قلقيلية.\nأود الاستفسار عن منتجاتكم في متجر "${storeName}".\n\nهل يمكنكم مساعدتي؟`
+      : `Hello! 👋\nI'm ${userName} from Souq Qalqilya app.\nI would like to inquire about your products at "${storeName}".\n\nCan you help me?`;
+    const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
+    if (phone) {
+      Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+    } else {
+      Alert.alert(
+        isAr ? 'رقم غير متوفر' : 'Number not available',
+        isAr ? 'لا يوجد رقم واتساب مسجل لهذا المتجر' : 'No WhatsApp number registered for this store'
+      );
+    }
+  }}
+>
+  <MaterialCommunityIcons name="whatsapp" size={22} color="#fff" style={s.whatsappIcon} />
+  <Text style={s.whatsappBtnText}>
+    {isAr ? 'تواصل واتساب' : 'WhatsApp'}
+  </Text>
+</Pressable>
+
 
             {/* Location */}
             <View style={s.locationRow}>
@@ -853,33 +851,33 @@ export default function StoreDetailScreen() {
 
 const s = StyleSheet.create({
   whatsappBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#25D366',
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 30,
-    marginTop: 12,
-    marginBottom: 8,
-    shadowColor: '#25D366',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  whatsappBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  whatsappIcon: {
-    marginRight: 4,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 10,
+  backgroundColor: '#25D366',
+  paddingHorizontal: 28,
+  paddingVertical: 14,
+  borderRadius: 30,
+  marginTop: 12,
+  marginBottom: 8,
+  shadowColor: '#25D366',
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.4,
+  shadowRadius: 12,
+  elevation: 8,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.15)',
+},
+whatsappBtnText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: '700',
+  letterSpacing: 0.3,
+},
+whatsappIcon: {
+  marginRight: 4,
+},
   container: { flex: 1 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
 
@@ -887,45 +885,16 @@ const s = StyleSheet.create({
   bannerWrap: { width: '100%', position: 'relative' },
   fabBtn: { position: 'absolute', zIndex: 10, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   
-  overlapWrapper: {
-    width: '100%',
-    alignItems: 'center',
-    marginTop: -30,
-    zIndex: 10,
-  },
-  sideBadge: {
-    position: 'absolute',
-    top: 65,
-    left: 16,
-    alignItems: 'center',
-    zIndex: 20,
-  },
+  overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -50, zIndex: 10 },
+  sideBadge: { position: 'absolute', top: 25, alignItems: 'center' },
   modernPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2
   },
-  modernPillText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    marginLeft: 6,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
+  modernPillText: { fontSize: 12, fontWeight: '800' },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  
   logoWrap: { width: 130, height: 130, borderRadius: 65, borderWidth: 4, borderColor: '#fff', backgroundColor: '#fff', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 6 },
   mainLogo: { width: '100%', height: '100%' },
 
