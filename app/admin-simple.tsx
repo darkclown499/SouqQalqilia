@@ -29,6 +29,9 @@ import {
 } from '@/services/interstitialService';
 import { Ad } from '@/services/adsService';
 import { fetchAllPageStats, PageStats } from '@/services/analyticsService';
+import {
+  adminFetchAllStores, adminUpdateStore, Store,
+} from '@/services/storesService';
 // مكتبات الرسوم البيانية (تأكد من تثبيتها: npm install victory-native react-native-svg)
 
 // ─── واجهات الأنواع ──────────────────────────────────────────────────────────
@@ -297,6 +300,7 @@ const InterstitialItem = memo(({ item, colors, isAr }: any) => (
 ));
 
 // ─── تبويب الإحصائيات (مع رسوم بيانية وتحليلات متقدمة) ────────────────────
+// ─── تبويب الإحصائيات (مع تحسينات التصميم) ─────────────────────────────
 function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [stats, setStats] = useState<any>(null);
   const [pageStats, setPageStats] = useState<PageStats[]>([]);
@@ -349,8 +353,12 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       });
       const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
 
+      // حساب التغير (مقارنة اليوم الأول مع الأخير)
+      const trendValues = trend.map(t => t.count);
+      const change = trendValues.length >= 2 ? ((trendValues[trendValues.length - 1] - trendValues[0]) / (trendValues[0] || 1)) * 100 : 0;
+
       if (controller.signal.aborted) return;
-      setStats({ dau, wau, mau, trend, totalVisits, totalUsers, activeAds, activeStores });
+      setStats({ dau, wau, mau, trend, totalVisits, totalUsers, activeAds, activeStores, change });
 
       const [pages] = await Promise.all([fetchAllPageStats()]);
       if (controller.signal.aborted) return;
@@ -369,7 +377,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   useEffect(() => {
     setLoading(true);
     fetchStats();
-    const interval = setInterval(fetchStats, 30000);
+    const interval = setInterval(fetchStats, 60000);
     return () => { clearInterval(interval); if (abortControllerRef.current) abortControllerRef.current.abort(); };
   }, [fetchStats]);
 
@@ -410,10 +418,20 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   };
   const totalPageUnique = pageStats.reduce((sum, s) => sum + (s.unique_24h || 0), 0);
   const totalPageVisits = pageStats.reduce((sum, s) => sum + (s.total_24h || 0), 0);
-  const maxTrend = Math.max(...(stats?.trend?.map((t: any) => t.count) || [1]), 1);
+
+  // بيانات توزيع الأجهزة (وهمية حالياً)
+  const deviceData = [
+    { name: 'iOS', value: 120, color: '#3B82F6' },
+    { name: 'Android', value: 280, color: '#22C55E' },
+    { name: 'Other', value: 15, color: '#F59E0B' },
+  ];
+  const maxDevice = Math.max(...deviceData.map(d => d.value), 1);
 
   return (
-    <ScrollView contentContainerStyle={styles.analyticsContainer} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.analyticsContainer}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.analyticsHeader}>
         <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
           {isAr ? '📊 إحصائيات عامة' : '📊 General Stats'}
@@ -428,18 +446,31 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
 
       <View style={styles.statsGrid3}>
         {[
-          { label: isAr ? 'مستخدمين اليوم' : 'Today', value: stats?.dau ?? 0, icon: 'today', color: '#3B82F6' },
-          { label: isAr ? 'مستخدمين الأسبوع' : 'This Week', value: stats?.wau ?? 0, icon: 'date-range', color: '#8B5CF6' },
-          { label: isAr ? 'مستخدمين الشهر' : 'This Month', value: stats?.mau ?? 0, icon: 'calendar-month', color: '#10B981' },
-        ].map((item, i) => (
-          <View key={i} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.statIcon, { backgroundColor: item.color + '20' }]}>
-              <MaterialIcons name={item.icon as any} size={20} color={item.color} />
+          { label: isAr ? 'مستخدمين اليوم' : 'Today', value: stats?.dau ?? 0, icon: 'today', color: '#3B82F6', change: stats?.change || 0 },
+          { label: isAr ? 'مستخدمين الأسبوع' : 'This Week', value: stats?.wau ?? 0, icon: 'date-range', color: '#8B5CF6', change: stats?.change || 0 },
+          { label: isAr ? 'مستخدمين الشهر' : 'This Month', value: stats?.mau ?? 0, icon: 'calendar-month', color: '#10B981', change: stats?.change || 0 },
+        ].map((item, i) => {
+          const isPositive = item.change >= 0;
+          return (
+            <View key={i} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.statIcon, { backgroundColor: item.color + '20' }]}>
+                <MaterialIcons name={item.icon as any} size={20} color={item.color} />
+              </View>
+              <Text style={[styles.statValue, { color: colors.textPrimary }]}>{formatNumber(item.value)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textMuted }]}>{item.label}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                <MaterialIcons
+                  name={isPositive ? 'arrow-upward' : 'arrow-downward'}
+                  size={14}
+                  color={isPositive ? '#22C55E' : '#EF4444'}
+                />
+                <Text style={{ fontSize: 10, color: isPositive ? '#22C55E' : '#EF4444', fontWeight: '700' }}>
+                  {Math.abs(item.change).toFixed(1)}%
+                </Text>
+              </View>
             </View>
-            <Text style={[styles.statValue, { color: colors.textPrimary }]}>{formatNumber(item.value)}</Text>
-            <Text style={[styles.statLabel, { color: colors.textMuted }]}>{item.label}</Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       <View style={styles.statsGrid2}>
@@ -461,53 +492,78 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         ))}
       </View>
 
-      {/* مخطط خطي للاتجاه اليومي */}
-{/* مخطط شريطي بسيط للاتجاه اليومي (بدون مكتبات خارجية) */}
-{stats?.trend && stats.trend.length > 0 && (
-  <View style={[styles.trendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-    <Text style={[styles.trendTitle, { color: colors.textPrimary }]}>
-      {isAr ? '📈 الاتجاه اليومي (آخر 7 أيام)' : '📈 Daily Trend (Last 7 days)'}
-    </Text>
-    <View style={styles.trendBars}>
-      {stats.trend.map((t: any, idx: number) => {
-        const maxTrend = Math.max(...stats.trend.map((t: any) => t.count), 1);
-        return (
-          <View key={idx} style={styles.trendBarWrapper}>
-            <View style={[styles.trendBar, { height: (t.count / maxTrend) * 60, backgroundColor: colors.primary }]} />
-            <Text style={[styles.trendLabel, { color: colors.textMuted }]}>{t.count}</Text>
-            <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 8 }]}>{t.date.slice(5)}</Text>
+      {stats?.trend && stats.trend.length > 0 && (
+        <View style={[styles.trendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <Text style={[styles.trendTitle, { color: colors.textPrimary }]}>
+              {isAr ? '📈 الاتجاه اليومي' : '📈 Daily Trend'}
+            </Text>
+            <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 10 }]}>
+              {isAr ? 'آخر 7 أيام' : 'Last 7 days'}
+            </Text>
           </View>
-        );
-      })}
-    </View>
-  </View>
-)}
+          <View style={styles.trendBars}>
+            {stats.trend.map((t: any, idx: number) => {
+              const maxTrend = Math.max(...stats.trend.map((t: any) => t.count), 1);
+              const heightPercent = (t.count / maxTrend) * 70;
+              const hue = 220 + (idx / stats.trend.length) * 40;
+              const barColor = `hsl(${hue}, 80%, 55%)`;
+              return (
+                <View key={idx} style={styles.trendBarWrapper}>
+                  <Text style={[styles.trendLabel, { color: colors.textPrimary, fontWeight: '700', fontSize: 10 }]}>
+                    {t.count}
+                  </Text>
+                  <View
+                    style={[
+                      styles.trendBar,
+                      {
+                        height: Math.max(heightPercent, 4),
+                        backgroundColor: barColor,
+                        borderRadius: 6,
+                      },
+                    ]}
+                  />
+                  <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 9, marginTop: 4 }]}>
+                    {new Date(t.date).toLocaleDateString(isAr ? 'ar' : 'en', { weekday: 'short' })}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
-{/* توزيع الأجهزة كبطاقات نصية */}
-<View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-  <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-    {isAr ? '📱 توزيع المستخدمين حسب الجهاز' : 'Device Distribution'}
-  </Text>
-  <View style={styles.advancedStatsRow}>
-    <View style={styles.advancedStatsCol}>
-      <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>iOS</Text>
-      <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>120</Text>
-    </View>
-    <View style={styles.advancedStatsCol}>
-      <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>Android</Text>
-      <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>280</Text>
-    </View>
-    <View style={styles.advancedStatsCol}>
-      <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>Other</Text>
-      <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>15</Text>
-    </View>
-  </View>
-</View>
+      <View style={[styles.deviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
+          {isAr ? '📱 توزيع المستخدمين حسب الجهاز' : 'Device Distribution'}
+        </Text>
+        {deviceData.map((device, idx) => {
+          const percent = (device.value / maxDevice) * 100;
+          return (
+            <View key={idx} style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={[styles.deviceName, { color: colors.textPrimary }]}>{device.name}</Text>
+                <Text style={[styles.devicePercent, { color: colors.textSecondary }]}>
+                  {device.value} ({Math.round((device.value / deviceData.reduce((s, d) => s + d.value, 0)) * 100)}%)
+                </Text>
+              </View>
+              <View style={[styles.progressBarBg, { backgroundColor: colors.borderLight }]}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${percent}%`,
+                      backgroundColor: device.color,
+                      borderRadius: 8,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          );
+        })}
+      </View>
 
-      {/* مخطط دائري لتوزيع الأجهزة (بيانات وهمية) */}
-      
-
-      {/* إحصائيات الصفحات */}
       <View style={[styles.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={[styles.pageStatsHeader, { borderBottomColor: colors.borderLight }]}>
           <MaterialIcons name="analytics" size={20} color={colors.primary} />
@@ -533,13 +589,17 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
             {(pageStats || []).map((stat, index) => {
               const icon = pageIcons[stat.page] || 'web';
               const name = pageNames[stat.page] || stat.page;
-              const isLast = index === (pageStats || []).length - 1;
+              const isEven = index % 2 === 0;
               return (
                 <View
                   key={stat.page}
                   style={[
                     styles.pageStatRow,
-                    { borderBottomColor: colors.borderLight, borderBottomWidth: isLast ? 0 : 1 }
+                    {
+                      backgroundColor: isEven ? colors.background : 'transparent',
+                      borderBottomColor: colors.borderLight,
+                      borderBottomWidth: index === (pageStats || []).length - 1 ? 0 : 1,
+                    },
                   ]}
                 >
                   <View style={[styles.pageStatIcon, { backgroundColor: colors.primaryGhost }]}>
@@ -555,7 +615,18 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
                 </View>
               );
             })}
-            <View style={[styles.pageStatRow, { borderTopWidth: 1, borderTopColor: colors.borderLight, paddingTop: 8 }]}>
+            <View
+              style={[
+                styles.pageStatRow,
+                {
+                  borderTopWidth: 1,
+                  borderTopColor: colors.borderLight,
+                  paddingTop: 8,
+                  backgroundColor: colors.primary + '10',
+                  borderRadius: 8,
+                },
+              ]}
+            >
               <View style={[styles.pageStatIcon, { backgroundColor: colors.primary }]}>
                 <MaterialIcons name="summarize" size={16} color="#fff" />
               </View>
@@ -573,7 +644,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         )}
       </View>
 
-      {/* تحليلات متقدمة */}
       <View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
           {isAr ? '🏆 إحصائيات متقدمة' : '🏆 Advanced Stats'}
@@ -1803,6 +1873,129 @@ function ToolsTab({ colors, isAr, t }: any) {
   );
 }
 
+// ─── تبويب المتاجر ────────────────────────────────────────────────────────────
+function StoresTab({ colors, isAr, t }: any) {
+  const [stores, setStores] = useState<Store[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
+  const [search, setSearch] = useState('');
+  const { showAlert } = useAlert();
+  const abortRef = useRef<AbortController | null>(null);
+
+  const showSnackbar = (message: string, type: string = 'success') => {
+    setSnackbar({ visible: true, message, type });
+  };
+
+  const loadData = useCallback(async () => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoading(true);
+    setRefreshing(false);
+    try {
+      const timeout = new Promise((_, reject) => setTimeout(() => { controller.abort(); reject(new Error('TIMEOUT')); }, 15000));
+      const result = await Promise.race([adminFetchAllStores({ signal: controller.signal }), timeout]);
+      const { data } = result as any;
+      if (controller.signal.aborted) return;
+      setStores(data || []);
+    } catch (err: any) {
+      if (err?.name !== 'AbortError' && err?.message !== 'TIMEOUT') {
+        showAlert(isAr ? 'خطأ' : 'Error', err?.message || (isAr ? 'فشل التحميل' : 'Load failed'));
+      }
+    } finally {
+      setLoading(false);
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  }, [isAr, showAlert]);
+
+  useEffect(() => { loadData(); return () => { if (abortRef.current) abortRef.current.abort(); }; }, []);
+
+  const handleToggleActive = async (store: Store) => {
+    const { error } = await adminUpdateStore(store.id, { is_active: !store.is_active });
+    if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
+    showSnackbar(isAr ? 'تم تحديث حالة المتجر' : 'Store status updated', 'success');
+    loadData();
+  };
+
+  const handleToggleFeatured = async (store: Store) => {
+    const { error } = await adminUpdateStore(store.id, { is_featured: !store.is_featured });
+    if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
+    showSnackbar(isAr ? 'تم تحديث حالة التميز' : 'Featured status updated', 'success');
+    loadData();
+  };
+
+  const handleToggleApproved = async (store: Store) => {
+    const { error } = await adminUpdateStore(store.id, { is_approved: !store.is_approved });
+    if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
+    showSnackbar(isAr ? 'تم تحديث حالة الموافقة' : 'Approval status updated', 'success');
+    loadData();
+  };
+
+  const filteredStores = stores.filter(s =>
+    (s.name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (s.owner?.username || '').toLowerCase().includes(search.toLowerCase()) ||
+    (s.owner?.email || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const renderItem = ({ item }: { item: Store }) => (
+    <StoreItem
+      item={item}
+      colors={colors}
+      isAr={isAr}
+      onToggleActive={handleToggleActive}
+      onToggleFeatured={handleToggleFeatured}
+      onToggleApproved={handleToggleApproved}
+    />
+  );
+
+  const getItemLayout = (data: any, index: number) => ({ length: 90, offset: 90 * index, index });
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.tabContainer}>
+      <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        <MaterialIcons name="search" size={20} color={colors.textMuted} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.textPrimary }]}
+          placeholder={isAr ? '🔍 ابحث عن متجر أو مالك...' : '🔍 Search store or owner...'}
+          placeholderTextColor={colors.textMuted}
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <Pressable onPress={() => setSearch('')} hitSlop={8}>
+            <MaterialIcons name="close" size={18} color={colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
+      <FlatList
+        data={filteredStores}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} colors={[colors.primary]} tintColor={colors.primary} />
+        }
+        getItemLayout={getItemLayout}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <MaterialIcons name="storefront" size={48} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, marginTop: 8, fontWeight: '600' }}>{isAr ? 'لا توجد متاجر' : 'No stores found'}</Text>
+          </View>
+        }
+      />
+      <Snackbar visible={snackbar.visible} message={snackbar.message} type={snackbar.type} onDismiss={() => setSnackbar({ ...snackbar, visible: false })} />
+    </View>
+  );
+}
 // ─── الصفحة الرئيسية (مع جميع التبويبات) ──────────────────────────────────
 export default function AdminScreen() {
   const insets = useSafeAreaInsets();
@@ -1812,7 +2005,7 @@ export default function AdminScreen() {
   const isAr = language === 'ar';
   const { t } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'analytics' | 'ads' | 'users' | 'banners' | 'interstitials' | 'logs' | 'reports' | 'orders' | 'tools'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'ads' | 'users' | 'banners' | 'interstitials' | 'logs' | 'reports' | 'orders' | 'stores' | 'tools'>('analytics');
 
   const TABS = [
     { key: 'analytics', label: isAr ? '📊 إحصائيات' : 'Analytics', icon: 'insights' },
@@ -1823,6 +2016,7 @@ export default function AdminScreen() {
     { key: 'logs', label: isAr ? '📋 سجل النشاطات' : 'Activity Log', icon: 'history' },
     { key: 'reports', label: isAr ? '⚠️ بلاغات' : 'Reports', icon: 'report' },
     { key: 'orders', label: isAr ? '🛒 طلبات' : 'Orders', icon: 'shopping-cart' },
+    { key: 'stores', label: isAr ? '🏪 متاجر' : 'Stores', icon: 'storefront' },
     { key: 'tools', label: isAr ? '🛠️ أدوات' : 'Tools', icon: 'build' },
   ];
 
@@ -1878,6 +2072,7 @@ export default function AdminScreen() {
         {activeTab === 'logs' && <ActivityLogTab colors={colors} isAr={isAr} />}
         {activeTab === 'reports' && <ReportsTab colors={colors} isAr={isAr} />}
         {activeTab === 'orders' && <OrdersTab colors={colors} isAr={isAr} />}
+        {activeTab === 'stores' && <StoresTab colors={colors} isAr={isAr} t={t} />}
         {activeTab === 'tools' && <ToolsTab colors={colors} isAr={isAr} t={t} />}
       </AdminTabErrorBoundary>
     </View>
@@ -1886,6 +2081,49 @@ export default function AdminScreen() {
 
 // ─── الأنماط النهائية (جميع الأنماط المطلوبة) ──────────────────────────────────
 const styles = StyleSheet.create({
+  // Store Card
+storeCard: {
+  borderWidth: 1,
+  borderRadius: Radius.lg,
+  padding: Spacing.md,
+  marginBottom: Spacing.sm,
+},
+storeRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+},
+storeInfo: {
+  flex: 1,
+  marginRight: 8,
+},
+storeName: {
+  fontSize: FontSize.md,
+  fontWeight: '700',
+},
+storeOwner: {
+  fontSize: FontSize.xs,
+  marginTop: 2,
+},
+storeBadges: {
+  flexDirection: 'row',
+  gap: 6,
+  marginTop: 4,
+  flexWrap: 'wrap',
+},
+storeBadge: {
+  paddingHorizontal: 8,
+  paddingVertical: 2,
+  borderRadius: 4,
+},
+storeActions: {
+  flexDirection: 'row',
+  gap: 6,
+},
+storeActionBtn: {
+  padding: 6,
+  borderRadius: Radius.full,
+},
   // Error Boundary
   errorFallback: {
     padding: 20,
@@ -2776,4 +3014,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     flex: 1,
   },
+  // توزيع الأجهزة
+deviceCard: {
+  borderRadius: Radius.lg,
+  borderWidth: 1,
+  padding: Spacing.md,
+  marginBottom: Spacing.md,
+},
+deviceName: {
+  fontSize: FontSize.sm,
+  fontWeight: '600',
+},
+devicePercent: {
+  fontSize: FontSize.xs,
+},
+progressBarBg: {
+  height: 8,
+  borderRadius: 8,
+  overflow: 'hidden',
+},
+progressBarFill: {
+  height: '100%',
+},
 });
