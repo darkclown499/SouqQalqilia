@@ -548,31 +548,38 @@ export default function StoreDetailScreen() {
           <View style={s.storeDetails}>
             <Text style={s.storeNameTxt}>{storeName}</Text>
             
-            {/* WhatsApp button */}
-            <Pressable
-              style={({ pressed }) => [s.whatsappBtn, { 
-                backgroundColor: '#25D366', 
-                opacity: pressed ? 0.85 : 1,
-                transform: [{ scale: pressed ? 0.97 : 1 }]
-              }]}
-              onPress={() => {
-                const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
-                const msg = isAr 
-                  ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
-                  : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
-                const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
-                if (phone) {
-                  Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-                } else {
-                  alert(isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
-                }
-              }}
-            >
-              <MaterialIcons name="whatsapp" size={20} color="#fff" />
-              <Text style={s.whatsappBtnText}>
-                {isAr ? 'تواصل واتساب' : 'WhatsApp'}
-              </Text>
-            </Pressable>
+            {/* WhatsApp button - improved */}
+<Pressable
+  style={({ pressed }) => [
+    s.whatsappBtn,
+    {
+      opacity: pressed ? 0.85 : 1,
+      transform: [{ scale: pressed ? 0.97 : 1 }],
+    }
+  ]}
+  onPress={() => {
+    const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
+    const storeName = isAr ? (store.name_ar || store.name) : store.name;
+    const msg = isAr 
+      ? `مرحباً! 👋\nأنا ${userName} من تطبيق سوق قلقيلية.\nأود الاستفسار عن منتجاتكم في متجر "${storeName}".\n\nهل يمكنكم مساعدتي؟`
+      : `Hello! 👋\nI'm ${userName} from Souq Qalqilya app.\nI would like to inquire about your products at "${storeName}".\n\nCan you help me?`;
+    const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
+    if (phone) {
+      Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+    } else {
+      Alert.alert(
+        isAr ? 'رقم غير متوفر' : 'Number not available',
+        isAr ? 'لا يوجد رقم واتساب مسجل لهذا المتجر' : 'No WhatsApp number registered for this store'
+      );
+    }
+  }}
+>
+  <MaterialIcons name="whatsapp" size={22} color="#fff" style={s.whatsappIcon} />
+  <Text style={s.whatsappBtnText}>
+    {isAr ? 'تواصل واتساب' : 'WhatsApp'}
+  </Text>
+</Pressable>
+
 
             {/* Location */}
             <View style={s.locationRow}>
@@ -842,27 +849,33 @@ export default function StoreDetailScreen() {
 
 const s = StyleSheet.create({
   whatsappBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#25D366',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 30,
-    marginTop: 8,
-    marginBottom: 4,
-    shadowColor: '#25D366',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  whatsappBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 10,
+  backgroundColor: '#25D366',
+  paddingHorizontal: 28,
+  paddingVertical: 14,
+  borderRadius: 30,
+  marginTop: 12,
+  marginBottom: 8,
+  shadowColor: '#25D366',
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.4,
+  shadowRadius: 12,
+  elevation: 8,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.15)',
+},
+whatsappBtnText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: '700',
+  letterSpacing: 0.3,
+},
+whatsappIcon: {
+  marginRight: 4,
+},
   container: { flex: 1 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
 
