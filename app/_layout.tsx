@@ -114,7 +114,7 @@ interface BannerPayload {
   senderName: string;
   messagePreview: string;
   avatarUrl?: string | null;
-  messageId: string; // ✅ أضفنا معرف الرسالة
+  messageId: string; // نحتفظ به للاستخدام المستقبلي لكن لن نستخدمه للتحديث
 }
 
 function InAppChatBanner() {
@@ -161,18 +161,7 @@ function InAppChatBanner() {
     });
   }, [slideY, dragY]);
 
-  // ✅ دالة لتحديث read_at للرسالة في الخادم
-  const markMessageRead = useCallback(async (messageId: string) => {
-    try {
-      const supabase = getSupabaseClient();
-      await supabase
-        .from('messages')
-        .update({ read_at: new Date().toISOString() })
-        .eq('id', messageId);
-    } catch (e) {
-      console.warn('[InAppBanner] Failed to mark message read:', e);
-    }
-  }, []);
+  // ❌ تم حذف دالة markMessageRead لأنها تسببت في تحديث read_at فور ظهور الإشعار
 
   const showBanner = useCallback((payload: BannerPayload) => {
     setBanner(payload);
@@ -182,9 +171,8 @@ function InAppChatBanner() {
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     dismissTimerRef.current = setTimeout(() => dismissBanner(), 5000);
 
-    // ✅ تحديث read_at فور عرض الإشعار
-    markMessageRead(payload.messageId);
-  }, [slideY, dragY, dismissBanner, markMessageRead]);
+    // ✅ إزالة استدعاء markMessageRead – لن يتم تحديث read_at إلا عند النقر
+  }, [slideY, dragY, dismissBanner]);
 
   // Pan gesture
   const panGesture = Gesture.Pan()
@@ -249,7 +237,7 @@ function InAppChatBanner() {
           senderName,
           messagePreview: preview,
           avatarUrl: senderProfile?.avatar_url ?? null,
-          messageId: data.id, // ✅ تمرير معرف الرسالة
+          messageId: data.id, // نحتفظ به لكن لا نستخدمه للتحديث
         });
       } catch { /* silent */ }
     };
@@ -284,6 +272,7 @@ function InAppChatBanner() {
             try {
               if (user?.id) {
                 const { markMessagesRead } = await import('@/services/chatService');
+                // ✅ هنا يتم تحديث read_at عند النقر فقط
                 await markMessagesRead(convId, user.id);
               }
             } catch { /* non-critical */ }

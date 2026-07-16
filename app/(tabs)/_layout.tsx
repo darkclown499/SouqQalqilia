@@ -1,22 +1,19 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform, View, StyleSheet, Text, Pressable } from 'react-native';
+import { Platform, View, StyleSheet, Pressable } from 'react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming,
 } from 'react-native-reanimated';
-import * as Notifications from 'expo-notifications';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useAuth, getSupabaseClient } from '@/template';
-import { useMemo, useCallback, useEffect, useRef } from 'react';
+import { useMemo, useCallback } from 'react';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { t, language, isRTL } = useLanguage();
   const isAr = language === 'ar';
-  const { user } = useAuth();
 
   // ─── TabBar Style ───────────────────────────────────────────────────────────
   const tabBarStyle = useMemo(() => ({
@@ -86,58 +83,6 @@ export default function TabLayout() {
       </View>
     );
   }, [colors, postAnimStyle, animatePost]);
-
-  // ─── Push Notifications Registration ─────────────────────────────────────
-  const registeredRef = useRef(false);
-
-  const registerForPushNotifications = useCallback(async () => {
-    if (!user || Platform.OS === 'web') return;
-    if (registeredRef.current) return;
-
-    try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-      if (finalStatus !== 'granted') {
-        console.warn('[Push] Permission not granted.');
-        return;
-      }
-
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1',
-      });
-      const token = tokenData.data;
-      if (!token) {
-        console.warn('[Push] No token received.');
-        return;
-      }
-
-      console.log('[Push] ✅ Expo Push Token:', token);
-
-      const supabase = getSupabaseClient();
-      // ✅ تم التصحيح: استخدم `push_token` بدلاً من `expo_push_token`
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ push_token: token })
-        .eq('id', user.id);
-
-      if (error) {
-        console.error('[Push] ❌ Failed to save token:', error.message);
-      } else {
-        console.log('[Push] ✅ Token saved to database.');
-        registeredRef.current = true;
-      }
-    } catch (e: any) {
-      console.error('[Push] ❌ registerForPushNotifications error:', e?.message ?? e);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    registerForPushNotifications();
-  }, [registerForPushNotifications]);
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (

@@ -154,7 +154,40 @@ export default function ChatScreen() {
     setRecordingDuration(0);
   }, []);
 
-  // ----- Audio Recording Handlers (memoized) -----
+  // ----- Handlers (memoized) ----
+  // Define handleSendMessage BEFORE handleStopRecording so it's available
+  const handleSendMessage = useCallback(async (content: string, imageUrl?: string) => {
+    if (!id || !user) return;
+    const clientId = uuidv4();
+    const tempMsg: Message = {
+      id: clientId,
+      conversation_id: id,
+      sender_id: user.id,
+      content: imageUrl ? (content || '📷 صورة') : content,
+      image_url: imageUrl ?? null,
+      message_type: imageUrl ? 'image' : 'text',
+      read_at: null,
+      created_at: new Date().toISOString(),
+      _pending: true,
+    };
+    appendMessage(tempMsg);
+
+    const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
+    if (error) {
+      updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
+      await addToOfflineQueue({ tempId: clientId, conversationId: id, content: imageUrl ? (content || '📷 صورة') : content, image_url: imageUrl, message_type: imageUrl ? 'image' : 'text', created_at: tempMsg.created_at });
+    } else {
+      if (sent) {
+        updateMessage(clientId, sent);
+        if (recipientId && recipientId !== user.id) {
+          const senderName = user.username || user.email?.split('@')[0] || 'مستخدم';
+          notifyRecipient(recipientId, senderName, content || '📷 صورة', id, !isBuyerSending);
+        }
+      }
+    }
+  }, [id, user, appendMessage, updateMessage]);
+
+  // ----- Audio Recording Handlers (now handleSendMessage is defined) -----
   const handleStartRecording = useCallback(async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
@@ -335,6 +368,8 @@ export default function ChatScreen() {
         // تحديث الحالة المحلية
         markReadLocally(user.id);
         triggerUnreadRefresh();
+        // تصفير البادج محلياً
+        await Notifications.setBadgeCountAsync(0);
       }
     } catch (e) { }
   }, [id, user?.id, markReadLocally]);
@@ -354,11 +389,13 @@ export default function ChatScreen() {
     return () => { if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current); };
   }, [messages.length, user?.id, doMark]);
 
-  // ----- useFocusEffect: mark read and dismiss notifications -----
+  // ----- useFocusEffect: mark read and dismiss notifications, clear badge -----
   useFocusEffect(
     useCallback(() => {
       doMark();
       Notifications.dismissAllNotificationsAsync().catch(() => {});
+      // إعادة تعيين البادج إلى 0 أيضاً
+      Notifications.setBadgeCountAsync(0).catch(() => {});
       return () => {};
     }, [doMark])
   );
@@ -377,43 +414,11 @@ export default function ChatScreen() {
     if (messages.length > 0 && !isSearchActive) scrollToBottom();
   }, [messages.length, isSearchActive]);
 
-  // ----- Handlers (memoized) -----
+  // ----- Other Handlers (using handleSendMessage) -----
   const handleQuickReply = useCallback((reply: string) => {
     setText(reply);
     setShowQuickReplies(false);
   }, []);
-
-  const handleSendMessage = useCallback(async (content: string, imageUrl?: string) => {
-    if (!id || !user) return;
-    const clientId = uuidv4();
-    const tempMsg: Message = {
-      id: clientId,
-      conversation_id: id,
-      sender_id: user.id,
-      content: imageUrl ? (content || '📷 صورة') : content,
-      image_url: imageUrl ?? null,
-      message_type: imageUrl ? 'image' : 'text',
-      read_at: null,
-      created_at: new Date().toISOString(),
-      _pending: true,
-    };
-    appendMessage(tempMsg);
-
-    const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
-    if (error) {
-      updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
-      await addToOfflineQueue({ tempId: clientId, conversationId: id, content: imageUrl ? (content || '📷 صورة') : content, image_url: imageUrl, message_type: imageUrl ? 'image' : 'text', created_at: tempMsg.created_at });
-    } else {
-      if (sent) {
-        updateMessage(clientId, sent);
-        // في حالة نجاح الإرسال، نقوم بإشعار المستلم إذا كان مختلفاً عن المرسل
-        if (recipientId && recipientId !== user.id) {
-          const senderName = user.username || user.email?.split('@')[0] || 'مستخدم';
-          notifyRecipient(recipientId, senderName, content || '📷 صورة', id, !isBuyerSending);
-        }
-      }
-    }
-  }, [id, user, appendMessage, updateMessage]);
 
   const handleSend = useCallback(async () => {
     const content = text.trim();
