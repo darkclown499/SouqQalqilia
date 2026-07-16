@@ -28,7 +28,6 @@ if (Platform.OS !== 'web') {
   try {
     const Notifications = require('expo-notifications');
     
-    // ── 1. معالج الإشعارات (يعمل على كل المنصات) ──
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
@@ -37,7 +36,6 @@ if (Platform.OS !== 'web') {
       }),
     });
 
-    // ── 2. ✅ إنشاء قناة إشعارات لأندرويد (ضروري للمنصات الحديثة) ──
     if (Platform.OS === 'android') {
       Notifications.setNotificationChannelAsync('messages', {
         name: 'الرسائل',
@@ -53,7 +51,7 @@ if (Platform.OS !== 'web') {
   } catch (_) {}
 }
 
-// ─── Web: defer stale-token cleanup ───────────────────────────────────────────
+// ── Web: defer stale-token cleanup ───────────────────────────────────────────
 if (Platform.OS === 'web' && typeof window !== 'undefined') {
   Promise.resolve().then(() => {
     try {
@@ -84,7 +82,6 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 }
 
 // ── Persistent shown-message-ID store (survives app restarts) ───────────────
-// Stores { msgId: shownAtTimestamp } — entries expire after 2 hours.
 const SHOWN_IDS_KEY = 'banner_shown_msg_ids_v1';
 const SHOWN_IDS_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
@@ -117,6 +114,7 @@ interface BannerPayload {
   senderName: string;
   messagePreview: string;
   avatarUrl?: string | null;
+  messageId: string; // ✅ أضفنا معرف الرسالة
 }
 
 function InAppChatBanner() {
@@ -163,6 +161,19 @@ function InAppChatBanner() {
     });
   }, [slideY, dragY]);
 
+  // ✅ دالة لتحديث read_at للرسالة في الخادم
+  const markMessageRead = useCallback(async (messageId: string) => {
+    try {
+      const supabase = getSupabaseClient();
+      await supabase
+        .from('messages')
+        .update({ read_at: new Date().toISOString() })
+        .eq('id', messageId);
+    } catch (e) {
+      console.warn('[InAppBanner] Failed to mark message read:', e);
+    }
+  }, []);
+
   const showBanner = useCallback((payload: BannerPayload) => {
     setBanner(payload);
     dragY.value = 0;
@@ -170,7 +181,10 @@ function InAppChatBanner() {
     slideY.value = withSpring(0, { damping: 18, stiffness: 280 });
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     dismissTimerRef.current = setTimeout(() => dismissBanner(), 5000);
-  }, [slideY, dragY, dismissBanner]);
+
+    // ✅ تحديث read_at فور عرض الإشعار
+    markMessageRead(payload.messageId);
+  }, [slideY, dragY, dismissBanner, markMessageRead]);
 
   // Pan gesture
   const panGesture = Gesture.Pan()
@@ -235,6 +249,7 @@ function InAppChatBanner() {
           senderName,
           messagePreview: preview,
           avatarUrl: senderProfile?.avatar_url ?? null,
+          messageId: data.id, // ✅ تمرير معرف الرسالة
         });
       } catch { /* silent */ }
     };
@@ -373,20 +388,17 @@ function isVersionOutdated(current: string, minimum: string): boolean {
   return cPat < mPat;
 }
 
-// ── Admin Guard: يسمح بالدخول من الويب فقط، ويعيد التوجيه من الأجهزة الأخرى ──
+// ── Admin Guard ──────────────────────────────────────────────────────────────
 function AdminGuard() {
   const pathname = usePathname();
-  const { user, loading: authLoading } = useAuth(); // ← استخدم loading
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
     if (!isAdminRoute) return;
-
-    if (Platform.OS === 'web') return; // السماح بالويب
-
-    if (authLoading) return; // انتظر تحميل المستخدم
-
+    if (Platform.OS === 'web') return;
+    if (authLoading) return;
     if (!user || !user.is_admin) {
       router.replace('/');
     }
