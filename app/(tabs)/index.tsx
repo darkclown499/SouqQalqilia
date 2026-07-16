@@ -831,16 +831,18 @@ export default function HomeScreen() {
     setAppliedCondition(null);
   }, []);
 
-  // ✅ FIX: Remove router.push from handleAdView (AdCard already does it)
+  // ✅ إصلاح: handleAdView الآن فقط يسجل المشاهدة ولا يقوم بالانتقال
   const handleAdView = useCallback((ad: Ad) => {
-  addToRecentlyViewed(ad);
-  setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
-  router.push(`/ad/${ad.id}`);
-}, [router]);
+    addToRecentlyViewed(ad);
+    setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
+    // لا تستدعي router.push هنا؛ AdCard هو المسؤول عن الانتقال
+  }, []);
 
-const handleRecentAdPress = useCallback((ad: Ad) => {
-  handleAdView(ad);
-}, [handleAdView]);
+  // ✅ إصلاح: handleRecentAdPress يسجل المشاهدة ثم ينتقل (بطاقات "المشاهدة مؤخرًا" ليست AdCard)
+  const handleRecentAdPress = useCallback((ad: Ad) => {
+    handleAdView(ad);
+    router.push(`/ad/${ad.id}`);
+  }, [handleAdView, router]);
 
   const handleRemoveRecent = useCallback((adId: string) => {
     removeFromRecentlyViewed(adId);
