@@ -20,6 +20,8 @@ import { Spacing, FontSize, Radius } from '@/constants/theme';
 import { Dimensions } from 'react-native';
 import { shortenUrl } from '@/utils/shortenUrl';
 import { getLocalCategories, LocalCategory } from '@/services/localCategoriesService';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const BANNER_H = 240;
@@ -574,7 +576,7 @@ export default function StoreDetailScreen() {
     }
   }}
 >
-  <MaterialIcons name="whatsapp" size={22} color="#fff" style={s.whatsappIcon} />
+  <MaterialCommunityIcons name="whatsapp" size={22} color="#fff" style={s.whatsappIcon} />
   <Text style={s.whatsappBtnText}>
     {isAr ? 'تواصل واتساب' : 'WhatsApp'}
   </Text>
