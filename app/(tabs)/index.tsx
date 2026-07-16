@@ -981,10 +981,9 @@ const handleRecentAdPress = useCallback((ad: Ad) => {
         ) : null}
       </View>
     ) : null}
-  </Pressable>  {/* ✅ تم إغلاق Pressable هنا */}
+  </Pressable>
 ) : null}
 
-{/* ✅ featuredStoresNode يظهر خارج البانر */}
 {featuredStoresNode}
 
       {recentlyViewed.length > 0 ? (
