@@ -31,10 +31,28 @@ async function saveMyAdsCache(data: Ad[]): Promise<void> {
   } catch { /* non-critical */ }
 }
 
-export function useAds(params?: { categoryId?: string; search?: string; maxPrice?: number; minPrice?: number; condition?: 'new' | 'used' | null; location?: string; sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'boosted' }) {
-  const initialAds = !params?.categoryId && !params?.search && !params?.maxPrice && !params?.minPrice && !params?.condition && !params?.location && !params?.sortBy
-    ? (getAdsCache()?.data ?? [])
-    : [];
+export function useAds(params?: {
+  categoryId?: string;
+  search?: string;
+  maxPrice?: number;
+  minPrice?: number;
+  condition?: 'new' | 'used' | null;
+  location?: string;
+  sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'boosted';
+}) {
+  // Extract individual deps to avoid object-reference re-renders
+  const categoryId = params?.categoryId;
+  const search = params?.search;
+  const maxPrice = params?.maxPrice;
+  const minPrice = params?.minPrice;
+  const condition = params?.condition;
+  const location = params?.location;
+  const sortBy = params?.sortBy;
+
+  const isDefault =
+    !categoryId && !search && !maxPrice && !minPrice && !condition && !location && (!sortBy || sortBy === 'newest');
+
+  const initialAds = isDefault ? (getAdsCache()?.data ?? []) : [];
   const [ads, setAds] = useState<Ad[]>(initialAds);
   const [loading, setLoading] = useState(initialAds.length === 0);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -43,10 +61,14 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
   const regularCountRef = useRef(0);
   const boostCountRef = useRef(0);
 
+  // Use a ref to hold the latest params for loadMore and cache invalidation callbacks
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+
   const load = useCallback(async (overrideParams?: typeof params) => {
     setError(null);
-    const p = overrideParams ?? params;
-    const isDefault = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
+    const p = overrideParams ?? paramsRef.current;
+    const isDefaultLoad = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
 
     if (_activeController) { try { _activeController.abort(); } catch {} }
     _activeController = new AbortController();
@@ -56,7 +78,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     boostCountRef.current = 0;
     setHasMore(true);
 
-    const cached = isDefault ? getAdsCache() : null;
+    const cached = isDefaultLoad ? getAdsCache() : null;
     if (cached) {
       setAds(cached.data);
       setHasMore(cached.data.length === PAGE_SIZE);
@@ -81,7 +103,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     } catch (e: any) {
       fetchError = e?.message ?? 'Connection error.';
       Logger.error('useAds', 'load() network error', e instanceof Error ? e : new Error(String(e)));
-      if (isDefault) {
+      if (isDefaultLoad) {
         const staleCache = getAdsCache();
         if (staleCache && staleCache.data.length > 0) setAds(staleCache.data);
       }
@@ -90,7 +112,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     if (signal.aborted) return;
 
     if (!fetchError && fetchedData.length > 0) {
-      if (isDefault) setAdsCache(fetchedData);
+      if (isDefaultLoad) setAdsCache(fetchedData);
       setAds(fetchedData);
     } else if (fetchedData.length === 0 && !fetchError) {
       setAds([]);
@@ -106,25 +128,23 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     if (fetchError) Logger.warn('useAds', 'fetchAds returned error', { error: fetchError });
     setError(fetchError);
     setLoading(false);
-  }, [params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);
+  }, [categoryId, search, maxPrice, minPrice, condition, location, sortBy]); // stable deps now
 
+  // Cache invalidation – uses load with current params
   useEffect(() => {
     const unsub = subscribeToCacheInvalidation(() => {
-      const p = params;
-      const isDefault =
-        !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice &&
-        !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
-      if (isDefault) load();
+      const p = paramsRef.current;
+      const isDefaultNow = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
+      if (isDefaultNow) load();
     });
     return unsub;
   }, [load]);
 
+  // App state change – refresh stale cache
   useEffect(() => {
-    const p = params;
-    const isDefault =
-      !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice &&
-      !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
-    if (!isDefault) return;
+    const p = paramsRef.current;
+    const isDefaultNow = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
+    if (!isDefaultNow) return;
 
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
@@ -138,18 +158,18 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     return () => sub.remove();
   }, [load]);
 
-  const loadMore = useCallback(async (currentParams?: typeof params) => {
+  const loadMore = useCallback(async (overrideParams?: typeof params) => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
-    const p = currentParams ?? params;
-    const sortBy = p?.sortBy ?? 'newest';
+    const p = overrideParams ?? paramsRef.current;
+    const sort = p?.sortBy ?? 'newest';
 
     let data: Ad[] = [];
     try {
       const result = await fetchAds({
         ...p,
         condition: p?.condition ?? undefined,
-        sortBy,
+        sortBy: sort,
         limit: PAGE_SIZE,
         offset: regularCountRef.current,
       });
@@ -182,7 +202,7 @@ export function useAds(params?: { categoryId?: string; search?: string; maxPrice
     );
     setHasMore(returnedRegulars.length >= PAGE_SIZE);
     setLoadingMore(false);
-  }, [loadingMore, hasMore, params?.categoryId, params?.search, params?.maxPrice, params?.minPrice, params?.condition, params?.location, params?.sortBy]);
+  }, [loadingMore, hasMore, categoryId, search, maxPrice, minPrice, condition, location, sortBy]);
 
   return { ads, loading, loadingMore, hasMore, error, load, loadMore, setAds };
 }
