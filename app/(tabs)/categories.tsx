@@ -1,7 +1,16 @@
-import React, { useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import React, { useCallback, useRef, useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+  TextInput,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
 import { CategoryCard, EmptyState } from '@/components';
 import { SkeletonCategoriesGrid } from '@/components/feature/SkeletonCard';
 import { useCategories } from '@/hooks/useCategories';
@@ -16,27 +25,38 @@ export default function CategoriesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { t, language } = useLanguage();
-  // ✅ إضافة refetch من الـ Hook (افترض أن الـ Hook يوفرها)
   const { categories, loading, error, refetch } = useCategories();
   const { numColumns, hPad } = useResponsive();
+
+  // ✅ حالة البحث
+  const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   // منع النقر المتكرر
   const isNavigating = useRef(false);
 
+  // ✅ تصفية التصنيفات بناءً على البحث
+  const filteredCategories = useMemo(() => {
+    if (!searchQuery.trim()) return categories ?? [];
+    const query = searchQuery.trim().toLowerCase();
+    return (categories ?? []).filter((cat) => {
+      const name = getCategoryName(cat, language);
+      return name.toLowerCase().includes(query);
+    });
+  }, [categories, searchQuery, language]);
+
   const handlePress = useCallback(
     (cat: any) => {
-      // ✅ منع النقر إذا كان القفل مفعّلاً
       if (isNavigating.current) return;
       isNavigating.current = true;
 
       const localizedName = getCategoryName(cat, language);
-      
-      // ✅ التنقل (router.push لا يعيد Promise في الإصدارات الحديثة)
       router.push(
-        `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(localizedName)}&type=product`
+        `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(
+          localizedName
+        )}&type=product`
       );
 
-      // ✅ فتح القفل بعد 300 مللي لمنع النقر المزدوج بشكل فعال
       setTimeout(() => {
         isNavigating.current = false;
       }, 300);
@@ -53,23 +73,37 @@ export default function CategoriesScreen() {
     [handlePress]
   );
 
+  // ✅ دالة التحديث (Pull-to-Refresh)
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  }, [refetch]);
+
   // عرض خطأ إذا فشل التحميل مع زر إعادة المحاولة
   if (error) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: colors.background, paddingTop: insets.top },
+        ]}
+      >
         <View style={[styles.header, { backgroundColor: colors.primary }]}>
           <View>
             <Text style={styles.headerSub}>{t.browse}</Text>
             <Text style={styles.subtitle}>{t.allCategories}</Text>
+          </View>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{categories?.length ?? 0}</Text>
           </View>
         </View>
         <View style={[styles.errorContainer, { backgroundColor: colors.error + '15' }]}>
           <Text style={[styles.errorText, { color: colors.error }]}>
             {t.errorLoadingCategories || 'حدث خطأ أثناء تحميل التصنيفات'}
           </Text>
-          {/* ✅ إضافة زر إعادة المحاولة */}
-          <TouchableOpacity 
-            style={[styles.retryButton, { backgroundColor: colors.primary }]} 
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
             onPress={refetch}
           >
             <Text style={styles.retryText}>{t.retry || 'إعادة المحاولة'}</Text>
@@ -80,40 +114,93 @@ export default function CategoriesScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: colors.background, paddingTop: insets.top },
+      ]}
+    >
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View>
           <Text style={styles.headerSub}>{t.browse}</Text>
           <Text style={styles.subtitle}>{t.allCategories}</Text>
         </View>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{categories.length}</Text>
+          <Text style={styles.badgeText}>{categories?.length ?? 0}</Text>
         </View>
+      </View>
+
+      {/* ✅ شريط البحث */}
+      <View
+        style={[
+          styles.searchContainer,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <MaterialIcons name="search" size={20} color={colors.textMuted} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.textPrimary }]}
+          placeholder={t.searchCategories || 'ابحث في التصنيفات...'}
+          placeholderTextColor={colors.textMuted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8}>
+            <MaterialIcons name="close" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading && categories.length === 0 ? (
         <SkeletonCategoriesGrid count={10} />
       ) : (
         <FlatList
-          // ✅ إضافة ?? [] لمنع التعطل إذا كانت البيانات null
-          data={categories ?? []}
-          // ✅ تحويل الـ ID إلى String لضمان التفرد
+          data={filteredCategories}
           keyExtractor={(item) => String(item.id)}
           numColumns={numColumns}
           key={numColumns}
           renderItem={renderItem}
           contentContainerStyle={[
             styles.gridContent,
-            { paddingHorizontal: hPad, paddingVertical: Spacing.md, gap: Spacing.md },
+            {
+              paddingHorizontal: hPad,
+              paddingVertical: Spacing.md,
+              gap: Spacing.md,
+              paddingBottom: insets.bottom + 20,
+            },
           ]}
           showsVerticalScrollIndicator={false}
           windowSize={5}
           maxToRenderPerBatch={12}
           initialNumToRender={12}
           removeClippedSubviews={true}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
           ListEmptyComponent={
             !loading ? (
-              <EmptyState icon="category" title={t.noCategories} subtitle={t.noCategoriesSub} />
+              <EmptyState
+                icon={searchQuery.trim() ? 'search-off' : 'category'}
+                title={
+                  searchQuery.trim()
+                    ? t.noSearchResults || 'لا توجد نتائج'
+                    : t.noCategories || 'لا توجد تصنيفات'
+                }
+                subtitle={
+                  searchQuery.trim()
+                    ? t.noSearchResultsSub ||
+                      'جرب كلمة بحث مختلفة'
+                    : t.noCategoriesSub || 'سيتم إضافة التصنيفات قريباً'
+                }
+              />
             ) : null
           }
         />
@@ -155,9 +242,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: FontSize.lg,
   },
-  // ✅ تم تغيير الاسم من 'grid' إلى 'gridContent' لتجنب الـ Style الفارغ
+  // ✅ شريط البحث
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: Spacing.lg,
+    marginVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FontSize.md,
+    fontWeight: '500',
+    paddingVertical: 0,
+  },
   gridContent: {
-    // جميع الخصائص موجودة في contentContainerStyle مباشرة
+    // الخصائص تُمرر في contentContainerStyle مباشرة
   },
   cardWrapper: {
     flex: 1,
@@ -175,7 +279,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: Spacing.md,
   },
-  // ✅ إضافة ستايلات زر إعادة المحاولة
   retryButton: {
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
