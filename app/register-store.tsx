@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, Pressable, TextInput,
   KeyboardAvoidingView, Platform, Modal, ActivityIndicator, Linking,
@@ -18,6 +18,9 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
 const ADMIN_WHATSAPP = '972559886886';
 
+// ── ثابت لتجنب إعادة الإنشاء ────────────────────────────────────────────────────
+const ABSOLUTE_FILL = StyleSheet.absoluteFill;
+
 // ── Qalqilya region locations ─────────────────────────────────────────────────
 const QALQILYA_LOCATIONS = [
   'مدينة قلقيلية', 'عزون', 'كفر لاقف', 'كفر ثلث', 'النبي إلياس',
@@ -33,9 +36,15 @@ function TimeInput({
 }: { label: string; value: string; onChange: (v: string) => void; colors: any; isRTL: boolean }) {
   const handleChange = (raw: string) => {
     const digits = raw.replace(/\D/g, '').slice(0, 4);
-    if (digits.length <= 2) { onChange(digits); return; }
-    const h = parseInt(digits.slice(0, 2));
-    const m = parseInt(digits.slice(2, 4));
+    if (digits.length === 0) { onChange(''); return; }
+    if (digits.length <= 2) {
+      const h = parseInt(digits, 10);
+      if (h > 23) return;
+      onChange(digits);
+      return;
+    }
+    const h = parseInt(digits.slice(0, 2), 10);
+    const m = parseInt(digits.slice(2, 4), 10);
     if (h > 23 || m > 59) return;
     onChange(`${digits.slice(0, 2)}:${digits.slice(2)}`);
   };
@@ -76,7 +85,7 @@ function ImagePickerTile({ label, icon, uri, loading, onPress, colors, isRTL }: 
     >
       {uri ? (
         <>
-          <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+          <Image source={{ uri }} style={ABSOLUTE_FILL} contentFit="cover" transition={200} />
           <View style={ipt.overlay} />
           <View style={ipt.editBadge}><MaterialIcons name="edit" size={14} color="#fff" /></View>
         </>
@@ -117,6 +126,7 @@ export default function RegisterStoreScreen() {
   const { colors } = useTheme();
   const { language, isRTL } = useLanguage();
   const isAr = language === 'ar';
+  const isMounted = useRef(true);
 
   // ── Store categories ──────────────────────────────────────────────────────
   const [storeCategories, setStoreCategories] = useState<StoreCategory[]>([]);
@@ -124,16 +134,31 @@ export default function RegisterStoreScreen() {
   const [catsError, setCatsError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchStoreCategories()
+    isMounted.current = true;
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    setCatsLoading(true);
+    fetchStoreCategories({ signal })
       .then(res => {
+        if (!isMounted.current) return;
         setStoreCategories(res.data);
         setCatsError(null);
       })
       .catch(err => {
-        console.error("Error loading categories:", err);
+        if (!isMounted.current) return;
+        if (err.name === 'AbortError') return;
+        console.error('Error loading categories:', err);
         setCatsError(isAr ? 'فشل تحميل التصنيفات' : 'Failed to load categories');
       })
-      .finally(() => setCatsLoading(false));
+      .finally(() => {
+        if (isMounted.current) setCatsLoading(false);
+      });
+
+    return () => {
+      isMounted.current = false;
+      controller.abort();
+    };
   }, [isAr]);
 
   // ── Form state ──────────────────────────────────────────────────────────────
@@ -177,9 +202,9 @@ export default function RegisterStoreScreen() {
   }, [selectedLocation, locationDetail]);
 
   // ✅ دالة لتنظيف الرقم (إزالة كل ما ليس رقم، وإزالة الأصفار الزائدة من البداية)
-  const cleanWhatsAppNumber = (text: string) => {
+  const cleanWhatsAppNumber = useCallback((text: string) => {
     return text.replace(/[^0-9]/g, '').replace(/^0+/, '');
-  };
+  }, []);
 
   // ── معالجات اختيار الصور ─────────────────────────────────────────────────
   const handlePickLogo = useCallback(async () => {
@@ -245,6 +270,18 @@ export default function RegisterStoreScreen() {
     );
   }, [storeCategoryId, colors, rtl, textAlign, language]);
 
+  // ✅ التحقق من صحة الوقت
+  const isValidTime = (t: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+
+  const isTimeValid = useMemo(() => {
+    if (!isValidTime(openingTime) || !isValidTime(closingTime)) return false;
+    const [oh, om] = openingTime.split(':').map(Number);
+    const [ch, cm] = closingTime.split(':').map(Number);
+    const openMinutes = oh * 60 + om;
+    const closeMinutes = ch * 60 + cm;
+    return openMinutes < closeMinutes;
+  }, [openingTime, closingTime]);
+
   // ── دالة الإرسال ──────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (!user) {
@@ -270,9 +307,15 @@ export default function RegisterStoreScreen() {
     if (!logoUri) return showAlert('مطلوب', 'يرجى إضافة شعار المتجر (إجباري)');
     if (!bannerUri) return showAlert('مطلوب', 'يرجى إضافة صورة غلاف المتجر (إجباري)');
 
-    const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
-    if (!timeRe.test(openingTime) || !timeRe.test(closingTime)) {
+    if (!isValidTime(openingTime) || !isValidTime(closingTime)) {
       return showAlert('توقيت غير صحيح', 'يرجى إدخال التوقيت بصيغة HH:MM (مثال: 08:00)');
+    }
+
+    if (!isTimeValid) {
+      return showAlert(
+        isAr ? 'توقيت غير صحيح' : 'Invalid Time',
+        isAr ? 'يجب أن يكون وقت الإغلاق بعد وقت الفتح' : 'Closing time must be after opening time'
+      );
     }
 
     setLoading(true);
@@ -281,19 +324,32 @@ export default function RegisterStoreScreen() {
       let logoUrl = '';
       let bannerUrl = '';
 
+      // ✅ رفع الصور بالتوازي
+      const uploadPromises: Promise<void>[] = [];
+
       if (logoBase64 && logoUri) {
-        const res = await uploadImage(logoBase64, user.id, 'store-logo', logoUri);
-        if (res.error) throw new Error(res.error);
-        if (!res.url) throw new Error('فشل رفع شعار المتجر');
-        logoUrl = res.url;
+        uploadPromises.push(
+          (async () => {
+            const res = await uploadImage(logoBase64, user.id, 'store-logo', logoUri);
+            if (res.error) throw new Error(res.error);
+            if (!res.url) throw new Error(isAr ? 'فشل رفع شعار المتجر' : 'Failed to upload logo');
+            logoUrl = res.url;
+          })()
+        );
       }
 
       if (bannerBase64 && bannerUri) {
-        const res = await uploadImage(bannerBase64, user.id, 'store-banner', bannerUri);
-        if (res.error) throw new Error(res.error);
-        if (!res.url) throw new Error('فشل رفع غلاف المتجر');
-        bannerUrl = res.url;
+        uploadPromises.push(
+          (async () => {
+            const res = await uploadImage(bannerBase64, user.id, 'store-banner', bannerUri);
+            if (res.error) throw new Error(res.error);
+            if (!res.url) throw new Error(isAr ? 'فشل رفع غلاف المتجر' : 'Failed to upload banner');
+            bannerUrl = res.url;
+          })()
+        );
       }
+
+      await Promise.all(uploadPromises);
 
       const { data: storeData, error } = await supabase
         .from('stores')
@@ -323,15 +379,17 @@ export default function RegisterStoreScreen() {
 
       if (error) throw new Error(error.message);
 
-      const finalName = storeData?.name_ar || storeData?.name || storeName;
+      if (!storeData) throw new Error(isAr ? 'فشل إنشاء المتجر' : 'Failed to create store');
+
+      const finalName = storeData.name_ar || storeData.name || storeName;
       setSubmittedStore({ name: finalName, whatsapp: fullWhatsApp });
       setSuccessVisible(true);
     } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e.message ?? 'Failed to submit');
+      showAlert(isAr ? 'خطأ' : 'Error', e.message ?? (isAr ? 'فشل الإرسال' : 'Submission failed'));
     } finally {
       setLoading(false);
     }
-  }, [user, nameAr, storeCategoryId, selectedLocation, finalAddress, whatsappPrefix, whatsappNumber, openingTime, closingTime, logoBase64, logoUri, bannerBase64, bannerUri, isAr, showAlert]);
+  }, [user, nameAr, storeCategoryId, selectedLocation, finalAddress, whatsappPrefix, whatsappNumber, openingTime, closingTime, logoBase64, logoUri, bannerBase64, bannerUri, isAr, showAlert, isTimeValid, isValidTime]);
 
   const handleSuccessWhatsApp = useCallback(() => {
     if (!submittedStore || !user) return;
@@ -344,6 +402,10 @@ export default function RegisterStoreScreen() {
     setSuccessVisible(false);
     router.back();
   }, [router]);
+
+  // ── keyExtractor للمناطق والتصنيفات ─────────────────────────────────────
+  const locationKeyExtractor = useCallback((item: string) => item, []);
+  const categoryKeyExtractor = useCallback((item: StoreCategory) => item.id, []);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -532,6 +594,14 @@ export default function RegisterStoreScreen() {
             <Text style={[s.timeHint, { color: colors.textMuted, textAlign }]}>
               {isAr ? 'استخدم نظام 24 ساعة — مثال: 08:00 للثامنة صباحاً' : 'Use 24h format — e.g. 08:00 for 8am, 22:00 for 10pm'}
             </Text>
+            {!isTimeValid && openingTime && closingTime && (
+              <View style={[s.timeWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+                <MaterialIcons name="warning" size={14} color="#D97706" />
+                <Text style={s.timeWarningText}>
+                  {isAr ? '⚠️ وقت الإغلاق يجب أن يكون بعد وقت الفتح' : '⚠️ Closing time must be after opening time'}
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* ── WhatsApp (مع أزرار البادئة) ── */}
@@ -627,7 +697,7 @@ export default function RegisterStoreScreen() {
               </Text>
               <FlatList
                 data={QALQILYA_LOCATIONS}
-                keyExtractor={(item) => item}
+                keyExtractor={locationKeyExtractor}
                 contentContainerStyle={cm.list}
                 renderItem={renderLocationItem}
               />
@@ -654,7 +724,7 @@ export default function RegisterStoreScreen() {
               </Text>
               <FlatList
                 data={storeCategories}
-                keyExtractor={(item) => item.id}
+                keyExtractor={categoryKeyExtractor}
                 contentContainerStyle={cm.list}
                 renderItem={renderCategoryItem}
               />
@@ -753,6 +823,12 @@ const s = StyleSheet.create({
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   timeDivider: { width: 1, height: 40, borderRadius: 99 },
   timeHint: { fontSize: FontSize.xs, lineHeight: 17 },
+  timeWarning: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    padding: 10, borderRadius: Radius.md, borderWidth: 1.5,
+    marginTop: 4,
+  },
+  timeWarningText: { flex: 1, fontSize: FontSize.xs, lineHeight: 17, fontWeight: '600', color: '#92400E' },
 
   submitBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
