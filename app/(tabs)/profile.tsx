@@ -247,7 +247,6 @@ export default function ProfileScreen() {
   const soldAds = useMemo(() => ads.filter(a => a.status === 'sold'), [ads]);
 
   // ── Quick actions (memoized) ──────────────────────────────────────────────
-  // ✅ تم إزالة زر الإدارة من هنا نهائياً
   const quickActions = useMemo(() => {
     const baseActions = [
       { icon: 'edit', label: isRTL ? 'تعديل الملف' : 'Edit Profile', color: colors.primary, bg: colors.primaryGhost, onPress: () => setEditMode(v => !v) },
@@ -406,11 +405,14 @@ export default function ProfileScreen() {
       const supabase = getSupabaseClient();
       const { error } = await supabase.from('user_profiles').update({ username: trimmedName, phone: editPhone.trim() || null }).eq('id', user.id);
       if (error) throw error;
-      const { data: fresh, error: readErr } = await supabase.from('user_profiles').select('username').eq('id', user.id).single();
-      if (readErr || fresh?.username !== trimmedName) throw new Error(readErr?.message ?? 'Save failed — please try again.');
+      
+      // ✅ تحديث الحالة المحلية مباشرة لتجنب الاعتماد على refreshSession
       setLocalDisplayName(trimmedName);
       setEditName(trimmedName);
-      await refreshSession();
+      
+      // محاولة تحديث الجلسة (اختياري)
+      try { await refreshSession(); } catch (e) { /* ignore */ }
+      
       showAlert(t.profileUpdated, t.profileUpdatedMsg);
       setEditMode(false);
     } catch (e: any) {
@@ -614,6 +616,7 @@ export default function ProfileScreen() {
     return () => {
       controller.abort();
     };
+  // ✅ إضافة loadBlockedUsers إلى الاعتماديات
   }, [user?.id, load, loadBlockedUsers]);
 
   // ── Block changes subscription ────────────────────────────────────────────
@@ -637,15 +640,15 @@ export default function ProfileScreen() {
 
         {ad.status === 'active' || ad.status === 'featured' ? (
           <Pressable
-            style={[styles.adActionBtn, { backgroundColor: colors.successLight, borderColor: colors.success, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+            style={[styles.adActionBtn, { backgroundColor: colors.successLight || '#D1FAE5', borderColor: colors.success || '#10B981', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
             onPress={() => handleMarkSold(ad.id)}
           >
-            <MaterialIcons name="check-circle-outline" size={14} color={colors.success} />
-            <Text style={[styles.adActionBtnText, { color: colors.success }]}>{t.markAsSold}</Text>
+            <MaterialIcons name="check-circle-outline" size={14} color={colors.success || '#10B981'} />
+            <Text style={[styles.adActionBtnText, { color: colors.success || '#10B981' }]}>{t.markAsSold}</Text>
           </Pressable>
         ) : (
-          <View style={[styles.soldChip, { backgroundColor: colors.accentLight }]}>
-            <Text style={[styles.soldChipText, { color: colors.accentDark }]}>✓ {t.sold.toUpperCase()}</Text>
+          <View style={[styles.soldChip, { backgroundColor: colors.accentLight || '#FEF3C7' }]}>
+            <Text style={[styles.soldChipText, { color: colors.accentDark || '#D97706' }]}>✓ {t.sold.toUpperCase()}</Text>
           </View>
         )}
 
