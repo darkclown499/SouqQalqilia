@@ -415,7 +415,7 @@ export default function HomeScreen() {
   const { colors, isDark } = useTheme();
   const { t, language, isRTL } = useLanguage();
   const { user } = useAuth();
-  const { showAlert } = useAlert(); // ✅ إضافة useAlert
+  const { showAlert } = useAlert();
   const { categories } = useCategories();
   const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
   const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
@@ -640,15 +640,18 @@ export default function HomeScreen() {
     setFilterVisible(false);
   }, []);
 
+  // ✅ FIX: Add navigation to ad detail page
   const handleAdView = useCallback((ad: Ad) => {
     addToRecentlyViewed(ad);
     setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
-  }, []);
+    // ✅ الانتقال إلى صفحة تفاصيل الإعلان
+    router.push(`/ad/${ad.id}`);
+  }, [router]);
 
   const handleRecentAdPress = useCallback((ad: Ad) => {
     handleAdView(ad);
-    router.push(`/ad/${ad.id}`);
-  }, [handleAdView, router]);
+    // already navigates, so we can just call handleAdView
+  }, [handleAdView]);
 
   const handleRemoveRecent = useCallback((adId: string) => {
     removeFromRecentlyViewed(adId);
