@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform, AppState, AppStateStatus } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import {
   fetchMessages,
   fetchMessagesSince,
@@ -11,6 +12,21 @@ import {
   savePushToken,
   getOfflineQueue,
   saveOfflineQueue,
+  getCachedConversations,
+  cacheConversations,
+  clearConversationsCache,
+  getCachedMessages,
+  cacheMessages,
+  clearConversationCache,
+  archiveConversation,
+  unarchiveConversation,
+  markAllMessagesRead,
+  getUnreadCount,
+  deleteMessageForEveryone,
+  deleteMessageForUser,
+  forwardMessage as forwardMessageService,
+  sendTypingIndicator,
+  trackChatEvent,
 } from '@/services/chatService';
 import {
   mergeWithLocalReadState,
@@ -112,6 +128,8 @@ export interface UseMessagesResult {
   markReadLocally: (currentUserId: string) => void;
   markDeliveredLocally: (currentUserId: string) => void;
   removeMessage: (id: string) => void;
+  deleteMessage: (messageId: string, forEveryone?: boolean) => Promise<void>;
+  forwardMessage: (messageId: string, targetConversationId: string) => Promise<Message | null>;
 }
 
 export function useMessages(
@@ -132,6 +150,15 @@ export function useMessages(
   const failureCountRef = useRef(0);
   const isAppActiveRef = useRef(true);
   const isScreenFocusedRef = useRef(true);
+  const isMountedRef = useRef(true);
+
+  // مراقبة الاتصال
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected !== false);
+    });
+    return unsub;
+  }, []);
 
   // ─── Realtime subscription for read receipts ──────────────────────────────
   // ❌ DISABLED because the backend does not support Realtime.
@@ -197,6 +224,8 @@ export function useMessages(
           if (trulyNew.length === 0) return updated;
           const merged = [...updated, ...trulyNew];
           lastCreatedAtRef.current = merged[merged.length - 1].created_at;
+          // تخزين مؤقت
+          cacheMessages(conversationId, merged).catch(() => {});
           return merged;
         });
 
@@ -229,6 +258,7 @@ export function useMessages(
           if (currentUserId) {
             markMessagesDelivered(conversationId, currentUserId).catch(() => {});
           }
+          cacheMessages(conversationId, data).catch(() => {});
         }
       }
 
@@ -248,70 +278,92 @@ export function useMessages(
     const { data } = await fetchMessages(conversationId);
     setMessages(data);
     if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
+    cacheMessages(conversationId, data).catch(() => {});
     setRefreshing(false);
   }, [conversationId]);
 
-  const appendMessage = useCallback((msg: Message) => {
-    setMessages(prev => {
-      if (prev.find(m => m.id === msg.id)) return prev;
-      return [...prev, msg];
-    });
-  }, []);
+  // ── تحميل أولي مع الكاش ──
+  const loadInitial = useCallback(async () => {
+    if (!conversationId) return;
+    setLoading(true);
+    // عرض الكاش أولاً
+    const cached = await getCachedMessages(conversationId);
+    if (cached && cached.length > 0 && isMountedRef.current) {
+      setMessages(cached);
+      lastCreatedAtRef.current = cached[cached.length - 1]?.created_at ?? null;
+      setLoading(false);
+    }
+    // جلب من الخادم
+    const { data, error } = await fetchMessages(conversationId);
+    if (error) {
+      console.warn('fetchMessages error:', error);
+      setLoading(false);
+      return;
+    }
+    if (data.length > 0) {
+      setMessages(data);
+      lastCreatedAtRef.current = data[data.length - 1].created_at;
+      cacheMessages(conversationId, data).catch(() => {});
+      if (currentUserId) {
+        markMessagesDelivered(conversationId, currentUserId).catch(() => {});
+      }
+    }
+    setLoading(false);
+  }, [conversationId, currentUserId]);
 
-  const updateMessage = useCallback((tempId: string, real: Message) => {
-    setMessages(prev => {
-      const updated = prev.map(m => m.id === tempId ? real : m);
-      const sorted = [...updated].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  // ─── إضافة دوال جديدة ──
+  const deleteMessage = useCallback(async (messageId: string, forEveryone: boolean = false) => {
+    if (!conversationId || !currentUserId) return;
+    if (forEveryone) {
+      const { error } = await deleteMessageForEveryone(messageId, conversationId);
+      if (!error) {
+        setMessages(prev => prev.filter(m => m.id !== messageId));
+        // تحديث cache
+        const updated = messages.filter(m => m.id !== messageId);
+        cacheMessages(conversationId, updated).catch(() => {});
+        // إعادة تحميل last_message عن طريق إعادة تحميل المحادثة (سيتم في UI)
+      }
+    } else {
+      await deleteMessageForUser(messageId, currentUserId);
+      setMessages(prev =>
+        prev.map(m => m.id === messageId ? { ...m, deleted_by: currentUserId } : m)
       );
-      lastCreatedAtRef.current = sorted[sorted.length - 1]?.created_at ?? lastCreatedAtRef.current;
-      return updated;
-    });
-  }, []);
+      // تحديث cache
+      const updated = messages.map(m =>
+        m.id === messageId ? { ...m, deleted_by: currentUserId } : m
+      );
+      cacheMessages(conversationId, updated).catch(() => {});
+    }
+  }, [conversationId, currentUserId, messages]);
 
-  const markDeliveredLocally = useCallback((uid: string) => {
-    setMessages(prev =>
-      prev.map(m =>
-        m.sender_id !== uid && !m.delivered_at
-          ? { ...m, delivered_at: new Date().toISOString() }
-          : m
-      )
-    );
-  }, []);
-
-  const markReadLocally = useCallback((uid: string) => {
-    setMessages(prev =>
-      prev.map(m =>
-        m.sender_id !== uid && !m.read_at
-          ? { ...m, read_at: new Date().toISOString() }
-          : m
-      )
-    );
-  }, []);
-
-  const removeMessage = useCallback((id: string) => {
-    setMessages(prev => prev.filter(m => m.id !== id));
-  }, []);
+  const forwardMessage = useCallback(async (messageId: string, targetConversationId: string) => {
+    const result = await forwardMessageService(messageId, targetConversationId);
+    if (result.data) {
+      // يمكن إضافة الرسالة إلى القائمة المحلية إذا كانت نفس المحادثة
+      if (targetConversationId === conversationId) {
+        setMessages(prev => [...prev, result.data!]);
+        cacheMessages(conversationId, [...messages, result.data!]).catch(() => {});
+      }
+      return result.data;
+    }
+    return null;
+  }, [conversationId, messages]);
 
   // ─── Main effect ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!conversationId) return;
+    isMountedRef.current = true;
+    if (!conversationId) {
+      setLoading(false);
+      return;
+    }
 
-    setLoading(true);
+    loadInitial();
+
     currentPollDelayRef.current = BASE_POLL_MS;
     failureCountRef.current = 0;
 
-    fetchMessages(conversationId).then(({ data }) => {
-      setMessages(data);
-      if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
-      setLoading(false);
-      if (currentUserId && data.length > 0) {
-        markMessagesDelivered(conversationId, currentUserId).catch(() => {});
-      }
-    });
-
     intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
-    const cleanupRealtime = setupRealtimeSubscription(); // no-op
+    const cleanupRealtime = setupRealtimeSubscription();
 
     const handleAppState = (state: AppStateStatus) => {
       const wasActive = isAppActiveRef.current;
@@ -331,13 +383,14 @@ export function useMessages(
     const appStateSub = AppState.addEventListener('change', handleAppState);
 
     return () => {
+      isMountedRef.current = false;
       if (intervalRef.current) clearInterval(intervalRef.current);
       appStateSub.remove();
       cleanupRealtime();
       lastCreatedAtRef.current = null;
       pollingRef.current = false;
     };
-  }, [conversationId, currentUserId, setupRealtimeSubscription]);
+  }, [conversationId, currentUserId, loadInitial, setupRealtimeSubscription]);
 
   useEffect(() => {
     if (isBuyer === null) return;
@@ -360,6 +413,8 @@ export function useMessages(
     markReadLocally,
     markDeliveredLocally,
     removeMessage,
+    deleteMessage,
+    forwardMessage,
   };
 }
 
@@ -371,13 +426,12 @@ export function triggerUnreadRefresh(): void {
   _globalRefreshUnread?.().catch(() => {});
 }
 
-// ─── Helper to enrich conversations with user names (محسّنة) ──────────────────
+// ─── Helper to enrich conversations with user names ──────────────────────────
 async function enrichConversationsWithNames(
   conversations: Conversation[]
 ): Promise<Conversation[]> {
   if (!conversations.length) return conversations;
 
-  // Collect all user IDs from conversations
   const userIds = new Set<string>();
   conversations.forEach(c => {
     if (c.buyer_id) userIds.add(c.buyer_id);
@@ -401,7 +455,6 @@ async function enrichConversationsWithNames(
     const profileMap = new Map<string, any>();
     profiles?.forEach(p => profileMap.set(p.id, p));
 
-    // Enrich each conversation with buyer_name and seller_name
     return conversations.map(conv => {
       const buyerProfile = conv.buyer_id ? profileMap.get(conv.buyer_id) : null;
       const sellerProfile = conv.seller_id ? profileMap.get(conv.seller_id) : null;
@@ -420,14 +473,36 @@ async function enrichConversationsWithNames(
 }
 
 // ─── useConversations ─────────────────────────────────────────────────────────
-export function useConversations(options?: { enabled?: boolean }) {
+export interface UseConversationsResult {
+  conversations: Conversation[];
+  loading: boolean;
+  unreadCount: number;
+  isOnline: boolean;
+  reload: () => Promise<void>;
+  refreshUnread: () => Promise<void>;
+  markAllRead: () => Promise<void>;
+  archive: (conversationId: string) => Promise<void>;
+  unarchive: (conversationId: string) => Promise<void>;
+}
+
+export function useConversations(options?: { enabled?: boolean }): UseConversationsResult {
   const { enabled = true } = options || {};
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(true);
   const prevUnreadRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const _storeVersion = useChatReadStore();
+  const isMountedRef = useRef(true);
+
+  // مراقبة الاتصال
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected !== false);
+    });
+    return unsub;
+  }, []);
 
   const setBadge = useCallback(async (count: number) => {
     if (!Notifications || Platform.OS === 'web') return;
@@ -441,27 +516,21 @@ export function useConversations(options?: { enabled?: boolean }) {
     try {
       const convResult = await fetchMyConversations();
       if (!isMountedRef.current) return;
-      // Enrich with names
       const enriched = await enrichConversationsWithNames(convResult.data);
       const merged = mergeWithLocalReadState(enriched);
       setConversations(merged);
       const real = computeUnreadCount(merged);
-      // Only update badge if count changed
       if (real !== prevUnreadRef.current) {
         setUnreadCount(real);
         prevUnreadRef.current = real;
         await setBadge(real);
       } else {
-        setUnreadCount(real); // still update state
+        setUnreadCount(real);
       }
+      // تخزين الكاش
+      cacheConversations(merged).catch(() => {});
     } catch (_) {}
   }, [enabled, setBadge]);
-
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => { isMountedRef.current = false; };
-  }, []);
 
   const load = useCallback(async (showSpinner = false) => {
     if (!enabled) {
@@ -475,7 +544,7 @@ export function useConversations(options?: { enabled?: boolean }) {
       return;
     }
 
-    // Safely check auth without crashing on session errors
+    // التحقق من المستخدم
     let currentUser: any = null;
     try {
       const supabaseCheck = getSupabaseClient();
@@ -497,17 +566,27 @@ export function useConversations(options?: { enabled?: boolean }) {
 
     if (showSpinner) setLoading(true);
 
+    // استخدام الكاش أولاً
+    const cached = await getCachedConversations();
+    if (cached && cached.length > 0 && isMountedRef.current) {
+      const mergedCached = mergeWithLocalReadState(cached);
+      setConversations(mergedCached);
+      const cachedUnread = computeUnreadCount(mergedCached);
+      setUnreadCount(cachedUnread);
+      prevUnreadRef.current = cachedUnread;
+      await setBadge(cachedUnread);
+    }
+
+    // جلب من الخادم
     try {
       const [convResult] = await Promise.all([fetchMyConversations()]);
       if (!isMountedRef.current) return;
-      // ✅ إثراء المحادثات بأسماء المستخدمين
       const enriched = await enrichConversationsWithNames(convResult.data);
       const merged = mergeWithLocalReadState(enriched);
       setConversations(merged);
       if (showSpinner) setLoading(false);
 
       const newCount = computeUnreadCount(merged);
-      // Only update badge if count changed
       if (newCount !== prevUnreadRef.current) {
         setUnreadCount(newCount);
         prevUnreadRef.current = newCount;
@@ -515,11 +594,61 @@ export function useConversations(options?: { enabled?: boolean }) {
       } else {
         setUnreadCount(newCount);
       }
+      cacheConversations(merged).catch(() => {});
     } catch (err) {
       if (isMountedRef.current && showSpinner) setLoading(false);
       console.warn('useConversations load error:', err);
     }
   }, [enabled, setBadge]);
+
+  // ── markAllRead ──
+  const markAllRead = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await markAllMessagesRead(user.id);
+      if (!error) {
+        setConversations(prev =>
+          prev.map(c => ({ ...c, unread_count: 0 }))
+        );
+        setUnreadCount(0);
+        prevUnreadRef.current = 0;
+        await setBadge(0);
+        cacheConversations(conversations.map(c => ({ ...c, unread_count: 0 }))).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('markAllRead error:', err);
+    }
+  }, [enabled, setBadge, conversations]);
+
+  // ── archive ──
+  const archive = useCallback(async (conversationId: string) => {
+    if (!enabled) return;
+    const { error } = await archiveConversation(conversationId);
+    if (!error) {
+      const removed = conversations.find(c => c.id === conversationId);
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
+      const newUnread = unreadCount - (removed?.unread_count ?? 0);
+      setUnreadCount(Math.max(0, newUnread));
+      prevUnreadRef.current = Math.max(0, newUnread);
+      await setBadge(Math.max(0, newUnread));
+      cacheConversations(conversations.filter(c => c.id !== conversationId)).catch(() => {});
+    }
+  }, [enabled, conversations, unreadCount, setBadge]);
+
+  // ── unarchive ──
+  const unarchive = useCallback(async (conversationId: string) => {
+    if (!enabled) return;
+    await unarchiveConversation(conversationId);
+    await load(false);
+  }, [enabled, load]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     const myInstance = ++_globalRefreshInstance;
@@ -538,7 +667,6 @@ export function useConversations(options?: { enabled?: boolean }) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      // Also clear conversations and counts when disabled
       setConversations([]);
       setUnreadCount(0);
       prevUnreadRef.current = 0;
@@ -574,8 +702,12 @@ export function useConversations(options?: { enabled?: boolean }) {
   return {
     conversations,
     loading,
-    reload: () => load(true),
     unreadCount,
+    isOnline,
+    reload: () => load(true),
     refreshUnread,
+    markAllRead,
+    archive,
+    unarchive,
   };
 }
