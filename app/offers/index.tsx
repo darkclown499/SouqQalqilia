@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Dimensions,
   ActivityIndicator, Linking, RefreshControl, Platform,
@@ -55,19 +55,28 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
   );
   const waUrl = `https://wa.me/${number}?text=${msg}`;
   const waApp = `whatsapp://send?phone=${number}&text=${msg}`;
+
   try {
     const canApp = await Linking.canOpenURL(waApp);
-    await Linking.openURL(canApp ? waApp : waUrl);
+    if (canApp) {
+      await Linking.openURL(waApp);
+    } else {
+      await Linking.openURL(waUrl);
+    }
   } catch {
-    await Linking.openURL(waUrl).catch(() => {});
+    try {
+      await Linking.openURL(waUrl);
+    } catch {
+      // Silent fail - user will see nothing, but we tried both methods
+    }
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Card Components
+// Card Components (memoized)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function OfferCard({
+const OfferCard = memo(function OfferCard({
   offer,
   width,
   height,
@@ -133,7 +142,7 @@ function OfferCard({
       </View>
     </Pressable>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Skeleton Loader
@@ -217,6 +226,7 @@ export default function OffersScreen() {
   useFocusEffect(
     useCallback(() => {
       trackPageView('offers').catch(() => {});
+      return () => {};
     }, [])
   );
 
@@ -268,11 +278,11 @@ export default function OffersScreen() {
   const gridRows = useMemo(() => buildGrid(filtered), [filtered]);
 
   // ── Heights by size ──────────────────────────────────────────────────────
-  const heightFor = (size: 'large' | 'medium' | 'small') => {
+  const heightFor = useCallback((size: 'large' | 'medium' | 'small') => {
     if (size === 'large') return LARGE_H;
     if (size === 'medium') return MEDIUM_H;
     return SMALL_H;
-  };
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -285,8 +295,6 @@ export default function OffersScreen() {
   const chipBg = isDark ? '#1E293B' : '#F1F5F9';
   const chipBorder = isDark ? '#334155' : '#E2E8F0';
   const chipText = isDark ? '#94A3B8' : '#64748B';
-  const chipActiveBg = '#0A6E5C';
-  const chipActiveText = '#FFFFFF';
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top }]}>
@@ -310,7 +318,7 @@ export default function OffersScreen() {
             {isAr ? 'العروض' : 'Offers'}
           </Text>
           {offers.length > 0 ? (
-            <View style={styles.countBadge}>
+            <View style={[styles.countBadge, { backgroundColor: colors.primary }]}>
               <Text style={styles.countBadgeText}>{offers.length}</Text>
             </View>
           ) : null}
@@ -323,7 +331,7 @@ export default function OffersScreen() {
           style={({ pressed }) => [styles.headerIconBtn, pressed && { opacity: 0.6 }]}
         >
           {refreshing
-            ? <ActivityIndicator size="small" color="#0A6E5C" />
+            ? <ActivityIndicator size="small" color={colors.primary} />
             : <MaterialIcons name="refresh" size={22} color={headerTitle} />
           }
         </Pressable>
@@ -342,10 +350,13 @@ export default function OffersScreen() {
               onPress={() => setActiveCategory('all')}
               style={[
                 styles.chip,
-                { backgroundColor: activeCategory === 'all' ? chipActiveBg : chipBg, borderColor: activeCategory === 'all' ? chipActiveBg : chipBorder },
+                {
+                  backgroundColor: activeCategory === 'all' ? colors.primary : chipBg,
+                  borderColor: activeCategory === 'all' ? colors.primary : chipBorder,
+                },
               ]}
             >
-              <Text style={[styles.chipText, { color: activeCategory === 'all' ? chipActiveText : chipText }]}>
+              <Text style={[styles.chipText, { color: activeCategory === 'all' ? '#FFFFFF' : chipText }]}>
                 {isAr ? 'الكل' : 'All'}
               </Text>
             </Pressable>
@@ -356,10 +367,13 @@ export default function OffersScreen() {
                 onPress={() => setActiveCategory(cat)}
                 style={[
                   styles.chip,
-                  { backgroundColor: activeCategory === cat ? chipActiveBg : chipBg, borderColor: activeCategory === cat ? chipActiveBg : chipBorder },
+                  {
+                    backgroundColor: activeCategory === cat ? colors.primary : chipBg,
+                    borderColor: activeCategory === cat ? colors.primary : chipBorder,
+                  },
                 ]}
               >
-                <Text style={[styles.chipText, { color: activeCategory === cat ? chipActiveText : chipText }]}>
+                <Text style={[styles.chipText, { color: activeCategory === cat ? '#FFFFFF' : chipText }]}>
                   {cat}
                 </Text>
               </Pressable>
@@ -376,8 +390,8 @@ export default function OffersScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            colors={['#0A6E5C']}
-            tintColor="#0A6E5C"
+            colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
       >
@@ -396,7 +410,7 @@ export default function OffersScreen() {
             </Text>
             <Pressable
               onPress={() => fetchOffers()}
-              style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+              style={({ pressed }) => [styles.retryBtn, { backgroundColor: colors.primary }, pressed && { opacity: 0.8 }]}
             >
               <MaterialIcons name="refresh" size={16} color="#fff" />
               <Text style={styles.retryBtnText}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
@@ -413,7 +427,7 @@ export default function OffersScreen() {
               }
             </Text>
             {activeCategory !== 'all' ? (
-              <Pressable onPress={() => setActiveCategory('all')} style={styles.showAllBtn}>
+              <Pressable onPress={() => setActiveCategory('all')} style={[styles.showAllBtn, { backgroundColor: colors.primary }]}>
                 <Text style={styles.showAllBtnText}>{isAr ? 'عرض الكل' : 'Show all'}</Text>
               </Pressable>
             ) : (
@@ -491,7 +505,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   countBadge: {
-    backgroundColor: '#0A6E5C',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -643,7 +656,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: 8,
-    backgroundColor: '#0A6E5C',
     paddingHorizontal: 22,
     paddingVertical: 11,
     borderRadius: 12,
@@ -658,7 +670,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 9,
     borderRadius: 10,
-    backgroundColor: '#0A6E5C',
   },
   showAllBtnText: {
     color: '#fff',

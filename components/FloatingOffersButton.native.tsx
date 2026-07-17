@@ -1,21 +1,21 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, Dimensions, useWindowDimensions } from 'react-native';
 import { PanGestureHandler } from 'react-native-gesture-handler';
 import Animated, { useAnimatedGestureHandler, useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '@/hooks/useTheme';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const BUTTON_SIZE = 56; 
-const SIDE_PADDING = 12; 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const BUTTON_SIZE = 56;
+const SIDE_PADDING = 12;
 
 // حدود الشاشة الحقيقية والدقيقة لمركز الدائرة (مستحيل تخرج برا هاي الحدود)
 const MIN_X = SIDE_PADDING;
 const MAX_X = SCREEN_WIDTH - BUTTON_SIZE - SIDE_PADDING;
-const MIN_Y = 100; // مسافة أمان ممتازة للهيدر العلوي
-const MAX_Y = SCREEN_HEIGHT - 160; // مسافة أمان للتابات السفلية
 
 const OFFERS_MESSAGES = [
   'عروض نار حصرية 🔥',
@@ -23,7 +23,7 @@ const OFFERS_MESSAGES = [
   'لقطات ما بتتفوت 🛍️',
   'تخفيضات خيالية  📉',
   'حرررق أسعار بالداخل 🌶️',
-  'شوف شو مجهزيلك اليوم 😉'
+  'شوف شو مجهزيلك اليوم 😉',
   'خصومات بتكسر الدنيا 💥',
   'وفّر مصاريك وتسوق صح 💸',
   'عروض بتطير العقل 🤯',
@@ -43,39 +43,52 @@ const OFFERS_MESSAGES = [
 
 export default function FloatingOffersButton() {
   const router = useRouter();
-  
+  const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const { height: screenHeight } = useWindowDimensions();
+
+  // حساب الحدود السفلية مع مراعاة الـ insets
+  const MIN_Y = 80 + insets.top;
+  const MAX_Y = screenHeight - 160 - insets.bottom;
+
   // البداية الافتراضية من اليمين تحت
   const x = useSharedValue(MAX_X);
   const y = useSharedValue(MAX_Y - 50);
-  
+
   const [currentMessage, setCurrentMessage] = useState(OFFERS_MESSAGES[0]);
   const [isSnappedLeft, setIsSnappedLeft] = useState(false);
 
-  const pickRandomMessage = () => {
+  // اختيار رسالة عشوائية
+  const pickRandomMessage = useCallback(() => {
     const randomIndex = Math.floor(Math.random() * OFFERS_MESSAGES.length);
     setCurrentMessage(OFFERS_MESSAGES[randomIndex]);
-  };
+  }, []);
+
+  // اختيار رسالة أولى عشوائية
+  useEffect(() => {
+    pickRandomMessage();
+  }, []);
 
   const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, context: any) => { 
-      context.startX = x.value; 
-      context.startY = y.value; 
+    onStart: (_, context: any) => {
+      context.startX = x.value;
+      context.startY = y.value;
     },
-    onActive: (event, context) => { 
-      let nextX = context.startX + event.translationX; 
-      let nextY = context.startY + event.translationY; 
-      
+    onActive: (event, context) => {
+      let nextX = context.startX + event.translationX;
+      let nextY = context.startY + event.translationY;
+
       // الجدار الصلب أثناء السحب: نمنع الزر من تجاوز أعلى وأسفل الشاشة
       if (nextY < MIN_Y) nextY = MIN_Y;
       if (nextY > MAX_Y) nextY = MAX_Y;
-      
+
       x.value = nextX;
       y.value = nextY;
     },
     onEnd: (event) => {
       const finalX = x.value + event.velocityX * 0.1;
       const midpoint = SCREEN_WIDTH / 2;
-      
+
       let targetX;
       if (finalX < midpoint) {
         targetX = MIN_X;
@@ -84,18 +97,18 @@ export default function FloatingOffersButton() {
         targetX = MAX_X;
         runOnJS(setIsSnappedLeft)(false);
       }
-      
+
       // ارتداد ناعم لليمين أو اليسار
       x.value = withSpring(targetX, { damping: 15, stiffness: 120 });
-      
+
       // ارتداد ناعم لمحور الصادات مع تأكيد البقاء ضمن الحدود
       let targetY = y.value;
       if (targetY < MIN_Y) targetY = MIN_Y;
       if (targetY > MAX_Y) targetY = MAX_Y;
       y.value = withSpring(targetY, { damping: 15, stiffness: 120 });
-      
+
       runOnJS(pickRandomMessage)();
-    }, 
+    },
   });
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -103,46 +116,54 @@ export default function FloatingOffersButton() {
     transform: [{ translateX: x.value }, { translateY: y.value }],
   }));
 
+  const bubbleBackground = isDark ? '#1F2937' : '#FFFFFF';
+  const bubbleBorder = isDark ? '#374151' : '#FFE4E6';
+  const textColor = isDark ? '#F43F5E' : '#E11D48';
+  const circleBorder = isDark ? '#374151' : '#FFE4E6';
+  const shadowColor = isDark ? 'rgba(0,0,0,0.5)' : '#000';
+
   return (
-    // العنصر العائم المتحرك هو فقط الدائرة (مساحتها 56x56)، الباقي يتبعها
     <Animated.View style={[styles.absoluteWrapper, animatedStyle]}>
       <PanGestureHandler onGestureEvent={gestureHandler}>
         <Animated.View style={styles.panWrapper}>
-         <Pressable onPress={() => router.push('/offers')} style={styles.pressableArea}>
-            
+          <Pressable onPress={() => router.push('/offers')} style={styles.pressableArea}>
             {/* الدائرة الرئيسية فقط */}
-            <View style={[styles.circle, { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#FFE4E6' }]}>
-              <Image 
-                source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }} 
-                style={{ width: 36, height: 36, backgroundColor: 'transparent' }} 
-                contentFit="contain" 
+            <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: circleBorder, shadowColor }]}>
+              <Image
+                source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }}
+                style={{ width: 36, height: 36, backgroundColor: 'transparent' }}
+                contentFit="contain"
               />
             </View>
 
             {/* سحر الفقاعة: موقعها ثابت بالنسبة للدائرة، تظهر يمين أو يسار بناءً على اللصق */}
-            <View style={[
-              styles.bubbleMasterContainer,
-              isSnappedLeft 
-                ? { left: BUTTON_SIZE, flexDirection: 'row' } // إذا لزق يسار، الفقاعة تطلع لليمين
-                : { right: BUTTON_SIZE, flexDirection: 'row-reverse' } // إذا لزق يمين، الفقاعة تطلع لليسار
-            ]}>
-              
+            <View
+              style={[
+                styles.bubbleMasterContainer,
+                isSnappedLeft
+                  ? { left: BUTTON_SIZE, flexDirection: 'row' }
+                  : { right: BUTTON_SIZE, flexDirection: 'row-reverse' },
+              ]}
+              pointerEvents="none" // منع الفقاعة من حجب اللمس عن الدائرة
+            >
               {/* ذيل الرسالة (النقاط) */}
-              <View style={[
-                styles.tailContainer, 
-                isSnappedLeft ? { marginLeft: 4, flexDirection: 'row' } : { marginRight: 4, flexDirection: 'row-reverse' }
-              ]}>
-                <View style={styles.smallDot} />
-                <View style={styles.bigDot} />
+              <View
+                style={[
+                  styles.tailContainer,
+                  isSnappedLeft ? { marginLeft: 4, flexDirection: 'row' } : { marginRight: 4, flexDirection: 'row-reverse' },
+                ]}
+              >
+                <View style={[styles.smallDot, { backgroundColor: textColor }]} />
+                <View style={[styles.bigDot, { backgroundColor: textColor }]} />
               </View>
 
               {/* النص المنسق */}
-              <View style={[styles.textBubble, isSnappedLeft ? { marginLeft: 6 } : { marginRight: 6 }]}>
-                <Text style={styles.bubbleText} numberOfLines={1}>{currentMessage}</Text>
+              <View style={[styles.textBubble, { backgroundColor: bubbleBackground, borderColor: bubbleBorder, shadowColor }]}>
+                <Text style={[styles.bubbleText, { color: textColor }]} numberOfLines={1}>
+                  {currentMessage}
+                </Text>
               </View>
-              
             </View>
-
           </Pressable>
         </Animated.View>
       </PanGestureHandler>
@@ -152,7 +173,7 @@ export default function FloatingOffersButton() {
 
 const styles = StyleSheet.create({
   // الغلاف الأساسي للدائرة المنطلقة من زاوية (0,0) للشاشة
-  absoluteWrapper: { 
+  absoluteWrapper: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -168,61 +189,54 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  circle: { 
-    width: BUTTON_SIZE, 
-    height: BUTTON_SIZE, 
+  circle: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
     borderRadius: BUTTON_SIZE / 2,
-    alignItems: 'center', 
+    alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.35, 
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
     shadowRadius: 5,
     elevation: 8,
   },
-  
+
   // الغلاف العائم للفقاعة، يأخذ ارتفاع الدائرة ليتوسطها عمودياً بشكل تلقائي
   bubbleMasterContainer: {
     position: 'absolute',
     height: BUTTON_SIZE,
     alignItems: 'center',
-    width: 200, // مساحة وهمية واسعة لمنع انضغاط النص (لا تظهر ولا تأخذ مساحة فعلية)
+    maxWidth: SCREEN_WIDTH - BUTTON_SIZE - SIDE_PADDING * 4,
   },
   tailContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
+    flexShrink: 0,
   },
   bigDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#FF4B2B',
   },
   smallDot: {
     width: 5,
     height: 5,
     borderRadius: 2.5,
-    backgroundColor: '#FF416C',
   },
   textBubble: {
-    backgroundColor: '#fff',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.15, 
-    shadowRadius: 4, 
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
     elevation: 5,
     borderWidth: 1,
-    borderColor: '#FFE4E6',
-    // حد أقصى للعرض لحماية الشاشات الصغيرة جداً
-    maxWidth: SCREEN_WIDTH - BUTTON_SIZE - SIDE_PADDING * 3, 
+    flexShrink: 1, // يسمح للنص بالانكماش إذا لزم الأمر
   },
   bubbleText: {
-    color: '#E11D48',
     fontSize: 12,
     fontWeight: '900',
-  }
+  },
 });
