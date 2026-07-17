@@ -12,10 +12,10 @@ import { useMemo, useCallback } from 'react';
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { t, language, isRTL } = useLanguage();
-  const isAr = language === 'ar';
+  const { t, isRTL } = useLanguage(); // تم حذف 'language' و 'isAr' لأننا استغنينا عنهما
 
   // ─── TabBar Style ───────────────────────────────────────────────────────────
+  // ✅ تم حذف flexDirection نهائياً لتفادي عكس الأزرار في RTL
   const tabBarStyle = useMemo(() => ({
     minHeight: Platform.select({ ios: insets.bottom + 62, android: insets.bottom + 62, default: 70 }),
     paddingTop: 8,
@@ -29,8 +29,8 @@ export default function TabLayout() {
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 12,
-    flexDirection: isRTL ? 'row-reverse' : 'row',
-  }), [insets, colors, isRTL]);
+    // تم حذف سطر flexDirection
+  }), [insets, colors]); // تم حذف isRTL من التبعيات
 
   // ─── Post Button Animation ──────────────────────────────────────────────────
   const postScale = useSharedValue(1);
@@ -73,7 +73,8 @@ export default function TabLayout() {
               ]}
               onPress={() => {
                 animatePost();
-                if (props.onPress) (props.onPress as any)();
+                // ✅ تم الإصلاح: استخدام optional chaining بشكل آمن
+                props.onPress?.();
               }}
             >
               <MaterialIcons name="add" size={28} color="#fff" />
@@ -100,7 +101,8 @@ export default function TabLayout() {
         options={{
           title: t.home,
           tabBarIcon: ({ color, focused }) => (
-            <MaterialIcons name={focused ? 'home' : 'home'} size={24} color={color} />
+            // ✅ تم الإصلاح: أيقونة مختلفة عند التحديد
+            <MaterialIcons name={focused ? 'home-filled' : 'home'} size={24} color={color} />
           ),
         }}
       />
@@ -121,9 +123,11 @@ export default function TabLayout() {
       <Tabs.Screen
         name="stores"
         options={{
-          title: isAr ? 'المتاجر' : 'Stores',
+          // ✅ تم الإصلاح: استخدام isRTL مباشرة بدلاً من isAr
+          title: isRTL ? 'المتاجر' : 'Stores',
           tabBarIcon: ({ color, focused }) => (
-            <MaterialIcons name={focused ? 'storefront' : 'storefront'} size={24} color={color} />
+            // ✅ تم الإصلاح: أيقونة مختلفة عند التحديد
+            <MaterialIcons name={focused ? 'storefront' : 'store'} size={24} color={color} />
           ),
         }}
       />
