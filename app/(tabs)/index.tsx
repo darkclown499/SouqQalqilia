@@ -223,6 +223,66 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   );
 }
 
+// ── Banner Carousel (مفصول بـ React.memo لتحسين الأداء) ──────────────────
+const BannerCarousel = React.memo(({
+  banners,
+  featuredIndex,
+  bannerHeight,
+  hPad,
+  isRTL,
+  colors,
+  router,
+}: {
+  banners: Banner[];
+  featuredIndex: number;
+  bannerHeight: number;
+  hPad: number;
+  isRTL: boolean;
+  colors: any;
+  router: any;
+}) => {
+  const currentBanner = banners[featuredIndex] ?? banners[0];
+  if (!currentBanner) return null;
+
+  const handlePress = () => {
+    trackEvent('banner_click').catch(() => {});
+    const link = currentBanner.link_url?.trim();
+    if (link && (link.startsWith('http://') || link.startsWith('https://'))) {
+      Linking.openURL(link).catch(() => {});
+    } else {
+      router.push('/search');
+    }
+  };
+
+  return (
+    <Pressable
+      style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md }]}
+      onPress={handlePress}
+    >
+      <Image
+        source={{ uri: currentBanner.image_url }}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        transition={300}
+        cachePolicy="disk"
+        priority="high"
+      />
+      {(currentBanner.title || currentBanner.subtitle) ? (
+        <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+          <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
+            {currentBanner.title}
+          </Text>
+          {currentBanner.subtitle ? (
+            <Text style={[styles.bannerSubtitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+              {currentBanner.subtitle}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+    </Pressable>
+  );
+});
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
@@ -363,11 +423,12 @@ function ConversationsBottomSheet({
 }) {
   const { user } = useAuth();
 
+  // ✅ إضافة reload إلى التبعيات
   useEffect(() => {
     if (visible && user) {
       reload();
     }
-  }, [visible, user]);
+  }, [visible, user, reload]);
 
   const renderItem = useCallback(({ item }: { item: any }) => {
     const otherId = item.buyer_id === user?.id ? item.seller_id : item.buyer_id;
@@ -637,7 +698,7 @@ export default function HomeScreen() {
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   const [totalAdsCount, setTotalAdsCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [isApplyingFilter, setIsApplyingFilter] = useState(false);
+  // ✅ تم حذف isApplyingFilter
 
   const [conversationsSheetVisible, setConversationsSheetVisible] = useState(false);
 
@@ -812,16 +873,16 @@ export default function HomeScreen() {
     setFilterVisible(true);
   }, [appliedArea, appliedMaxPrice, appliedCondition]);
 
+  // ✅ إصلاح: إزالة isApplyingFilter
   const handleApplyFilters = useCallback(() => {
     const parsedMax = draftMaxPrice.trim() ? parseFloat(draftMaxPrice) : undefined;
-    setIsApplyingFilter(true);
     setAppliedArea(draftArea);
     setAppliedMaxPrice(isNaN(parsedMax as number) ? undefined : parsedMax);
     setAppliedCondition(draftCondition);
     setFilterVisible(false);
-    setTimeout(() => setIsApplyingFilter(false), 300);
   }, [draftMaxPrice, draftArea, draftCondition]);
 
+  // ✅ إصلاح: إغلاق الشيت عند مسح الفلاتر
   const handleClearFilters = useCallback(() => {
     setDraftArea(null);
     setDraftMaxPrice('');
@@ -829,6 +890,7 @@ export default function HomeScreen() {
     setAppliedArea(null);
     setAppliedMaxPrice(undefined);
     setAppliedCondition(null);
+    setFilterVisible(false);
   }, []);
 
   // ✅ إصلاح: handleAdView الآن فقط يسجل المشاهدة ولا يقوم بالانتقال
@@ -912,7 +974,6 @@ export default function HomeScreen() {
     router.push(`/store/${storeId}` as any);
   }, [router]);
 
-  // ✅ FIX: Remove useMemo to preserve internal state of FeaturedStoresStrip
   const featuredStoresNode = useMemo(() => (
   <FeaturedStoresStrip
     isAr={isAr}
@@ -931,13 +992,12 @@ export default function HomeScreen() {
     router.push(`/chat/${conversationId}` as any);
   }, [router]);
 
-  // ✅ تعريف getItemLayout كـ useCallback خارج JSX
   const getItemLayout = useCallback((_data: any, index: number) => {
     const height = rowHeight + cardGap;
     return { length: height, offset: height * index, index };
   }, [rowHeight, cardGap]);
 
-  // ✅ FIX: Add setSortBy back to deps and move banner dots inside bannerWrap
+  // ✅ ListHeader معدل: استخدم BannerCarousel بدلاً من البانر المضمن
   const ListHeader = useMemo(() => (
     <>
       {error ? (
@@ -950,43 +1010,18 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* البانر مع position: relative */}
-{currentBanner ? (
-  <Pressable
-    style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md, position: 'relative' }]}
-    onPress={() => {
-      trackEvent('banner_click').catch(() => {});
-      if (currentBanner.link_url?.trim()) {
-        Linking.openURL(currentBanner.link_url.trim()).catch(() => {});
-      } else {
-        router.push('/search');
-      }
-    }}
-  >
-    <Image
-      source={{ uri: currentBanner.image_url }}
-      style={StyleSheet.absoluteFill}
-      contentFit="cover"
-      transition={300}
-      cachePolicy="disk"
-      priority="high"
-    />
-    {(currentBanner.title || currentBanner.subtitle) ? (
-      <View style={[styles.bannerContent, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-        <Text style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
-          {currentBanner.title}
-        </Text>
-        {currentBanner.subtitle ? (
-          <Text style={[styles.bannerSubtitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
-            {currentBanner.subtitle}
-          </Text>
-        ) : null}
-      </View>
-    ) : null}
-  </Pressable>
-) : null}
+      {/* ✅ استخدام BannerCarousel المُنفصل */}
+      <BannerCarousel
+        banners={banners}
+        featuredIndex={featuredIndex}
+        bannerHeight={bannerHeight}
+        hPad={hPad}
+        isRTL={isRTL}
+        colors={colors}
+        router={router}
+      />
 
-{featuredStoresNode}
+      {featuredStoresNode}
 
       {recentlyViewed.length > 0 ? (
         <View style={styles.recentSection}>
@@ -1147,7 +1182,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, error, hPad, isAr, setSortBy]); // ✅ added setSortBy back
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, error, hPad, isAr, setSortBy, bannerHeight]); // تم إضافة bannerHeight إلى التبعيات
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -1261,7 +1296,7 @@ export default function HomeScreen() {
           initialNumToRender={4}
           updateCellsBatchingPeriod={30}
           key={numColumns}
-          removeClippedSubviews={false}
+          removeClippedSubviews={true} // ✅ تغيير إلى true لتحسين الأداء
           getItemLayout={getItemLayout}
           refreshControl={
             <RefreshControl
@@ -1391,19 +1426,13 @@ export default function HomeScreen() {
               keyboardType="numeric"
             />
 
+            {/* ✅ إزالة isApplyingFilter */}
             <Pressable
-              style={[fStyles.applyBtn, { backgroundColor: colors.primary, opacity: isApplyingFilter ? 0.7 : 1 }]}
+              style={[fStyles.applyBtn, { backgroundColor: colors.primary }]}
               onPress={handleApplyFilters}
-              disabled={isApplyingFilter}
             >
-              {isApplyingFilter ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <MaterialIcons name="check" size={18} color="#fff" />
-                  <Text style={fStyles.applyBtnText}>{isAr ? 'تطبيق الفلاتر' : 'Apply Filters'}</Text>
-                </>
-              )}
+              <MaterialIcons name="check" size={18} color="#fff" />
+              <Text style={fStyles.applyBtnText}>{isAr ? 'تطبيق الفلاتر' : 'Apply Filters'}</Text>
             </Pressable>
           </View>
         </View>
@@ -1568,7 +1597,6 @@ const styles = StyleSheet.create({
   },
   sortChipText: { fontSize: FontSize.xs },
 
-  // ✅ FIX: bannerWrap now has position: 'relative' in the component
   bannerWrap: {
     borderRadius: Radius.xl,
     overflow: 'hidden',
