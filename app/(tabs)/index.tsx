@@ -396,258 +396,6 @@ function buildFeedRows(ads: Ad[], numCols: number): FeedRow[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ✅ COMPONENT: ConversationsBottomSheet – يعرض جميع المحادثات مع شارة للغير مقروء
-// ─────────────────────────────────────────────────────────────────────────────
-function ConversationsBottomSheet({
-  visible,
-  onClose,
-  onConversationPress,
-  colors,
-  isRTL,
-  isAr,
-  conversations,
-  loading,
-  unreadCount,
-  reload,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onConversationPress: (conversationId: string) => void;
-  colors: any;
-  isRTL: boolean;
-  isAr: boolean;
-  conversations: any[];
-  loading: boolean;
-  unreadCount: number;
-  reload: () => void;
-}) {
-  const { user } = useAuth();
-
-  // ✅ إضافة reload إلى التبعيات
-  useEffect(() => {
-    if (visible && user) {
-      reload();
-    }
-  }, [visible, user, reload]);
-
-  const renderItem = useCallback(({ item }: { item: any }) => {
-    const otherId = item.buyer_id === user?.id ? item.seller_id : item.buyer_id;
-    const otherName = item.buyer_id === user?.id ? item.seller_name : item.buyer_name;
-    const displayName = otherName || 'مستخدم';
-    const lastMessage = item.last_message || '';
-    const lastMessageTime = item.last_message_at ? new Date(item.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    const unread = item.unread_count || 0;
-
-    return (
-      <Pressable
-        style={({ pressed }) => [
-          cbStyles.item,
-          {
-            backgroundColor: pressed ? colors.primaryGhost : colors.background,
-            borderColor: colors.borderLight,
-            flexDirection: isRTL ? 'row-reverse' : 'row',
-          },
-        ]}
-        onPress={() => onConversationPress(item.id)}
-      >
-        <View style={[cbStyles.avatar, { backgroundColor: colors.primary }]}>
-          <Text style={cbStyles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
-        </View>
-        <View style={[cbStyles.body, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
-          <Text style={[cbStyles.name, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
-            {displayName}
-          </Text>
-          <Text style={[cbStyles.lastMsg, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
-            {lastMessage || (isAr ? 'لا توجد رسائل' : 'No messages')}
-          </Text>
-          {lastMessageTime ? (
-            <Text style={[cbStyles.time, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
-              {lastMessageTime}
-            </Text>
-          ) : null}
-        </View>
-        {unread > 0 ? (
-          <View style={[cbStyles.badge, { backgroundColor: '#EF4444' }]}>
-            <Text style={cbStyles.badgeText}>{unread > 9 ? '9+' : String(unread)}</Text>
-          </View>
-        ) : null}
-      </Pressable>
-    );
-  }, [user, colors, isRTL, onConversationPress]);
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={cbStyles.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[cbStyles.sheet, { backgroundColor: colors.surface }]}>
-          <View style={[cbStyles.handle, { backgroundColor: colors.border }]} />
-          <View style={[cbStyles.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
-            <MaterialIcons name="chat-bubble-outline" size={20} color={colors.primary} />
-            <Text style={[cbStyles.title, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left' }]}>
-              {isAr ? 'المحادثات' : 'Conversations'}
-            </Text>
-            {unreadCount > 0 ? (
-              <View style={[cbStyles.totalBadge, { backgroundColor: '#EF4444' }]}>
-                <Text style={cbStyles.totalBadgeText}>{unreadCount}</Text>
-              </View>
-            ) : null}
-            <Pressable onPress={onClose} hitSlop={10}>
-              <MaterialIcons name="close" size={22} color={colors.textMuted} />
-            </Pressable>
-          </View>
-
-          {loading ? (
-            <View style={cbStyles.loadingWrap}>
-              {/* ✅ إصلاح: زيادة حجم الـ ActivityIndicator */}
-              <ActivityIndicator size="large" color={colors.primary} />
-            </View>
-          ) : conversations.length === 0 ? (
-            <View style={cbStyles.emptyWrap}>
-              <MaterialIcons name="chat-bubble-outline" size={44} color={colors.textMuted} />
-              <Text style={[cbStyles.emptyText, { color: colors.textMuted }]}>
-                {isAr ? 'لا توجد محادثات' : 'No conversations'}
-              </Text>
-            </View>
-          ) : (
-            <FlatList
-              data={conversations}
-              keyExtractor={(item) => item.id}
-              renderItem={renderItem}
-              contentContainerStyle={cbStyles.listContent}
-              showsVerticalScrollIndicator={false}
-            />
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-const cbStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.52)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingBottom: 48,
-    maxHeight: '75%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 24,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 8,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: 1,
-    marginBottom: 4,
-  },
-  title: {
-    fontSize: FontSize.lg,
-    fontWeight: '700',
-  },
-  totalBadge: {
-    borderRadius: 99,
-    minWidth: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  totalBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  loadingWrap: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyWrap: {
-    padding: 48,
-    alignItems: 'center',
-    gap: 12,
-  },
-  emptyText: {
-    fontSize: FontSize.md,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  listContent: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.sm,
-    gap: Spacing.sm,
-    paddingBottom: 8,
-  },
-  item: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: Spacing.md,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  body: {
-    flex: 1,
-    gap: 2,
-  },
-  name: {
-    fontSize: FontSize.sm,
-    fontWeight: '700',
-  },
-  lastMsg: {
-    fontSize: FontSize.xs,
-    lineHeight: 16,
-  },
-  time: {
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  badge: {
-    borderRadius: 99,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-    marginLeft: 4,
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '800',
-  },
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // MAIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 export default function HomeScreen() {
@@ -672,8 +420,8 @@ export default function HomeScreen() {
   const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
   const { conversations, loading: convLoading, reload, unreadCount } = useConversations({
-  enabled: !!user
-});
+    enabled: !!user
+  });
 
   const [isOnline, setIsOnline] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -699,7 +447,6 @@ export default function HomeScreen() {
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   const [totalAdsCount, setTotalAdsCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  // ✅ تم حذف isApplyingFilter
 
   const [conversationsSheetVisible, setConversationsSheetVisible] = useState(false);
 
@@ -874,7 +621,6 @@ export default function HomeScreen() {
     setFilterVisible(true);
   }, [appliedArea, appliedMaxPrice, appliedCondition]);
 
-  // ✅ إصلاح: إزالة isApplyingFilter
   const handleApplyFilters = useCallback(() => {
     const parsedMax = draftMaxPrice.trim() ? parseFloat(draftMaxPrice) : undefined;
     setAppliedArea(draftArea);
@@ -883,7 +629,6 @@ export default function HomeScreen() {
     setFilterVisible(false);
   }, [draftMaxPrice, draftArea, draftCondition]);
 
-  // ✅ إصلاح: إغلاق الشيت عند مسح الفلاتر
   const handleClearFilters = useCallback(() => {
     setDraftArea(null);
     setDraftMaxPrice('');
@@ -894,14 +639,11 @@ export default function HomeScreen() {
     setFilterVisible(false);
   }, []);
 
-  // ✅ إصلاح: handleAdView الآن فقط يسجل المشاهدة ولا يقوم بالانتقال
   const handleAdView = useCallback((ad: Ad) => {
     addToRecentlyViewed(ad);
     setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
-    // لا تستدعي router.push هنا؛ AdCard هو المسؤول عن الانتقال
   }, []);
 
-  // ✅ إصلاح: handleRecentAdPress يسجل المشاهدة ثم ينتقل (بطاقات "المشاهدة مؤخرًا" ليست AdCard)
   const handleRecentAdPress = useCallback((ad: Ad) => {
     handleAdView(ad);
     router.push(`/ad/${ad.id}`);
@@ -976,21 +718,21 @@ export default function HomeScreen() {
   }, [router]);
 
   const featuredStoresNode = useMemo(() => (
-  <FeaturedStoresStrip
-    isAr={isAr}
-    isRTL={isRTL}
-    colors={colors}
-    onPress={handleFeaturedStorePress}
-  />
-), [isAr, isRTL, colors, handleFeaturedStorePress]);
+    <FeaturedStoresStrip
+      isAr={isAr}
+      isRTL={isRTL}
+      colors={colors}
+      onPress={handleFeaturedStorePress}
+    />
+  ), [isAr, isRTL, colors, handleFeaturedStorePress]);
 
-  // ✅ إصلاح: تغيير اسم الدالة والأيقونة
+  // ✅ تغيير الدالة للانتقال إلى صفحة المحادثات بدلاً من النافذة المنبثقة
   const handleChatPress = useCallback(() => {
-    setConversationsSheetVisible(true);
-  }, []);
+    router.push('/chats' as any);
+  }, [router]);
 
+  // ✅ لا نستخدم conversation press داخل النافذة المنبثقة الآن، لكن يمكن الاحتفاظ بها لأي استخدام آخر
   const handleConversationPress = useCallback((conversationId: string) => {
-    setConversationsSheetVisible(false);
     router.push(`/chat/${conversationId}` as any);
   }, [router]);
 
@@ -999,7 +741,6 @@ export default function HomeScreen() {
     return { length: height, offset: height * index, index };
   }, [rowHeight, cardGap]);
 
-  // ✅ ListHeader معدل: استخدم BannerCarousel بدلاً من البانر المضمن
   const ListHeader = useMemo(() => (
     <>
       {error ? (
@@ -1012,7 +753,6 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* ✅ استخدام BannerCarousel المُنفصل */}
       <BannerCarousel
         banners={banners}
         featuredIndex={featuredIndex}
@@ -1184,7 +924,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, error, hPad, isAr, setSortBy, bannerHeight]); // تم إضافة bannerHeight إلى التبعيات
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, error, hPad, isAr, setSortBy, bannerHeight]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -1299,7 +1039,7 @@ export default function HomeScreen() {
           initialNumToRender={4}
           updateCellsBatchingPeriod={30}
           key={numColumns}
-          removeClippedSubviews={true} // ✅ تغيير إلى true لتحسين الأداء
+          removeClippedSubviews={true}
           getItemLayout={getItemLayout}
           refreshControl={
             <RefreshControl
@@ -1345,18 +1085,7 @@ export default function HomeScreen() {
 
       <InterstitialAdOverlay ad={activeInterstitial} visible={interstitialVisible} onClose={() => setInterstitialVisible(false)} />
 
-      <ConversationsBottomSheet
-        visible={conversationsSheetVisible}
-        onClose={() => setConversationsSheetVisible(false)}
-        onConversationPress={handleConversationPress}
-        colors={colors}
-        isRTL={isRTL}
-        isAr={isAr}
-        conversations={conversations}
-        loading={convLoading}
-        unreadCount={unreadCount}
-        reload={reload}
-      />
+      {/* ✅ تم إزالة ConversationsBottomSheet لأننا نستخدم صفحة منفصلة للمحادثات */}
 
       {/* Filter sheet */}
       {filterVisible ? (
@@ -1429,7 +1158,6 @@ export default function HomeScreen() {
               keyboardType="numeric"
             />
 
-            {/* ✅ إزالة isApplyingFilter */}
             <Pressable
               style={[fStyles.applyBtn, { backgroundColor: colors.primary }]}
               onPress={handleApplyFilters}
