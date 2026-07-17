@@ -191,7 +191,6 @@ export default function AiSupportScreen() {
   const [loading, setLoading] = useState(false);
   const turnCountRef = useRef(0);
   const listRef = useRef<FlatList<ChatMessage>>(null);
-  // Refs to avoid race conditions and memory leaks
   const messagesRef = useRef<ChatMessage[]>([]);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -202,9 +201,10 @@ export default function AiSupportScreen() {
 
   const quickPrompts = isAr ? QUICK_PROMPTS_AR : QUICK_PROMPTS_EN;
 
-  // ── Scroll to bottom with cleanup ──────────────────────────────────────────
+  // ── Scroll to bottom ──────────────────────────────────────────────────────────
   const scrollToBottom = useCallback(() => {
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    // استخدام requestAnimationFrame بدلاً من timeout لتجنب التصادم
     scrollTimeoutRef.current = setTimeout(() => {
       listRef.current?.scrollToEnd({ animated: true });
       scrollTimeoutRef.current = null;
@@ -213,7 +213,6 @@ export default function AiSupportScreen() {
 
   useEffect(() => {
     if (messages.length > 0) scrollToBottom();
-    // Cleanup timeout on unmount
     return () => {
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
@@ -222,12 +221,17 @@ export default function AiSupportScreen() {
     };
   }, [messages.length, scrollToBottom]);
 
-  // ── Send message (using messagesRef to avoid closure issues) ──────────────
+  // ── Reset chat ──
+  const resetChat = useCallback(() => {
+    setMessages([]);
+    turnCountRef.current = 0;
+  }, []);
+
+  // ── Send message ──────────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (userText: string) => {
     const trimmed = userText.trim();
     if (!trimmed || loading) return;
 
-    // Generate unique ID
     const uid = `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
     const userMsg: ChatMessage = {
@@ -242,7 +246,6 @@ export default function AiSupportScreen() {
     setLoading(true);
     turnCountRef.current += 1;
 
-    // Use messagesRef.current to get the latest messages
     const currentMessages = messagesRef.current;
     const history = [...currentMessages, userMsg]
       .filter(m => m.role === 'user' || m.role === 'assistant')
@@ -301,7 +304,7 @@ export default function AiSupportScreen() {
     sendMessage(isAr ? 'أريد التواصل مع دعم بشري' : 'I want to speak with human support');
   }, [sendMessage, isAr]);
 
-  // ── Memoized footer component ──────────────────────────────────────────────
+  // ── Memoized footer ──────────────────────────────────────────────────────────
   const footerComponent = useMemo(() => {
     if (!loading) return null;
     return (
@@ -328,6 +331,8 @@ export default function AiSupportScreen() {
   }, [loading, isAr, colors]);
 
   // ── Render message ──────────────────────────────────────────────────────────
+  const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
+
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     if (item.role === 'handoff') {
       return (
@@ -338,7 +343,6 @@ export default function AiSupportScreen() {
     }
 
     const isUser = item.role === 'user';
-    // Determine alignment based on RTL
     const isUserAlignedRight = isAr ? !isUser : isUser;
 
     return (
@@ -426,6 +430,13 @@ export default function AiSupportScreen() {
           <Pressable style={styles.headerIconBtn} onPress={handleRequestHuman} hitSlop={8}>
             <MaterialIcons name="support-agent" size={22} color="#fff" />
           </Pressable>
+
+          {/* ✅ زر مسح المحادثة */}
+          {messages.length > 0 && (
+            <Pressable style={styles.headerIconBtn} onPress={resetChat} hitSlop={8}>
+              <MaterialIcons name="delete-outline" size={22} color="#fff" />
+            </Pressable>
+          )}
         </View>
 
         {/* ── MESSAGES / EMPTY STATE ── */}
@@ -497,7 +508,7 @@ export default function AiSupportScreen() {
           <FlatList
             ref={listRef}
             data={messages}
-            keyExtractor={item => item.id}
+            keyExtractor={keyExtractor}
             renderItem={renderMessage}
             contentContainerStyle={styles.msgList}
             showsVerticalScrollIndicator={false}
