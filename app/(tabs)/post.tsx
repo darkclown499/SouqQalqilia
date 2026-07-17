@@ -393,7 +393,19 @@ export default function PostAdScreen() {
         ? `${isCity ? 'قلقيلية' : selectedCity}${location.trim() ? ` - ${location.trim()}` : ''}`
         : selectedCity;
 
-      const { data: ad, error: adError } = await createAd({
+      // ✅ استخراج معلومات التصنيف لاستخدامها في توليد صورة الطلب
+      const selectedCategory = categories.find(c => c.id === categoryId);
+      const posterMetadata = mode === 'product_request' && selectedCategory ? {
+        category_color: selectedCategory.color || '#F59E0B',
+        category_icon: selectedCategory.icon || 'shopping-cart',
+        category_name: getCategoryName(selectedCategory, language),
+        title: title.trim(),
+        description: description.trim(),
+        request_status: requestStatus,
+      } : undefined;
+
+      // ✅ إضافة requestStatus إلى بيانات الإعلان
+      const adPayload: any = {
         title: title.trim(),
         description: description.trim(),
         price: mode === 'product_ad' ? parseFloat(price) : 0,
@@ -401,8 +413,14 @@ export default function PostAdScreen() {
         category_id: categoryId,
         phone_number: fullPhone,
         condition: mode === 'product_ad' ? condition : 'used',
-        ...(mode === 'product_request' ? { status: 'active' } : {}),
-      });
+        status: mode === 'product_request' ? 'active' : undefined,
+        // ✅ إضافة حقل poster_metadata للطلب
+        poster_metadata: posterMetadata,
+        // ✅ إضافة request_status
+        request_status: mode === 'product_request' ? requestStatus : undefined,
+      };
+
+      const { data: ad, error: adError } = await createAd(adPayload);
       if (adError || !ad) throw new Error(adError ?? 'Failed to create ad');
       adId = ad.id;
 
@@ -483,7 +501,7 @@ export default function PostAdScreen() {
     }
   }, [
     title, description, categoryId, mode, images, price, location, selectedCity,
-    phoneLocal, phonePrefix, contactViaWhatsapp, condition, requestStatus,
+    phoneLocal, phonePrefix, contactViaWhatsapp, condition, requestStatus, categories, language,
     resetForm, router, showAlert, isAr, t, user
   ]);
 
@@ -611,8 +629,8 @@ export default function PostAdScreen() {
               <MaterialIcons name="auto-awesome" size={16} color={colors.primary} />
               <Text style={[styles.autoImgText, { color: colors.textSecondary }]}>
                 {isAr
-                  ? 'سيتم إنشاء تصميم احترافي للطلب تلقائياً.'
-                  : 'A visual poster will be generated automatically.'}
+                  ? 'سيتم إنشاء تصميم احترافي للطلب تلقائياً باستخدام لون وأيقونة التصنيف.'
+                  : 'A visual poster will be generated automatically using category color and icon.'}
               </Text>
             </View>
           )}
@@ -994,7 +1012,6 @@ export default function PostAdScreen() {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-// ✅ تم إزالة الأنماط غير المستخدمة (sortBar, sortBarContent, sortChip, إلخ)
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
