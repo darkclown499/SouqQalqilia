@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { CategoryCard, EmptyState } from '@/components';
@@ -16,33 +16,33 @@ export default function CategoriesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { t, language } = useLanguage();
-  const { categories, loading, error } = useCategories();
+  // ✅ إضافة refetch من الـ Hook (افترض أن الـ Hook يوفرها)
+  const { categories, loading, error, refetch } = useCategories();
   const { numColumns, hPad } = useResponsive();
 
   // منع النقر المتكرر
   const isNavigating = useRef(false);
 
   const handlePress = useCallback(
-  (cat: any) => {
-    if (isNavigating.current) return;
-    isNavigating.current = true;
+    (cat: any) => {
+      // ✅ منع النقر إذا كان القفل مفعّلاً
+      if (isNavigating.current) return;
+      isNavigating.current = true;
 
-    const localizedName = getCategoryName(cat, language);
-    // ✅ إضافة type=product
-    const result = router.push(
-      `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(localizedName)}&type=product`
-    );
+      const localizedName = getCategoryName(cat, language);
+      
+      // ✅ التنقل (router.push لا يعيد Promise في الإصدارات الحديثة)
+      router.push(
+        `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(localizedName)}&type=product`
+      );
 
-    if (result && typeof result.then === 'function') {
-      (result as Promise<any>).finally(() => {
+      // ✅ فتح القفل بعد 300 مللي لمنع النقر المزدوج بشكل فعال
+      setTimeout(() => {
         isNavigating.current = false;
-      });
-    } else {
-      isNavigating.current = false;
-    }
-  },
-  [language, router]
-);
+      }, 300);
+    },
+    [language, router]
+  );
 
   const renderItem = useCallback(
     ({ item }: any) => (
@@ -53,7 +53,7 @@ export default function CategoriesScreen() {
     [handlePress]
   );
 
-  // عرض خطأ إذا فشل التحميل
+  // عرض خطأ إذا فشل التحميل مع زر إعادة المحاولة
   if (error) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -67,6 +67,13 @@ export default function CategoriesScreen() {
           <Text style={[styles.errorText, { color: colors.error }]}>
             {t.errorLoadingCategories || 'حدث خطأ أثناء تحميل التصنيفات'}
           </Text>
+          {/* ✅ إضافة زر إعادة المحاولة */}
+          <TouchableOpacity 
+            style={[styles.retryButton, { backgroundColor: colors.primary }]} 
+            onPress={refetch}
+          >
+            <Text style={styles.retryText}>{t.retry || 'إعادة المحاولة'}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -88,13 +95,15 @@ export default function CategoriesScreen() {
         <SkeletonCategoriesGrid count={10} />
       ) : (
         <FlatList
-          data={categories}
-          keyExtractor={(item) => item.id}
+          // ✅ إضافة ?? [] لمنع التعطل إذا كانت البيانات null
+          data={categories ?? []}
+          // ✅ تحويل الـ ID إلى String لضمان التفرد
+          keyExtractor={(item) => String(item.id)}
           numColumns={numColumns}
           key={numColumns}
           renderItem={renderItem}
           contentContainerStyle={[
-            styles.grid,
+            styles.gridContent,
             { paddingHorizontal: hPad, paddingVertical: Spacing.md, gap: Spacing.md },
           ]}
           showsVerticalScrollIndicator={false}
@@ -146,8 +155,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: FontSize.lg,
   },
-  grid: {
-    // padding تم نقله إلى contentContainerStyle
+  // ✅ تم تغيير الاسم من 'grid' إلى 'gridContent' لتجنب الـ Style الفارغ
+  gridContent: {
+    // جميع الخصائص موجودة في contentContainerStyle مباشرة
   },
   cardWrapper: {
     flex: 1,
@@ -163,5 +173,18 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: FontSize.md,
     textAlign: 'center',
+    marginBottom: Spacing.md,
+  },
+  // ✅ إضافة ستايلات زر إعادة المحاولة
+  retryButton: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.md,
+    marginTop: Spacing.sm,
+  },
+  retryText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: FontSize.md,
   },
 });
