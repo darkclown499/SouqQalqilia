@@ -50,6 +50,7 @@ export default function FloatingOffersButton() {
   const MIN_Y = 80 + insets.top;
   const MAX_Y = screenHeight - 160 - insets.bottom;
 
+  // ✅ نغير البداية بحيث يكون الزر في الجهة اليمنى
   const x = useSharedValue(MAX_X);
   const y = useSharedValue(MAX_Y - 50);
 
@@ -117,7 +118,6 @@ export default function FloatingOffersButton() {
         <Animated.View style={styles.panWrapper}>
           <Pressable onPress={() => router.push('/offers')} style={styles.pressableArea}>
             
-            {/* ✅ الدائرة تظهر على اليسار إذا كان الزر في الجهة اليسرى، والعكس */}
             {isSnappedLeft ? (
               // الزر على اليسار: الدائرة على اليسار، ثم الفقاعة
               <>
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    width: 'auto',        // نسمح للعرض بالتمدد حسب المحتوى
+    width: SCREEN_WIDTH,     // ✅ تغطية العرض الكامل للشاشة
     height: BUTTON_SIZE,
     zIndex: 99999,
   },
@@ -210,6 +210,7 @@ const styles = StyleSheet.create({
   pressableArea: {
     flexDirection: 'row',
     alignItems: 'center',
+    // ✅ نضبط padding حسب الجهة لضمان ظهور الفقاعة كاملة
     paddingHorizontal: 4,
   },
   circle: {
