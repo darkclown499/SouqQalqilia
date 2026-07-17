@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, KeyboardAvoidingView,
   Platform, ActivityIndicator, Modal,
@@ -43,6 +42,7 @@ export default function EditAdScreen() {
   const { t, language, isRTL } = useLanguage();
   const { categories } = useCategories();
   const isAr = language === 'ar';
+  const isMounted = useRef(true);
 
   const [ad, setAd] = useState<Ad | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,91 +62,125 @@ export default function EditAdScreen() {
   const [newImages, setNewImages] = useState<ImageItem[]>([]);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [deletedImageIds, setDeletedImageIds] = useState<string[]>([]);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const rtl = { flexDirection: isRTL ? ('row-reverse' as const) : ('row' as const) };
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
 
+  // ── Memoized total image count ──
+  const totalImages = useMemo(() => {
+    const activeExisting = existingImages.filter(img => !deletedImageIds.includes(img.id));
+    return activeExisting.length + newImages.length;
+  }, [existingImages, deletedImageIds, newImages]);
+
+  // ── Fetch ad data with AbortController ──
   useEffect(() => {
-    if (!id) return;
-    fetchAdById(id).then(({ data }) => {
-      if (!data) { setLoading(false); return; }
-      setAd(data);
-      setTitle(data.title);
-      setDescription(data.description);
-      setPrice(data.price.toString());
-      // Extract neighbourhood (remove any known city prefix)
-      const knownPrefixes = QALQILYA_LOCATIONS.map(l => l + ' - ').concat(['قلقيلية - ', 'Qalqilya - ']);
-      let rawLoc = data.location;
-      let detectedCity = QALQILYA_CITY;
-      for (const prefix of knownPrefixes) {
-        if (rawLoc.startsWith(prefix)) {
-          const cityPart = prefix.replace(' - ', '');
-          detectedCity = QALQILYA_LOCATIONS.includes(cityPart) ? cityPart : QALQILYA_CITY;
-          rawLoc = rawLoc.slice(prefix.length);
-          break;
+    isMounted.current = true;
+    if (!id) {
+      if (isMounted.current) setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    const loadAd = async () => {
+      try {
+        const { data } = await fetchAdById(id);
+        if (signal.aborted) return;
+        if (!data) {
+          if (isMounted.current) setLoading(false);
+          return;
+        }
+        setAd(data);
+        setTitle(data.title);
+        setDescription(data.description);
+        setPrice(data.price.toString());
+
+        // Parse location
+        const knownPrefixes = QALQILYA_LOCATIONS.map(l => l + ' - ').concat(['قلقيلية - ', 'Qalqilya - ']);
+        let rawLoc = data.location;
+        let detectedCity = QALQILYA_CITY;
+        for (const prefix of knownPrefixes) {
+          if (rawLoc.startsWith(prefix)) {
+            const cityPart = prefix.replace(' - ', '');
+            detectedCity = QALQILYA_LOCATIONS.includes(cityPart) ? cityPart : QALQILYA_CITY;
+            rawLoc = rawLoc.slice(prefix.length);
+            break;
+          }
+        }
+        const loc = rawLoc.replace(/^قلقيلية\s*-\s*/, '').replace(/^Qalqilya\s*-\s*/, '');
+        setSelectedCity(detectedCity);
+        setLocation(loc);
+        setCategoryId(data.category_id);
+        setCondition(data.condition);
+        const phone = data.phone_number ?? '';
+        const match = phone.match(/^(\+97[02])(\d+)$/);
+        if (match) { setPhonePrefix(match[1]); setPhoneLocal(match[2]); }
+        else if (phone) setPhoneLocal(phone.replace(/[^0-9]/g, '').slice(0, 9));
+        setExistingImages((data.ad_images ?? []).sort((a, b) => a.position - b.position));
+        if (isMounted.current) setLoading(false);
+      } catch (err: any) {
+        if (signal.aborted) return;
+        if (isMounted.current) {
+          setFetchError(err?.message || 'Failed to load ad');
+          setLoading(false);
         }
       }
-      // Fallback strip
-      const loc = rawLoc.replace(/^قلقيلية\s*-\s*/, '').replace(/^Qalqilya\s*-\s*/, '');
-      setSelectedCity(detectedCity);
-      setLocation(loc);
-      setCategoryId(data.category_id);
-      setCondition(data.condition);
-      const phone = data.phone_number ?? '';
-      const match = phone.match(/^(\+97[02])(\d+)$/);
-      if (match) { setPhonePrefix(match[1]); setPhoneLocal(match[2]); }
-      else if (phone) setPhoneLocal(phone.replace(/[^0-9]/g, '').slice(0, 9));
-      setExistingImages((data.ad_images ?? []).sort((a, b) => a.position - b.position));
-      setLoading(false);
-    });
+    };
+
+    loadAd();
+
+    return () => {
+      isMounted.current = false;
+      controller.abort();
+    };
   }, [id]);
 
-  const totalImages = existingImages.filter(img => !deletedImageIds.includes(img.id)).length + newImages.length;
-
-  const handleAddImage = () => {
+  // ── Handlers wrapped in useCallback ──
+  const handleAddImage = useCallback(() => {
     if (totalImages >= MAX_AD_IMAGES) {
       return showAlert(isAr ? 'الصور' : 'Photos', isAr ? `الحد الأقصى ${MAX_AD_IMAGES} صور.` : `Max ${MAX_AD_IMAGES} photos allowed.`);
     }
     setPhotoModalVisible(true);
-  };
+  }, [totalImages, isAr, showAlert]);
 
-  const handlePickCamera = async () => {
+  const handlePickCamera = useCallback(() => {
     setPhotoModalVisible(false);
     setTimeout(async () => {
       const result = await pickImage('camera');
-      if (result) setNewImages(prev => [...prev, result]);
+      if (result && isMounted.current) setNewImages(prev => [...prev, result]);
     }, 300);
-  };
+  }, []);
 
-  const handlePickGallery = async () => {
+  const handlePickGallery = useCallback(() => {
     setPhotoModalVisible(false);
     setTimeout(async () => {
-      // Batch-select up to 3 images — capped by remaining slots
       const remaining = MAX_AD_IMAGES - totalImages;
       if (remaining <= 0) return;
       const results = await pickMultipleImages(Math.min(3, remaining));
-      if (results.length > 0) {
+      if (results.length > 0 && isMounted.current) {
         setNewImages(prev => [...prev, ...results].slice(0, MAX_AD_IMAGES));
       }
     }, 300);
-  };
+  }, [totalImages]);
 
-  const handleRemoveExisting = (imgId: string) => {
+  const handleRemoveExisting = useCallback((imgId: string) => {
     setDeletedImageIds(prev => [...prev, imgId]);
-  };
+  }, []);
 
-  const handleRemoveNew = (index: number) => {
+  const handleRemoveNew = useCallback((index: number) => {
     setNewImages(prev => prev.filter((_, i) => i !== index));
-  };
+  }, []);
 
-  const handleSave = async () => {
+  // ── Save handler ──
+  const handleSave = useCallback(async () => {
     if (!id || !user || !ad) return;
     if (!title.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال عنوان' : 'Please enter a title.');
     if (!description.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال وصف' : 'Please enter a description.');
     if (!categoryId) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى اختيار تصنيف' : 'Please select a category.');
     const parsedPrice = parseFloat(price);
     if (!price.trim() || isNaN(parsedPrice) || parsedPrice < 0) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال سعر صحيح' : 'Please enter a valid price.');
-    // Accept 9-digit (e.g. 599123456) OR 10-digit with leading zero (e.g. 0599123456)
     const rawPhone = phoneLocal.trim();
     if (rawPhone) {
       const digits = rawPhone.replace(/\D/g, '');
@@ -163,13 +197,12 @@ export default function EditAdScreen() {
     setSaving(true);
     try {
       const supabase = getSupabaseClient();
-      // Strip leading zero before prepending country prefix
       const rawPhoneLocal = phoneLocal.trim().replace(/^0/, '');
       const fullPhone = rawPhoneLocal ? `${phonePrefix}${rawPhoneLocal}` : '';
       const isCity = selectedCity === QALQILYA_CITY;
       const fullLocation = `${isCity ? 'قلقيلية' : selectedCity}${location.trim() ? ` - ${location.trim()}` : ''}`;
 
-      // Update ad fields via service (also clears cache)
+      // 1. Update ad fields
       const { error: updateErr } = await updateAd(id, {
         title: title.trim(),
         description: description.trim(),
@@ -179,29 +212,32 @@ export default function EditAdScreen() {
         condition,
         phone_number: fullPhone,
       });
-
       if (updateErr) throw new Error(updateErr);
 
-      // Delete removed images
+      // 2. Delete removed images
       if (deletedImageIds.length > 0) {
-        await supabase.from('ad_images').delete().in('id', deletedImageIds);
+        const { error: delErr } = await supabase.from('ad_images').delete().in('id', deletedImageIds);
+        if (delErr) throw new Error(delErr.message);
       }
 
-      // Upload and save new images
+      // 3. Upload new images in parallel
       if (newImages.length > 0) {
         const remaining = existingImages.filter(img => !deletedImageIds.includes(img.id));
         const startPosition = remaining.length;
-        const urls: string[] = [];
-        for (const img of newImages) {
-          const { url } = await uploadImage(img.base64, user.id, id, img.uri);
-          if (url) urls.push(url);
-        }
+        const uploadPromises = newImages.map((img, index) =>
+          uploadImage(img.base64, user.id, id, img.uri)
+            .then(res => ({ url: res.url, position: startPosition + index }))
+        );
+        const uploadResults = await Promise.all(uploadPromises);
+        const urls = uploadResults.filter(r => r.url).map(r => r.url);
         if (urls.length > 0) {
           const rows = urls.map((url, i) => ({ ad_id: id, url, position: startPosition + i }));
-          await supabase.from('ad_images').insert(rows);
+          const { error: insErr } = await supabase.from('ad_images').insert(rows);
+          if (insErr) throw new Error(insErr.message);
         }
       }
 
+      // 4. Show success and navigate
       showAlert(
         isAr ? 'تم الحفظ!' : 'Saved!',
         isAr ? 'تم تحديث إعلانك بنجاح.' : 'Your listing has been updated.',
@@ -210,10 +246,32 @@ export default function EditAdScreen() {
     } catch (e: any) {
       showAlert(isAr ? 'خطأ' : 'Error', e.message ?? 'Something went wrong.');
     } finally {
-      setSaving(false);
+      if (isMounted.current) setSaving(false);
     }
-  };
+  }, [id, user, ad, title, description, price, categoryId, condition, selectedCity, location, phoneLocal, phonePrefix, deletedImageIds, existingImages, newImages, isAr, showAlert, router]);
 
+  // ── Delete handler ──
+  const handleDelete = useCallback(() => {
+    if (!id || !ad) return;
+    showAlert(
+      isAr ? 'حذف الإعلان' : 'Delete Listing',
+      isAr ? `هل أنت متأكد من حذف "${ad.title}"؟ لا يمكن التراجع عن هذا.` : `Delete "${ad.title}"? This cannot be undone.`,
+      [
+        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isAr ? 'حذف نهائياً' : 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await updateAdStatus(id!, 'deleted');
+            if (error) return showAlert(isAr ? 'خطأ' : 'Error', error);
+            router.replace('/(tabs)/profile');
+          },
+        },
+      ]
+    );
+  }, [id, ad, isAr, showAlert, router]);
+
+  // ── Render ──
   if (loading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -222,12 +280,12 @@ export default function EditAdScreen() {
     );
   }
 
-  if (!ad || ad.user_id !== user?.id) {
+  if (fetchError || !ad || ad.user_id !== user?.id) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <MaterialIcons name="error-outline" size={52} color={colors.textMuted} />
         <Text style={[styles.notFoundText, { color: colors.textSecondary }]}>
-          {isAr ? 'الإعلان غير موجود' : 'Ad not found'}
+          {fetchError || (isAr ? 'الإعلان غير موجود' : 'Ad not found')}
         </Text>
         <Button label={isAr ? 'رجوع' : 'Go Back'} variant="outline" onPress={() => router.back()} style={{ marginTop: 16 }} />
       </View>
@@ -240,40 +298,40 @@ export default function EditAdScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
 
-          {/* City Picker Modal */}
-          <Modal visible={cityModalVisible} transparent animationType="slide" onRequestClose={() => setCityModalVisible(false)} statusBarTranslucent>
-            <Pressable style={cityS.overlay} onPress={() => setCityModalVisible(false)}>
-              <View style={[cityS.sheet, { backgroundColor: colors.surface }]}>
-                <View style={[cityS.handle, { backgroundColor: colors.border }]} />
-                <View style={[cityS.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                  <MaterialIcons name="location-on" size={20} color={colors.primary} />
-                  <Text style={[cityS.titleText, { color: colors.textPrimary }]}>{isAr ? 'اختر المنطقة' : 'Select Area'}</Text>
-                </View>
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={cityS.listContent}>
-                  {QALQILYA_LOCATIONS.map(loc => {
-                    const isSelected = selectedCity === loc;
-                    const isMainCity = loc === QALQILYA_CITY;
-                    return (
-                      <Pressable
-                        key={loc}
-                        style={({ pressed }) => [cityS.item, { borderColor: isSelected ? colors.primary : colors.borderLight, backgroundColor: isSelected ? colors.primaryGhost : (pressed ? colors.surfaceTint : colors.background) }]}
-                        onPress={() => { setSelectedCity(loc); setCityModalVisible(false); }}
-                      >
-                        <View style={[cityS.itemIcon, { backgroundColor: isSelected ? colors.primary : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
-                          <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSelected ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
-                        </View>
-                        <Text style={[cityS.itemText, { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>{loc}</Text>
-                        {isMainCity && !isSelected ? <View style={[cityS.defaultBadge, { backgroundColor: colors.primaryGhost }]}><Text style={[cityS.defaultText, { color: colors.primary }]}>{isAr ? 'افتراضي' : 'Default'}</Text></View> : null}
-                        {isSelected ? <MaterialIcons name="check-circle" size={18} color={colors.primary} /> : null}
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
+        {/* City Picker Modal */}
+        <Modal visible={cityModalVisible} transparent animationType="slide" onRequestClose={() => setCityModalVisible(false)} statusBarTranslucent>
+          <Pressable style={cityS.overlay} onPress={() => setCityModalVisible(false)}>
+            <View style={[cityS.sheet, { backgroundColor: colors.surface }]}>
+              <View style={[cityS.handle, { backgroundColor: colors.border }]} />
+              <View style={[cityS.titleRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                <MaterialIcons name="location-on" size={20} color={colors.primary} />
+                <Text style={[cityS.titleText, { color: colors.textPrimary }]}>{isAr ? 'اختر المنطقة' : 'Select Area'}</Text>
               </View>
-            </Pressable>
-          </Modal>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={cityS.listContent}>
+                {QALQILYA_LOCATIONS.map(loc => {
+                  const isSelected = selectedCity === loc;
+                  const isMainCity = loc === QALQILYA_CITY;
+                  return (
+                    <Pressable
+                      key={loc}
+                      style={({ pressed }) => [cityS.item, { borderColor: isSelected ? colors.primary : colors.borderLight, backgroundColor: isSelected ? colors.primaryGhost : (pressed ? colors.surfaceTint : colors.background) }]}
+                      onPress={() => { setSelectedCity(loc); setCityModalVisible(false); }}
+                    >
+                      <View style={[cityS.itemIcon, { backgroundColor: isSelected ? colors.primary : (isMainCity ? colors.primaryGhost : colors.surfaceTint) }]}>
+                        <MaterialIcons name={isMainCity ? 'location-city' : 'location-on'} size={16} color={isSelected ? '#fff' : (isMainCity ? colors.primary : colors.textMuted)} />
+                      </View>
+                      <Text style={[cityS.itemText, { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>{loc}</Text>
+                      {isMainCity && !isSelected ? <View style={[cityS.defaultBadge, { backgroundColor: colors.primaryGhost }]}><Text style={[cityS.defaultText, { color: colors.primary }]}>{isAr ? 'افتراضي' : 'Default'}</Text></View> : null}
+                      {isSelected ? <MaterialIcons name="check-circle" size={18} color={colors.primary} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </Pressable>
+        </Modal>
 
-          {/* Photo Source Modal */}
+        {/* Photo Source Modal */}
         <Modal visible={photoModalVisible} transparent animationType="slide" onRequestClose={() => setPhotoModalVisible(false)} statusBarTranslucent>
           <Pressable style={photoS.overlay} onPress={() => setPhotoModalVisible(false)}>
             <View style={[photoS.sheet, { backgroundColor: colors.surface }]}>
@@ -455,27 +513,10 @@ export default function EditAdScreen() {
 
           <Button label={saving ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'حفظ التعديلات' : 'Save Changes')} onPress={handleSave} loading={saving} style={styles.saveBtn} size="lg" />
 
-          {/* ── Delete listing button ── */}
+          {/* Delete button */}
           <Pressable
             style={[styles.deleteBtn, { borderColor: '#EF4444' }]}
-            onPress={() =>
-              showAlert(
-                isAr ? 'حذف الإعلان' : 'Delete Listing',
-                isAr ? `هل أنت متأكد من حذف "${ad.title}"؟ لا يمكن التراجع عن هذا.` : `Delete "${ad.title}"? This cannot be undone.`,
-                [
-                  { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-                  {
-                    text: isAr ? 'حذف نهائياً' : 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                      const { error } = await updateAdStatus(id!, 'deleted');
-                      if (error) return showAlert(isAr ? 'خطأ' : 'Error', error);
-                      router.replace('/(tabs)/profile');
-                    },
-                  },
-                ]
-              )
-            }
+            onPress={handleDelete}
           >
             <MaterialIcons name="delete-forever" size={18} color="#EF4444" />
             <Text style={styles.deleteBtnText}>{isAr ? 'حذف الإعلان' : 'Delete Listing'}</Text>
@@ -521,7 +562,6 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: FontSize.sm, fontWeight: '600', marginBottom: 6 },
   locationRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: Radius.md, overflow: 'hidden', marginBottom: Spacing.sm },
   cityTag: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 14 },
-  cityText: { fontSize: FontSize.sm, fontWeight: '700' },
   citySelector: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderRadius: Radius.lg, paddingVertical: 11, paddingHorizontal: 12 },
   citySelectorIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   citySelectorText: { fontSize: FontSize.md, fontWeight: '700' },

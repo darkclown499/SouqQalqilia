@@ -57,10 +57,12 @@ function StatChip({ icon, value, label, color, bg, textColor, subColor }: {
   icon: string; value: string; label: string; color: string;
   bg: string; textColor: string; subColor: string;
 }) {
+  // ✅ إصلاح: استخدام قيمة افتراضية للـ color
+  const safeColor = color || '#0A6E5C';
   return (
     <View style={[chipS.wrap, { backgroundColor: bg }]}>
-      <View style={[chipS.iconRing, { backgroundColor: color + '20' }]}>
-        <MaterialIcons name={icon as any} size={18} color={color} />
+      <View style={[chipS.iconRing, { backgroundColor: safeColor + '20' }]}>
+        <MaterialIcons name={icon as any} size={18} color={safeColor} />
       </View>
       <Text style={[chipS.value, { color: textColor }]}>{value}</Text>
       <Text style={[chipS.label, { color: subColor }]}>{label}</Text>
@@ -103,6 +105,7 @@ export default function SellerProfileScreen() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
 
   // ── Rating state ──────────────────────────────────────────────────────────
   const [avgRating, setAvgRating] = useState<number | null>(null);
@@ -111,46 +114,99 @@ export default function SellerProfileScreen() {
   const [draftStars, setDraftStars] = useState(5);
   const [draftComment, setDraftComment] = useState('');
   const [submittingRating, setSubmittingRating] = useState(false);
-  const [hasRated, setHasRated] = useState(false);
+  const [existingRating, setExistingRating] = useState<{ rating: number; comment: string } | null>(null);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const headerOpacity = scrollY.interpolate({ inputRange: [COVER_H - 80, COVER_H - 20], outputRange: [0, 1], extrapolate: 'clamp' });
   const coverScale = scrollY.interpolate({ inputRange: [-80, 0], outputRange: [1.3, 1], extrapolate: 'clamp' });
 
+  // ── AbortController for cancelling requests ──────────────────────────────
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const load = useCallback(async (quiet = false) => {
     if (!id) return;
     if (!quiet) setPageLoading(true);
-    const [profileRes, adsRes, ratingsRes] = await Promise.all([
-      getSupabaseClient()
-        .from('user_profiles')
-        .select('id, username, email, phone, avatar_url, banner_url, is_verified')
-        .eq('id', id)
-        .single(),
-      fetchAds({ userId: id, limit: 60 }),
-      getSupabaseClient()
-        .from('seller_ratings')
-        .select('rating')
-        .eq('seller_id', id),
-    ]);
-    if (!profileRes.error && profileRes.data) setSeller(profileRes.data as SellerProfile);
-    setAds(adsRes.data ?? []);
-    const ratings = ratingsRes.data ?? [];
-    setRatingCount(ratings.length);
-    if (ratings.length > 0) {
-      const avg = ratings.reduce((sum, r) => sum + (r.rating as number), 0) / ratings.length;
-      setAvgRating(Math.round(avg * 10) / 10);
-    } else {
-      setAvgRating(null);
-    }
-    setPageLoading(false);
-  }, [id]);
 
-  useEffect(() => { load(); }, [load]);
+    // إلغاء أي طلب سابق
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const signal = controller.signal;
+
+    try {
+      const supabase = getSupabaseClient();
+      const [profileRes, adsRes, ratingsRes] = await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('id, username, email, phone, avatar_url, banner_url, is_verified')
+          .eq('id', id)
+          .single(),
+        fetchAds({ userId: id, limit: 60 }),
+        supabase
+          .from('seller_ratings')
+          .select('rating')
+          .eq('seller_id', id),
+      ]);
+
+      if (signal.aborted) return;
+
+      // معالجة الملف الشخصي
+      if (profileRes.error) {
+        console.warn('Failed to load profile:', profileRes.error);
+        // نستمر مع بقية البيانات (قد يكون الملف الشخصي غير موجود)
+      } else if (profileRes.data) {
+        setSeller(profileRes.data as SellerProfile);
+      }
+
+      // معالجة الإعلانات
+      setAds(adsRes.data ?? []);
+
+      // معالجة التقييمات
+      const ratings = ratingsRes.data ?? [];
+      setRatingCount(ratings.length);
+      if (ratings.length > 0) {
+        const avg = ratings.reduce((sum, r) => sum + (r.rating as number), 0) / ratings.length;
+        setAvgRating(Math.round(avg * 10) / 10);
+      } else {
+        setAvgRating(null);
+      }
+
+      // تحميل تقييم المستخدم الحالي (إن وجد) عند فتح المودال لاحقاً
+      if (user) {
+        const { data: myRating } = await supabase
+          .from('seller_ratings')
+          .select('rating, comment')
+          .eq('reviewer_id', user.id)
+          .eq('seller_id', id)
+          .maybeSingle();
+        if (!signal.aborted) {
+          setExistingRating(myRating ? { rating: myRating.rating, comment: myRating.comment || '' } : null);
+        }
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      console.warn('Error loading seller data:', err);
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل تحميل بيانات البائع' : 'Failed to load seller data');
+    } finally {
+      if (!signal.aborted) {
+        setPageLoading(false);
+        setRefreshing(false);
+      }
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
+    }
+  }, [id, user, isAr, showAlert]);
+
+  useEffect(() => {
+    load();
+    return () => {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
+  }, [load]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await load(true);
-    setRefreshing(false);
+    // load سوف تضع setRefreshing(false) في النهاية
   };
 
   const isPhoneUser = (seller?.email ?? '').includes('@sms.souqqalqilya.local');
@@ -168,14 +224,6 @@ export default function SellerProfileScreen() {
     setSubmittingRating(true);
     try {
       const supabase = getSupabaseClient();
-      // Check if current user already has a rating for this seller
-      const { data: existing } = await supabase
-        .from('seller_ratings')
-        .select('id, rating')
-        .eq('reviewer_id', user.id)
-        .eq('seller_id', id)
-        .maybeSingle();
-
       const { error } = await supabase
         .from('seller_ratings')
         .upsert(
@@ -188,24 +236,28 @@ export default function SellerProfileScreen() {
         return;
       }
 
-      const isUpdate = !!existing;
-      // Optimistic recalculation
+      // ✅ تحسين التحديث باستخدام القيم الحالية
+      const isUpdate = !!existingRating;
+      setRatingCount(prev => isUpdate ? prev : prev + 1);
       setAvgRating(prev => {
-        if (isUpdate) {
-          const oldRating = existing!.rating as number;
-          const total = (prev ?? oldRating) * ratingCount - oldRating + draftStars;
+        const currentAvg = prev ?? 0;
+        const currentCount = isUpdate ? ratingCount : ratingCount + 1;
+        // نحتاج إلى معرفة القيمة الجديدة بدقة
+        // إذا كان تحديثاً، نستبدل التقييم القديم بالجديد
+        if (isUpdate && existingRating) {
+          const total = currentAvg * ratingCount - existingRating.rating + draftStars;
           return Math.round((total / ratingCount) * 10) / 10;
         } else {
-          const total = (prev ?? 0) * ratingCount + draftStars;
+          const total = currentAvg * ratingCount + draftStars;
           return Math.round((total / (ratingCount + 1)) * 10) / 10;
         }
       });
-      if (!isUpdate) setRatingCount(prev => prev + 1);
-      setHasRated(true);
+
       setRatingModalVisible(false);
       setDraftComment('');
+      setExistingRating({ rating: draftStars, comment: draftComment.trim() });
 
-      // Fire-and-forget: notify rated seller of new/updated rating
+      // إشعار للبائع (غير حاسم)
       try {
         const senderName = user.user_metadata?.username ?? user.email?.split('@')[0] ?? 'مستخدم';
         supabase.functions.invoke('push-notify', {
@@ -221,7 +273,7 @@ export default function SellerProfileScreen() {
     } finally {
       setSubmittingRating(false);
     }
-  }, [user, id, draftStars, draftComment, ratingCount, submittingRating, isAr, showAlert]);
+  }, [user, id, draftStars, draftComment, ratingCount, existingRating, submittingRating, isAr, showAlert]);
 
   const isOwnProfile = user?.id === id;
 
@@ -233,11 +285,12 @@ export default function SellerProfileScreen() {
   }, [seller?.phone]);
 
   const handleShare = useCallback(async () => {
-    if (!seller || !id) return;
-    const deepLink = `https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/store/${id}`;
-    const shortLink = await shortenUrl(deepLink);
-
+    if (!seller || !id || shareLoading) return;
+    setShareLoading(true);
     try {
+      const deepLink = `https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/store/${id}`;
+      const shortLink = await shortenUrl(deepLink);
+
       await Share.share({
         title: displayName,
         message: isAr
@@ -245,8 +298,24 @@ export default function SellerProfileScreen() {
           : `Check out ${displayName}'s store on Souq Qalqilya:\n${shortLink}`,
         url: shortLink,
       });
-    } catch (_) {}
-  }, [seller, id, displayName, isAr]);
+    } catch (_) {
+      // Silent fail
+    } finally {
+      setShareLoading(false);
+    }
+  }, [seller, id, displayName, isAr, shareLoading]);
+
+  // ── فتح مودال التقييم مع تحميل التقييم الحالي ──────────────────────────
+  const openRatingModal = useCallback(() => {
+    if (existingRating) {
+      setDraftStars(existingRating.rating);
+      setDraftComment(existingRating.comment);
+    } else {
+      setDraftStars(5);
+      setDraftComment('');
+    }
+    setRatingModalVisible(true);
+  }, [existingRating]);
 
   const renderItem = useCallback(({ item }: { item: Ad }) => (
     <AdCard
@@ -331,7 +400,7 @@ export default function SellerProfileScreen() {
             <View style={styles.waIconBadge}>
               <MaterialIcons name="whatsapp" size={18} color="#fff" />
             </View>
-            <Text style={styles.waButtonText}>{isAr ? 'تواصل عبر واتساب' : 'Contacct via WhatsApp'}</Text>
+            <Text style={styles.waButtonText}>{isAr ? 'تواصل عبر واتساب' : 'Contact via WhatsApp'}</Text>
             <MaterialIcons name={isAr ? 'chevron-left' : 'chevron-right'} size={18} color="rgba(255,255,255,0.8)" />
           </Pressable>
         ) : null}
@@ -349,11 +418,11 @@ export default function SellerProfileScreen() {
         ) : user && !isOwnProfile ? (
           <Pressable
             style={({ pressed }) => [styles.editProfileBtn, { backgroundColor: '#FEF3C7', borderWidth: 1.5, borderColor: '#D97706', opacity: pressed ? 0.85 : 1 }]}
-            onPress={() => setRatingModalVisible(true)}
+            onPress={openRatingModal}
           >
             <MaterialIcons name="star" size={15} color="#D97706" />
             <Text style={[styles.editProfileBtnText, { color: '#92400E' }]}>
-              {isAr ? 'تقييم البائع' : 'Rate this Seller'}
+              {existingRating ? (isAr ? 'تعديل التقييم' : 'Update Rating') : (isAr ? 'تقييم البائع' : 'Rate Seller')}
             </Text>
           </Pressable>
         ) : null}
@@ -412,7 +481,7 @@ export default function SellerProfileScreen() {
     ads.length, activeAds.length, colors, displayName, initials, isAr, isDark,
     seller?.avatar_url, seller?.banner_url, seller?.is_verified, seller?.phone,
     isOwnProfile, handleWhatsApp, coverScale, router,
-    avgRating, ratingCount, user,
+    avgRating, ratingCount, user, openRatingModal, existingRating,
   ]);
 
   if (pageLoading) {
@@ -453,8 +522,12 @@ export default function SellerProfileScreen() {
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <MaterialIcons name={isAr ? 'arrow-forward' : 'arrow-back'} size={20} color="#fff" />
         </Pressable>
-        <Pressable style={styles.backBtn} onPress={handleShare} hitSlop={8}>
-          <MaterialIcons name="share" size={18} color="#fff" />
+        <Pressable style={styles.backBtn} onPress={handleShare} hitSlop={8} disabled={shareLoading}>
+          {shareLoading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <MaterialIcons name="share" size={18} color="#fff" />
+          )}
         </Pressable>
       </View>
 
@@ -471,7 +544,7 @@ export default function SellerProfileScreen() {
             <Pressable style={[rS.sheet, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
               <View style={[rS.handle, { backgroundColor: colors.border }]} />
               <Text style={[rS.title, { color: colors.textPrimary }]}>
-                {isAr ? `تقييم ${displayName}` : `Rate ${displayName}`}
+                {existingRating ? (isAr ? `تعديل تقييم ${displayName}` : `Update ${displayName}'s rating`) : (isAr ? `تقييم ${displayName}` : `Rate ${displayName}`)}
               </Text>
               <Text style={[rS.sub, { color: colors.textMuted }]}>
                 {isAr ? 'اختر تقييمك لهذا البائع' : 'Share your experience with this seller'}
@@ -538,7 +611,7 @@ export default function SellerProfileScreen() {
         columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
         contentContainerStyle={{ paddingBottom: insets.bottom + Spacing.xl, paddingHorizontal: H_PAD }}
         showsVerticalScrollIndicator={false}
-        removeClippedSubviews={false}
+        removeClippedSubviews={true} // ✅ تحسين الأداء
         initialNumToRender={6}
         windowSize={7}
         maxToRenderPerBatch={8}
