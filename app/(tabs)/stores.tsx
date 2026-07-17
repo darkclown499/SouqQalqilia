@@ -24,6 +24,7 @@ import {
 } from '@/services/storeCategoriesService';
 import { Banner } from '@/services/bannersService';
 import { trackPageView } from '@/services/analyticsService';
+import NetInfo from '@react-native-community/netinfo'; // ✅ إضافة
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
 function shuffleArray<T>(array: T[]): T[] {
@@ -80,6 +81,14 @@ const get3DIconUrl = (name: string): string => {
 
 // ── Banner placeholder fallback ──────────────────────────────────────────────
 const BANNER_FALLBACK = 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80';
+
+// ✅ نقل LOCAL_BANNERS خارج المكون لتثبيته
+const LOCAL_BANNERS = [
+  { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
+  { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
+  { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
+  { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. BANNER CAROUSEL
@@ -669,16 +678,19 @@ export default function StoresScreen() {
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState('');
 
+  // ✅ حالة الاتصال بالإنترنت
+  const [isOnline, setIsOnline] = useState(true);
+
   const isMountedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // ── Local banners ──
-  const LOCAL_BANNERS = useMemo(() => [
-    { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
-    { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
-    { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
-    { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
-  ], []);
+  // ── مراقبة حالة الاتصال ──
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected !== false);
+    });
+    return unsubscribe;
+  }, []);
 
   // ── Load data function (معدل: استخدام AbortController بدلاً من Promise.race) ──
   const loadData = useCallback(async (showLoading = true) => {
@@ -726,53 +738,59 @@ export default function StoresScreen() {
         setLoading(false);
       }
     }
-  }, [LOCAL_BANNERS, isAr]);
+  }, [isAr]);
 
-  // ── Load owner store and check name ──
-  useEffect(() => {
-    if (!user) {
-      setOwnerStoreLoading(false);
-      return;
-    }
-    setOwnerStoreLoading(true);
-    
-    const fetchUserData = async () => {
-      try {
-        const supabase = getSupabaseClient();
-        
-        // جلب بيانات المستخدم
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('username')
-          .eq('id', user.id)
-          .single();
-        
-        if (isMountedRef.current && profile && isNameInvalid(profile.username ?? '')) {
-          setEditName(profile.username ?? '');
-          setNameGateVisible(true);
-        }
-
-        // جلب بيانات المتجر
-        const { data: store } = await supabase
-          .from('stores')
-          .select('*')
-          .eq('owner_id', user.id)
-          .maybeSingle();
-
-        if (isMountedRef.current) {
-          setOwnerStore(store ?? null);
-          setOwnerStoreLoading(false);
-        }
-      } catch (err) {
-        if (isMountedRef.current) {
-          setOwnerStore(null);
-          setOwnerStoreLoading(false);
-        }
+  // ── ✅ استبدال useEffect الخاص بـ ownerStore بـ useFocusEffect ──
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) {
+        setOwnerStoreLoading(false);
+        return;
       }
-    };
+      setOwnerStoreLoading(true);
+      const controller = new AbortController();
 
-    fetchUserData();
-  }, [user]);
+      const fetchUserData = async () => {
+        try {
+          const supabase = getSupabaseClient();
+
+          // جلب بيانات المستخدم للتحقق من الاسم
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('username')
+            .eq('id', user.id)
+            .single();
+
+          if (!controller.signal.aborted) {
+            if (profile && isNameInvalid(profile.username ?? '')) {
+              setEditName(profile.username ?? '');
+              setNameGateVisible(true);
+            }
+          }
+
+          // جلب بيانات المتجر
+          const { data: store } = await supabase
+            .from('stores')
+            .select('*')
+            .eq('owner_id', user.id)
+            .maybeSingle();
+
+          if (!controller.signal.aborted) {
+            setOwnerStore(store ?? null);
+            setOwnerStoreLoading(false);
+          }
+        } catch (err) {
+          if (!controller.signal.aborted) {
+            setOwnerStore(null);
+            setOwnerStoreLoading(false);
+          }
+        }
+      };
+
+      fetchUserData();
+      return () => controller.abort();
+    }, [user])
+  );
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -796,7 +814,7 @@ export default function StoresScreen() {
         trackPageView('stores');
       }
       setBanners(shuffleArray(LOCAL_BANNERS));
-    }, [LOCAL_BANNERS])
+    }, [])
   );
 
   // ── Refresh handler ──
@@ -914,6 +932,16 @@ export default function StoresScreen() {
           )}
         </View>
       </View>
+
+      {/* ✅ شريط عدم الاتصال */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <MaterialIcons name="wifi-off" size={16} color="#92400E" />
+          <Text style={styles.offlineText}>
+            {isAr ? 'أنت غير متصل، يتم عرض البيانات المخزنة' : 'You are offline, showing cached data'}
+          </Text>
+        </View>
+      )}
 
       <ScrollView 
         ref={scrollRef} 
@@ -1083,7 +1111,8 @@ export default function StoresScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={nameGateVisible} animationType="fade" transparent onRequestClose={() => {}}>
+      {/* ✅ إضافة onRequestClose لإغلاق النافذة عبر زر الرجوع */}
+      <Modal visible={nameGateVisible} animationType="fade" transparent onRequestClose={() => setNameGateVisible(false)}>
         <View style={gStyles.overlay}>
           <View style={[gStyles.card, { backgroundColor: colors.surface }]}>
             <View style={[gStyles.iconWrap, { backgroundColor: colors.primaryGhost }]}>
@@ -1161,6 +1190,23 @@ const styles = StyleSheet.create({
   catHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   catTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
   catMoreText: { fontSize: 13, fontWeight: '700' },
+  // ✅ أنماط جديدة لشريط عدم الاتصال
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FDE68A',
+  },
+  offlineText: {
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
 });
 
 const gStyles = StyleSheet.create({
