@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -22,6 +22,22 @@ export default function FavoritesScreen() {
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
   const { numColumns, hPad, cardGap } = useResponsive();
   const isAr = language === 'ar';
+
+  const keyExtractor = useCallback((item: any) => String(item.id), []);
+
+  const renderItem = useCallback(({ item }: { item: any }) => (
+    <View style={styles.adWrapper}>
+      <AdCard
+        ad={item}
+        isFavorited={favIds.has(item.id)}
+        onFavoritePress={toggleFav}
+      />
+    </View>
+  ), [favIds, toggleFav]);
+
+  const handleRefresh = useCallback(() => {
+    load();
+  }, [load]);
 
   if (!user) {
     return (
@@ -63,26 +79,18 @@ export default function FavoritesScreen() {
       ) : (
         <FlatList
           data={ads}
-          keyExtractor={item => item.id}
+          keyExtractor={keyExtractor}
           numColumns={numColumns}
           key={numColumns}
           contentContainerStyle={[styles.list, { padding: hPad }]}
           columnWrapperStyle={numColumns > 1 ? { gap: cardGap, marginBottom: cardGap } : undefined}
           showsVerticalScrollIndicator={false}
-          removeClippedSubviews={false}
+          removeClippedSubviews={true}
           refreshing={loading}
-          onRefresh={load}
-          renderItem={({ item }) => (
-            <View style={styles.adWrapper}>
-              <AdCard
-                ad={item}
-                isFavorited={favIds.has(item.id)}
-                onFavoritePress={toggleFav}
-              />
-            </View>
-          )}
+          onRefresh={handleRefresh}
+          renderItem={renderItem}
           ListEmptyComponent={
-            <View style={styles.center}>
+            <View style={styles.emptyContainer}>
               <EmptyState
                 icon="favorite-border"
                 title={isAr ? 'لا توجد مفضلات' : 'No favorites yet'}
@@ -118,4 +126,11 @@ const styles = StyleSheet.create({
   list: { paddingBottom: 36 },
   adWrapper: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', gap: Spacing.md, paddingTop: Spacing.xl },
+  emptyContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingTop: Spacing.xxl,
+    paddingBottom: Spacing.xxl,
+  },
 });
