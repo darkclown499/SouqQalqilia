@@ -993,7 +993,7 @@ const PhoneOtpPanel = React.memo(function PhoneOtpPanel({
   };
 
   return (
-    <View style={s.panelBody} keyboardShouldPersistTaps="handled">
+    <View style={s.panelBody}>
       <View style={s.panelHeader}>
         <View style={[s.panelIconWrap, { backgroundColor: '#E8F0FE' }]}>
           <MaterialIcons name="sms" size={28} color="#1A73E8" />
@@ -1484,7 +1484,7 @@ const s = StyleSheet.create({
   hero: { alignItems: 'center', paddingVertical: Spacing.lg, marginBottom: Spacing.lg },
   logoOuter: { width: 88, height: 88, borderRadius: 24, marginBottom: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 18, elevation: 12, position: 'relative' },
   logoImg: { width: 88, height: 88, borderRadius: 24 },
-  logoGlow: { position: 'absolute', inset: -4, borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  logoGlow: { position: 'absolute', top: -4, bottom: -4, left: -4, right: -4, borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   heroTitle: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5, marginBottom: 4, textShadowColor: 'rgba(0,0,0,0.2)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   heroSub: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.6)', fontWeight: '500' },
   card: { borderRadius: 28, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.22, shadowRadius: 28, elevation: 16 },
