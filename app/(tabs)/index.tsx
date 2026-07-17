@@ -498,7 +498,8 @@ function ConversationsBottomSheet({
 
           {loading ? (
             <View style={cbStyles.loadingWrap}>
-              <ActivityIndicator color={colors.primary} />
+              {/* ✅ إصلاح: زيادة حجم الـ ActivityIndicator */}
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : conversations.length === 0 ? (
             <View style={cbStyles.emptyWrap}>
@@ -983,7 +984,8 @@ export default function HomeScreen() {
   />
 ), [isAr, isRTL, colors, handleFeaturedStorePress]);
 
-  const handleBellPress = useCallback(() => {
+  // ✅ إصلاح: تغيير اسم الدالة والأيقونة
+  const handleChatPress = useCallback(() => {
     setConversationsSheetVisible(true);
   }, []);
 
@@ -1222,8 +1224,9 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
 
-            <Pressable style={styles.headerIconBtn} onPress={handleBellPress} hitSlop={6}>
-              <MaterialCommunityIcons name="bell" size={20} color="#fff" />
+            {/* ✅ تغيير الأيقونة من "bell" إلى "chat" */}
+            <Pressable style={styles.headerIconBtn} onPress={handleChatPress} hitSlop={6}>
+              <MaterialCommunityIcons name="chat" size={20} color="#fff" />
               {unreadCount > 0 ? (
                 <View style={styles.filterDot}>
                   <Text style={styles.filterDotText}>

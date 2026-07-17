@@ -16,7 +16,7 @@ const SIDE_PADDING = 12;
 const MIN_X = SIDE_PADDING;
 const MAX_X = SCREEN_WIDTH - BUTTON_SIZE - SIDE_PADDING;
 
-// قائمة الرسائل (نفسها)
+// قائمة الرسائل
 const OFFERS_MESSAGES = [
   'عروض نار حصرية 🔥',
   'الحق عروض اليوم ⚡',
@@ -116,55 +116,78 @@ export default function FloatingOffersButton() {
       <PanGestureHandler onGestureEvent={gestureHandler}>
         <Animated.View style={styles.panWrapper}>
           <Pressable onPress={() => router.push('/offers')} style={styles.pressableArea}>
-            {/* الدائرة الرئيسية */}
-            <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: '#FF6B6B', shadowColor: '#000' }]}>
-              <Image
-                source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }}
-                style={{ width: 36, height: 36, backgroundColor: 'transparent' }}
-                contentFit="contain"
-              />
-            </View>
+            
+            {/* ✅ الدائرة تظهر على اليسار إذا كان الزر في الجهة اليسرى، والعكس */}
+            {isSnappedLeft ? (
+              // الزر على اليسار: الدائرة على اليسار، ثم الفقاعة
+              <>
+                <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: '#FF6B6B', shadowColor: '#000' }]}>
+                  <Image
+                    source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }}
+                    style={{ width: 36, height: 36, backgroundColor: 'transparent' }}
+                    contentFit="contain"
+                  />
+                </View>
+                <View style={styles.bubbleMasterContainer}>
+                  <View style={styles.tailContainer}>
+                    <View style={[styles.smallDot, { backgroundColor: '#EE5A24' }]} />
+                    <View style={[styles.bigDot, { backgroundColor: '#EE5A24' }]} />
+                  </View>
+                  <LinearGradient
+                    colors={gradientColors}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[
+                      styles.textBubble,
+                      {
+                        shadowColor: bubbleShadowColor,
+                        borderColor: 'rgba(255,255,255,0.2)',
+                        borderWidth: 1,
+                      }
+                    ]}
+                  >
+                    <Text style={styles.bubbleText} numberOfLines={1}>
+                      {currentMessage}
+                    </Text>
+                  </LinearGradient>
+                </View>
+              </>
+            ) : (
+              // الزر على اليمين: الفقاعة ثم الدائرة
+              <>
+                <View style={styles.bubbleMasterContainer}>
+                  <LinearGradient
+                    colors={gradientColors}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[
+                      styles.textBubble,
+                      {
+                        shadowColor: bubbleShadowColor,
+                        borderColor: 'rgba(255,255,255,0.2)',
+                        borderWidth: 1,
+                      }
+                    ]}
+                  >
+                    <Text style={styles.bubbleText} numberOfLines={1}>
+                      {currentMessage}
+                    </Text>
+                  </LinearGradient>
+                  <View style={styles.tailContainer}>
+                    <View style={[styles.bigDot, { backgroundColor: '#EE5A24' }]} />
+                    <View style={[styles.smallDot, { backgroundColor: '#EE5A24' }]} />
+                  </View>
+                </View>
+                <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: '#FF6B6B', shadowColor: '#000' }]}>
+                  <Image
+                    source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }}
+                    style={{ width: 36, height: 36, backgroundColor: 'transparent' }}
+                    contentFit="contain"
+                  />
+                </View>
+              </>
+            )}
 
-            {/* الفقاعة المحسّنة */}
-            <View
-              style={[
-                styles.bubbleMasterContainer,
-                isSnappedLeft
-                  ? { left: BUTTON_SIZE - 4, flexDirection: 'row' }
-                  : { right: BUTTON_SIZE - 4, flexDirection: 'row-reverse' },
-              ]}
-              pointerEvents="none"
-            >
-              {/* ذيل الفقاعة (نقاط) */}
-              <View
-                style={[
-                  styles.tailContainer,
-                  isSnappedLeft ? { marginLeft: 2, flexDirection: 'row' } : { marginRight: 2, flexDirection: 'row-reverse' },
-                ]}
-              >
-                <View style={[styles.smallDot, { backgroundColor: '#EE5A24' }]} />
-                <View style={[styles.bigDot, { backgroundColor: '#EE5A24' }]} />
-              </View>
-
-              {/* الفقاعة مع تدرج لوني */}
-              <LinearGradient
-                colors={gradientColors}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[
-                  styles.textBubble,
-                  {
-                    shadowColor: bubbleShadowColor,
-                    borderColor: 'rgba(255,255,255,0.2)',
-                    borderWidth: 1,
-                  }
-                ]}
-              >
-                <Text style={styles.bubbleText} numberOfLines={1}>
-                  {currentMessage}
-                </Text>
-              </LinearGradient>
-            </View>
           </Pressable>
         </Animated.View>
       </PanGestureHandler>
@@ -177,15 +200,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
+    width: 'auto',        // نسمح للعرض بالتمدد حسب المحتوى
+    height: BUTTON_SIZE,
     zIndex: 99999,
   },
   panWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flex: 1,
   },
   pressableArea: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 4,
   },
   circle: {
     width: BUTTON_SIZE,
@@ -193,9 +218,12 @@ const styles = StyleSheet.create({
     borderRadius: BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
     elevation: 8,
     borderWidth: 2,
-    zIndex: 2,
+    flexShrink: 0,
   },
   bubbleMasterContainer: {
     flexDirection: 'row',
@@ -209,51 +237,38 @@ const styles = StyleSheet.create({
     gap: 4,
     marginHorizontal: 4,
   },
-  bigDot: { width: 8, height: 8, borderRadius: 4 },
-  smallDot: { width: 5, height: 5, borderRadius: 2.5 },
+  bigDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  smallDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
   textBubble: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
     elevation: 8,
     justifyContent: 'center',
-    flexShrink: 1, 
+    flexShrink: 1,
+    minWidth: 60,
   },
   bubbleText: {
     fontSize: 14,
     fontWeight: '900',
     color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 18,
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
     flexShrink: 1,
   },
 });
-
-// تحديث الجزء المسؤول عن العرض داخل الـ return:
-<Animated.View style={[styles.absoluteWrapper, animatedStyle]}>
-  <PanGestureHandler onGestureEvent={gestureHandler}>
-    <Animated.View style={styles.panWrapper}>
-      <Pressable onPress={() => router.push('/offers')} style={styles.pressableArea}>
-        
-        {/* الدائرة إذا كانت على اليمين */}
-        {!isSnappedLeft && <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: '#FF6B6B' }]}>
-          <Image source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }} style={{ width: 36, height: 36 }} />
-        </View>}
-
-        <View style={styles.bubbleMasterContainer}>
-          <View style={styles.tailContainer}>
-            <View style={[styles.smallDot, { backgroundColor: '#EE5A24' }]} />
-            <View style={[styles.bigDot, { backgroundColor: '#EE5A24' }]} />
-          </View>
-          <LinearGradient colors={gradientColors} style={styles.textBubble}>
-            <Text style={styles.bubbleText} numberOfLines={1}>{currentMessage}</Text>
-          </LinearGradient>
-        </View>
-
-        {/* الدائرة إذا كانت على اليسار */}
-        {isSnappedLeft && <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: '#FF6B6B' }]}>
-          <Image source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }} style={{ width: 36, height: 36 }} />
-        </View>}
-        
-      </Pressable>
-    </Animated.View>
-  </PanGestureHandler>
-</Animated.View>
