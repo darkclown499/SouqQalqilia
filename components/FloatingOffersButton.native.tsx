@@ -177,16 +177,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    width: BUTTON_SIZE,
-    height: BUTTON_SIZE,
     zIndex: 99999,
   },
   panWrapper: {
-    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   pressableArea: {
-    flex: 1,
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
   },
   circle: {
@@ -195,59 +193,67 @@ const styles = StyleSheet.create({
     borderRadius: BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 5,
     elevation: 8,
     borderWidth: 2,
+    zIndex: 2,
   },
-
   bubbleMasterContainer: {
-    position: 'absolute',
-    height: BUTTON_SIZE,
+    flexDirection: 'row',
     alignItems: 'center',
-    // ✅ السماح للفقاعة بالتمدد حسب النص
-    maxWidth: SCREEN_WIDTH - BUTTON_SIZE - 12, // مساحة أكبر
-    minWidth: 60,
+    height: BUTTON_SIZE,
+    paddingHorizontal: 4,
   },
   tailContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 4,
-    flexShrink: 0,
+    marginHorizontal: 4,
   },
-  bigDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  smallDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-  },
+  bigDot: { width: 8, height: 8, borderRadius: 4 },
+  smallDot: { width: 5, height: 5, borderRadius: 2.5 },
   textBubble: {
-    paddingHorizontal: 16,  // ✅ مسافة أكبر لنفس جميل
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
     elevation: 8,
-    flexShrink: 0,          // ✅ يمنع انكماش الفقاعة
-    minWidth: 60,
+    justifyContent: 'center',
+    flexShrink: 1, 
   },
   bubbleText: {
-    fontSize: 16,           // ✅ حجم خط مناسب (أكبر من السابق)
+    fontSize: 14,
     fontWeight: '900',
     color: '#FFFFFF',
-    textAlign: 'center',
-    lineHeight: 22,
-    letterSpacing: 0.3,
-    textShadowColor: 'rgba(0,0,0,0.2)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-    // ✅ السماح للنص بالتمدد داخل الفقاعة دون تقليص
-    flexShrink: 0,
+    flexShrink: 1,
   },
 });
+
+// تحديث الجزء المسؤول عن العرض داخل الـ return:
+<Animated.View style={[styles.absoluteWrapper, animatedStyle]}>
+  <PanGestureHandler onGestureEvent={gestureHandler}>
+    <Animated.View style={styles.panWrapper}>
+      <Pressable onPress={() => router.push('/offers')} style={styles.pressableArea}>
+        
+        {/* الدائرة إذا كانت على اليمين */}
+        {!isSnappedLeft && <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: '#FF6B6B' }]}>
+          <Image source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }} style={{ width: 36, height: 36 }} />
+        </View>}
+
+        <View style={styles.bubbleMasterContainer}>
+          <View style={styles.tailContainer}>
+            <View style={[styles.smallDot, { backgroundColor: '#EE5A24' }]} />
+            <View style={[styles.bigDot, { backgroundColor: '#EE5A24' }]} />
+          </View>
+          <LinearGradient colors={gradientColors} style={styles.textBubble}>
+            <Text style={styles.bubbleText} numberOfLines={1}>{currentMessage}</Text>
+          </LinearGradient>
+        </View>
+
+        {/* الدائرة إذا كانت على اليسار */}
+        {isSnappedLeft && <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: '#FF6B6B' }]}>
+          <Image source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }} style={{ width: 36, height: 36 }} />
+        </View>}
+        
+      </Pressable>
+    </Animated.View>
+  </PanGestureHandler>
+</Animated.View>
