@@ -10,8 +10,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useAlert } from '@/hooks/useAlert';
-import { useAuth, getSupabaseClient } from '@/template';
+import { useAuth, getSupabaseClient, useAlert } from '@/template';
 import Animated from 'react-native-reanimated';
 import { useSharedValue, useAnimatedStyle, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useFavoriteIds } from '@/hooks/useFavorites';
@@ -414,10 +413,10 @@ export default function StoreDetailScreen() {
         console.error('خطأ في التحميل:', error);
         // ✅ استخدم showAlert بدلاً من Alert.alert
         if (isMountedRef.current) {
-          showAlert({
-            title: isAr ? 'خطأ' : 'Error',
-            message: isAr ? 'حدث خطأ أثناء تحميل بيانات المتجر' : 'Failed to load store data',
-          });
+          showAlert(
+            isAr ? 'خطأ' : 'Error',
+            isAr ? 'حدث خطأ أثناء تحميل بيانات المتجر' : 'Failed to load store data'
+          );
         }
       })
       .finally(() => {
@@ -677,10 +676,10 @@ export default function StoreDetailScreen() {
                 if (phone) {
                   Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
                 } else {
- showAlert({
-  title: isAr ? 'رقم غير متوفر' : 'Number not available',
-  message: isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store',
-});
+showAlert(
+  isAr ? 'رقم غير متوفر' : 'Number not available',
+  isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store'
+);
 }
               }}
             >
