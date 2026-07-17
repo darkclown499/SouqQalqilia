@@ -135,7 +135,7 @@ const VIPBanner = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Grid Item Component (Masonry card)
+// Grid Item Component (Masonry card) - مع نصوص اختيارية
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GridOfferItem = memo(function GridOfferItem({
@@ -173,23 +173,28 @@ const GridOfferItem = memo(function GridOfferItem({
         style={StyleSheet.absoluteFill}
       />
 
-      {/* شارة "لقطة 🔥" */}
+      {/* شارة "لقطة 🔥" - يمكن جعلها اختيارية أيضاً إذا أردت */}
       <View style={[styles.gridBadge, { alignSelf: 'flex-start' }]}>
         <Text style={styles.gridBadgeText}>لقطة 🔥</Text>
       </View>
 
-      {/* النصوص في الأسفل */}
+      {/* النصوص في الأسفل - اختيارية بالكامل */}
       <View style={styles.gridBottom}>
-        {offer.store_name && (
+        {offer.store_name ? (
           <Text style={styles.gridStore} numberOfLines={1}>
             {offer.store_name}
           </Text>
-        )}
-        {offer.title && (
+        ) : null}
+        {offer.title ? (
           <Text style={styles.gridTitle} numberOfLines={2}>
             {offer.title}
           </Text>
-        )}
+        ) : null}
+        {offer.description ? (
+          <Text style={styles.gridDesc} numberOfLines={1}>
+            {offer.description}
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -472,9 +477,6 @@ export default function OffersScreen() {
             {/* ── VIP Banner ── */}
             {vipOffer && <VIPBanner offer={vipOffer} isAr={isAr} />}
 
-            {/* ── عرض كاروسيل VIP (اختياري، يمكن إضافته إذا أردنا عرض أكثر من عرض VIP) ── */}
-            {/* هنا يمكن إضافة Carousel للعروض VIP المتبقية */}
-
             {/* ── Grid (Masonry) ── */}
             {filteredOffers.length === 0 ? (
               <View style={[styles.centerBox, { paddingTop: 40 }]}>
@@ -673,6 +675,12 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
+  },
+  gridDesc: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
   },
 
   // Skeleton
