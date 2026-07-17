@@ -726,12 +726,11 @@ export default function HomeScreen() {
     />
   ), [isAr, isRTL, colors, handleFeaturedStorePress]);
 
-  // ✅ تغيير الدالة للانتقال إلى صفحة المحادثات بدلاً من النافذة المنبثقة
+  // ✅ المسار الصحيح هو '/messages'
   const handleChatPress = useCallback(() => {
-    router.push('/chats' as any);
+    router.push('/messages' as any);
   }, [router]);
 
-  // ✅ لا نستخدم conversation press داخل النافذة المنبثقة الآن، لكن يمكن الاحتفاظ بها لأي استخدام آخر
   const handleConversationPress = useCallback((conversationId: string) => {
     router.push(`/chat/${conversationId}` as any);
   }, [router]);
@@ -964,7 +963,6 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
 
-            {/* ✅ تغيير الأيقونة من "bell" إلى "chat" */}
             <Pressable style={styles.headerIconBtn} onPress={handleChatPress} hitSlop={6}>
               <MaterialCommunityIcons name="chat" size={20} color="#fff" />
               {unreadCount > 0 ? (
@@ -1084,8 +1082,6 @@ export default function HomeScreen() {
       )}
 
       <InterstitialAdOverlay ad={activeInterstitial} visible={interstitialVisible} onClose={() => setInterstitialVisible(false)} />
-
-      {/* ✅ تم إزالة ConversationsBottomSheet لأننا نستخدم صفحة منفصلة للمحادثات */}
 
       {/* Filter sheet */}
       {filterVisible ? (
