@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withTiming,
@@ -554,70 +554,74 @@ export default function ProfileScreen() {
     setEditMode(false);
   }, [user]);
 
-  // ── تحميل البيانات مع AbortController ──────────────────────────────────
-  useEffect(() => {
-    if (!user?.id) return;
-    const controller = new AbortController();
-    const signal = controller.signal;
+  // ── ✅ تحميل البيانات مع AbortController باستخدام useFocusEffect ──────────────────────────────────
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+      const controller = new AbortController();
+      const signal = controller.signal;
 
-    const loadData = async () => {
-      try {
-        await load();                 // ✅ انتظر حتى يكتمل تحميل الإعلانات
-        if (signal.aborted) return;
+      const loadData = async () => {
+        try {
+          // 1. تحميل الإعلانات أولاً
+          await load();
+          if (signal.aborted) return;
 
-        setEditName(user.username || '');
-        const admin = await checkIsAdmin();
-        if (signal.aborted) return;
-        setIsAdmin(admin);
+          // 2. تحميل بيانات الملف الشخصي والمتجر والمعلومات الأخرى
+          setEditName(user.username || '');
+          const admin = await checkIsAdmin();
+          if (signal.aborted) return;
+          setIsAdmin(admin);
 
-        const supabase = getSupabaseClient();
-        const { data: storeData } = await supabase
-          .from('stores')
-          .select('id, name, name_ar, is_approved')
-          .eq('owner_id', user.id)
-          .maybeSingle();
-        if (signal.aborted) return;
-        setOwnerStore(storeData as any);
+          const supabase = getSupabaseClient();
+          const { data: storeData } = await supabase
+            .from('stores')
+            .select('id, name, name_ar, is_approved')
+            .eq('owner_id', user.id)
+            .maybeSingle();
+          if (signal.aborted) return;
+          setOwnerStore(storeData as any);
 
-        const { data: profileData } = await supabase
-          .from('user_profiles')
-          .select('avatar_url, banner_url, phone, is_verified, push_token')
-          .eq('id', user.id)
-          .single();
+          const { data: profileData } = await supabase
+            .from('user_profiles')
+            .select('avatar_url, banner_url, phone, is_verified, push_token')
+            .eq('id', user.id)
+            .single();
 
-        if (signal.aborted) return;
-        if (profileData) {
-          if (!profileData.avatar_url) {
-            try {
-              const { data: { user: freshUser } } = await supabase.auth.getUser();
-              const googlePhoto = freshUser?.user_metadata?.avatar_url ?? freshUser?.user_metadata?.picture ?? freshUser?.user_metadata?.photo_url;
-              if (googlePhoto) {
-                setAvatarUrl(googlePhoto);
-                supabase.from('user_profiles').update({ avatar_url: googlePhoto }).eq('id', user.id).then().catch(console.error);
-              }
-            } catch { /* non-critical */ }
-          } else {
-            setAvatarUrl(profileData.avatar_url);
+          if (signal.aborted) return;
+          if (profileData) {
+            if (!profileData.avatar_url) {
+              try {
+                const { data: { user: freshUser } } = await supabase.auth.getUser();
+                const googlePhoto = freshUser?.user_metadata?.avatar_url ?? freshUser?.user_metadata?.picture ?? freshUser?.user_metadata?.photo_url;
+                if (googlePhoto) {
+                  setAvatarUrl(googlePhoto);
+                  supabase.from('user_profiles').update({ avatar_url: googlePhoto }).eq('id', user.id).then().catch(console.error);
+                }
+              } catch { /* non-critical */ }
+            } else {
+              setAvatarUrl(profileData.avatar_url);
+            }
+            if (profileData.banner_url) setBannerUrl(profileData.banner_url);
+            if (profileData.phone) setEditPhone(profileData.phone ?? '');
+            setIsVerified(!!profileData.is_verified);
+            setCurrentPushToken(profileData.push_token ?? null);
           }
-          if (profileData.banner_url) setBannerUrl(profileData.banner_url);
-          if (profileData.phone) setEditPhone(profileData.phone ?? '');
-          setIsVerified(!!profileData.is_verified);
-          setCurrentPushToken(profileData.push_token ?? null);
+
+          // 3. تحميل المستخدمين المحظورين
+          await loadBlockedUsers();
+        } catch (err) {
+          if (!signal.aborted) console.error('Profile load error:', err);
         }
+      };
 
-        await loadBlockedUsers();
-      } catch (err) {
-        if (!signal.aborted) console.error('Profile load error:', err);
-      }
-    };
+      loadData();
 
-    loadData();
-
-    return () => {
-      controller.abort();
-    };
-  // ✅ إضافة loadBlockedUsers إلى الاعتماديات
-  }, [user?.id, load, loadBlockedUsers]);
+      return () => {
+        controller.abort();
+      };
+    }, [user?.id, load, loadBlockedUsers])
+  );
 
   // ── Block changes subscription ────────────────────────────────────────────
   useEffect(() => {
