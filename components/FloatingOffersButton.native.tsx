@@ -1,7 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, Dimensions, useWindowDimensions, LayoutChangeEvent } from 'react-native';
 import { PanGestureHandler } from 'react-native-gesture-handler';
-import Animated, { useAnimatedGestureHandler, useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedGestureHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  runOnJS,
+} from 'react-native-reanimated';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,7 +20,6 @@ const BUTTON_SIZE = 56;
 const SIDE_PADDING = 12;
 
 const MIN_X = SIDE_PADDING;
-const MAX_X = SCREEN_WIDTH - BUTTON_SIZE - SIDE_PADDING;
 
 // قائمة الرسائل
 const OFFERS_MESSAGES = [
@@ -38,7 +43,7 @@ const OFFERS_MESSAGES = [
   'تسوق أكثر وادفع أقل 🛒',
   'ولّعت الأسعار عنا 🔥',
   'عروض خاصة بس لعيونك 😉',
-  'أقوى الخصومات بالسوق 🥇'
+  'أقوى الخصومات بالسوق 🥇',
 ];
 
 export default function FloatingOffersButton() {
@@ -50,12 +55,13 @@ export default function FloatingOffersButton() {
   const MIN_Y = 80 + insets.top;
   const MAX_Y = screenHeight - 160 - insets.bottom;
 
-  // ✅ نغير البداية بحيث يكون الزر في الجهة اليمنى
-  const x = useSharedValue(MAX_X);
+  const x = useSharedValue(MIN_X); // سيتم تحديثه بعد قياس العرض
   const y = useSharedValue(MAX_Y - 50);
 
   const [currentMessage, setCurrentMessage] = useState(OFFERS_MESSAGES[0]);
-  const [isSnappedLeft, setIsSnappedLeft] = useState(false);
+  const [isSnappedLeft, setIsSnappedLeft] = useState(true); // افتراضياً يسار
+  const [contentWidth, setContentWidth] = useState(0);
+  const [isLayoutReady, setIsLayoutReady] = useState(false);
 
   const pickRandomMessage = useCallback(() => {
     const randomIndex = Math.floor(Math.random() * OFFERS_MESSAGES.length);
@@ -65,6 +71,31 @@ export default function FloatingOffersButton() {
   useEffect(() => {
     pickRandomMessage();
   }, []);
+
+  // تحديث موقع الزر عند تغير العرض أو الرسالة
+  useEffect(() => {
+    if (contentWidth > 0 && isLayoutReady) {
+      // إذا كان الزر في الجهة اليمنى، نضبط x بحيث يكون الطرف الأيمن للزر عند حافة الشاشة
+      if (!isSnappedLeft) {
+        const targetX = SCREEN_WIDTH - SIDE_PADDING - contentWidth;
+        x.value = targetX;
+      } else {
+        x.value = MIN_X;
+      }
+    }
+  }, [contentWidth, isLayoutReady, isSnappedLeft]);
+
+  const onLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width } = event.nativeEvent.layout;
+    if (width > 0 && !isLayoutReady) {
+      setContentWidth(width);
+      setIsLayoutReady(true);
+      // تعيين الموضع الأولي: زر على اليمين
+      const targetX = SCREEN_WIDTH - SIDE_PADDING - width;
+      x.value = targetX;
+      setIsSnappedLeft(false);
+    }
+  }, [isLayoutReady]);
 
   const gestureHandler = useAnimatedGestureHandler({
     onStart: (_, context: any) => {
@@ -85,16 +116,25 @@ export default function FloatingOffersButton() {
       const finalX = x.value + event.velocityX * 0.1;
       const midpoint = SCREEN_WIDTH / 2;
 
+      // نحتاج إلى عرض المحتوى لتحديد الموضع الصحيح عند الالتصاق باليمين
+      const currentWidth = contentWidth;
+
       let targetX;
+      let snappedLeft;
       if (finalX < midpoint) {
         targetX = MIN_X;
-        runOnJS(setIsSnappedLeft)(true);
+        snappedLeft = true;
       } else {
-        targetX = MAX_X;
-        runOnJS(setIsSnappedLeft)(false);
+        // عند التصاق باليمين، نضع الطرف الأيمن للزر عند حافة الشاشة
+        targetX = SCREEN_WIDTH - SIDE_PADDING - currentWidth;
+        snappedLeft = false;
       }
 
+      // منع الخروج عن الحدود
+      targetX = Math.max(MIN_X, Math.min(targetX, SCREEN_WIDTH - currentWidth - SIDE_PADDING));
+
       x.value = withSpring(targetX, { damping: 15, stiffness: 120 });
+      runOnJS(setIsSnappedLeft)(snappedLeft);
 
       let targetY = y.value;
       if (targetY < MIN_Y) targetY = MIN_Y;
@@ -116,14 +156,28 @@ export default function FloatingOffersButton() {
     <Animated.View style={[styles.absoluteWrapper, animatedStyle]}>
       <PanGestureHandler onGestureEvent={gestureHandler}>
         <Animated.View style={styles.panWrapper}>
-          <Pressable onPress={() => router.push('/offers')} style={styles.pressableArea}>
-            
+          <Pressable
+            onPress={() => router.push('/offers')}
+            style={styles.pressableArea}
+            onLayout={onLayout}
+          >
             {isSnappedLeft ? (
               // الزر على اليسار: الدائرة على اليسار، ثم الفقاعة
               <>
-                <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: '#FF6B6B', shadowColor: '#000' }]}>
+                <View
+                  style={[
+                    styles.circle,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: '#FF6B6B',
+                      shadowColor: '#000',
+                    },
+                  ]}
+                >
                   <Image
-                    source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }}
+                    source={{
+                      uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif',
+                    }}
                     style={{ width: 36, height: 36, backgroundColor: 'transparent' }}
                     contentFit="contain"
                   />
@@ -143,7 +197,7 @@ export default function FloatingOffersButton() {
                         shadowColor: bubbleShadowColor,
                         borderColor: 'rgba(255,255,255,0.2)',
                         borderWidth: 1,
-                      }
+                      },
                     ]}
                   >
                     <Text style={styles.bubbleText} numberOfLines={1}>
@@ -166,7 +220,7 @@ export default function FloatingOffersButton() {
                         shadowColor: bubbleShadowColor,
                         borderColor: 'rgba(255,255,255,0.2)',
                         borderWidth: 1,
-                      }
+                      },
                     ]}
                   >
                     <Text style={styles.bubbleText} numberOfLines={1}>
@@ -178,16 +232,26 @@ export default function FloatingOffersButton() {
                     <View style={[styles.smallDot, { backgroundColor: '#EE5A24' }]} />
                   </View>
                 </View>
-                <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: '#FF6B6B', shadowColor: '#000' }]}>
+                <View
+                  style={[
+                    styles.circle,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: '#FF6B6B',
+                      shadowColor: '#000',
+                    },
+                  ]}
+                >
                   <Image
-                    source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }}
+                    source={{
+                      uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif',
+                    }}
                     style={{ width: 36, height: 36, backgroundColor: 'transparent' }}
                     contentFit="contain"
                   />
                 </View>
               </>
             )}
-
           </Pressable>
         </Animated.View>
       </PanGestureHandler>
@@ -200,7 +264,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    width: SCREEN_WIDTH,     // ✅ تغطية العرض الكامل للشاشة
+    width: 'auto', // ✅ يصبح العرض تلقائياً حسب المحتوى
     height: BUTTON_SIZE,
     zIndex: 99999,
   },
@@ -210,8 +274,8 @@ const styles = StyleSheet.create({
   pressableArea: {
     flexDirection: 'row',
     alignItems: 'center',
-    // ✅ نضبط padding حسب الجهة لضمان ظهور الفقاعة كاملة
     paddingHorizontal: 4,
+    // لا نضع عرض ثابت، سيتحدد حسب المحتوى
   },
   circle: {
     width: BUTTON_SIZE,
@@ -231,12 +295,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: BUTTON_SIZE,
     paddingHorizontal: 4,
+    flexShrink: 1, // يسمح بالانكماش إذا ضاقت المساحة
   },
   tailContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     marginHorizontal: 4,
+    flexShrink: 0,
   },
   bigDot: {
     width: 8,

@@ -604,6 +604,8 @@ export default function RootLayout() {
                   <Stack.Screen name="index" options={{ headerShown: false }} />
                   <Stack.Screen name="login" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  {/* ✅ إضافة مسار messages */}
+                  <Stack.Screen name="messages" options={{ headerShown: false }} />
                   <Stack.Screen name="ad/[id]" options={{ headerShown: false }} />
                   <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
                   <Stack.Screen name="search" options={{ headerShown: false }} />
