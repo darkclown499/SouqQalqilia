@@ -16,7 +16,7 @@ const SIDE_PADDING = 12;
 const MIN_X = SIDE_PADDING;
 const MAX_X = SCREEN_WIDTH - BUTTON_SIZE - SIDE_PADDING;
 
-// ✅ تقليل طول الرسائل لتناسب الشاشة بشكل أفضل (اختياري)
+// قائمة الرسائل (نفسها)
 const OFFERS_MESSAGES = [
   'عروض نار حصرية 🔥',
   'الحق عروض اليوم ⚡',
@@ -125,12 +125,12 @@ export default function FloatingOffersButton() {
               />
             </View>
 
-            {/* الفقاعة المحسّنة - تم تعديل المسافات والعرض */}
+            {/* الفقاعة المحسّنة */}
             <View
               style={[
                 styles.bubbleMasterContainer,
                 isSnappedLeft
-                  ? { left: BUTTON_SIZE - 4, flexDirection: 'row' } // ✅ تقريب الفقاعة للدائرة
+                  ? { left: BUTTON_SIZE - 4, flexDirection: 'row' }
                   : { right: BUTTON_SIZE - 4, flexDirection: 'row-reverse' },
               ]}
               pointerEvents="none"
@@ -160,7 +160,7 @@ export default function FloatingOffersButton() {
                   }
                 ]}
               >
-                <Text style={styles.bubbleText} numberOfLines={1} adjustsFontSizeToFit>
+                <Text style={styles.bubbleText} numberOfLines={1}>
                   {currentMessage}
                 </Text>
               </LinearGradient>
@@ -206,8 +206,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: BUTTON_SIZE,
     alignItems: 'center',
-    // ✅ زيادة العرض الأقصى للفقاعة لتجنب التكسر
-    maxWidth: SCREEN_WIDTH - BUTTON_SIZE - 20, // تقليل المسافة المفقودة
+    // ✅ السماح للفقاعة بالتمدد حسب النص
+    maxWidth: SCREEN_WIDTH - BUTTON_SIZE - 12, // مساحة أكبر
     minWidth: 60,
   },
   tailContainer: {
@@ -227,25 +227,27 @@ const styles = StyleSheet.create({
     borderRadius: 2.5,
   },
   textBubble: {
-    paddingHorizontal: 14,  // ✅ تقليل المسافة الأفقية قليلاً
-    paddingVertical: 8,
+    paddingHorizontal: 16,  // ✅ مسافة أكبر لنفس جميل
+    paddingVertical: 10,
     borderRadius: 20,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 8,
-    flexShrink: 1,
-    minWidth: 50,
+    flexShrink: 0,          // ✅ يمنع انكماش الفقاعة
+    minWidth: 60,
   },
   bubbleText: {
-    fontSize: 14,           // ✅ تصغير حجم الخط قليلاً ليتسع
+    fontSize: 16,           // ✅ حجم خط مناسب (أكبر من السابق)
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'center',
-    lineHeight: 18,
-    letterSpacing: 0.2,
+    lineHeight: 22,
+    letterSpacing: 0.3,
     textShadowColor: 'rgba(0,0,0,0.2)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+    // ✅ السماح للنص بالتمدد داخل الفقاعة دون تقليص
+    flexShrink: 0,
   },
 });
