@@ -126,7 +126,7 @@ export default function MessagesScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      {/* الهيدر */}
+      {/* الهيدر مع عرض عدد غير المقروء */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <Pressable
           style={styles.backBtn}
@@ -139,10 +139,32 @@ export default function MessagesScreen() {
             color="#fff"
           />
         </Pressable>
-        <Text style={styles.headerTitle}>
-          {isAr ? 'المحادثات' : 'Conversations'}
-        </Text>
-        <View style={{ width: 40 }} />
+
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>
+            {isAr ? 'المحادثات' : 'Conversations'}
+          </Text>
+          {unreadCount > 0 && (
+            <View style={[styles.headerBadge, { backgroundColor: '#EF4444' }]}>
+              <Text style={styles.headerBadgeText}>
+                {unreadCount > 99 ? '99+' : String(unreadCount)}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <Pressable
+          style={styles.refreshBtn}
+          onPress={reload}
+          hitSlop={8}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <MaterialIcons name="refresh" size={24} color="#fff" />
+          )}
+        </Pressable>
       </View>
 
       <FlatList
@@ -196,10 +218,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   headerTitle: {
     fontSize: FontSize.lg,
     fontWeight: '700',
     color: '#fff',
+  },
+  headerBadge: {
+    borderRadius: 99,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  headerBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  refreshBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
   },
   listContent: {
     paddingHorizontal: Spacing.lg,

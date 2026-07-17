@@ -371,7 +371,7 @@ export function triggerUnreadRefresh(): void {
   _globalRefreshUnread?.().catch(() => {});
 }
 
-// ─── Helper to enrich conversations with user names ──────────────────────────
+// ─── Helper to enrich conversations with user names (محسّنة) ──────────────────
 async function enrichConversationsWithNames(
   conversations: Conversation[]
 ): Promise<Conversation[]> {
@@ -515,8 +515,9 @@ export function useConversations(options?: { enabled?: boolean }) {
       } else {
         setUnreadCount(newCount);
       }
-    } catch {
+    } catch (err) {
       if (isMountedRef.current && showSpinner) setLoading(false);
+      console.warn('useConversations load error:', err);
     }
   }, [enabled, setBadge]);
 

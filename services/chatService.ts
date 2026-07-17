@@ -229,47 +229,48 @@ export async function fetchMessagesSince(
   currentUserId?: string,
 ): Promise<{ data: Message[]; typing: string | null; error: string | null }> {
   try {
-  const supabase = getSupabaseClient();
+    const supabase = getSupabaseClient();
 
-  // Run both queries in parallel: new messages + typing status
-  const [msgsResult, convResult] = await Promise.all([
-    supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .gt('created_at', since)          // ← only messages strictly newer
-      .order('created_at', { ascending: true }),
-    // Only fetch typing field when we know the role
-    isBuyer !== null
-      ? supabase
-          .from('conversations')
-          .select('buyer_typing_at, seller_typing_at')
-          .eq('id', conversationId)
-          .single()
-      : Promise.resolve({ data: null, error: null }),
-  ]);
+    // Run both queries in parallel: new messages + typing status
+    const [msgsResult, convResult] = await Promise.all([
+      supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .gt('created_at', since)          // ← only messages strictly newer
+        .order('created_at', { ascending: true }),
+      // Only fetch typing field when we know the role
+      isBuyer !== null
+        ? supabase
+            .from('conversations')
+            .select('buyer_typing_at, seller_typing_at')
+            .eq('id', conversationId)
+            .single()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
 
-  if (msgsResult.error) return { data: [], typing: null, error: msgsResult.error.message };
+    if (msgsResult.error) return { data: [], typing: null, error: msgsResult.error.message };
 
-  // Auto-mark newly received messages as delivered (fire-and-forget)
-  if (currentUserId && msgsResult.data && msgsResult.data.length > 0) {
-    const undelivered = msgsResult.data.filter(
-      (m: any) => m.sender_id !== currentUserId && !m.delivered_at
-    );
-    if (undelivered.length > 0) {
-      markMessagesDelivered(conversationId, currentUserId).catch(() => {});
+    // Auto-mark newly received messages as delivered (fire-and-forget)
+    if (currentUserId && msgsResult.data && msgsResult.data.length > 0) {
+      const undelivered = msgsResult.data.filter(
+        (m: any) => m.sender_id !== currentUserId && !m.delivered_at
+      );
+      if (undelivered.length > 0) {
+        markMessagesDelivered(conversationId, currentUserId).catch(() => {});
+      }
     }
-  }
 
-  // Determine which typing field belongs to the OTHER party
-  let typing: string | null = null;
-  if (isBuyer !== null && convResult.data) {
-    typing = isBuyer
-      ? (convResult.data as any).seller_typing_at ?? null
-      : (convResult.data as any).buyer_typing_at ?? null;
-  }
+    // Determine which typing field belongs to the OTHER party
+    let typing: string | null = null;
+    // ✅ التحقق من error في convResult
+    if (!convResult.error && isBuyer !== null && convResult.data) {
+      typing = isBuyer
+        ? (convResult.data as any).seller_typing_at ?? null
+        : (convResult.data as any).buyer_typing_at ?? null;
+    }
 
-  return { data: msgsResult.data as Message[], typing, error: null };
+    return { data: msgsResult.data as Message[], typing, error: null };
   } catch (e: any) {
     return { data: [], typing: null, error: e?.message ?? 'Network error' };
   }
@@ -314,20 +315,12 @@ export async function uploadChatImage(
       (ext === 'm4a' || ext === 'mp3' || ext === 'aac') ? 'audio/mp4' : 'image/jpeg';
     storagePath = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
-    // Mobile: read file as base64 via expo-file-system
-    let uploadData: ArrayBuffer;
-    if (fileUri.startsWith('file://') || fileUri.startsWith('content://')) {
-      const { readAsStringAsync, EncodingType } = await import('expo-file-system') as any;
-      const base64 = await readAsStringAsync(fileUri, { encoding: EncodingType.Base64 });
-      const binaryStr = atob(base64);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-      uploadData = bytes.buffer;
-    } else {
-      // Web: fetch blob
-      const response = await fetch(fileUri);
-      uploadData = await response.arrayBuffer();
+    // ✅ استخدام fetch للحصول على ArrayBuffer (يعمل على الموبايل والويب)
+    const response = await fetch(fileUri);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch file: ${response.status}`);
     }
+    const uploadData = await response.arrayBuffer();
 
     uploadAttempted = true;
     const { error: uploadError } = await supabase.storage

@@ -12,14 +12,6 @@ import { getSupabaseClient } from '@/template';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { trackPageView } from '@/services/analyticsService';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withRepeat,
-  withDelay,
-  Easing,
-} from 'react-native-reanimated';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -32,7 +24,6 @@ interface Offer {
   image_url: string;
   category: string | null;
   phone: string | null;
-  card_size?: 'large' | 'medium' | 'small'; // قد نهمله بعد الآن
   store_name: string | null;
   is_active: boolean;
   position: number;
@@ -45,14 +36,16 @@ interface Offer {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const H_PAD = 12;
-const COL_GAP = 10;
+const H_PAD = 16;
+const COL_GAP = 12;
 const DEFAULT_PHONE = '972599234230';
-const CAROUSEL_AUTO_INTERVAL = 4000;
 
-// ✅ التصنيفات الجديدة (ثابتة)
+// ── التصنيفات الثابتة حسب التصميم ──
 const STATIC_CATEGORIES = [
   'الكل',
+  'مطاعم',
+  'سوبرماركت',
+  'إلكترونيات',
   'خضروات وفواكه',
   'زينة وهدايا',
   'مستحضرات تجميل',
@@ -62,9 +55,6 @@ const STATIC_CATEGORIES = [
   'حيوانات',
   'سيارات ومركبات',
   'أثاث',
-  'حلويات',
-  'عصائر',
-  'مطاعم',
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,25 +86,68 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Grid Item Component (مع صورة في الأعلى ونصوص في الأسفل)
+// VIP Banner Component
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VIPBanner = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
+  if (!offer) return null;
+
+  return (
+    <Pressable
+      style={styles.vipBannerContainer}
+      onPress={() => openWhatsApp(offer.phone, offer.title, offer.store_name)}
+    >
+      <Image
+        source={{ uri: offer.image_url }}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        transition={300}
+        cachePolicy="memory-disk"
+      />
+      <LinearGradient
+        colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.85)']}
+        locations={[0, 0.4, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* شارة VIP */}
+      <View style={[styles.vipBadge, { alignSelf: isAr ? 'flex-end' : 'flex-start' }]}>
+        <Text style={styles.vipBadgeText}>عرض VIP 👑</Text>
+      </View>
+
+      <View style={[styles.vipContent, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
+        <Text style={styles.vipSponsor}>الراعي الرسمي</Text>
+        <Text style={styles.vipTitle} numberOfLines={2}>
+          {offer.title || 'عرض حصري'}
+        </Text>
+        {offer.description && (
+          <Text style={styles.vipDescription} numberOfLines={2}>
+            {offer.description}
+          </Text>
+        )}
+        <View style={styles.vipCta}>
+          <Text style={styles.vipCtaText}>اكتشف العرض الآن</Text>
+          <MaterialIcons name="arrow-forward" size={16} color="#fff" />
+        </View>
+      </View>
+    </Pressable>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Grid Item Component (Masonry card)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GridOfferItem = memo(function GridOfferItem({
   offer,
   width,
   height,
-  vip = false,
 }: {
   offer: Offer;
   width: number;
   height: number;
-  vip?: boolean;
 }) {
   const [pressed, setPressed] = useState(false);
-
-  // نسبة الصورة إلى الارتفاع: 70% للصورة، 30% للنصوص
-  const imageHeight = height * 0.7;
-  const textHeight = height * 0.3;
 
   return (
     <Pressable
@@ -124,51 +157,37 @@ const GridOfferItem = memo(function GridOfferItem({
       style={[
         styles.gridItem,
         { width, height },
-        pressed && { opacity: 0.88, transform: [{ scale: 0.97 }] },
-        vip && styles.vipGridItem,
+        pressed && { opacity: 0.9, transform: [{ scale: 0.97 }] },
       ]}
     >
-      {/* صورة العرض */}
-      <View style={[styles.gridImageWrap, { height: imageHeight }]}>
-        <Image
-          source={{ uri: offer.image_url }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={300}
-          cachePolicy="memory-disk"
-        />
-        {vip && (
-          <View style={styles.vipBadge}>
-            <MaterialIcons name="stars" size={14} color="#FFD700" />
-            <Text style={styles.vipBadgeText}>VIP</Text>
-          </View>
-        )}
-        {offer.category && (
-          <View style={[styles.catBadge, vip && styles.catBadgeVip]}>
-            <Text style={styles.catBadgeText}>{offer.category}</Text>
-          </View>
-        )}
-        {/* أيقونة واتساب تظهر فوق الصورة */}
-        <View style={styles.waIconOverlay}>
-          <MaterialIcons name="chat" size={14} color="#fff" />
-        </View>
+      <Image
+        source={{ uri: offer.image_url || 'https://via.placeholder.com/300x200/cccccc/666666?text=No+Image' }}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        transition={200}
+        cachePolicy="memory-disk"
+      />
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.8)']}
+        locations={[0, 0.5, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* شارة "لقطة 🔥" */}
+      <View style={[styles.gridBadge, { alignSelf: 'flex-start' }]}>
+        <Text style={styles.gridBadgeText}>لقطة 🔥</Text>
       </View>
 
-      {/* النصوص أسفل الصورة */}
-      <View style={[styles.gridTextWrap, { height: textHeight }]}>
+      {/* النصوص في الأسفل */}
+      <View style={styles.gridBottom}>
         {offer.store_name && (
-          <Text style={[styles.gridStore, vip && styles.vipText]} numberOfLines={1}>
+          <Text style={styles.gridStore} numberOfLines={1}>
             {offer.store_name}
           </Text>
         )}
         {offer.title && (
-          <Text style={[styles.gridTitle, vip && styles.vipTitle]} numberOfLines={2}>
+          <Text style={styles.gridTitle} numberOfLines={2}>
             {offer.title}
-          </Text>
-        )}
-        {offer.description && (
-          <Text style={styles.gridDesc} numberOfLines={1}>
-            {offer.description}
           </Text>
         )}
       </View>
@@ -177,124 +196,22 @@ const GridOfferItem = memo(function GridOfferItem({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Carousel Component (VIP offers)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const Carousel = memo(function Carousel({ offers, isAr }: { offers: Offer[]; isAr: boolean }) {
-  const flatListRef = useRef<FlatList>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const autoTimer = useRef<NodeJS.Timeout | null>(null);
-  const isScrolling = useRef(false);
-
-  const CAROUSEL_H = Math.min(280, SCREEN_W * 0.68);
-
-  const startAutoScroll = useCallback(() => {
-    if (offers.length <= 1) return;
-    if (autoTimer.current) clearInterval(autoTimer.current);
-    autoTimer.current = setInterval(() => {
-      if (isScrolling.current) return;
-      const next = (currentIndex + 1) % offers.length;
-      flatListRef.current?.scrollToIndex({ index: next, animated: true });
-      setCurrentIndex(next);
-    }, CAROUSEL_AUTO_INTERVAL);
-  }, [currentIndex, offers.length]);
-
-  useEffect(() => {
-    startAutoScroll();
-    return () => {
-      if (autoTimer.current) clearInterval(autoTimer.current);
-    };
-  }, [startAutoScroll]);
-
-  const onScrollBeginDrag = () => { isScrolling.current = true; };
-  const onScrollEndDrag = () => { isScrolling.current = false; };
-  const onMomentumScrollEnd = (e: any) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
-    setCurrentIndex(idx);
-  };
-
-  if (offers.length === 0) return null;
-
-  const renderItem = ({ item }: { item: Offer }) => (
-    <View style={{ width: SCREEN_W, paddingHorizontal: H_PAD, alignItems: 'center' }}>
-      <View style={[styles.carouselCard, { height: CAROUSEL_H }]}>
-        <Image
-          source={{ uri: item.image_url }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={300}
-          cachePolicy="memory-disk"
-        />
-        <LinearGradient
-          colors={['transparent', 'transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.82)']}
-          locations={[0, 0.3, 0.65, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.carouselBadge}>
-          <MaterialIcons name="stars" size={14} color="#FFD700" />
-          <Text style={styles.carouselBadgeText}>VIP</Text>
-        </View>
-        <View style={styles.carouselBottom}>
-          {item.store_name && (
-            <Text style={styles.carouselStore} numberOfLines={1}>{item.store_name}</Text>
-          )}
-          {item.title && (
-            <Text style={styles.carouselTitle} numberOfLines={2}>{item.title}</Text>
-          )}
-          <Pressable
-            style={styles.carouselWaBtn}
-            onPress={() => openWhatsApp(item.phone, item.title, item.store_name)}
-          >
-            <MaterialIcons name="chat" size={16} color="#fff" />
-            <Text style={styles.carouselWaText}>واتساب</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
-
-  return (
-    <View style={styles.carouselWrap}>
-      <FlatList
-        ref={flatListRef}
-        data={offers}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScrollBeginDrag={onScrollBeginDrag}
-        onScrollEndDrag={onScrollEndDrag}
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        scrollEventThrottle={16}
-        initialNumToRender={1}
-        maxToRenderPerBatch={2}
-        windowSize={3}
-      />
-      {offers.length > 1 && (
-        <View style={styles.pagination}>
-          {offers.map((_, i) => (
-            <View key={i} style={[styles.dot, currentIndex === i && styles.dotActive]} />
-          ))}
-        </View>
-      )}
-    </View>
-  );
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Skeleton Loader (محاكاة الشبكة)
+// Skeleton Loader
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SkeletonGrid() {
-  const ITEMS = 6;
+  const items = 6;
   const itemWidth = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
-  const itemHeight = itemWidth * 1.3; // نسبة عرض إلى ارتفاع
+  // ارتفاعات عشوائية للهيكل العظمي
+  const heights = [200, 240, 210, 260, 190, 230];
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
-      {Array(ITEMS).fill(0).map((_, i) => (
-        <View key={i} style={[styles.skeletonItem, { width: itemWidth, height: itemHeight }]} />
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP, paddingHorizontal: H_PAD }}>
+      {Array(items).fill(0).map((_, i) => (
+        <View
+          key={i}
+          style={[styles.skeletonItem, { width: itemWidth, height: heights[i % heights.length] }]}
+        />
       ))}
     </View>
   );
@@ -317,7 +234,7 @@ export default function OffersScreen() {
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('الكل');
 
-  // Carousel offers (VIP)
+  // Carousel offers (VIP) - نستخدم أول عنصر كـ VIP Banner
   const [carouselOffers, setCarouselOffers] = useState<Offer[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
 
@@ -344,7 +261,7 @@ export default function OffersScreen() {
       if (dbError) throw new Error(dbError.message);
       const offersData = (data ?? []) as Offer[];
 
-      // فصل العروض: أول 3 عروض تكون VIP (كاروسيل) والباقي عادي
+      // أول 3 عروض كـ VIP (نأخذ الأول للبانر، والباقي للكاروسيل)
       const vipCount = Math.min(3, offersData.length);
       const vip = offersData.slice(0, vipCount);
       const normal = offersData.slice(vipCount);
@@ -369,19 +286,15 @@ export default function OffersScreen() {
     fetchOffers(false);
   }, [fetchOffers]);
 
-  // ── Categories: استخدم القائمة الثابتة مع إضافة أي تصنيفات إضافية من البيانات ──
+  // ── Categories ──────────────────────────────────────────────────────────
   const categories = useMemo(() => {
-    // استخراج التصنيفات الفريدة من العروض
     const fromOffers = new Set<string>();
     allOffers.forEach(o => { if (o.category) fromOffers.add(o.category); });
 
-    // دمج مع القائمة الثابتة (مع إزالة المكررات)
     const combined = new Set(STATIC_CATEGORIES);
     fromOffers.forEach(cat => combined.add(cat));
 
-    // نريد أن يظهر "الكل" في البداية
     const result = Array.from(combined);
-    // نقل "الكل" إلى البداية إذا لم يكن بالفعل
     const indexAll = result.indexOf('الكل');
     if (indexAll > 0) {
       result.splice(indexAll, 1);
@@ -396,44 +309,47 @@ export default function OffersScreen() {
     return offers.filter(o => o.category === activeCategory);
   }, [offers, activeCategory]);
 
-  // ── Build grid rows (عمودين متساويين) ──────────────────────────────────
-  const gridData = useMemo(() => {
-    // نأخذ العروض المصفاة ونقسمها إلى أزواج (صفوف)
-    const rows = [];
-    for (let i = 0; i < filteredOffers.length; i += 2) {
-      const row = filteredOffers.slice(i, i + 2);
-      rows.push(row);
-    }
-    return rows;
+  // ── Masonry Layout: تقسيم إلى عمودين مع ارتفاعات مختلفة ──────────────
+  const masonryData = useMemo(() => {
+    const col1: Offer[] = [];
+    const col2: Offer[] = [];
+    filteredOffers.forEach((item, index) => {
+      if (index % 2 === 0) col1.push(item);
+      else col2.push(item);
+    });
+    return { col1, col2 };
   }, [filteredOffers]);
 
-  // ── عرض البطاقات في الشبكة ─────────────────────────────────────────────
-  const itemWidth = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
-  const itemHeight = itemWidth * 1.3;
+  // ── ارتفاعات عشوائية للبطاقات (تأثير Masonry) ─────────────────────────
+  const getRandomHeight = (index: number) => {
+    const base = 200;
+    const variations = [0, 30, 60, -20, 40, -10, 50, 20];
+    return base + (variations[index % variations.length] || 0);
+  };
 
-  const renderRow = ({ item: row }: { item: Offer[] }) => {
+  // ── عرض العمود ──────────────────────────────────────────────────────────
+  const renderColumn = (columnData: Offer[], columnIndex: number) => {
+    const itemWidth = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
+
     return (
-      <View style={[styles.gridRow, { gap: COL_GAP }]}>
-        {row.map((offer, idx) => {
-          // نجعل أول عنصر في الصف الأول VIP إذا كان أول صف
-          const isVip = (row.length === 2 && idx === 0 && filteredOffers[0] === offer);
+      <View style={{ flex: 1, gap: COL_GAP }}>
+        {columnData.map((offer, idx) => {
+          const height = getRandomHeight(idx + columnIndex * 100);
           return (
             <GridOfferItem
               key={offer.id}
               offer={offer}
               width={itemWidth}
-              height={itemHeight}
-              vip={isVip}
+              height={height}
             />
           );
         })}
-        {/* في حالة وجود عنصر واحد في الصف، نضيف عنصرًا فارغًا للحفاظ على التنسيق */}
-        {row.length === 1 && (
-          <View style={{ width: itemWidth, height: itemHeight }} />
-        )}
       </View>
     );
   };
+
+  // ── VIP Banner (أول عرض من carouselOffers) ─────────────────────────────
+  const vipOffer = carouselOffers.length > 0 ? carouselOffers[0] : null;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -446,27 +362,9 @@ export default function OffersScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top }]}>
-      {/* Header */}
+      {/* ── Header ── */}
       <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={12}
-          style={({ pressed }) => [styles.headerIconBtn, pressed && { opacity: 0.6 }]}
-        >
-          <MaterialIcons name={isAr ? 'chevron-right' : 'chevron-left'} size={28} color={headerTitle} />
-        </Pressable>
-
-        <View style={styles.headerTitleWrap}>
-          <Text style={[styles.headerTitle, { color: headerTitle }]}>
-            {isAr ? 'العروض' : 'Offers'}
-          </Text>
-          {allOffers.length > 0 && (
-            <View style={[styles.countBadge, { backgroundColor: colors.primary }]}>
-              <Text style={styles.countBadgeText}>{allOffers.length}</Text>
-            </View>
-          )}
-        </View>
-
+        {/* أيقونة التحديث (يسار) */}
         <Pressable
           onPress={handleRefresh}
           hitSlop={12}
@@ -476,12 +374,26 @@ export default function OffersScreen() {
           {refreshing ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <MaterialIcons name="refresh" size={22} color={headerTitle} />
+            <MaterialIcons name="refresh" size={24} color={headerTitle} />
           )}
+        </Pressable>
+
+        {/* العنوان في المنتصف */}
+        <Text style={[styles.headerTitle, { color: headerTitle }]}>
+          {isAr ? 'أقوى العروض 🔥' : 'Best Offers 🔥'}
+        </Text>
+
+        {/* أيقونة الرجوع (يمين) */}
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={12}
+          style={({ pressed }) => [styles.headerIconBtn, pressed && { opacity: 0.6 }]}
+        >
+          <MaterialIcons name={isAr ? 'chevron-right' : 'chevron-left'} size={28} color={headerTitle} />
         </Pressable>
       </View>
 
-      {/* Category filter bar - باستخدام FlatList */}
+      {/* ── Category Filter Bar ── */}
       {categories.length > 0 && (
         <View style={[styles.filterBar, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
           <FlatList
@@ -497,13 +409,25 @@ export default function OffersScreen() {
                   onPress={() => setActiveCategory(cat)}
                   style={[
                     styles.chip,
-                    {
-                      backgroundColor: isActive ? colors.primary : (isDark ? '#1E293B' : '#F1F5F9'),
-                      borderColor: isActive ? colors.primary : (isDark ? '#334155' : '#E2E8F0'),
-                    },
+                    isActive
+                      ? {
+                          backgroundColor: '#FFFFFF',
+                          borderColor: '#EF4444',
+                          borderWidth: 1.5,
+                        }
+                      : {
+                          backgroundColor: '#F3F4F6',
+                          borderColor: 'transparent',
+                          borderWidth: 0,
+                        },
                   ]}
                 >
-                  <Text style={[styles.chipText, { color: isActive ? '#FFFFFF' : (isDark ? '#94A3B8' : '#64748B') }]}>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: isActive ? '#EF4444' : '#4B5563' },
+                    ]}
+                  >
                     {cat}
                   </Text>
                 </Pressable>
@@ -513,7 +437,7 @@ export default function OffersScreen() {
         </View>
       )}
 
-      {/* Body */}
+      {/* ── Body ── */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 32 }]}
@@ -545,10 +469,13 @@ export default function OffersScreen() {
           </View>
         ) : (
           <>
-            {/* Carousel VIP */}
-            {carouselOffers.length > 0 && <Carousel offers={carouselOffers} isAr={isAr} />}
+            {/* ── VIP Banner ── */}
+            {vipOffer && <VIPBanner offer={vipOffer} isAr={isAr} />}
 
-            {/* Grid */}
+            {/* ── عرض كاروسيل VIP (اختياري، يمكن إضافته إذا أردنا عرض أكثر من عرض VIP) ── */}
+            {/* هنا يمكن إضافة Carousel للعروض VIP المتبقية */}
+
+            {/* ── Grid (Masonry) ── */}
             {filteredOffers.length === 0 ? (
               <View style={[styles.centerBox, { paddingTop: 40 }]}>
                 <Text style={styles.emptyEmoji}>🏷️</Text>
@@ -564,13 +491,10 @@ export default function OffersScreen() {
                 )}
               </View>
             ) : (
-              <FlatList
-                data={gridData}
-                keyExtractor={(_, index) => `row-${index}`}
-                renderItem={renderRow}
-                scrollEnabled={false}
-                contentContainerStyle={{ gap: COL_GAP }}
-              />
+              <View style={[styles.masonryContainer, { gap: COL_GAP }]}>
+                {renderColumn(masonryData.col1, 0)}
+                {renderColumn(masonryData.col2, 1)}
+              </View>
             )}
           </>
         )}
@@ -591,52 +515,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
   },
   headerIconBtn: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 21,
-  },
-  headerTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    borderRadius: 20,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
     letterSpacing: -0.3,
-  },
-  countBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    minWidth: 24,
-    alignItems: 'center',
-  },
-  countBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '800',
   },
 
   // Filter bar
   filterBar: {
     borderBottomWidth: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   filterScroll: {
     paddingHorizontal: H_PAD,
-    gap: 8,
+    gap: 10,
   },
   chip: {
     paddingHorizontal: 16,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
   },
@@ -647,205 +554,132 @@ const styles = StyleSheet.create({
 
   // Body
   body: {
-    padding: H_PAD,
-    paddingTop: 14,
+    paddingTop: 16,
   },
 
-  // Carousel
-  carouselWrap: {
-    marginBottom: 18,
-  },
-  carouselCard: {
-    width: SCREEN_W - H_PAD * 2,
+  // VIP Banner
+  vipBannerContainer: {
+    marginHorizontal: H_PAD,
+    marginBottom: 20,
+    height: 200,
     borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#1A1A1A',
+    position: 'relative',
   },
-  carouselBadge: {
+  vipBadge: {
     position: 'absolute',
-    top: 10,
-    left: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,215,0,0.9)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    top: 12,
+    backgroundColor: '#FDE68A',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginHorizontal: 12,
     zIndex: 2,
   },
-  carouselBadgeText: {
-    color: '#1A1A1A',
-    fontSize: 11,
-    fontWeight: '900',
+  vipBadgeText: {
+    color: '#1F2937',
+    fontSize: 12,
+    fontWeight: '800',
   },
-  carouselBottom: {
+  vipContent: {
+    position: 'absolute',
+    bottom: 20,
+    left: 16,
+    right: 16,
+    zIndex: 2,
+  },
+  vipSponsor: {
+    color: '#F97316',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  vipTitle: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 28,
+    marginBottom: 4,
+  },
+  vipDescription: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 10,
+  },
+  vipCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  vipCtaText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // Masonry Grid
+  masonryContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: H_PAD,
+  },
+
+  // Grid Item
+  gridItem: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#E5E7EB',
+    position: 'relative',
+  },
+  gridBadge: {
+    position: 'absolute',
+    top: 8,
+    backgroundColor: '#FDE68A',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginHorizontal: 8,
+    zIndex: 2,
+  },
+  gridBadgeText: {
+    color: '#1F2937',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  gridBottom: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 12,
-    alignItems: 'flex-end',
-  },
-  carouselStore: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'right',
-  },
-  carouselTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-    textAlign: 'right',
-    lineHeight: 22,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  carouselWaBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(37,211,102,0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginTop: 6,
-  },
-  carouselWaText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-  pagination: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 6,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#CBD5E1',
-  },
-  dotActive: {
-    backgroundColor: '#0A6E5C',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-
-  // Grid
-  gridRow: {
-    flexDirection: 'row',
-    marginBottom: COL_GAP,
-  },
-  gridItem: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4 },
-      android: { elevation: 2 },
-    }),
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  vipGridItem: {
-    borderWidth: 2,
-    borderColor: '#FFD700',
-  },
-  gridImageWrap: {
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#F3F4F6',
-  },
-  gridTextWrap: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    justifyContent: 'center',
+    padding: 10,
   },
   gridStore: {
+    color: 'rgba(255,255,255,0.7)',
     fontSize: 11,
     fontWeight: '600',
-    color: '#6B7280',
     marginBottom: 2,
   },
   gridTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#111827',
-    lineHeight: 16,
-  },
-  gridDesc: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginTop: 2,
-  },
-  vipText: {
-    color: '#B45309',
-  },
-  vipTitle: {
-    color: '#1A1A1A',
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '800',
-  },
-
-  // Badges
-  vipBadge: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    backgroundColor: 'rgba(255,215,0,0.9)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    zIndex: 2,
-  },
-  vipBadgeText: {
-    color: '#1A1A1A',
-    fontSize: 9,
-    fontWeight: '800',
-  },
-  catBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: 'rgba(10,110,92,0.85)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    zIndex: 2,
-  },
-  catBadgeVip: {
-    backgroundColor: 'rgba(255,215,0,0.85)',
-  },
-  catBadgeText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  waIconOverlay: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    backgroundColor: 'rgba(37,211,102,0.85)',
-    borderRadius: 12,
-    padding: 4,
-    zIndex: 2,
+    lineHeight: 18,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
 
   // Skeleton
   skeletonItem: {
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#E5E7EB',
     borderRadius: 12,
-    opacity: 0.7,
+    opacity: 0.6,
   },
 
   // States
