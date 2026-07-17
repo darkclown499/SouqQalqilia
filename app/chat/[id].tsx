@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, Pressable, Modal,
-  KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl, Animated, ScrollView,
+  KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl, Animated, ScrollView, Clipboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -105,6 +105,13 @@ export default function ChatScreen() {
   const [searchMatchIndex, setSearchMatchIndex] = useState(0);
   const searchInputRef = useRef<TextInput>(null);
 
+  // ── Image Preview State ──
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // ── Scroll to Bottom Button ──
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
   const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
   const {
     messages,
@@ -127,6 +134,9 @@ export default function ChatScreen() {
   const recordingRef = useRef<any>(null);
   const soundRef = useRef<any>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Quote/Reply State ──
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
 
   // ----- Helper: Cleanup sound and recording resources -----
   const cleanupAudioResources = useCallback(async () => {
@@ -152,7 +162,6 @@ export default function ChatScreen() {
   }, []);
 
   // ----- Handlers (memoized) ----
-  // ✅ تحسين handleSendMessage لإظهار رسالة خطأ عند الفشل
   const handleSendMessage = useCallback(async (content: string, imageUrl?: string) => {
     if (!id || !user) return;
     const clientId = uuidv4();
@@ -171,7 +180,6 @@ export default function ChatScreen() {
 
     const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
     if (error) {
-      // عرض رسالة خطأ للمستخدم
       showAlert(
         isAr ? 'فشل الإرسال' : 'Send Failed',
         isAr ? 'سيتم إعادة المحاولة تلقائياً' : 'Will retry automatically'
@@ -196,7 +204,22 @@ export default function ChatScreen() {
     }
   }, [id, user, appendMessage, updateMessage, showAlert, isAr]);
 
-  // ----- Audio Recording Handlers (محسّنة) -----
+  // ── Retry failed message ──
+  const handleRetryMessage = useCallback(async (failedMsg: Message) => {
+    const { data: sent, error } = await sendMessage(
+      id,
+      failedMsg.content,
+      failedMsg.image_url || undefined,
+      failedMsg.id
+    );
+    if (!error && sent) {
+      updateMessage(failedMsg.id, sent);
+    } else {
+      showAlert(isAr ? 'فشل الإرسال' : 'Send Failed', isAr ? 'لم نتمكن من إعادة الإرسال' : 'Could not resend');
+    }
+  }, [id, updateMessage, showAlert, isAr]);
+
+  // ----- Audio Recording Handlers -----
   const handleStartRecording = useCallback(async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
@@ -204,7 +227,6 @@ export default function ChatScreen() {
         showAlert(isAr ? 'صلاحية' : 'Permission', isAr ? 'يلزم منح صلاحية الميكروفون' : 'Microphone permission required');
         return;
       }
-      // إعدادات محسّنة للتسجيل
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -258,7 +280,6 @@ export default function ChatScreen() {
         return;
       }
 
-      // التحقق من وجود الملف
       const fileInfo = await FileSystem.getInfoAsync(tempUri);
       if (!fileInfo.exists || fileInfo.size === 0) {
         showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'الملف الصوتي فارغ أو تالف' : 'Audio file is empty or corrupted');
@@ -266,7 +287,6 @@ export default function ChatScreen() {
       }
 
       setImageUploading(true);
-      // رفع الملف الصوتي عبر uploadChatImage (نفترض أنها تدعم أي ملف)
       const { url, error } = await uploadChatImage(tempUri, `voice_${Date.now()}.m4a`);
       setImageUploading(false);
       if (error || !url) {
@@ -335,7 +355,7 @@ export default function ChatScreen() {
     };
   }, [cleanupAudioResources]);
 
-  // ----- Search functionality (memoized) -----
+  // ----- Search functionality -----
   const searchMatchIds = useMemo<string[]>(() => {
     if (!searchQuery.trim()) return [];
     return messages
@@ -464,7 +484,7 @@ export default function ChatScreen() {
     };
   }, [id, user?.id, isBuyer]);
 
-  // ----- Mark messages as read (with debounce) -----
+  // ----- Mark messages as read -----
   const markedOnMount = useRef(false);
   const lastMarkTimeRef = useRef(0);
 
@@ -490,7 +510,6 @@ export default function ChatScreen() {
     }
   }, [id, user?.id, markReadLocally]);
 
-  // Mark on mount and when new messages arrive
   useEffect(() => {
     if (!markedOnMount.current) {
       markedOnMount.current = true;
@@ -507,7 +526,7 @@ export default function ChatScreen() {
     };
   }, [messages.length, user?.id, doMark]);
 
-  // ----- useFocusEffect: mark read and dismiss notifications, clear badge -----
+  // ----- useFocusEffect: mark read and dismiss notifications -----
   useFocusEffect(
     useCallback(() => {
       doMark();
@@ -519,13 +538,15 @@ export default function ChatScreen() {
     }, [doMark])
   );
 
-  // ----- Auto-scroll to bottom -----
+  // ----- Scroll to bottom -----
   const scrollToBottom = useCallback(() => {
     if (isSearchActive) return;
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
     scrollTimeoutRef.current = setTimeout(() => {
       listRef.current?.scrollToEnd({ animated: true });
       scrollTimeoutRef.current = null;
+      setShowScrollToBottom(false);
+      setIsAtBottom(true);
     }, 80);
   }, [isSearchActive]);
 
@@ -534,6 +555,15 @@ export default function ChatScreen() {
       scrollToBottom();
     }
   }, [messages.length, isSearchActive, scrollToBottom]);
+
+  // ── Handle scroll events for "scroll to bottom" button ──
+  const handleScroll = useCallback((event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const bottom = contentSize.height - layoutMeasurement.height - 40;
+    const atBottom = contentOffset.y >= bottom;
+    setIsAtBottom(atBottom);
+    setShowScrollToBottom(!atBottom && messages.length > 5);
+  }, [messages.length]);
 
   // ----- Other Handlers -----
   const handleQuickReply = useCallback((reply: string) => {
@@ -544,10 +574,26 @@ export default function ChatScreen() {
   const handleSend = useCallback(async () => {
     const content = text.trim();
     if (!content || !id || sending) return;
+
+    if (!isOnline) {
+      showAlert(
+        isAr ? 'لا يوجد اتصال' : 'No Internet',
+        isAr ? 'الرسالة ستُحفظ وترسل تلقائياً عند عودة الاتصال' : 'Message will be saved and sent when back online'
+      );
+    }
+
+    // إذا كان هناك رد على رسالة، نضيف اقتباساً
+    let finalContent = content;
+    if (replyTo) {
+      const quotedText = replyTo.content || (replyTo.message_type === 'image' ? '📷 صورة' : '');
+      finalContent = `> ${quotedText}\n\n${content}`;
+      setReplyTo(null);
+    }
+
     setSending(true);
     setText('');
     try {
-      await handleSendMessage(content);
+      await handleSendMessage(finalContent);
     } finally {
       setSending(false);
       if (isBuyer !== null) {
@@ -555,7 +601,22 @@ export default function ChatScreen() {
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       }
     }
-  }, [text, id, sending, handleSendMessage, isBuyer]);
+  }, [text, id, sending, handleSendMessage, isBuyer, isOnline, showAlert, isAr, replyTo]);
+
+  // ── Copy message text ──
+  const handleCopyMessage = useCallback((content: string) => {
+    Clipboard.setString(content);
+    showAlert(isAr ? 'تم النسخ' : 'Copied', isAr ? 'تم نسخ النص' : 'Text copied');
+  }, [isAr, showAlert]);
+
+  // ── Reply to message ──
+  const handleReplyToMessage = useCallback((msg: Message) => {
+    setReplyTo(msg);
+    // التركيز على حقل الإدخال
+    setTimeout(() => {
+      // يمكنك استخدام ref للتركيز على TextInput
+    }, 100);
+  }, []);
 
   const handleCameraCapture = useCallback(async () => {
     if (!id || imageUploading) return;
@@ -785,7 +846,7 @@ export default function ChatScreen() {
     setVisibleCount(v => Math.min(v + PAGE_SIZE, max));
   }, [messages.length]);
 
-  // ----- Date grouping (memoized) -----
+  // ----- Date grouping -----
   type MsgItem = (Message & { _type?: undefined }) | { _type: 'date'; _date: string; id: string };
 
   const withDates = useMemo<MsgItem[]>(() => {
@@ -802,7 +863,13 @@ export default function ChatScreen() {
     return items;
   }, [pagedMessages]);
 
-  // ----- Render functions (memoized) -----
+  // ── getItemLayout ──
+  const getItemLayout = useCallback((data: any, index: number) => {
+    const itemHeight = 70;
+    return { length: itemHeight, offset: itemHeight * index, index };
+  }, []);
+
+  // ----- Render functions -----
   const renderItem = useCallback(({ item }: { item: MsgItem }) => {
     if (item._type === 'date') {
       return (
@@ -816,6 +883,7 @@ export default function ChatScreen() {
     const isVoice = msg.message_type === 'image' && !!msg.image_url && msg.image_url.includes('.m4a');
     const isImage = msg.message_type === 'image' && !!msg.image_url && !isVoice;
     const isRead = !!msg.read_at;
+    const isFailed = msg._failed === true;
 
     const borderRadiusStyle = isMine
       ? {
@@ -836,79 +904,120 @@ export default function ChatScreen() {
         styles.messageRow,
         { flexDirection: isMine ? (isAr ? 'row' : 'row-reverse') : (isAr ? 'row-reverse' : 'row') }
       ]}>
-        <View style={[
-          styles.messageBubble,
-          isMine
-            ? [styles.messageSent, { backgroundColor: colors.primary }]
-            : [styles.messageReceived, { backgroundColor: colors.surface }],
-          borderRadiusStyle,
-          isImage ? { paddingHorizontal: 4, paddingVertical: 4 } : null,
-        ]}>
-          {isVoice ? (
-            <Pressable
-              style={[
-                styles.voicePlayer,
-                { backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : colors.primaryGhost }
-              ]}
-              onPress={() => handlePlayVoice(msg.id, msg.image_url!)}
-            >
-              <MaterialIcons
-                name={playingVoiceId === msg.id ? 'pause-circle-filled' : 'play-circle-filled'}
-                size={32}
-                color={isMine ? '#fff' : colors.primary}
-              />
-              <View style={{
-                height: 3,
-                backgroundColor: isMine ? 'rgba(255,255,255,0.3)' : colors.border,
-                flex: 1,
-                borderRadius: 2,
-              }}>
+        <Pressable
+          onLongPress={() => {
+            if (!isImage && !isVoice) {
+              handleCopyMessage(msg.content);
+            }
+          }}
+          delayLongPress={400}
+          style={{ flex: 1, alignItems: isMine ? 'flex-end' : 'flex-start' }}
+        >
+          <View style={[
+            styles.messageBubble,
+            isMine
+              ? [styles.messageSent, { backgroundColor: colors.primary }]
+              : [styles.messageReceived, { backgroundColor: colors.surface }],
+            borderRadiusStyle,
+            isImage ? { paddingHorizontal: 4, paddingVertical: 4 } : null,
+            isFailed && { borderWidth: 1, borderColor: '#EF4444' },
+          ]}>
+            {isVoice ? (
+              <Pressable
+                style={[
+                  styles.voicePlayer,
+                  { backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : colors.primaryGhost }
+                ]}
+                onPress={() => handlePlayVoice(msg.id, msg.image_url!)}
+              >
+                <MaterialIcons
+                  name={playingVoiceId === msg.id ? 'pause-circle-filled' : 'play-circle-filled'}
+                  size={32}
+                  color={isMine ? '#fff' : colors.primary}
+                />
                 <View style={{
                   height: 3,
-                  backgroundColor: isMine ? '#fff' : colors.primary,
-                  width: `${((voiceProgress[msg.id] ?? 0) * 100).toFixed(0)}%`,
-                }} />
-              </View>
-            </Pressable>
-          ) : isImage ? (
-            <Image
-              source={{ uri: msg.image_url! }}
-              style={{ width: 200, height: 150, borderRadius: 14 }}
-              contentFit="cover"
-            />
-          ) : (
-            <Text style={[
-              styles.messageText,
-              { color: isMine ? '#fff' : colors.textPrimary, textAlign: isAr ? 'right' : 'left' }
-            ]}>
-              {msg.content}
-            </Text>
-          )}
-          <View style={{
-            flexDirection: isAr ? 'row-reverse' : 'row',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: 4,
-            marginTop: 4,
-          }}>
-            <Text style={[
-              styles.messageTime,
-              { color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted }
-            ]}>
-              {formatTime(msg.created_at)}
-            </Text>
-            {isMine && (
-              <MaterialIcons
-                name={isRead ? 'done-all' : 'done'}
-                size={14}
-                color={isRead ? (isMine ? '#4ADE80' : '#4ADE80') : 'rgba(255,255,255,0.7)'}
-              />
+                  backgroundColor: isMine ? 'rgba(255,255,255,0.3)' : colors.border,
+                  flex: 1,
+                  borderRadius: 2,
+                }}>
+                  <View style={{
+                    height: 3,
+                    backgroundColor: isMine ? '#fff' : colors.primary,
+                    width: `${((voiceProgress[msg.id] ?? 0) * 100).toFixed(0)}%`,
+                  }} />
+                </View>
+              </Pressable>
+            ) : isImage ? (
+              <Pressable onPress={() => setPreviewImage(msg.image_url!)}>
+                <Image
+                  source={{ uri: msg.image_url! }}
+                  style={{ width: 200, height: 150, borderRadius: 14 }}
+                  contentFit="cover"
+                />
+              </Pressable>
+            ) : (
+              <Text style={[
+                styles.messageText,
+                { color: isMine ? '#fff' : colors.textPrimary, textAlign: isAr ? 'right' : 'left' }
+              ]}>
+                {msg.content}
+              </Text>
+            )}
+
+            {isFailed && (
+              <Pressable
+                style={[styles.retryBtn, { marginTop: 4 }]}
+                onPress={() => handleRetryMessage(msg)}
+              >
+                <MaterialIcons name="refresh" size={14} color="#EF4444" />
+                <Text style={[styles.retryText, { color: '#EF4444' }]}>
+                  {isAr ? 'إعادة المحاولة' : 'Retry'}
+                </Text>
+              </Pressable>
+            )}
+
+            <View style={{
+              flexDirection: isAr ? 'row-reverse' : 'row',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 4,
+              marginTop: 4,
+            }}>
+              <Text style={[
+                styles.messageTime,
+                { color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted }
+              ]}>
+                {formatTime(msg.created_at)}
+              </Text>
+              {isMine && !isFailed && (
+                <MaterialIcons
+                  name={isRead ? 'done-all' : 'done'}
+                  size={14}
+                  color={isRead ? (isMine ? '#4ADE80' : '#4ADE80') : 'rgba(255,255,255,0.7)'}
+                />
+              )}
+              {isMine && isRead && (
+                <Text style={[styles.readReceipt, { color: colors.primary }]}>
+                  {isAr ? 'تم المشاهدة' : 'Read'}
+                </Text>
+              )}
+            </View>
+
+            {/* Reply button on long press */}
+            {!isImage && !isVoice && (
+              <Pressable
+                style={[styles.replyBtn, { position: 'absolute', top: 4, right: isMine ? 4 : undefined, left: isMine ? undefined : 4 }]}
+                onPress={() => handleReplyToMessage(msg)}
+              >
+                <MaterialIcons name="reply" size={16} color={isMine ? 'rgba(255,255,255,0.6)' : colors.textMuted} />
+              </Pressable>
             )}
           </View>
-        </View>
+        </Pressable>
       </View>
     );
-  }, [isAr, user, colors, playingVoiceId, voiceProgress, handlePlayVoice]);
+  }, [isAr, user, colors, playingVoiceId, voiceProgress, handlePlayVoice, handleCopyMessage, handleRetryMessage, handleReplyToMessage]);
 
   const footerComponent = useMemo(() => {
     if (!otherTyping) return null;
@@ -934,9 +1043,31 @@ export default function ChatScreen() {
       <View style={[styles.container, { backgroundColor: colors.background }]}>
 
         {!isOnline && (
-          <View style={[styles.offlineBanner, { backgroundColor: '#F59E0B', paddingTop: insets.top }]}>
-            <MaterialIcons name="wifi-off" size={14} color="#fff" />
-            <Text style={styles.offlineBannerText}>{isAr ? 'أنت غير متصل' : 'You are offline'}</Text>
+          <View style={[styles.offlineBanner, { backgroundColor: '#EF4444', paddingTop: insets.top }]}>
+            <MaterialIcons name="wifi-off" size={16} color="#fff" />
+            <Text style={[styles.offlineBannerText, { color: '#fff' }]}>
+              {isAr ? 'غير متصل بالإنترنت' : 'No Internet Connection'}
+            </Text>
+            <Pressable onPress={() => reload()} hitSlop={8}>
+              <MaterialIcons name="refresh" size={16} color="#fff" />
+            </Pressable>
+          </View>
+        )}
+
+        {/* ── Reply to message indicator ── */}
+        {replyTo && (
+          <View style={[styles.replyIndicator, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.replyIndicatorLabel, { color: colors.primary }]}>
+                {isAr ? 'رد على' : 'Replying to'}
+              </Text>
+              <Text style={[styles.replyIndicatorText, { color: colors.textPrimary }]} numberOfLines={1}>
+                {replyTo.content || (replyTo.message_type === 'image' ? '📷 صورة' : '')}
+              </Text>
+            </View>
+            <Pressable onPress={() => setReplyTo(null)} hitSlop={8}>
+              <MaterialIcons name="close" size={20} color={colors.textMuted} />
+            </Pressable>
           </View>
         )}
 
@@ -1149,7 +1280,19 @@ export default function ChatScreen() {
           }
           renderItem={renderItem}
           ListFooterComponent={footerComponent}
+          onScroll={handleScroll}
+          getItemLayout={getItemLayout}
         />
+
+        {/* ── Scroll to bottom button ── */}
+        {showScrollToBottom && (
+          <Pressable
+            style={[styles.scrollToBottomBtn, { backgroundColor: colors.primary }]}
+            onPress={scrollToBottom}
+          >
+            <MaterialIcons name="keyboard-arrow-down" size={24} color="#fff" />
+          </Pressable>
+        )}
 
         {showQuickReplies && (
           <ScrollView
@@ -1247,6 +1390,20 @@ export default function ChatScreen() {
         </View>
 
       </View>
+
+      {/* ── Image Preview Modal ── */}
+      <Modal visible={!!previewImage} transparent animationType="fade" statusBarTranslucent>
+        <Pressable style={styles.imagePreviewOverlay} onPress={() => setPreviewImage(null)}>
+          <Image
+            source={{ uri: previewImage! }}
+            style={styles.imagePreview}
+            contentFit="contain"
+          />
+          <Pressable style={styles.imagePreviewClose} onPress={() => setPreviewImage(null)}>
+            <MaterialIcons name="close" size={24} color="#fff" />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1352,4 +1509,71 @@ const styles = StyleSheet.create({
   menuDivider: { height: 1, marginVertical: 6 },
   menuCancelBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   menuCancelText: { fontSize: 16, fontWeight: '700' },
+  // ── New styles ──
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+  },
+  retryText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  readReceipt: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  replyBtn: {
+    padding: 4,
+    opacity: 0.5,
+  },
+  replyIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  replyIndicatorLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  replyIndicatorText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  scrollToBottomBtn: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  imagePreviewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePreview: {
+    width: '100%',
+    height: '80%',
+  },
+  imagePreviewClose: {
+    position: 'absolute',
+    top: 48,
+    right: 16,
+    padding: 8,
+  },
 });
