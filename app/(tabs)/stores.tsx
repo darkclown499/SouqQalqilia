@@ -51,29 +51,31 @@ function isNameInvalid(name: string): boolean {
   return /[0-9!@#$%^&*()_+=[\]{};':"\\|,.<>/?`~]/.test(name);
 }
 
-// ── Icon name resolver ────────────────────────────────────────────────────────
-const get3DIconUrl = (name: string) => {
-  const base = 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/';
-  switch (name) {
-    case 'الكل': return base + 'Star/3D/star_3d.png';
-    case 'العروض': return 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif';
-    case 'زينة وهدايا': return base + 'Party%20popper/3D/party_popper_3d.png';
-    case 'ألعاب وترفيه': return base + 'Video%20game/3D/video_game_3d.png';
-    case 'مأكولات وحلويات': return base + 'Hamburger/3D/hamburger_3d.png';
-    case 'إلكترونيات': return base + 'Mobile%20phone/3D/mobile_phone_3d.png';
-    case 'سوبرماركت': return base + 'Shopping%20cart/3D/shopping_cart_3d.png';
-    case 'صيدليات': return base + 'Pill/3D/pill_3d.png';
-    case 'حيوانات': return base + 'Dog%20face/3D/dog_face_3d.png';
-    case 'سيارات ومركبات': return base + 'Automobile/3D/automobile_3d.png';
-    case 'وظائف': return base + 'Briefcase/3D/briefcase_3d.png';
-    case 'موضة': return base + 'T-shirt/3D/t-shirt_3d.png';
-    case 'أثاث': return base + 'Couch%20and%20lamp/3D/couch_and_lamp_3d.png';
-    case 'رياضة': return base + 'Soccer%20ball/3D/soccer_ball_3d.png';
-    case 'عقارات': return base + 'House/3D/house_3d.png';
-    case 'خضروات وفواكه': return base + 'Apple/3D/apple_3d.png';
-    case 'مستحضرات تجميل': return base + 'Lipstick/3D/lipstick_3d.png';
-    default: return base + 'Convenience%20store/3D/convenience_store_3d.png';
-  }
+// ── ✅ تحسين: استخدام Map لتعيين الأسماء إلى روابط الصور ──────────────────────
+const ICON_URL_MAP = new Map<string, string>([
+  ['الكل', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Star/3D/star_3d.png'],
+  ['العروض', 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif'],
+  ['زينة وهدايا', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Party%20popper/3D/party_popper_3d.png'],
+  ['ألعاب وترفيه', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Video%20game/3D/video_game_3d.png'],
+  ['مأكولات وحلويات', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Hamburger/3D/hamburger_3d.png'],
+  ['إلكترونيات', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Mobile%20phone/3D/mobile_phone_3d.png'],
+  ['سوبرماركت', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Shopping%20cart/3D/shopping_cart_3d.png'],
+  ['صيدليات', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Pill/3D/pill_3d.png'],
+  ['حيوانات', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Dog%20face/3D/dog_face_3d.png'],
+  ['سيارات ومركبات', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Automobile/3D/automobile_3d.png'],
+  ['وظائف', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Briefcase/3D/briefcase_3d.png'],
+  ['موضة', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/T-shirt/3D/t-shirt_3d.png'],
+  ['أثاث', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Couch%20and%20lamp/3D/couch_and_lamp_3d.png'],
+  ['رياضة', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Soccer%20ball/3D/soccer_ball_3d.png'],
+  ['عقارات', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/House/3D/house_3d.png'],
+  ['خضروات وفواكه', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Apple/3D/apple_3d.png'],
+  ['مستحضرات تجميل', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Lipstick/3D/lipstick_3d.png'],
+]);
+
+const DEFAULT_ICON_URL = 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Convenience%20store/3D/convenience_store_3d.png';
+
+const get3DIconUrl = (name: string): string => {
+  return ICON_URL_MAP.get(name) ?? DEFAULT_ICON_URL;
 };
 
 // ── Banner placeholder fallback ──────────────────────────────────────────────
@@ -153,7 +155,7 @@ const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRT
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. QUICK STORE CATEGORY CARD (تم استبدال RNImage بـ expo-image)
+// 2. QUICK STORE CATEGORY CARD
 // ─────────────────────────────────────────────────────────────────────────────
 const QuickStoreCatCard = React.memo(({ cat, isAr, isSelected, onPress }: any) => {
   const nameAr = cat.name_ar || cat.name;
@@ -247,16 +249,20 @@ const VIPStoreCard = React.memo(({ store, rating, isAr, onPress }: any) => {
   );
 });
 
-// ── VIP Stores Strip ────────────────────────────────────────────────────────
+// ── VIP Stores Strip (معدل: استخدام useMemo وعدم التكرار المبالغ فيه) ────
 const VIPStoresStrip = React.memo(({ stores, ratings, isAr, isRTL, onStorePress }: any) => {
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(0);
   const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const CARD_WIDTH = Math.min(214, SCREEN_W * 0.55);
 
+  // ✅ إذا كان عدد المتاجر أقل من 3، نكررها مرة واحدة فقط لتوفير تجربة سلسة
   const repeatedStores = useMemo(() => {
     if (stores.length === 0) return [];
-    return [...stores, ...stores, ...stores];
+    if (stores.length < 3) {
+      return [...stores, ...stores, ...stores];
+    }
+    return stores;
   }, [stores]);
 
   useEffect(() => {
@@ -287,7 +293,7 @@ const VIPStoresStrip = React.memo(({ stores, ratings, isAr, isRTL, onStorePress 
     return () => {
       if (autoScrollTimer.current) clearInterval(autoScrollTimer.current);
     };
-  }, [repeatedStores]);
+  }, [repeatedStores, CARD_WIDTH]);
 
   const handleScroll = useCallback((event: any) => {
     scrollX.current = event.nativeEvent.contentOffset.x;
@@ -546,10 +552,9 @@ const CategoryBlock = React.memo(({ cat, stores, ratings, isAr, isRTL, onStorePr
   }, [stores, showAll]);
 
   const handleViewAll = useCallback(() => {
-  const slug = cat.slug || cat.id;
-  // ✅ إضافة type=store
-  router.push(`/category/${slug}?type=store` as any);
-}, [cat, router]);
+    const slug = cat.slug || cat.id;
+    router.push(`/category/${slug}?type=store` as any);
+  }, [cat, router]);
 
   const renderItem = useCallback(({ item }: any) => (
     <StoreVerticalCard
@@ -665,6 +670,7 @@ export default function StoresScreen() {
   const [nameError, setNameError] = useState('');
 
   const isMountedRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // ── Local banners ──
   const LOCAL_BANNERS = useMemo(() => [
@@ -674,34 +680,34 @@ export default function StoresScreen() {
     { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
   ], []);
 
-  // ── Load data function (مضاف إليه isMountedRef و timeout) ──
+  // ── Load data function (معدل: استخدام AbortController بدلاً من Promise.race) ──
   const loadData = useCallback(async (showLoading = true) => {
     if (!isMountedRef.current) return;
     if (showLoading) setLoading(true);
     setError(null);
 
+    // إلغاء الطلبات السابقة
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const signal = controller.signal;
+
     try {
       setBanners(shuffleArray(LOCAL_BANNERS));
 
-      // مهلة زمنية 30 ثانية كحد أقصى
-      const TIMEOUT = 30000;
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timeout')), TIMEOUT)
-      );
-
-      const [storesRes, ratingsMap, catsRes] = await Promise.race([
-        Promise.all([
-          fetchAllActiveStores(),
-          fetchAllStoreRatings(),
-          fetchStoreCategories(),
-        ]),
-        timeoutPromise,
+      const [storesRes, ratingsMap, catsRes] = await Promise.all([
+        fetchAllActiveStores(),
+        fetchAllStoreRatings(),
+        fetchStoreCategories(),
       ]);
 
-      if (!isMountedRef.current) return;
+      // التحقق من عدم الإلغاء
+      if (signal.aborted || !isMountedRef.current) return;
 
       const shuffledStores = shuffleArray(storesRes.data);
-      if (!isMountedRef.current) return;
+      if (signal.aborted || !isMountedRef.current) return;
       setStores(shuffledStores);
       setRatings(ratingsMap);
       setStoreCategories(catsRes.data);
@@ -709,14 +715,16 @@ export default function StoresScreen() {
       const featuredIds = shuffledStores
         .filter((storeItem: any) => storeItem.is_featured === true)
         .map((storeItem: any) => storeItem.id);
-      if (!isMountedRef.current) return;
+      if (signal.aborted || !isMountedRef.current) return;
       setFeaturedStoreIds(new Set(featuredIds));
     } catch (err) {
-      if (!isMountedRef.current) return;
+      if (signal.aborted || !isMountedRef.current) return;
       console.error('Failed to load stores data:', err);
       setError(isAr ? 'فشل تحميل المتاجر، يرجى المحاولة لاحقاً' : 'Failed to load stores, please try again');
     } finally {
-      if (isMountedRef.current && showLoading) setLoading(false);
+      if (isMountedRef.current && showLoading && !signal.aborted) {
+        setLoading(false);
+      }
     }
   }, [LOCAL_BANNERS, isAr]);
 
@@ -727,49 +735,59 @@ export default function StoresScreen() {
       return;
     }
     setOwnerStoreLoading(true);
-    getSupabaseClient()
-      .from('user_profiles')
-      .select('username')
-      .eq('id', user.id)
-      .single()
-      .then(({ data }) => {
-        if (isMountedRef.current && isNameInvalid(data?.username ?? '')) {
-          setEditName(data?.username ?? '');
+    
+    const fetchUserData = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        
+        // جلب بيانات المستخدم
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('username')
+          .eq('id', user.id)
+          .single();
+        
+        if (isMountedRef.current && profile && isNameInvalid(profile.username ?? '')) {
+          setEditName(profile.username ?? '');
           setNameGateVisible(true);
         }
-      })
-      .catch(() => {});
 
-    getSupabaseClient()
-      .from('stores')
-      .select('*')
-      .eq('owner_id', user.id)
-      .maybeSingle()
-      .then(({ data }) => {
+        // جلب بيانات المتجر
+        const { data: store } = await supabase
+          .from('stores')
+          .select('*')
+          .eq('owner_id', user.id)
+          .maybeSingle();
+
         if (isMountedRef.current) {
-          setOwnerStore(data ?? null);
+          setOwnerStore(store ?? null);
           setOwnerStoreLoading(false);
         }
-      })
-      .catch(() => {
+      } catch (err) {
         if (isMountedRef.current) {
           setOwnerStore(null);
           setOwnerStoreLoading(false);
         }
-      });
+      }
+    };
+
+    fetchUserData();
   }, [user]);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, []);
 
   // ── Initial load ──
   useEffect(() => {
     loadData(true);
-  }, []);
+  }, [loadData]);
 
   // ── Focus: re-shuffle banners only ──
   useFocusEffect(
@@ -796,10 +814,15 @@ export default function StoresScreen() {
     }
     setSavingName(true);
     setNameError('');
-    const { error } = await getSupabaseClient().from('user_profiles').update({ username: trimmed }).eq('id', user!.id);
-    setSavingName(false);
-    if (error) setNameError(isAr ? 'حدث خطأ، حاول مرة أخرى' : 'Error saving, try again');
-    else setNameGateVisible(false);
+    try {
+      const { error } = await getSupabaseClient().from('user_profiles').update({ username: trimmed }).eq('id', user!.id);
+      if (error) throw error;
+      setNameGateVisible(false);
+    } catch (err) {
+      setNameError(isAr ? 'حدث خطأ، حاول مرة أخرى' : 'Error saving, try again');
+    } finally {
+      setSavingName(false);
+    }
   }, [editName, user, isAr]);
 
   // ── Group stores by category ──
@@ -839,6 +862,12 @@ export default function StoresScreen() {
     return filteredGroupedStores.filter(g => g.cat.id === selectedCatId);
   }, [filteredGroupedStores, selectedCatId]);
 
+  // ── Clear search ──
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    setIsSearchVisible(false);
+  }, []);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       
@@ -855,7 +884,7 @@ export default function StoresScreen() {
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
-              <Pressable onPress={() => { setIsSearchVisible(false); setSearchQuery(''); }}>
+              <Pressable onPress={handleClearSearch}>
                 <MaterialIcons name="close" size={22} color="#1A1A1A" />
               </Pressable>
             </View>
