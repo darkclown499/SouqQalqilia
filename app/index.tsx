@@ -1,12 +1,16 @@
 // ── Preload ads for guest users (no auth) ───────────────────────────────────
 import { preloadAds } from '@/services/adsService';
 import { preloadBanners } from '@/services/bannersService';
+import { getSupabaseClient } from '@/template'; // ✅ استيراد ثابت
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// ── Preload immediately ──────────────────────────────────────────────────────
 preloadAds().catch(() => {});
 preloadBanners().catch(() => {});
 
 // ── Track app visit (DAU/WAU/MAU) ────────────────────────────────────────────
-import AsyncStorage from '@react-native-async-storage/async-storage';
 const DEVICE_ID_KEY = 'app_device_id_v1';
+
 async function trackVisit() {
   try {
     let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
@@ -14,7 +18,6 @@ async function trackVisit() {
       deviceId = 'dev_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
       await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
     }
-    const { getSupabaseClient } = require('@/template');
     const supabase = getSupabaseClient();
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id ?? null;
@@ -23,7 +26,7 @@ async function trackVisit() {
 }
 
 import { Redirect } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import {
   View, Text, StyleSheet, Dimensions, Animated, Easing,
 } from 'react-native';
@@ -42,6 +45,34 @@ const LOADING_MESSAGES = [
   'نجلب لك أفضل العروض...',
   'سوق قلقيلية في انتظارك...',
 ];
+
+// ─── Loading Dots (مفصول لتحسين الأداء) ──────────────────────────────────────
+const LoadingDots = memo(function LoadingDots() {
+  const dots = [
+    useRef(new Animated.Value(0.4)).current,
+    useRef(new Animated.Value(0.4)).current,
+    useRef(new Animated.Value(0.4)).current,
+  ];
+  useEffect(() => {
+    dots.forEach((dot, i) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 200),
+          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0.4, duration: 400, useNativeDriver: true }),
+          Animated.delay((dots.length - i - 1) * 200),
+        ])
+      ).start();
+    });
+  }, []);
+  return (
+    <View style={styles.dotsWrap}>
+      {dots.map((d, i) => (
+        <Animated.View key={i} style={[styles.loadingDot, { opacity: d, backgroundColor: i === 1 ? GOLD : 'rgba(255,255,255,0.8)' }]} />
+      ))}
+    </View>
+  );
+});
 
 // ─── Phase 1: Launch Screen ──────────────────────────────────────────────────
 function LaunchPhase({ onDone }: { onDone: () => void }) {
@@ -99,7 +130,11 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
   const [msgIndex, setMsgIndex] = useState(0);
   const msgOpacity = useRef(new Animated.Value(0)).current;
 
+  // ✅ الانتظار حتى اكتمال التحميل الفعلي مع مهلة زمنية
   useEffect(() => {
+    let isMounted = true;
+    let loadingComplete = false;
+
     Animated.timing(screenOpacity, { toValue: 1, duration: 280, useNativeDriver: true }).start(() => {
       Animated.parallel([
         Animated.timing(logoOpacity, { toValue: 1, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true }),
@@ -121,18 +156,43 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
 
     Animated.timing(msgOpacity, { toValue: 1, duration: 380, useNativeDriver: true }).start();
     const cycle = setInterval(() => {
+      if (!isMounted) return;
       Animated.timing(msgOpacity, { toValue: 0, duration: 280, useNativeDriver: true }).start(() => {
+        if (!isMounted) return;
         setMsgIndex(i => (i + 1) % LOADING_MESSAGES.length);
         Animated.timing(msgOpacity, { toValue: 1, duration: 380, useNativeDriver: true }).start();
       });
     }, 1600);
 
-    const t = setTimeout(() => {
-      clearInterval(cycle);
-      Animated.timing(screenOpacity, { toValue: 0, duration: 350, useNativeDriver: true }).start(() => onDone());
-    }, 2800);
+    // ✅ انتظار اكتمال التحميل الفعلي مع مهلة زمنية قصوى
+    const MAX_LOAD_TIME = 5000;
+    const loadPromise = Promise.all([
+      preloadAds().catch(() => {}),
+      preloadBanners().catch(() => {}),
+    ]).then(() => {
+      loadingComplete = true;
+    });
 
-    return () => { clearTimeout(t); clearInterval(cycle); };
+    const timeoutPromise = new Promise<void>((resolve) => {
+      setTimeout(resolve, MAX_LOAD_TIME);
+    });
+
+    Promise.race([loadPromise, timeoutPromise]).then(() => {
+      if (!isMounted) return;
+      // تأخير بسيط لضمان رؤية المستخدم للشريط مكتملاً
+      setTimeout(() => {
+        if (!isMounted) return;
+        clearInterval(cycle);
+        Animated.timing(screenOpacity, { toValue: 0, duration: 350, useNativeDriver: true }).start(() => {
+          if (isMounted) onDone();
+        });
+      }, 400);
+    });
+
+    return () => {
+      isMounted = false;
+      clearInterval(cycle);
+    };
   }, []);
 
   return (
@@ -155,40 +215,17 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
   );
 }
 
-function LoadingDots() {
-  const dots = [
-    useRef(new Animated.Value(0.4)).current,
-    useRef(new Animated.Value(0.4)).current,
-    useRef(new Animated.Value(0.4)).current,
-  ];
-  useEffect(() => {
-    dots.forEach((dot, i) => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 200),
-          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
-          Animated.timing(dot, { toValue: 0.4, duration: 400, useNativeDriver: true }),
-          Animated.delay((dots.length - i - 1) * 200),
-        ])
-      ).start();
-    });
-  }, []);
-  return (
-    <View style={styles.dotsWrap}>
-      {dots.map((d, i) => (
-        <Animated.View key={i} style={[styles.loadingDot, { opacity: d, backgroundColor: i === 1 ? GOLD : 'rgba(255,255,255,0.8)' }]} />
-      ))}
-    </View>
-  );
-}
-
 // ─── Root ────────────────────────────────────────────────────────────────────
 export default function RootScreen() {
   const [phase, setPhase] = useState<'launch' | 'loading' | 'done'>('launch');
+  const trackingDone = useRef(false);
 
-  // Track visit once after splash — safe inside useEffect (AsyncStorage ready)
+  // Track visit once after splash
   useEffect(() => {
-    if (phase === 'done') trackVisit();
+    if (phase === 'done' && !trackingDone.current) {
+      trackingDone.current = true;
+      trackVisit();
+    }
   }, [phase]);
 
   if (phase === 'launch') return <LaunchPhase onDone={() => setPhase('loading')} />;
@@ -202,31 +239,37 @@ function AuthGate() {
 
   useEffect(() => {
     let cancelled = false;
+
     async function check() {
       try {
-        const { getSupabaseClient } = require('@/template');
         const supabase = getSupabaseClient();
         const { data: { session } } = await supabase.auth.getSession();
+
         if (!session?.user) {
           if (!cancelled) setTarget('/(tabs)');
           return;
         }
+
         const { data: profile } = await supabase
           .from('user_profiles')
           .select('username')
           .eq('id', session.user.id)
           .maybeSingle();
-        const isPhoneUser = (session.user.email ?? '').includes('@sms.souqqalqilya.local');
+
+        // ✅ تحقق عام لجميع المستخدمين (ليس فقط هاتف)
         const hasName = profile?.username && profile.username.trim().length > 0;
-        if (isPhoneUser && !hasName) {
+
+        if (!hasName) {
           if (!cancelled) setTarget('/complete-profile');
         } else {
           if (!cancelled) setTarget('/(tabs)');
         }
-      } catch {
+      } catch (err) {
+        console.error('AuthGate error:', err);
         if (!cancelled) setTarget('/(tabs)');
       }
     }
+
     check();
     return () => { cancelled = true; };
   }, []);
