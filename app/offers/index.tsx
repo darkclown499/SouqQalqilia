@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Dimensions,
-  ActivityIndicator, Linking, RefreshControl, Platform,
+  ActivityIndicator, Linking, RefreshControl, Platform, FlatList,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -12,6 +12,14 @@ import { getSupabaseClient } from '@/template';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { trackPageView } from '@/services/analyticsService';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withRepeat,
+  withDelay,
+  Easing,
+} from 'react-native-reanimated';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -29,6 +37,7 @@ interface Offer {
   is_active: boolean;
   position: number;
   created_at: string;
+  is_vip?: boolean; // ✅ إضافة حقل VIP
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,6 +52,7 @@ const MEDIUM_H = 170;
 const SMALL_H = 130;
 const HALF_W = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
 const DEFAULT_PHONE = '972599234230';
+const CAROUSEL_AUTO_INTERVAL = 4000; // 4 seconds
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WhatsApp helper
@@ -67,7 +77,7 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
     try {
       await Linking.openURL(waUrl);
     } catch {
-      // Silent fail - user will see nothing, but we tried both methods
+      // Silent fail
     }
   }
 }
@@ -80,12 +90,32 @@ const OfferCard = memo(function OfferCard({
   offer,
   width,
   height,
+  vip = false,
 }: {
   offer: Offer;
   width: number;
   height: number;
+  vip?: boolean;
 }) {
   const [pressed, setPressed] = useState(false);
+  const isLarge = height >= LARGE_H;
+
+  // ✅ تأثير VIP: نبض ذهبي
+  const glowAnim = useSharedValue(1);
+  useEffect(() => {
+    if (vip) {
+      glowAnim.value = withRepeat(
+        withTiming(1.08, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true
+      );
+    }
+    return () => { glowAnim.value = 1; };
+  }, [vip]);
+
+  const glowStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: glowAnim.value }],
+  }));
 
   return (
     <Pressable
@@ -96,8 +126,14 @@ const OfferCard = memo(function OfferCard({
         styles.card,
         { width, height },
         pressed && { opacity: 0.88, transform: [{ scale: 0.975 }] },
+        vip && styles.vipCard,
       ]}
     >
+      {/* ✅ تأثير VIP: إطار ذهبي متوهج */}
+      {vip && (
+        <Animated.View style={[StyleSheet.absoluteFill, glowStyle, styles.vipGlow]} />
+      )}
+
       {/* Background image */}
       <Image
         source={{ uri: offer.image_url }}
@@ -114,9 +150,17 @@ const OfferCard = memo(function OfferCard({
         style={StyleSheet.absoluteFill}
       />
 
+      {/* ✅ شارة VIP */}
+      {vip && (
+        <View style={styles.vipBadge}>
+          <MaterialIcons name="stars" size={14} color="#FFD700" />
+          <Text style={styles.vipBadgeText}>VIP</Text>
+        </View>
+      )}
+
       {/* Category badge top-right */}
       {offer.category ? (
-        <View style={styles.catBadge}>
+        <View style={[styles.catBadge, vip && styles.catBadgeVip]}>
           <Text style={styles.catBadgeText}>{offer.category}</Text>
         </View>
       ) : null}
@@ -124,15 +168,19 @@ const OfferCard = memo(function OfferCard({
       {/* Bottom text */}
       <View style={styles.cardBottom}>
         {offer.store_name ? (
-          <Text style={styles.cardStore} numberOfLines={1}>{offer.store_name}</Text>
+          <Text style={[styles.cardStore, vip && styles.vipText]} numberOfLines={1}>
+            {offer.store_name}
+          </Text>
         ) : null}
         {offer.title ? (
-          <Text style={styles.cardTitle} numberOfLines={height < 150 ? 1 : 2}>
+          <Text style={[styles.cardTitle, vip && styles.vipTitle]} numberOfLines={height < 150 ? 1 : 2}>
             {offer.title}
           </Text>
         ) : null}
         {offer.description && height >= 160 ? (
-          <Text style={styles.cardDesc} numberOfLines={1}>{offer.description}</Text>
+          <Text style={[styles.cardDesc, vip && styles.vipText]} numberOfLines={1}>
+            {offer.description}
+          </Text>
         ) : null}
         {/* WhatsApp icon */}
         <View style={styles.waRow}>
@@ -141,6 +189,90 @@ const OfferCard = memo(function OfferCard({
         </View>
       </View>
     </Pressable>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Carousel Component
+// ─────────────────────────────────────────────────────────────────────────────
+
+const Carousel = memo(function Carousel({ offers, isAr }: { offers: Offer[]; isAr: boolean }) {
+  const flatListRef = useRef<FlatList>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const autoTimer = useRef<NodeJS.Timeout | null>(null);
+  const isScrolling = useRef(false);
+
+  const CAROUSEL_H = Math.min(280, SCREEN_W * 0.68);
+
+  // Auto-scroll
+  const startAutoScroll = useCallback(() => {
+    if (offers.length <= 1) return;
+    if (autoTimer.current) clearInterval(autoTimer.current);
+    autoTimer.current = setInterval(() => {
+      if (isScrolling.current) return;
+      const next = (currentIndex + 1) % offers.length;
+      flatListRef.current?.scrollToIndex({ index: next, animated: true });
+      setCurrentIndex(next);
+    }, CAROUSEL_AUTO_INTERVAL);
+  }, [currentIndex, offers.length]);
+
+  useEffect(() => {
+    startAutoScroll();
+    return () => {
+      if (autoTimer.current) clearInterval(autoTimer.current);
+    };
+  }, [startAutoScroll]);
+
+  const onScrollBeginDrag = () => { isScrolling.current = true; };
+  const onScrollEndDrag = () => { isScrolling.current = false; };
+  const onMomentumScrollEnd = (e: any) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+    setCurrentIndex(idx);
+  };
+
+  if (offers.length === 0) return null;
+
+  const renderItem = ({ item }: { item: Offer }) => (
+    <View style={{ width: SCREEN_W, paddingHorizontal: H_PAD, alignItems: 'center' }}>
+      <OfferCard
+        offer={item}
+        width={SCREEN_W - H_PAD * 2}
+        height={CAROUSEL_H}
+        vip={true} // جميع عروض الكاروسيل تعتبر VIP
+      />
+    </View>
+  );
+
+  return (
+    <View style={styles.carouselWrap}>
+      <FlatList
+        ref={flatListRef}
+        data={offers}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onScrollBeginDrag={onScrollBeginDrag}
+        onScrollEndDrag={onScrollEndDrag}
+        onMomentumScrollEnd={onMomentumScrollEnd}
+        scrollEventThrottle={16}
+        initialNumToRender={1}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+      />
+      {/* Pagination dots */}
+      {offers.length > 1 ? (
+        <View style={styles.pagination}>
+          {offers.map((_, i) => (
+            <View
+              key={i}
+              style={[styles.dot, currentIndex === i && styles.dotActive]}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 });
 
@@ -168,15 +300,15 @@ function SkeletonCards() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Grid layout builder
+// Grid layout builder (modified to exclude carousel offers)
 // ─────────────────────────────────────────────────────────────────────────────
 
 type GridRow =
-  | { type: 'large'; offer: Offer }
-  | { type: 'pair'; left: Offer; right: Offer }
-  | { type: 'single'; offer: Offer; size: 'medium' | 'small' };
+  | { type: 'large'; offer: Offer; vip: boolean }
+  | { type: 'pair'; left: Offer; right: Offer; vipLeft: boolean; vipRight: boolean }
+  | { type: 'single'; offer: Offer; size: 'medium' | 'small'; vip: boolean };
 
-function buildGrid(offers: Offer[]): GridRow[] {
+function buildGrid(offers: Offer[], firstVip: boolean = true): GridRow[] {
   const rows: GridRow[] = [];
 
   // Group by size: large first, then medium, then small
@@ -184,21 +316,40 @@ function buildGrid(offers: Offer[]): GridRow[] {
   const medium = offers.filter(o => o.card_size === 'medium');
   const small = offers.filter(o => o.card_size === 'small');
 
-  large.forEach(o => rows.push({ type: 'large', offer: o }));
+  // Helper to mark first offer as VIP
+  let isFirst = true;
+  const markVip = () => {
+    if (firstVip && isFirst) {
+      isFirst = false;
+      return true;
+    }
+    return false;
+  };
+
+  large.forEach((o, idx) => {
+    const vip = markVip();
+    rows.push({ type: 'large', offer: o, vip });
+  });
 
   for (let i = 0; i < medium.length; i += 2) {
     if (medium[i + 1]) {
-      rows.push({ type: 'pair', left: medium[i], right: medium[i + 1] });
+      const vipLeft = markVip();
+      const vipRight = markVip();
+      rows.push({ type: 'pair', left: medium[i], right: medium[i + 1], vipLeft, vipRight });
     } else {
-      rows.push({ type: 'single', offer: medium[i], size: 'medium' });
+      const vip = markVip();
+      rows.push({ type: 'single', offer: medium[i], size: 'medium', vip });
     }
   }
 
   for (let i = 0; i < small.length; i += 2) {
     if (small[i + 1]) {
-      rows.push({ type: 'pair', left: small[i], right: small[i + 1] });
+      const vipLeft = markVip();
+      const vipRight = markVip();
+      rows.push({ type: 'pair', left: small[i], right: small[i + 1], vipLeft, vipRight });
     } else {
-      rows.push({ type: 'single', offer: small[i], size: 'small' });
+      const vip = markVip();
+      rows.push({ type: 'single', offer: small[i], size: 'small', vip });
     }
   }
 
@@ -216,17 +367,19 @@ export default function OffersScreen() {
   const { language } = useLanguage();
   const isAr = language === 'ar';
 
-  const [offers, setOffers] = useState<Offer[]>([]);
+  const [allOffers, setAllOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('all');
 
+  // ── Carousel offers (VIP) ──────────────────────────────────────────────
+  const [carouselOffers, setCarouselOffers] = useState<Offer[]>([]);
+
   // ── Track page view ──────────────────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
       trackPageView('offers').catch(() => {});
-      return () => {};
     }, [])
   );
 
@@ -244,7 +397,16 @@ export default function OffersScreen() {
         .order('created_at', { ascending: false });
 
       if (dbError) throw new Error(dbError.message);
-      setOffers((data ?? []) as Offer[]);
+      const offers = (data ?? []) as Offer[];
+
+      // ✅ فصل العروض: أول 3 عروض تكون VIP (كاروسيل) والباقي عادي
+      const vipCount = Math.min(3, offers.length);
+      const vip = offers.slice(0, vipCount);
+      const normal = offers.slice(vipCount);
+
+      setAllOffers(offers);
+      setCarouselOffers(vip.map(o => ({ ...o, is_vip: true })));
+      setOffers(normal);
     } catch (e: any) {
       setError(isAr ? 'فشل تحميل العروض. تحقق من اتصالك.' : 'Failed to load offers. Check your connection.');
     } finally {
@@ -252,6 +414,9 @@ export default function OffersScreen() {
       setRefreshing(false);
     }
   }, [isAr]);
+
+  // State for normal offers
+  const [offers, setOffers] = useState<Offer[]>([]);
 
   useEffect(() => {
     fetchOffers();
@@ -262,20 +427,23 @@ export default function OffersScreen() {
     fetchOffers(false);
   }, [fetchOffers]);
 
-  // ── Categories from data ─────────────────────────────────────────────────
+  // ── Categories from all data ────────────────────────────────────────────
   const categories = useMemo(() => {
     const set = new Set<string>();
-    offers.forEach(o => { if (o.category) set.add(o.category); });
+    allOffers.forEach(o => { if (o.category) set.add(o.category); });
     return Array.from(set);
-  }, [offers]);
+  }, [allOffers]);
 
-  // ── Filtered + grid ──────────────────────────────────────────────────────
+  // ── Filtered + grid for normal offers (after carousel) ─────────────────
   const filtered = useMemo(() => {
     if (activeCategory === 'all') return offers;
     return offers.filter(o => o.category === activeCategory);
   }, [offers, activeCategory]);
 
-  const gridRows = useMemo(() => buildGrid(filtered), [filtered]);
+  const gridRows = useMemo(() => {
+    // نمرر firstVip=true لجعل أول عرض في الشبكة VIP
+    return buildGrid(filtered, true);
+  }, [filtered]);
 
   // ── Heights by size ──────────────────────────────────────────────────────
   const heightFor = useCallback((size: 'large' | 'medium' | 'small') => {
@@ -317,9 +485,9 @@ export default function OffersScreen() {
           <Text style={[styles.headerTitle, { color: headerTitle }]}>
             {isAr ? 'العروض' : 'Offers'}
           </Text>
-          {offers.length > 0 ? (
+          {allOffers.length > 0 ? (
             <View style={[styles.countBadge, { backgroundColor: colors.primary }]}>
-              <Text style={styles.countBadgeText}>{offers.length}</Text>
+              <Text style={styles.countBadgeText}>{allOffers.length}</Text>
             </View>
           ) : null}
         </View>
@@ -416,55 +584,62 @@ export default function OffersScreen() {
               <Text style={styles.retryBtnText}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
             </Pressable>
           </View>
-        ) : filtered.length === 0 ? (
-          // Empty state
-          <View style={styles.centerBox}>
-            <Text style={styles.emptyEmoji}>🏷️</Text>
-            <Text style={[styles.centerTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-              {activeCategory === 'all'
-                ? (isAr ? 'لا توجد عروض حالياً' : 'No offers available')
-                : (isAr ? `لا يوجد عروض في "${activeCategory}"` : `No offers in "${activeCategory}"`)
-              }
-            </Text>
-            {activeCategory !== 'all' ? (
-              <Pressable onPress={() => setActiveCategory('all')} style={[styles.showAllBtn, { backgroundColor: colors.primary }]}>
-                <Text style={styles.showAllBtnText}>{isAr ? 'عرض الكل' : 'Show all'}</Text>
-              </Pressable>
-            ) : (
-              <Text style={[styles.centerSub, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-                {isAr ? 'تابعنا لاحقاً للاطلاع على أحدث العروض' : 'Check back later for new deals'}
-              </Text>
-            )}
-          </View>
         ) : (
-          // Grid
-          <View style={styles.grid}>
-            {gridRows.map((row, idx) => {
-              if (row.type === 'large') {
-                return (
-                  <View key={row.offer.id} style={[styles.rowLarge, idx > 0 && { marginTop: COL_GAP }]}>
-                    <OfferCard offer={row.offer} width={SCREEN_W - H_PAD * 2} height={LARGE_H} />
-                  </View>
-                );
-              }
-              if (row.type === 'pair') {
-                const h = row.left.card_size === 'medium' ? MEDIUM_H : SMALL_H;
-                return (
-                  <View key={`${row.left.id}-${row.right.id}`} style={[styles.rowPair, idx > 0 && { marginTop: COL_GAP }]}>
-                    <OfferCard offer={row.left} width={HALF_W} height={h} />
-                    <OfferCard offer={row.right} width={HALF_W} height={h} />
-                  </View>
-                );
-              }
-              // single
-              const h = heightFor(row.size);
-              return (
-                <View key={row.offer.id} style={[styles.rowSingle, idx > 0 && { marginTop: COL_GAP }]}>
-                  <OfferCard offer={row.offer} width={HALF_W} height={h} />
-                </View>
-              );
-            })}
-          </View>
+          <>
+            {/* ✅ Carousel (VIP offers) */}
+            {carouselOffers.length > 0 && <Carousel offers={carouselOffers} isAr={isAr} />}
+
+            {/* No normal offers */}
+            {filtered.length === 0 ? (
+              <View style={[styles.centerBox, { paddingTop: 40 }]}>
+                <Text style={styles.emptyEmoji}>🏷️</Text>
+                <Text style={[styles.centerTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                  {activeCategory === 'all'
+                    ? (isAr ? 'لا توجد عروض حالياً' : 'No offers available')
+                    : (isAr ? `لا يوجد عروض في "${activeCategory}"` : `No offers in "${activeCategory}"`)
+                  }
+                </Text>
+                {activeCategory !== 'all' ? (
+                  <Pressable onPress={() => setActiveCategory('all')} style={[styles.showAllBtn, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.showAllBtnText}>{isAr ? 'عرض الكل' : 'Show all'}</Text>
+                  </Pressable>
+                ) : (
+                  <Text style={[styles.centerSub, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+                    {isAr ? 'تابعنا لاحقاً للاطلاع على أحدث العروض' : 'Check back later for new deals'}
+                  </Text>
+                )}
+              </View>
+            ) : (
+              // Grid
+              <View style={styles.grid}>
+                {gridRows.map((row, idx) => {
+                  if (row.type === 'large') {
+                    return (
+                      <View key={row.offer.id} style={[styles.rowLarge, idx > 0 && { marginTop: COL_GAP }]}>
+                        <OfferCard offer={row.offer} width={SCREEN_W - H_PAD * 2} height={LARGE_H} vip={row.vip} />
+                      </View>
+                    );
+                  }
+                  if (row.type === 'pair') {
+                    const h = row.left.card_size === 'medium' ? MEDIUM_H : SMALL_H;
+                    return (
+                      <View key={`${row.left.id}-${row.right.id}`} style={[styles.rowPair, idx > 0 && { marginTop: COL_GAP }]}>
+                        <OfferCard offer={row.left} width={HALF_W} height={h} vip={row.vipLeft} />
+                        <OfferCard offer={row.right} width={HALF_W} height={h} vip={row.vipRight} />
+                      </View>
+                    );
+                  }
+                  // single
+                  const h = heightFor(row.size);
+                  return (
+                    <View key={row.offer.id} style={[styles.rowSingle, idx > 0 && { marginTop: COL_GAP }]}>
+                      <OfferCard offer={row.offer} width={HALF_W} height={h} vip={row.vip} />
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
     </View>
@@ -544,6 +719,30 @@ const styles = StyleSheet.create({
     paddingTop: 14,
   },
 
+  // Carousel
+  carouselWrap: {
+    marginBottom: 18,
+  },
+  pagination: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
+  },
+  dotActive: {
+    backgroundColor: '#0A6E5C',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+
   // Grid
   grid: {},
   rowLarge: {
@@ -570,6 +769,51 @@ const styles = StyleSheet.create({
       android: { elevation: 3 },
     }),
   },
+  // ✅ VIP card styles
+  vipCard: {
+    borderWidth: 2,
+    borderColor: '#FFD700',
+  },
+  vipGlow: {
+    borderWidth: 4,
+    borderColor: 'rgba(255,215,0,0.6)',
+    borderRadius: 18,
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  vipBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,215,0,0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 2,
+  },
+  vipBadgeText: {
+    color: '#1A1A1A',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  vipText: {
+    color: '#FFD700',
+  },
+  vipTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+    textShadowColor: 'rgba(255,215,0,0.4)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
   catBadge: {
     position: 'absolute',
     top: 10,
@@ -578,6 +822,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
+    zIndex: 2,
+  },
+  catBadgeVip: {
+    backgroundColor: 'rgba(255,215,0,0.85)',
   },
   catBadgeText: {
     color: '#fff',
