@@ -1,322 +1,365 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Dimensions,
-  ActivityIndicator, Linking, RefreshControl,
+  ActivityIndicator, Linking, RefreshControl, Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as WebBrowser from 'expo-web-browser';
-import { fetchOfferCategories, OfferCategory } from '@/services/offerCategoriesService';
-import { trackPageView } from '@/services/analyticsService';
 import { getSupabaseClient } from '@/template';
-import { Ad } from '@/services/adsService';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
+import { trackPageView } from '@/services/analyticsService';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const VIP_WIDTH = SCREEN_WIDTH - 24;
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ── Countdown helper ──────────────────────────────────────────────────────────
-function getCountdownText(boostedUntil: string, isAr: boolean): string {
-  const diff = new Date(boostedUntil).getTime() - Date.now();
-  if (diff <= 0) return '';
-  const totalMins = Math.floor(diff / 60000);
-  const days = Math.floor(totalMins / 1440);
-  const hours = Math.floor((totalMins % 1440) / 60);
-  const mins = totalMins % 60;
-  if (isAr) {
-    if (days > 0) return `🔥 ينتهي خلال ${days} يوم${hours > 0 ? ` و${hours} ساعة` : ''}`;
-    if (hours > 0) return `🔥 ينتهي خلال ${hours} ساعة${mins > 0 ? ` و${mins} دقيقة` : ''}`;
-    return `🔥 ينتهي خلال ${mins} دقيقة`;
-  } else {
-    if (days > 0) return `🔥 Ends in ${days}d${hours > 0 ? ` ${hours}h` : ''}`;
-    if (hours > 0) return `🔥 Ends in ${hours}h${mins > 0 ? ` ${mins}m` : ''}`;
-    return `🔥 Ends in ${mins}m`;
+interface Offer {
+  id: string;
+  title: string | null;
+  description: string | null;
+  image_url: string;
+  category: string | null;
+  phone: string | null;
+  card_size: 'large' | 'medium' | 'small';
+  store_name: string | null;
+  is_active: boolean;
+  position: number;
+  created_at: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+const { width: SCREEN_W } = Dimensions.get('window');
+const H_PAD = 12;
+const COL_GAP = 10;
+const LARGE_H = 220;
+const MEDIUM_H = 170;
+const SMALL_H = 130;
+const HALF_W = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
+const DEFAULT_PHONE = '972599234230';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WhatsApp helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function openWhatsApp(phone: string | null, title: string | null, storeName: string | null) {
+  const number = (phone ?? DEFAULT_PHONE).replace(/\D/g, '');
+  const msg = encodeURIComponent(
+    `مرحباً، أنا مهتم بالعرض: ${title ?? 'عرض خاص'}${storeName ? ` من ${storeName}` : ''}`
+  );
+  const waUrl = `https://wa.me/${number}?text=${msg}`;
+  const waApp = `whatsapp://send?phone=${number}&text=${msg}`;
+  try {
+    const canApp = await Linking.canOpenURL(waApp);
+    await Linking.openURL(canApp ? waApp : waUrl);
+  } catch {
+    await Linking.openURL(waUrl).catch(() => {});
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Card Components
+// ─────────────────────────────────────────────────────────────────────────────
+
+function OfferCard({
+  offer,
+  width,
+  height,
+}: {
+  offer: Offer;
+  width: number;
+  height: number;
+}) {
+  const [pressed, setPressed] = useState(false);
+
+  return (
+    <Pressable
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={() => openWhatsApp(offer.phone, offer.title, offer.store_name)}
+      style={[
+        styles.card,
+        { width, height },
+        pressed && { opacity: 0.88, transform: [{ scale: 0.975 }] },
+      ]}
+    >
+      {/* Background image */}
+      <Image
+        source={{ uri: offer.image_url }}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        transition={300}
+        cachePolicy="memory-disk"
+      />
+
+      {/* Dark gradient overlay */}
+      <LinearGradient
+        colors={['transparent', 'transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.82)']}
+        locations={[0, 0.3, 0.65, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Category badge top-right */}
+      {offer.category ? (
+        <View style={styles.catBadge}>
+          <Text style={styles.catBadgeText}>{offer.category}</Text>
+        </View>
+      ) : null}
+
+      {/* Bottom text */}
+      <View style={styles.cardBottom}>
+        {offer.store_name ? (
+          <Text style={styles.cardStore} numberOfLines={1}>{offer.store_name}</Text>
+        ) : null}
+        {offer.title ? (
+          <Text style={styles.cardTitle} numberOfLines={height < 150 ? 1 : 2}>
+            {offer.title}
+          </Text>
+        ) : null}
+        {offer.description && height >= 160 ? (
+          <Text style={styles.cardDesc} numberOfLines={1}>{offer.description}</Text>
+        ) : null}
+        {/* WhatsApp icon */}
+        <View style={styles.waRow}>
+          <MaterialIcons name="chat" size={12} color="rgba(255,255,255,0.7)" />
+          <Text style={styles.waHint}>واتساب</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Skeleton Loader
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SkeletonCards() {
+  return (
+    <>
+      {/* Large skeleton */}
+      <View style={[styles.skeleton, { width: SCREEN_W - H_PAD * 2, height: LARGE_H, marginBottom: COL_GAP }]} />
+      {/* Two medium skeletons */}
+      <View style={{ flexDirection: 'row', gap: COL_GAP, marginBottom: COL_GAP }}>
+        <View style={[styles.skeleton, { width: HALF_W, height: MEDIUM_H }]} />
+        <View style={[styles.skeleton, { width: HALF_W, height: MEDIUM_H }]} />
+      </View>
+      {/* Two small skeletons */}
+      <View style={{ flexDirection: 'row', gap: COL_GAP }}>
+        <View style={[styles.skeleton, { width: HALF_W, height: SMALL_H }]} />
+        <View style={[styles.skeleton, { width: HALF_W, height: SMALL_H }]} />
+      </View>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Grid layout builder
+// ─────────────────────────────────────────────────────────────────────────────
+
+type GridRow =
+  | { type: 'large'; offer: Offer }
+  | { type: 'pair'; left: Offer; right: Offer }
+  | { type: 'single'; offer: Offer; size: 'medium' | 'small' };
+
+function buildGrid(offers: Offer[]): GridRow[] {
+  const rows: GridRow[] = [];
+
+  // Group by size: large first, then medium, then small
+  const large = offers.filter(o => o.card_size === 'large');
+  const medium = offers.filter(o => o.card_size === 'medium');
+  const small = offers.filter(o => o.card_size === 'small');
+
+  large.forEach(o => rows.push({ type: 'large', offer: o }));
+
+  for (let i = 0; i < medium.length; i += 2) {
+    if (medium[i + 1]) {
+      rows.push({ type: 'pair', left: medium[i], right: medium[i + 1] });
+    } else {
+      rows.push({ type: 'single', offer: medium[i], size: 'medium' });
+    }
+  }
+
+  for (let i = 0; i < small.length; i += 2) {
+    if (small[i + 1]) {
+      rows.push({ type: 'pair', left: small[i], right: small[i + 1] });
+    } else {
+      rows.push({ type: 'single', offer: small[i], size: 'small' });
+    }
+  }
+
+  return rows;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Screen
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function OffersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { language } = useLanguage();
   const isAr = language === 'ar';
 
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('all');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [offerCategories, setOfferCategories] = useState<OfferCategory[]>([]);
-  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
-  const [boostedAds, setBoostedAds] = useState<Ad[]>([]);
-  const [loadingAds, setLoadingAds] = useState(true);
-  const [adError, setAdError] = useState<string | null>(null);
 
-  const scrollViewRef = useRef<ScrollView>(null);
-  const [currentVipIndex, setCurrentVipIndex] = useState(0);
+  // ── Track page view ──────────────────────────────────────────────────────
+  useFocusEffect(
+    useCallback(() => {
+      trackPageView('offers').catch(() => {});
+    }, [])
+  );
 
-  // ── Fetch boosted ads from backend ───────────────────────────────────────
-  const fetchBoostedAds = useCallback(async () => {
-    setAdError(null);
-    setLoadingAds(true);
+  // ── Fetch from Supabase ──────────────────────────────────────────────────
+  const fetchOffers = useCallback(async (showLoader = true) => {
+    if (showLoader) setLoading(true);
+    setError(null);
     try {
       const supabase = getSupabaseClient();
-      const now = new Date().toISOString();
-      const { data, error } = await supabase
-        .from('ads')
-        .select(`
-          id, user_id, category_id, title, description, price, location,
-          phone_number, condition, status, views, created_at, boosted_until,
-          serial_number, ad_type,
-          categories(id, name, name_ar, icon, color),
-          ad_images(id, url, position, blurhash),
-          user_profiles(username, email, avatar_url)
-        `)
-        .in('status', ['active', 'featured'])
-        .gt('boosted_until', now)
-        .order('boosted_until', { ascending: false })
-        .limit(50);
+      const { data, error: dbError } = await supabase
+        .from('offers')
+        .select('*')
+        .eq('is_active', true)
+        .order('position', { ascending: true })
+        .order('created_at', { ascending: false });
 
-      if (error) {
-        setAdError(isAr ? 'فشل تحميل العروض' : 'Failed to load offers');
-      } else {
-        setBoostedAds((data ?? []) as Ad[]);
-      }
+      if (dbError) throw new Error(dbError.message);
+      setOffers((data ?? []) as Offer[]);
     } catch (e: any) {
-      setAdError(e?.message ?? (isAr ? 'خطأ في الاتصال' : 'Connection error'));
+      setError(isAr ? 'فشل تحميل العروض. تحقق من اتصالك.' : 'Failed to load offers. Check your connection.');
     } finally {
-      setLoadingAds(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [isAr]);
 
   useEffect(() => {
-    fetchOfferCategories()
-      .then(setOfferCategories)
-      .finally(() => setIsLoadingCategories(false));
-    fetchBoostedAds();
-  }, [fetchBoostedAds]);
+    fetchOffers();
+  }, [fetchOffers]);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      trackPageView('offers');
-    }, [])
-  );
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchOffers(false);
+  }, [fetchOffers]);
 
-  // ── VIP ads: top 3 boosted ads for the carousel ──────────────────────────
-  const vipAds = useMemo(() => boostedAds.slice(0, 3), [boostedAds]);
+  // ── Categories from data ─────────────────────────────────────────────────
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    offers.forEach(o => { if (o.category) set.add(o.category); });
+    return Array.from(set);
+  }, [offers]);
 
-  // ── Masonry grid: remaining boosted ads ──────────────────────────────────
-  const filteredAds = useMemo(() => {
-    const remaining = boostedAds.slice(3);
-    if (activeCategory === 'all') return remaining;
-    return remaining.filter(ad => ad.categories?.name_ar === activeCategory || ad.categories?.name === activeCategory);
-  }, [boostedAds, activeCategory]);
+  // ── Filtered + grid ──────────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    if (activeCategory === 'all') return offers;
+    return offers.filter(o => o.category === activeCategory);
+  }, [offers, activeCategory]);
 
-  const { leftCol, rightCol } = useMemo(() => {
-    const left: Ad[] = [];
-    const right: Ad[] = [];
-    filteredAds.forEach((item, index) => {
-      if (index % 2 === 0) left.push(item);
-      else right.push(item);
-    });
-    return { leftCol: left, rightCol: right };
-  }, [filteredAds]);
+  const gridRows = useMemo(() => buildGrid(filtered), [filtered]);
 
-  // ── Auto-scroll VIP carousel ──────────────────────────────────────────────
-  useEffect(() => {
-    if (vipAds.length <= 1) return;
-    const interval = setInterval(() => {
-      const nextIndex = (currentVipIndex + 1) % vipAds.length;
-      scrollViewRef.current?.scrollTo({
-        x: nextIndex * (VIP_WIDTH + 12),
-        animated: true,
-      });
-      setCurrentVipIndex(nextIndex);
-    }, 3500);
-    return () => clearInterval(interval);
-  }, [currentVipIndex, vipAds.length]);
-
-  const handleScrollEnd = (event: any) => {
-    const contentOffsetX = Math.abs(event.nativeEvent.contentOffset.x);
-    const newIndex = Math.round(contentOffsetX / (VIP_WIDTH + 12));
-    setCurrentVipIndex(newIndex);
+  // ── Heights by size ──────────────────────────────────────────────────────
+  const heightFor = (size: 'large' | 'medium' | 'small') => {
+    if (size === 'large') return LARGE_H;
+    if (size === 'medium') return MEDIUM_H;
+    return SMALL_H;
   };
 
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await fetchBoostedAds();
-    setIsRefreshing(false);
-  }, [fetchBoostedAds]);
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
 
-  const handleOpenLink = async (url: string) => {
-    if (!url) return;
-    try {
-      if (url.toLowerCase().startsWith('http')) {
-        await WebBrowser.openBrowserAsync(url, {
-          toolbarColor: '#E11D48',
-          enableBarCollapsing: true,
-        });
-      } else {
-        const supported = await Linking.canOpenURL(url);
-        if (supported) await Linking.openURL(url);
-      }
-    } catch (error) {
-      console.error('Error opening URL:', error);
-    }
-  };
-
-  const handleAdPress = useCallback((ad: Ad) => {
-    router.push(`/ad/${ad.id}` as any);
-  }, [router]);
-
-  const getAdThumb = (ad: Ad): string | null => {
-    const images = (ad.ad_images ?? []).sort((a, b) => a.position - b.position);
-    return images[0]?.url ?? null;
-  };
-
-  const renderAdCard = (ad: Ad) => {
-    const thumb = getAdThumb(ad);
-    const countdown = ad.boosted_until ? getCountdownText(ad.boosted_until, isAr) : '';
-    const catName = isAr ? (ad.categories?.name_ar || ad.categories?.name) : ad.categories?.name;
-
-    return (
-      <Pressable
-        key={ad.id}
-        style={styles.bannerCard}
-        onPress={() => handleAdPress(ad)}
-      >
-        {thumb ? (
-          <Image
-            source={{ uri: thumb }}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-            transition={300}
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1F2937', alignItems: 'center', justifyContent: 'center' }]}>
-            <MaterialIcons name="image" size={36} color="#6B7280" />
-          </View>
-        )}
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.85)']}
-          style={styles.gradientOverlay}
-        />
-        {countdown ? (
-          <View style={styles.fireTag}>
-            <Text style={styles.fireText}>{countdown}</Text>
-          </View>
-        ) : null}
-        <View style={styles.bannerContent}>
-          {catName ? (
-            <Text style={styles.storeName} numberOfLines={1}>{catName}</Text>
-          ) : null}
-          <Text style={styles.bannerTitle} numberOfLines={2}>{ad.title}</Text>
-          <Text style={styles.priceText}>₪{ad.price.toLocaleString()}</Text>
-        </View>
-      </Pressable>
-    );
-  };
-
-  const renderVipCard = (ad: Ad) => {
-    const thumb = getAdThumb(ad);
-    const countdown = ad.boosted_until ? getCountdownText(ad.boosted_until, isAr) : '';
-
-    return (
-      <View key={ad.id} style={styles.vipBannerContainer}>
-        {thumb ? (
-          <Image
-            source={{ uri: thumb }}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-            transition={300}
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1F2937' }]} />
-        )}
-        <LinearGradient
-          colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.95)']}
-          style={StyleSheet.absoluteFill}
-        />
-
-        <View style={styles.vipTag}>
-          <FontAwesome5 name="crown" size={12} color="#B45309" />
-          <Text style={styles.vipTagText}>{isAr ? 'عرض VIP' : 'VIP Offer'}</Text>
-        </View>
-
-        <View style={styles.vipContent}>
-          {countdown ? (
-            <View style={styles.countdownBadge}>
-              <Text style={styles.countdownText}>{countdown}</Text>
-            </View>
-          ) : null}
-          <Text style={styles.vipTitle} numberOfLines={2}>{ad.title}</Text>
-          <Text style={styles.vipPrice}>₪{ad.price.toLocaleString()}</Text>
-
-          <Pressable
-            style={styles.vipButton}
-            onPress={() => handleAdPress(ad)}
-          >
-            <Text style={styles.vipButtonText}>{isAr ? 'اكتشف العرض الآن' : 'View Offer'}</Text>
-            <MaterialIcons name="local-activity" size={16} color="#fff" />
-          </Pressable>
-        </View>
-      </View>
-    );
-  };
-
-  // ── Category chips based on real data ────────────────────────────────────
-  const categoryChips = useMemo(() => {
-    const cats = new Set<string>();
-    boostedAds.slice(3).forEach(ad => {
-      const name = isAr ? (ad.categories?.name_ar || ad.categories?.name) : ad.categories?.name;
-      if (name) cats.add(name);
-    });
-    return Array.from(cats);
-  }, [boostedAds, isAr]);
+  const bgColor = isDark ? '#0F172A' : '#F8FAFC';
+  const headerBg = isDark ? '#1E293B' : '#FFFFFF';
+  const headerBorder = isDark ? '#334155' : '#E2E8F0';
+  const headerTitle = isDark ? '#F1F5F9' : '#111827';
+  const chipBg = isDark ? '#1E293B' : '#F1F5F9';
+  const chipBorder = isDark ? '#334155' : '#E2E8F0';
+  const chipText = isDark ? '#94A3B8' : '#64748B';
+  const chipActiveBg = '#0A6E5C';
+  const chipActiveText = '#FFFFFF';
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top }]}>
 
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.headerBtn}>
-          <MaterialIcons name="chevron-right" size={28} color="#111827" />
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={12}
+          style={({ pressed }) => [styles.headerIconBtn, pressed && { opacity: 0.6 }]}
+        >
+          <MaterialIcons
+            name={isAr ? 'chevron-right' : 'chevron-left'}
+            size={28}
+            color={headerTitle}
+          />
         </Pressable>
-        <Text style={styles.headerTitle}>{isAr ? 'أقوى العروض 🔥' : 'Hot Deals 🔥'}</Text>
+
+        <View style={styles.headerTitleWrap}>
+          <Text style={[styles.headerTitle, { color: headerTitle }]}>
+            {isAr ? 'العروض' : 'Offers'}
+          </Text>
+          {offers.length > 0 ? (
+            <View style={styles.countBadge}>
+              <Text style={styles.countBadgeText}>{offers.length}</Text>
+            </View>
+          ) : null}
+        </View>
+
         <Pressable
           onPress={handleRefresh}
-          disabled={isRefreshing}
-          style={[styles.headerBtn, styles.refreshBtn]}
+          hitSlop={12}
+          disabled={refreshing}
+          style={({ pressed }) => [styles.headerIconBtn, pressed && { opacity: 0.6 }]}
         >
-          {isRefreshing
-            ? <ActivityIndicator size="small" color="#E11D48" />
-            : <MaterialIcons name="refresh" size={22} color="#111827" />
+          {refreshing
+            ? <ActivityIndicator size="small" color="#0A6E5C" />
+            : <MaterialIcons name="refresh" size={22} color={headerTitle} />
           }
         </Pressable>
       </View>
 
-      {categoryChips.length > 0 ? (
-        <View style={styles.filtersWrapper}>
+      {/* ── Category filter bar ─────────────────────────────────────────── */}
+      {categories.length > 0 ? (
+        <View style={[styles.filterBar, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filtersScrollContent}
+            contentContainerStyle={styles.filterScroll}
           >
+            {/* "All" chip */}
             <Pressable
               onPress={() => setActiveCategory('all')}
-              style={[styles.filterChip, activeCategory === 'all' && styles.activeFilterChip]}
+              style={[
+                styles.chip,
+                { backgroundColor: activeCategory === 'all' ? chipActiveBg : chipBg, borderColor: activeCategory === 'all' ? chipActiveBg : chipBorder },
+              ]}
             >
-              <Text style={[styles.filterText, activeCategory === 'all' && styles.activeFilterText]}>
+              <Text style={[styles.chipText, { color: activeCategory === 'all' ? chipActiveText : chipText }]}>
                 {isAr ? 'الكل' : 'All'}
               </Text>
             </Pressable>
-            {categoryChips.map((cat) => (
+
+            {categories.map(cat => (
               <Pressable
                 key={cat}
                 onPress={() => setActiveCategory(cat)}
-                style={[styles.filterChip, activeCategory === cat && styles.activeFilterChip]}
+                style={[
+                  styles.chip,
+                  { backgroundColor: activeCategory === cat ? chipActiveBg : chipBg, borderColor: activeCategory === cat ? chipActiveBg : chipBorder },
+                ]}
               >
-                <Text style={[styles.filterText, activeCategory === cat && styles.activeFilterText]}>
+                <Text style={[styles.chipText, { color: activeCategory === cat ? chipActiveText : chipText }]}>
                   {cat}
                 </Text>
               </Pressable>
@@ -325,198 +368,301 @@ export default function OffersScreen() {
         </View>
       ) : null}
 
+      {/* ── Body ────────────────────────────────────────────────────────── */}
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 32 }]}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing}
+            refreshing={refreshing}
             onRefresh={handleRefresh}
-            colors={['#E11D48']}
-            tintColor="#E11D48"
+            colors={['#0A6E5C']}
+            tintColor="#0A6E5C"
           />
         }
       >
-        {loadingAds ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator size="large" color="#E11D48" />
-            <Text style={styles.loadingText}>
-              {isAr ? 'جاري تحميل العروض...' : 'Loading offers...'}
+        {/* Loading */}
+        {loading ? (
+          <SkeletonCards />
+        ) : error ? (
+          // Error state
+          <View style={styles.centerBox}>
+            <MaterialIcons name="wifi-off" size={52} color="#CBD5E1" />
+            <Text style={[styles.centerTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+              {isAr ? 'تعذّر تحميل العروض' : 'Could not load offers'}
             </Text>
-          </View>
-        ) : adError ? (
-          <View style={styles.emptyContainer}>
-            <MaterialIcons name="error-outline" size={48} color="#D1D5DB" />
-            <Text style={styles.emptyText}>{adError}</Text>
-            <Pressable style={styles.retryBtn} onPress={fetchBoostedAds}>
+            <Text style={[styles.centerSub, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+              {error}
+            </Text>
+            <Pressable
+              onPress={() => fetchOffers()}
+              style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+            >
+              <MaterialIcons name="refresh" size={16} color="#fff" />
               <Text style={styles.retryBtnText}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
             </Pressable>
           </View>
-        ) : boostedAds.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <MaterialIcons name="local-offer" size={48} color="#D1D5DB" />
-            <Text style={styles.emptyText}>
-              {isAr ? 'لا توجد عروض حالياً' : 'No active offers right now'}
+        ) : filtered.length === 0 ? (
+          // Empty state
+          <View style={styles.centerBox}>
+            <Text style={styles.emptyEmoji}>🏷️</Text>
+            <Text style={[styles.centerTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+              {activeCategory === 'all'
+                ? (isAr ? 'لا توجد عروض حالياً' : 'No offers available')
+                : (isAr ? `لا يوجد عروض في "${activeCategory}"` : `No offers in "${activeCategory}"`)
+              }
             </Text>
-            <Text style={styles.emptySubText}>
-              {isAr ? 'تابعنا لاحقاً لمعرفة أحدث العروض' : 'Check back later for new deals'}
-            </Text>
+            {activeCategory !== 'all' ? (
+              <Pressable onPress={() => setActiveCategory('all')} style={styles.showAllBtn}>
+                <Text style={styles.showAllBtnText}>{isAr ? 'عرض الكل' : 'Show all'}</Text>
+              </Pressable>
+            ) : (
+              <Text style={[styles.centerSub, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+                {isAr ? 'تابعنا لاحقاً للاطلاع على أحدث العروض' : 'Check back later for new deals'}
+              </Text>
+            )}
           </View>
         ) : (
-          <>
-            {/* VIP Carousel */}
-            {vipAds.length > 0 ? (
-              <View style={styles.vipSliderWrapper}>
-                <ScrollView
-                  ref={scrollViewRef}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  snapToInterval={VIP_WIDTH + 12}
-                  decelerationRate="fast"
-                  onMomentumScrollEnd={handleScrollEnd}
-                  contentContainerStyle={styles.vipSliderContent}
-                >
-                  {vipAds.map(renderVipCard)}
-                </ScrollView>
-
-                {vipAds.length > 1 ? (
-                  <View style={styles.paginationContainer}>
-                    {vipAds.map((_, index) => (
-                      <View
-                        key={index}
-                        style={[styles.dot, currentVipIndex === index && styles.activeDot]}
-                      />
-                    ))}
+          // Grid
+          <View style={styles.grid}>
+            {gridRows.map((row, idx) => {
+              if (row.type === 'large') {
+                return (
+                  <View key={row.offer.id} style={[styles.rowLarge, idx > 0 && { marginTop: COL_GAP }]}>
+                    <OfferCard offer={row.offer} width={SCREEN_W - H_PAD * 2} height={LARGE_H} />
                   </View>
-                ) : null}
-              </View>
-            ) : null}
-
-            {/* Masonry Grid */}
-            {filteredAds.length > 0 ? (
-              <View style={styles.masonryContainer}>
-                <View style={styles.column}>
-                  {leftCol.map(ad => (
-                    <View key={ad.id} style={{ height: 200, marginBottom: 12 }}>
-                      {renderAdCard(ad)}
-                    </View>
-                  ))}
+                );
+              }
+              if (row.type === 'pair') {
+                const h = row.left.card_size === 'medium' ? MEDIUM_H : SMALL_H;
+                return (
+                  <View key={`${row.left.id}-${row.right.id}`} style={[styles.rowPair, idx > 0 && { marginTop: COL_GAP }]}>
+                    <OfferCard offer={row.left} width={HALF_W} height={h} />
+                    <OfferCard offer={row.right} width={HALF_W} height={h} />
+                  </View>
+                );
+              }
+              // single
+              const h = heightFor(row.size);
+              return (
+                <View key={row.offer.id} style={[styles.rowSingle, idx > 0 && { marginTop: COL_GAP }]}>
+                  <OfferCard offer={row.offer} width={HALF_W} height={h} />
                 </View>
-                <View style={styles.column}>
-                  {rightCol.map(ad => (
-                    <View key={ad.id} style={{ height: 200, marginBottom: 12 }}>
-                      {renderAdCard(ad)}
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ) : filteredAds.length === 0 && boostedAds.length > 3 ? (
-              <View style={styles.emptyContainer}>
-                <MaterialIcons name="filter-list" size={40} color="#D1D5DB" />
-                <Text style={styles.emptyText}>
-                  {isAr ? 'لا توجد عروض في هذا القسم' : 'No offers in this category'}
-                </Text>
-                <Pressable onPress={() => setActiveCategory('all')}>
-                  <Text style={{ color: '#E11D48', fontWeight: '700', marginTop: 8 }}>
-                    {isAr ? 'عرض الكل' : 'Show all'}
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </>
+              );
+            })}
+          </View>
         )}
       </ScrollView>
     </View>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Styles
+// ─────────────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB' },
+  container: { flex: 1 },
+
+  // Header
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
-  headerBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19 },
-  refreshBtn: { backgroundColor: '#F3F4F6' },
-  headerTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
+  headerIconBtn: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 21,
+  },
+  headerTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  countBadge: {
+    backgroundColor: '#0A6E5C',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  countBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+  },
 
-  filtersWrapper: {
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingVertical: 10,
+  // Filter bar
+  filterBar: {
+    borderBottomWidth: 1,
+    paddingVertical: 8,
   },
-  filtersScrollContent: { paddingHorizontal: 16, gap: 8, flexDirection: 'row' },
-  filterChip: {
-    paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: 'transparent',
+  filterScroll: {
+    paddingHorizontal: H_PAD,
+    gap: 8,
+    flexDirection: 'row',
   },
-  activeFilterChip: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
-  filterText: { fontSize: 13, fontWeight: '700', color: '#4B5563' },
-  activeFilterText: { color: '#E11D48', fontWeight: '900' },
+  chip: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
 
-  scrollContent: { padding: 12, paddingBottom: 40 },
+  // Body
+  body: {
+    padding: H_PAD,
+    paddingTop: 14,
+  },
 
-  loadingWrap: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  // Grid
+  grid: {},
+  rowLarge: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8 },
+      android: { elevation: 4 },
+    }),
+  },
+  rowPair: {
+    flexDirection: 'row',
+    gap: COL_GAP,
+  },
+  rowSingle: {},
 
-  vipSliderWrapper: { marginBottom: 16 },
-  vipSliderContent: { gap: 12 },
-  vipBannerContainer: {
-    width: VIP_WIDTH, height: 260, borderRadius: 20, overflow: 'hidden',
-    backgroundColor: '#1F2937',
-    shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 8,
-    elevation: 8, borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.3)',
+  // Card
+  card: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#E2E8F0',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 6 },
+      android: { elevation: 3 },
+    }),
   },
-  vipTag: {
-    position: 'absolute', top: 12, right: 12,
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, gap: 6,
+  catBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(10,110,92,0.88)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
   },
-  vipTagText: { fontSize: 12, fontWeight: '900', color: '#B45309' },
-  vipContent: { flex: 1, justifyContent: 'flex-end', padding: 16, alignItems: 'flex-end', gap: 6 },
-  countdownBadge: {
-    backgroundColor: 'rgba(239,68,68,0.85)', borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 4,
+  catBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
   },
-  countdownText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-  vipTitle: {
-    color: '#ffffff', fontSize: 17, fontWeight: '900', textAlign: 'right', lineHeight: 24,
+  cardBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 11,
+    alignItems: 'flex-end',
+    gap: 2,
   },
-  vipPrice: { color: '#FCD34D', fontSize: 16, fontWeight: '800' },
-  vipButton: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#E11D48',
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, gap: 8,
+  cardStore: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 10,
+    fontWeight: '600',
   },
-  vipButtonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  cardTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  cardDesc: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 11,
+    textAlign: 'right',
+  },
+  waRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  waHint: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    fontWeight: '600',
+  },
 
-  paginationContainer: {
-    flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 12,
+  // Skeleton
+  skeleton: {
+    borderRadius: 16,
+    backgroundColor: '#E2E8F0',
+    opacity: 0.7,
   },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D1D5DB' },
-  activeDot: { width: 24, backgroundColor: '#E11D48' },
 
-  masonryContainer: { flexDirection: 'row', justifyContent: 'space-between' },
-  column: { width: '48.5%' },
-  bannerCard: {
-    width: '100%', height: '100%', borderRadius: 16, overflow: 'hidden',
-    backgroundColor: '#E5E7EB',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 4,
+  // States
+  centerBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+    gap: 10,
+    paddingHorizontal: 24,
   },
-  gradientOverlay: { ...StyleSheet.absoluteFillObject, top: '40%' },
-  fireTag: {
-    position: 'absolute', top: 10, right: 10,
-    backgroundColor: 'rgba(239,68,68,0.88)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+  emptyEmoji: {
+    fontSize: 52,
+    marginBottom: 4,
   },
-  fireText: { fontSize: 10, fontWeight: '900', color: '#fff' },
-  bannerContent: { flex: 1, justifyContent: 'flex-end', padding: 12, alignItems: 'flex-end' },
-  storeName: { color: '#D1D5DB', fontSize: 11, fontWeight: '700', marginBottom: 2, textAlign: 'right' },
-  bannerTitle: { color: '#fff', fontSize: 13, fontWeight: '900', lineHeight: 18, textAlign: 'right' },
-  priceText: { color: '#FCD34D', fontSize: 13, fontWeight: '800', marginTop: 2 },
-
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingTop: 60, gap: 12 },
-  emptyText: { marginTop: 4, fontSize: 15, fontWeight: '600', color: '#9CA3AF', textAlign: 'center' },
-  emptySubText: { fontSize: 13, color: '#9CA3AF', textAlign: 'center' },
+  centerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  centerSub: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
   retryBtn: {
-    marginTop: 8, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12,
-    backgroundColor: '#E11D48',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    backgroundColor: '#0A6E5C',
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+    borderRadius: 12,
   },
-  retryBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  retryBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  showAllBtn: {
+    marginTop: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: '#0A6E5C',
+  },
+  showAllBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
 });

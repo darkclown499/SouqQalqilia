@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
-  ActivityIndicator, Modal, Linking, Platform, Share, TextInput, Alert
+  ActivityIndicator, Modal, Linking, Platform, Share, TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,6 +10,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useAlert } from '@/hooks/useAlert';
 import { useAuth, getSupabaseClient } from '@/template';
 import Animated from 'react-native-reanimated';
 import { useSharedValue, useAnimatedStyle, withSequence, withSpring, withTiming } from 'react-native-reanimated';
@@ -291,7 +292,17 @@ export default function StoreDetailScreen() {
   const { language, isRTL } = useLanguage();
   const { user } = useAuth();
   const isAr = language === 'ar';
+    // جيب دالة التنبيه الجديدة
+  const { showAlert } = useAlert();
 
+  // حارس لمنع التحديث بعد خروج المستخدم
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false; // لما يخرج المستخدم، تصير false
+    };
+  }, []);
   const [store, setStore] = useState<any>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [rating, setRating] = useState({ avg: 0, count: 0 });
@@ -362,11 +373,14 @@ export default function StoreDetailScreen() {
   const cfStyles = useMemo(() => getCfStyles(colors), [colors]);
 
   // ── Load data ────────────────────────────────────────────────────────────
+  // ── Load data ──
   useEffect(() => {
     if (!id) {
       setLoading(false);
       return;
     }
+
+    // زيادة عدد المشاهدات (مع إهمال الخطأ)
     getSupabaseClient()
       .from('stores').select('views_count').eq('id', id).single()
       .then(({ data }) => {
@@ -377,6 +391,7 @@ export default function StoreDetailScreen() {
         }
       }).catch(() => {});
 
+    // جلب البيانات الرئيسية
     Promise.all([
       getSupabaseClient().from('stores').select('*').eq('id', id).single(),
       fetchStoreProducts(id),
@@ -384,6 +399,9 @@ export default function StoreDetailScreen() {
       getLocalCategories(id),
     ])
       .then(([storeRes, productsRes, ratingRes, categoriesRes]) => {
+        // ✅ التحقق: هل المستخدم لسا في الصفحة؟
+        if (!isMountedRef.current) return;
+
         if (storeRes.data) {
           setStore(storeRes.data);
           setIsOpen(checkStoreIsOpen(storeRes.data));
@@ -394,13 +412,21 @@ export default function StoreDetailScreen() {
       })
       .catch((error) => {
         console.error('خطأ في التحميل:', error);
-        Alert.alert(
-          isAr ? 'خطأ' : 'Error',
-          isAr ? 'حدث خطأ أثناء تحميل بيانات المتجر' : 'Failed to load store data'
-        );
+        // ✅ استخدم showAlert بدلاً من Alert.alert
+        if (isMountedRef.current) {
+          showAlert({
+            title: isAr ? 'خطأ' : 'Error',
+            message: isAr ? 'حدث خطأ أثناء تحميل بيانات المتجر' : 'Failed to load store data',
+          });
+        }
       })
-      .finally(() => setLoading(false));
-  }, [id]);
+      .finally(() => {
+        // ✅ تأكد قبل إخفاء التحميل
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
+      });
+  }, [id, showAlert, isAr]); // <<-- أضف التبعيات الجديدة هنا
 
   useEffect(() => {
     if (!store) return;
@@ -651,11 +677,11 @@ export default function StoreDetailScreen() {
                 if (phone) {
                   Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
                 } else {
-                  Alert.alert(
-                    isAr ? 'رقم غير متوفر' : 'Number not available',
-                    isAr ? 'لا يوجد رقم واتساب مسجل لهذا المتجر' : 'No WhatsApp number registered for this store'
-                  );
-                }
+ showAlert({
+  title: isAr ? 'رقم غير متوفر' : 'Number not available',
+  message: isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store',
+});
+}
               }}
             >
               <MaterialCommunityIcons name="whatsapp" size={22} color="#fff" style={s.whatsappIcon} />

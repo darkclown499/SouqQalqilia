@@ -23,27 +23,26 @@ export default function CategoriesScreen() {
   const isNavigating = useRef(false);
 
   const handlePress = useCallback(
-    (cat: any) => {
-      if (isNavigating.current) return;
-      isNavigating.current = true;
+  (cat: any) => {
+    if (isNavigating.current) return;
+    isNavigating.current = true;
 
-      const localizedName = getCategoryName(cat, language);
-      const result = router.push(
+    const localizedName = getCategoryName(cat, language);
+    // ✅ إضافة type=product
+    const result = router.push(
       `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(localizedName)}&type=product`
     );
 
-      // ✅ إصلاح الخطأ: التأكد من أن `result` هو Promise قبل استدعاء `.finally()`
-      if (result && typeof result.then === 'function') {
-        (result as Promise<any>).finally(() => {
-          isNavigating.current = false;
-        });
-      } else {
-        // في حالة لم تكن Promise (مثلاً في الويب أو إصدارات قديمة) نعيد تعيين العلامة فوراً
+    if (result && typeof result.then === 'function') {
+      (result as Promise<any>).finally(() => {
         isNavigating.current = false;
-      }
-    },
-    [language, router]
-  );
+      });
+    } else {
+      isNavigating.current = false;
+    }
+  },
+  [language, router]
+);
 
   const renderItem = useCallback(
     ({ item }: any) => (

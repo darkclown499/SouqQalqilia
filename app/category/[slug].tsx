@@ -28,7 +28,10 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
 // ─── Category Detail Screen ────────────────────────────────────────────────
 export default function CategoryDetailScreen() {
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  // ✅ قراءة المعاملات مباشرة من useLocalSearchParams
+  const params = useLocalSearchParams<{ slug: string; type?: string }>();
+  const { slug, type } = params;
+  
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -48,14 +51,8 @@ export default function CategoryDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // ✅ تحديد نوع التصنيف من الـ URL
-  const categoryType = useMemo(() => {
-    // في React Native، نستخدم useLocalSearchParams للحصول على المعاملات
-    const params = useLocalSearchParams<{ type?: string }>();
-    return params.type || 'product';
-  }, []);
-
-  const isStoreCategory = categoryType === 'store';
+  // ✅ تحديد نوع التصنيف من المعامل (افتراضي: 'product')
+  const isStoreCategory = useMemo(() => type === 'store', [type]);
 
   // ── Load category data ────────────────────────────────────────────────────
   const loadCategoryData = useCallback(async () => {
@@ -307,7 +304,6 @@ export default function CategoryDetailScreen() {
 
   // ── Main UI ──────────────────────────────────────────────────────────────
   const categoryName = isAr ? (category as any).name_ar || category.name : category.name;
-  const displayMode = isStoreCategory ? 'stores' : 'products';
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
