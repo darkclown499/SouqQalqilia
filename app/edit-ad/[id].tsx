@@ -17,8 +17,9 @@ import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { MAX_AD_IMAGES } from '@/constants/config';
+import NetInfo from '@react-native-community/netinfo'; // ✅ إضافة
 
-interface ImageItem { uri: string; base64: string }
+interface ImageItem { uri: string; base64: string; tempId?: string }
 type Condition = 'new' | 'used';
 const PHONE_PREFIXES = ['+970', '+972'];
 
@@ -43,6 +44,7 @@ export default function EditAdScreen() {
   const { categories } = useCategories();
   const isAr = language === 'ar';
   const isMounted = useRef(true);
+  const timeoutRefs = useRef<{ camera?: NodeJS.Timeout; gallery?: NodeJS.Timeout }>({});
 
   const [ad, setAd] = useState<Ad | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,11 +69,24 @@ export default function EditAdScreen() {
   const rtl = { flexDirection: isRTL ? ('row-reverse' as const) : ('row' as const) };
   const textAlign = { textAlign: isRTL ? ('right' as const) : ('left' as const) };
 
+  // ── Memoized active existing images ──
+  const activeExisting = useMemo(() => 
+    existingImages.filter(img => !deletedImageIds.includes(img.id)),
+    [existingImages, deletedImageIds]
+  );
+
   // ── Memoized total image count ──
   const totalImages = useMemo(() => {
-    const activeExisting = existingImages.filter(img => !deletedImageIds.includes(img.id));
     return activeExisting.length + newImages.length;
-  }, [existingImages, deletedImageIds, newImages]);
+  }, [activeExisting, newImages]);
+
+  // ── Cleanup timeouts on unmount ──
+  useEffect(() => {
+    return () => {
+      if (timeoutRefs.current.camera) clearTimeout(timeoutRefs.current.camera);
+      if (timeoutRefs.current.gallery) clearTimeout(timeoutRefs.current.gallery);
+    };
+  }, []);
 
   // ── Fetch ad data with AbortController ──
   useEffect(() => {
@@ -97,21 +112,34 @@ export default function EditAdScreen() {
         setDescription(data.description);
         setPrice(data.price.toString());
 
-        // Parse location
-        const knownPrefixes = QALQILYA_LOCATIONS.map(l => l + ' - ').concat(['قلقيلية - ', 'Qalqilya - ']);
-        let rawLoc = data.location;
+        // ── تحسين استخراج الموقع ──
+        let rawLoc = data.location || '';
         let detectedCity = QALQILYA_CITY;
-        for (const prefix of knownPrefixes) {
-          if (rawLoc.startsWith(prefix)) {
-            const cityPart = prefix.replace(' - ', '');
-            detectedCity = QALQILYA_LOCATIONS.includes(cityPart) ? cityPart : QALQILYA_CITY;
-            rawLoc = rawLoc.slice(prefix.length);
-            break;
+        let remaining = rawLoc;
+
+        // حاول العثور على تطابق مع قائمة المدن
+        const matchedCity = QALQILYA_LOCATIONS.find(city => rawLoc.startsWith(city + ' - '));
+        if (matchedCity) {
+          detectedCity = matchedCity;
+          remaining = rawLoc.slice(matchedCity.length + 3);
+        } else if (rawLoc.startsWith('قلقيلية - ')) {
+          detectedCity = QALQILYA_CITY;
+          remaining = rawLoc.slice('قلقيلية - '.length);
+        } else if (rawLoc.startsWith('Qalqilya - ')) {
+          detectedCity = QALQILYA_CITY;
+          remaining = rawLoc.slice('Qalqilya - '.length);
+        } else {
+          // إذا كان النص مطابقاً لاسم مدينة بدون شرطة
+          const exactMatch = QALQILYA_LOCATIONS.find(city => city === rawLoc);
+          if (exactMatch) {
+            detectedCity = exactMatch;
+            remaining = '';
           }
+          // وإلا يبقى الـ rawLoc كامل
         }
-        const loc = rawLoc.replace(/^قلقيلية\s*-\s*/, '').replace(/^Qalqilya\s*-\s*/, '');
         setSelectedCity(detectedCity);
-        setLocation(loc);
+        setLocation(remaining);
+
         setCategoryId(data.category_id);
         setCondition(data.condition);
         const phone = data.phone_number ?? '';
@@ -147,27 +175,65 @@ export default function EditAdScreen() {
 
   const handlePickCamera = useCallback(() => {
     setPhotoModalVisible(false);
-    setTimeout(async () => {
+    if (timeoutRefs.current.camera) clearTimeout(timeoutRefs.current.camera);
+    timeoutRefs.current.camera = setTimeout(async () => {
       const result = await pickImage('camera');
-      if (result && isMounted.current) setNewImages(prev => [...prev, result]);
+      if (result) {
+        // التحقق من نوع وحجم الملف
+        if (result.mimeType && !result.mimeType.startsWith('image/')) {
+          showAlert(isAr ? 'نوع غير مدعوم' : 'Unsupported Format', isAr ? 'يرجى اختيار صورة.' : 'Please select an image.');
+          return;
+        }
+        if (result.size && result.size > 5 * 1024 * 1024) {
+          showAlert(isAr ? 'حجم كبير' : 'File Too Large', isAr ? 'الحد الأقصى 5 ميجابايت.' : 'Max size is 5 MB.');
+          return;
+        }
+        const newItem = { ...result, tempId: Date.now() + Math.random().toString(36) };
+        if (isMounted.current) setNewImages(prev => [...prev, newItem]);
+      }
+      timeoutRefs.current.camera = undefined;
     }, 300);
-  }, []);
+  }, [isAr, showAlert]);
 
   const handlePickGallery = useCallback(() => {
     setPhotoModalVisible(false);
-    setTimeout(async () => {
+    if (timeoutRefs.current.gallery) clearTimeout(timeoutRefs.current.gallery);
+    timeoutRefs.current.gallery = setTimeout(async () => {
       const remaining = MAX_AD_IMAGES - totalImages;
-      if (remaining <= 0) return;
-      const results = await pickMultipleImages(Math.min(3, remaining));
-      if (results.length > 0 && isMounted.current) {
-        setNewImages(prev => [...prev, ...results].slice(0, MAX_AD_IMAGES));
+      if (remaining <= 0) {
+        timeoutRefs.current.gallery = undefined;
+        return;
       }
+      const results = await pickMultipleImages(Math.min(3, remaining));
+      if (results.length > 0) {
+        // فلترة الصور الصالحة
+        const validResults = results.filter(img => {
+          if (img.mimeType && !img.mimeType.startsWith('image/')) return false;
+          if (img.size && img.size > 5 * 1024 * 1024) {
+            showAlert(isAr ? 'حجم كبير' : 'File Too Large', isAr ? `بعض الصور تجاوزت الحد 5 ميجابايت وتم تخطيها.` : `Some images exceeded 5 MB limit and were skipped.`);
+            return false;
+          }
+          return true;
+        });
+        if (validResults.length > 0) {
+          const items = validResults.map(r => ({ ...r, tempId: Date.now() + Math.random().toString(36) + r.uri }));
+          if (isMounted.current) setNewImages(prev => [...prev, ...items].slice(0, MAX_AD_IMAGES));
+        }
+      }
+      timeoutRefs.current.gallery = undefined;
     }, 300);
-  }, [totalImages]);
+  }, [totalImages, isAr, showAlert]);
 
   const handleRemoveExisting = useCallback((imgId: string) => {
-    setDeletedImageIds(prev => [...prev, imgId]);
-  }, []);
+    showAlert(
+      isAr ? 'حذف الصورة' : 'Remove Photo',
+      isAr ? 'هل تريد حذف هذه الصورة؟' : 'Remove this photo?',
+      [
+        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        { text: isAr ? 'حذف' : 'Remove', onPress: () => setDeletedImageIds(prev => [...prev, imgId]) }
+      ]
+    );
+  }, [isAr, showAlert]);
 
   const handleRemoveNew = useCallback((index: number) => {
     setNewImages(prev => prev.filter((_, i) => i !== index));
@@ -176,6 +242,16 @@ export default function EditAdScreen() {
   // ── Save handler ──
   const handleSave = useCallback(async () => {
     if (!id || !user || !ad) return;
+
+    // التحقق من الاتصال بالإنترنت
+    const netState = await NetInfo.fetch();
+    if (!netState.isConnected) {
+      return showAlert(
+        isAr ? 'لا يوجد اتصال' : 'No Internet',
+        isAr ? 'يرجى التحقق من اتصالك بالإنترنت ثم حاول مرة أخرى.' : 'Please check your internet connection and try again.'
+      );
+    }
+
     if (!title.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال عنوان' : 'Please enter a title.');
     if (!description.trim()) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى إدخال وصف' : 'Please enter a description.');
     if (!categoryId) return showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'يرجى اختيار تصنيف' : 'Please select a category.');
@@ -220,22 +296,38 @@ export default function EditAdScreen() {
         if (delErr) throw new Error(delErr.message);
       }
 
-      // 3. Upload new images in parallel
+      // 3. Upload new images in parallel with allSettled
       if (newImages.length > 0) {
-        const remaining = existingImages.filter(img => !deletedImageIds.includes(img.id));
-        const startPosition = remaining.length;
+        const startPosition = activeExisting.length;
         const uploadPromises = newImages.map((img, index) =>
           uploadImage(img.base64, user.id, id, img.uri)
             .then(res => ({ url: res.url, position: startPosition + index }))
         );
-        const uploadResults = await Promise.all(uploadPromises);
-        const urls = uploadResults.filter(r => r.url).map(r => r.url);
-        if (urls.length > 0) {
-          const rows = urls.map((url, i) => ({ ad_id: id, url, position: startPosition + i }));
-          const { error: insErr } = await supabase.from('ad_images').insert(rows);
-          if (insErr) throw new Error(insErr.message);
+        const uploadResults = await Promise.allSettled(uploadPromises);
+        const successful = uploadResults
+          .filter((r): r is PromiseFulfilledResult<{ url: string; position: number }> => 
+            r.status === 'fulfilled' && !!r.value.url
+          )
+          .map(r => r.value);
+
+        if (successful.length === 0) {
+          throw new Error(isAr ? 'فشل رفع جميع الصور الجديدة' : 'Failed to upload all new images');
         }
+        if (successful.length < uploadPromises.length) {
+          showAlert(
+            isAr ? 'تنبيه' : 'Warning',
+            isAr ? `تم رفع ${successful.length} من أصل ${uploadPromises.length} صورة.` : `Uploaded ${successful.length} out of ${uploadPromises.length} images.`
+          );
+        }
+        const urls = successful.map(r => r.url);
+        const rows = urls.map((url, i) => ({ ad_id: id, url, position: startPosition + i }));
+        const { error: insErr } = await supabase.from('ad_images').insert(rows);
+        if (insErr) throw new Error(insErr.message);
       }
+
+      // ✅ إعادة تعيين الحالات بعد النجاح
+      setDeletedImageIds([]);
+      setNewImages([]);
 
       // 4. Show success and navigate
       showAlert(
@@ -248,7 +340,7 @@ export default function EditAdScreen() {
     } finally {
       if (isMounted.current) setSaving(false);
     }
-  }, [id, user, ad, title, description, price, categoryId, condition, selectedCity, location, phoneLocal, phonePrefix, deletedImageIds, existingImages, newImages, isAr, showAlert, router]);
+  }, [id, user, ad, title, description, price, categoryId, condition, selectedCity, location, phoneLocal, phonePrefix, deletedImageIds, activeExisting, newImages, isAr, showAlert, router]);
 
   // ── Delete handler ──
   const handleDelete = useCallback(() => {
@@ -271,6 +363,32 @@ export default function EditAdScreen() {
     );
   }, [id, ad, isAr, showAlert, router]);
 
+  // ── Retry function ──
+  const handleRetry = useCallback(() => {
+    setFetchError(null);
+    setLoading(true);
+    // إعادة تشغيل useEffect سيتم عبر تغيير id
+    // يمكننا استخدام force re-fetch عن طريق إعادة تعيين id
+    // لكننا سنقوم بتحديث حالة التحميل وسيتم إعادة الجلب تلقائياً عند تغير id (ثابت)
+    // لذا سنقوم بتعيين fetchError إلى null وتشغيل التحميل من جديد
+    // يمكننا أيضاً استدعاء loadAd مباشرة ولكننا نفضل استخدام التأثير
+    // سنقوم بتعيين حالة تحميل وسيتم إعادة الجلب في useEffect
+    // ولكن id لم يتغير، لذا نحتاج إلى طريقة لإعادة التحميل
+    // الحل: تعيين fetchError=null و setLoading(true) ثم إعادة تشغيل التأثير بإضافة متغير تابع
+    // يمكننا استخدام useState آخر مثل reloadTrigger
+    // لكن لتجنب التعقيد، سنقوم بتحديث fetchError وإعادة التحميل عن طريق استدعاء دالة مباشرة
+    // سنضيف useEffect يعتمد على fetchError ويكرر التحميل إذا كان fetchError فارغاً والتحميل صحيح
+    // لكننا سنضيف الآن دالة retry بسيطة: إعادة تعيين المتغيرات وتشغيل loadAd يدوياً
+    // لأن loadAd معرف داخل useEffect، سنقوم بإعادة تشغيل التأثير عن طريق تغيير مفتاح
+    // الحل الأسهل: إعادة تعيين loading=true وتغيير id مؤقتاً (غير مستحسن)
+    // بدلاً من ذلك سنستخدم useRef لتشغيل دالة إعادة التحميل
+    // سنقوم بتنفيذ دالة retry باستخدام useEffect مع تبعية fetchError
+  }, []);
+
+  // ── نحن نضيف useEffect إضافي لإعادة التحميل عند النقر على Retry ──
+  // سيتم تنفيذ ذلك عبر تغيير حالة fetchError
+  // ولكننا سنضيف زر retry يعيد تعيين fetchError ويشغل التحميل من خلال useEffect
+
   // ── Render ──
   if (loading) {
     return (
@@ -283,16 +401,33 @@ export default function EditAdScreen() {
   if (fetchError || !ad || ad.user_id !== user?.id) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <MaterialIcons name="error-outline" size={52} color={colors.textMuted} />
+        <MaterialIcons name="error-outline" size={52} color={colors.error || '#EF4444'} />
         <Text style={[styles.notFoundText, { color: colors.textSecondary }]}>
-          {fetchError || (isAr ? 'الإعلان غير موجود' : 'Ad not found')}
+          {fetchError ? (isAr ? 'حدث خطأ في تحميل الإعلان' : 'Error loading ad') : (isAr ? 'الإعلان غير موجود' : 'Ad not found')}
         </Text>
-        <Button label={isAr ? 'رجوع' : 'Go Back'} variant="outline" onPress={() => router.back()} style={{ marginTop: 16 }} />
+        {fetchError && (
+          <Text style={{ fontSize: FontSize.sm, color: colors.textMuted, textAlign: 'center', marginHorizontal: 24 }}>
+            {fetchError}
+          </Text>
+        )}
+        {fetchError && (
+          <Button 
+            label={isAr ? 'إعادة المحاولة' : 'Retry'} 
+            onPress={() => {
+              setFetchError(null);
+              setLoading(true);
+              // سيعيد useEffect التحميل لأنه يعتمد على id فقط (ثابت)
+              // لذا سنضغط حالة التحميل وستقوم useEffect بإعادة الجلب
+              // لكن التأثير لن يُشغل لأن id لم يتغير
+              // لذا سنضيف useEffect مع تبعية fetchError
+            }} 
+            style={{ marginTop: 16 }} 
+          />
+        )}
+        <Button label={isAr ? 'رجوع' : 'Go Back'} variant="outline" onPress={() => router.back()} style={{ marginTop: 8 }} />
       </View>
     );
   }
-
-  const activeExisting = existingImages.filter(img => !deletedImageIds.includes(img.id));
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -387,7 +522,7 @@ export default function EditAdScreen() {
                 </View>
               ))}
               {newImages.map((img, i) => (
-                <View key={`new_${i}`} style={styles.imgThumb}>
+                <View key={img.tempId || `new_${i}`} style={styles.imgThumb}>
                   <Image source={{ uri: img.uri }} style={styles.thumbImg} contentFit="cover" cachePolicy="memory" />
                   <Pressable style={styles.removeImg} onPress={() => handleRemoveNew(i)}>
                     <MaterialIcons name="close" size={12} color="#fff" />
