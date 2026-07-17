@@ -246,7 +246,7 @@ function AuthGate() {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session?.user) {
-          if (!cancelled) setTarget('/(tabs)');
+          if (!cancelled) setTarget('/login');
           return;
         }
 
@@ -266,7 +266,7 @@ function AuthGate() {
         }
       } catch (err) {
         console.error('AuthGate error:', err);
-        if (!cancelled) setTarget('/(tabs)');
+        if (!cancelled) setTarget('/login');
       }
     }
 
