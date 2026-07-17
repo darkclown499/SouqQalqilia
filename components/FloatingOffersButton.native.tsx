@@ -17,6 +17,7 @@ const SIDE_PADDING = 12;
 const MIN_X = SIDE_PADDING;
 const MAX_X = SCREEN_WIDTH - BUTTON_SIZE - SIDE_PADDING;
 
+// قائمة الرسائل (نفسها)
 const OFFERS_MESSAGES = [
   'عروض نار حصرية 🔥',
   'الحق عروض اليوم بسرعة! ⚡',
@@ -78,7 +79,6 @@ export default function FloatingOffersButton() {
       let nextX = context.startX + event.translationX;
       let nextY = context.startY + event.translationY;
 
-      // الجدار الصلب أثناء السحب: نمنع الزر من تجاوز أعلى وأسفل الشاشة
       if (nextY < MIN_Y) nextY = MIN_Y;
       if (nextY > MAX_Y) nextY = MAX_Y;
 
@@ -98,10 +98,8 @@ export default function FloatingOffersButton() {
         runOnJS(setIsSnappedLeft)(false);
       }
 
-      // ارتداد ناعم لليمين أو اليسار
       x.value = withSpring(targetX, { damping: 15, stiffness: 120 });
 
-      // ارتداد ناعم لمحور الصادات مع تأكيد البقاء ضمن الحدود
       let targetY = y.value;
       if (targetY < MIN_Y) targetY = MIN_Y;
       if (targetY > MAX_Y) targetY = MAX_Y;
@@ -112,23 +110,20 @@ export default function FloatingOffersButton() {
   });
 
   const animatedStyle = useAnimatedStyle(() => ({
-    // نتحرك بناءً على مكان الدائرة المطلق
     transform: [{ translateX: x.value }, { translateY: y.value }],
   }));
 
-  const bubbleBackground = isDark ? '#1F2937' : '#FFFFFF';
-  const bubbleBorder = isDark ? '#374151' : '#FFE4E6';
-  const textColor = isDark ? '#F43F5E' : '#E11D48';
-  const circleBorder = isDark ? '#374151' : '#FFE4E6';
-  const shadowColor = isDark ? 'rgba(0,0,0,0.5)' : '#000';
+  // ✅ الألوان المحسّنة للفقاعة (ألوان نارية)
+  const gradientColors = ['#FF6B6B', '#EE5A24']; // أحمر إلى برتقالي
+  const bubbleShadowColor = isDark ? 'rgba(0,0,0,0.6)' : 'rgba(238,90,36,0.4)';
 
   return (
     <Animated.View style={[styles.absoluteWrapper, animatedStyle]}>
       <PanGestureHandler onGestureEvent={gestureHandler}>
         <Animated.View style={styles.panWrapper}>
           <Pressable onPress={() => router.push('/offers')} style={styles.pressableArea}>
-            {/* الدائرة الرئيسية فقط */}
-            <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: circleBorder, shadowColor }]}>
+            {/* الدائرة الرئيسية */}
+            <View style={[styles.circle, { backgroundColor: colors.surface, borderColor: '#FF6B6B', shadowColor: '#000' }]}>
               <Image
                 source={{ uri: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }}
                 style={{ width: 36, height: 36, backgroundColor: 'transparent' }}
@@ -136,33 +131,45 @@ export default function FloatingOffersButton() {
               />
             </View>
 
-            {/* سحر الفقاعة: موقعها ثابت بالنسبة للدائرة، تظهر يمين أو يسار بناءً على اللصق */}
+            {/* الفقاعة المحسّنة */}
             <View
               style={[
                 styles.bubbleMasterContainer,
                 isSnappedLeft
-                  ? { left: BUTTON_SIZE, flexDirection: 'row' }
-                  : { right: BUTTON_SIZE, flexDirection: 'row-reverse' },
+                  ? { left: BUTTON_SIZE + 4, flexDirection: 'row' }
+                  : { right: BUTTON_SIZE + 4, flexDirection: 'row-reverse' },
               ]}
-              pointerEvents="none" // منع الفقاعة من حجب اللمس عن الدائرة
+              pointerEvents="none"
             >
-              {/* ذيل الرسالة (النقاط) */}
+              {/* ذيل الفقاعة (نقاط) */}
               <View
                 style={[
                   styles.tailContainer,
                   isSnappedLeft ? { marginLeft: 4, flexDirection: 'row' } : { marginRight: 4, flexDirection: 'row-reverse' },
                 ]}
               >
-                <View style={[styles.smallDot, { backgroundColor: textColor }]} />
-                <View style={[styles.bigDot, { backgroundColor: textColor }]} />
+                <View style={[styles.smallDot, { backgroundColor: '#EE5A24' }]} />
+                <View style={[styles.bigDot, { backgroundColor: '#EE5A24' }]} />
               </View>
 
-              {/* النص المنسق */}
-              <View style={[styles.textBubble, { backgroundColor: bubbleBackground, borderColor: bubbleBorder, shadowColor }]}>
-                <Text style={[styles.bubbleText, { color: textColor }]} numberOfLines={1}>
+              {/* الفقاعة مع تدرج لوني */}
+              <LinearGradient
+                colors={gradientColors}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[
+                  styles.textBubble,
+                  {
+                    shadowColor: bubbleShadowColor,
+                    borderColor: 'rgba(255,255,255,0.2)',
+                    borderWidth: 1,
+                  }
+                ]}
+              >
+                <Text style={styles.bubbleText} numberOfLines={2}>
                   {currentMessage}
                 </Text>
-              </View>
+              </LinearGradient>
             </View>
           </Pressable>
         </Animated.View>
@@ -172,7 +179,6 @@ export default function FloatingOffersButton() {
 }
 
 const styles = StyleSheet.create({
-  // الغلاف الأساسي للدائرة المنطلقة من زاوية (0,0) للشاشة
   absoluteWrapper: {
     position: 'absolute',
     top: 0,
@@ -199,9 +205,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 5,
     elevation: 8,
+    borderWidth: 2,
   },
 
-  // الغلاف العائم للفقاعة، يأخذ ارتفاع الدائرة ليتوسطها عمودياً بشكل تلقائي
   bubbleMasterContainer: {
     position: 'absolute',
     height: BUTTON_SIZE,
@@ -225,18 +231,25 @@ const styles = StyleSheet.create({
     borderRadius: 2.5,
   },
   textBubble: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 5,
-    borderWidth: 1,
-    flexShrink: 1, // يسمح للنص بالانكماش إذا لزم الأمر
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
+    flexShrink: 1,
+    minWidth: 80,
   },
   bubbleText: {
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 20,
+    letterSpacing: 0.3,
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
 });
