@@ -9,7 +9,7 @@ import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingOffersButton from '@/components/FloatingOffersButton';
-import { useAuth, getSupabaseClient } from '@/template';
+import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { trackEvent, trackPageView } from '@/services/analyticsService';
 import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -415,6 +415,7 @@ export default function HomeScreen() {
   const { colors, isDark } = useTheme();
   const { t, language, isRTL } = useLanguage();
   const { user } = useAuth();
+  const { showAlert } = useAlert(); // ✅ إضافة useAlert
   const { categories } = useCategories();
   const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
   const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
@@ -726,10 +727,24 @@ export default function HomeScreen() {
     />
   ), [isAr, isRTL, colors, handleFeaturedStorePress]);
 
-  // ✅ المسار الصحيح هو '/messages'
+  // ✅ دالة معالجة الضغط على أيقونة المحادثة (مع التحقق من تسجيل الدخول)
   const handleChatPress = useCallback(() => {
-    router.push('/messages' as any);
-  }, [router]);
+    if (!user) {
+      showAlert(
+        isAr ? 'تسجيل الدخول مطلوب' : 'Login Required',
+        isAr ? 'يرجى تسجيل الدخول للوصول إلى المحادثات' : 'Please log in to access conversations',
+        [
+          { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+          {
+            text: isAr ? 'تسجيل الدخول' : 'Login',
+            onPress: () => router.push('/login'),
+          },
+        ]
+      );
+      return;
+    }
+    router.push('/messages');
+  }, [user, router, showAlert, isAr]);
 
   const handleConversationPress = useCallback((conversationId: string) => {
     router.push(`/chat/${conversationId}` as any);
@@ -963,15 +978,22 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
 
+            {/* ✅ أيقونة المحادثة / القفل حسب حالة المستخدم */}
             <Pressable style={styles.headerIconBtn} onPress={handleChatPress} hitSlop={6}>
-              <MaterialCommunityIcons name="chat" size={20} color="#fff" />
-              {unreadCount > 0 ? (
-                <View style={styles.filterDot}>
-                  <Text style={styles.filterDotText}>
-                    {unreadCount > 9 ? '9+' : String(unreadCount)}
-                  </Text>
-                </View>
-              ) : null}
+              {user ? (
+                <>
+                  <MaterialCommunityIcons name="chat" size={20} color="#fff" />
+                  {unreadCount > 0 && (
+                    <View style={styles.filterDot}>
+                      <Text style={styles.filterDotText}>
+                        {unreadCount > 9 ? '9+' : String(unreadCount)}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <MaterialCommunityIcons name="lock" size={20} color="#fff" />
+              )}
             </Pressable>
 
             <Pressable

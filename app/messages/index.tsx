@@ -1,22 +1,52 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator,
-  RefreshControl, Platform,
+  RefreshControl, Platform, TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useAuth } from '@/template';
+import NetInfo from '@react-native-community/netinfo';
+import { useAuth, useAlert } from '@/template';
 import { useConversations } from '@/hooks/useChat';
+import { deleteConversation } from '@/services/chatService';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface ConversationItem {
+  id: string;
+  buyer_id: string;
+  seller_id: string;
+  buyer_name?: string;
+  seller_name?: string;
+  buyer_avatar?: string | null;
+  seller_avatar?: string | null;
+  last_message?: string;
+  last_message_at?: string;
+  unread_count?: number;
+}
+
+// ── Helper: time ago ─────────────────────────────────────────────────────────
+function timeAgo(dateStr: string, isAr: boolean): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diff < 60) return isAr ? 'الآن' : 'now';
+  if (diff < 3600) return isAr ? `منذ ${Math.floor(diff / 60)} دقيقة` : `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return isAr ? `منذ ${Math.floor(diff / 3600)} ساعة` : `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 604800) return isAr ? `منذ ${Math.floor(diff / 86400)} يوم` : `${Math.floor(diff / 86400)}d ago`;
+  return date.toLocaleDateString(isAr ? 'ar-EG' : 'en-US', { day: 'numeric', month: 'short' });
+}
 
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
+  const { showAlert } = useAlert();
   const { colors } = useTheme();
   const { language, isRTL } = useLanguage();
   const isAr = language === 'ar';
@@ -25,28 +55,90 @@ export default function MessagesScreen() {
     enabled: !!user,
   });
 
-  // تحديث البيانات عند التركيز على الشاشة
+  const [isOnline, setIsOnline] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const isMounted = useRef(true);
+
+  // مراقبة حالة الاتصال
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected !== false);
+    });
+    return () => unsub();
+  }, []);
+
+  // تحديث البيانات عند التركيز على الشاشة مع معالجة الأخطاء
   useFocusEffect(
     useCallback(() => {
-      if (user) {
-        reload();
+      if (user && isMounted.current) {
+        setError(null);
+        reload().catch((err) => {
+          if (isMounted.current) {
+            setError(err?.message || (isAr ? 'فشل تحميل المحادثات' : 'Failed to load conversations'));
+          }
+        });
       }
-    }, [user, reload])
+    }, [user, reload, isAr])
   );
 
+  // دالة التحديث اليدوي مع معالجة الأخطاء
+  const handleRefresh = useCallback(async () => {
+    if (!isMounted.current) return;
+    setError(null);
+    try {
+      await reload();
+    } catch (err) {
+      if (isMounted.current) {
+        setError(err?.message || (isAr ? 'فشل التحديث' : 'Refresh failed'));
+      }
+    }
+  }, [reload, isAr]);
+
+  // ── حذف المحادثة بالضغط المطول ──────────────────────────────────────────
+  const handleLongPress = useCallback((conversationId: string) => {
+    showAlert(
+      isAr ? 'حذف المحادثة' : 'Delete Conversation',
+      isAr ? 'هل تريد حذف هذه المحادثة نهائياً؟' : 'Delete this conversation permanently?',
+      [
+        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        {
+          text: isAr ? 'حذف' : 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteConversation(conversationId);
+              await reload();
+            } catch (err) {
+              showAlert(isAr ? 'خطأ' : 'Error', err?.message || (isAr ? 'فشل الحذف' : 'Delete failed'));
+            }
+          },
+        },
+      ]
+    );
+  }, [isAr, showAlert, reload]);
+
+  // ── تصفية المحادثات بناءً على البحث ─────────────────────────────────────
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery.trim()) return conversations;
+    const query = searchQuery.trim().toLowerCase();
+    return conversations.filter((item: ConversationItem) => {
+      const otherName = item.buyer_id === user?.id ? item.seller_name : item.buyer_name;
+      const name = otherName || (isAr ? 'مستخدم' : 'User');
+      return name.toLowerCase().includes(query) || (item.last_message || '').toLowerCase().includes(query);
+    });
+  }, [conversations, searchQuery, user, isAr]);
+
+  // ── Render item ───────────────────────────────────────────────────────────
   const renderItem = useCallback(
-    ({ item }: { item: any }) => {
+    ({ item }: { item: ConversationItem }) => {
       const otherId = item.buyer_id === user?.id ? item.seller_id : item.buyer_id;
       const otherName = item.buyer_id === user?.id ? item.seller_name : item.buyer_name;
+      const otherAvatar = item.buyer_id === user?.id ? item.seller_avatar : item.buyer_avatar;
       const displayName = otherName || (isAr ? 'مستخدم' : 'User');
       const lastMessage = item.last_message || '';
-      const lastMessageTime = item.last_message_at
-        ? new Date(item.last_message_at).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : '';
       const unread = item.unread_count || 0;
+      const time = item.last_message_at ? timeAgo(item.last_message_at, isAr) : '';
 
       return (
         <Pressable
@@ -59,10 +151,18 @@ export default function MessagesScreen() {
             },
           ]}
           onPress={() => router.push(`/chat/${item.id}` as any)}
+          onLongPress={() => handleLongPress(item.id)}
+          delayLongPress={500}
         >
-          <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-            <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
-          </View>
+          {/* الصورة الرمزية */}
+          {otherAvatar ? (
+            <Image source={{ uri: otherAvatar }} style={styles.avatar} contentFit="cover" />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+              <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+
           <View style={[styles.body, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
             <Text
               style={[
@@ -82,14 +182,14 @@ export default function MessagesScreen() {
             >
               {lastMessage || (isAr ? 'لا توجد رسائل' : 'No messages')}
             </Text>
-            {lastMessageTime && (
+            {time && (
               <Text
                 style={[
                   styles.time,
                   { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' },
                 ]}
               >
-                {lastMessageTime}
+                {time}
               </Text>
             )}
           </View>
@@ -101,18 +201,43 @@ export default function MessagesScreen() {
         </Pressable>
       );
     },
-    [colors, isRTL, isAr, user, router]
+    [colors, isRTL, isAr, user, router, handleLongPress]
   );
 
-  const EmptyState = () => (
+  // ── Empty State محسّن ────────────────────────────────────────────────────
+  const EmptyState = useCallback(() => (
     <View style={styles.emptyWrap}>
       <MaterialIcons name="chat-bubble-outline" size={48} color={colors.textMuted} />
-      <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-        {isAr ? 'لا توجد محادثات' : 'No conversations'}
+      <Text style={[styles.emptyText, { color: colors.textPrimary }]}>
+        {searchQuery.trim() ? (isAr ? 'لا توجد نتائج' : 'No results found') : (isAr ? 'لا توجد محادثات بعد' : 'No conversations yet')}
       </Text>
+      <Text style={[styles.emptySubText, { color: colors.textMuted }]}>
+        {searchQuery.trim()
+          ? (isAr ? 'جرب كلمة بحث مختلفة' : 'Try a different search term')
+          : (isAr ? 'تواصل مع البائعين لبدء محادثة جديدة' : 'Contact sellers to start a new conversation')
+        }
+      </Text>
+      {!searchQuery.trim() && (
+        <Pressable
+          style={[styles.exploreBtn, { backgroundColor: colors.primary }]}
+          onPress={() => router.push('/(tabs)')}
+        >
+          <Text style={styles.exploreBtnText}>
+            {isAr ? 'استكشف الإعلانات' : 'Explore Listings'}
+          </Text>
+        </Pressable>
+      )}
     </View>
-  );
+  ), [colors, isAr, router, searchQuery]);
 
+  // ── getItemLayout ديناميكي (تقدير ارتفاع العنصر) ──────────────────────
+  const getItemLayout = useCallback((data: any, index: number) => ({
+    length: 80, // ارتفاع تقريبي
+    offset: 80 * index,
+    index,
+  }), []);
+
+  // ── التحقق من تسجيل الدخول ──────────────────────────────────────────────
   if (!user) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
@@ -124,9 +249,22 @@ export default function MessagesScreen() {
     );
   }
 
+  // ── حالة التحميل الأولي ──────────────────────────────────────────────────
+  if (loading && conversations.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 12, color: colors.textMuted }}>
+          {isAr ? 'جاري تحميل المحادثات...' : 'Loading conversations...'}
+        </Text>
+      </View>
+    );
+  }
+
+  // ── واجهة المستخدم الرئيسية ─────────────────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      {/* الهيدر مع عرض عدد غير المقروء */}
+      {/* الهيدر */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <Pressable
           style={styles.backBtn}
@@ -155,7 +293,7 @@ export default function MessagesScreen() {
 
         <Pressable
           style={styles.refreshBtn}
-          onPress={reload}
+          onPress={handleRefresh}
           hitSlop={8}
           disabled={loading}
         >
@@ -167,22 +305,75 @@ export default function MessagesScreen() {
         </Pressable>
       </View>
 
-      <FlatList
-        data={conversations}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={reload}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
+      {/* شريط البحث */}
+      <View style={[styles.searchContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <View style={[styles.searchInputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <MaterialIcons name="search" size={20} color={colors.textMuted} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
+            placeholder={isAr ? 'ابحث في المحادثات...' : 'Search conversations...'}
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
           />
-        }
-        ListEmptyComponent={<EmptyState />}
-      />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+              <MaterialIcons name="close" size={18} color={colors.textMuted} />
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* شريط انقطاع الإنترنت */}
+      {!isOnline && (
+        <View style={[styles.offlineBanner, { backgroundColor: '#F59E0B' }]}>
+          <MaterialIcons name="wifi-off" size={16} color="#fff" />
+          <Text style={styles.offlineText}>
+            {isAr ? 'أنت غير متصل' : 'You are offline'}
+          </Text>
+        </View>
+      )}
+
+      {/* عرض الخطأ إن وجد */}
+      {error ? (
+        <View style={styles.errorContainer}>
+          <MaterialIcons name="error-outline" size={40} color="#EF4444" />
+          <Text style={[styles.errorText, { color: colors.textPrimary }]}>
+            {error}
+          </Text>
+          <Pressable
+            onPress={() => { setError(null); handleRefresh(); }}
+            style={[styles.retryBtn, { borderColor: colors.primary }]}
+          >
+            <Text style={{ color: colors.primary, fontWeight: '700' }}>
+              {isAr ? 'إعادة المحاولة' : 'Retry'}
+            </Text>
+          </Pressable>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredConversations}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
+          ListEmptyComponent={<EmptyState />}
+          getItemLayout={getItemLayout}
+          initialNumToRender={8}
+          maxToRenderPerBatch={10}
+          windowSize={11}
+        />
+      )}
     </View>
   );
 }
@@ -247,6 +438,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
+  },
+  // أنماط شريط البحث
+  searchContainer: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  searchInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FontSize.sm,
+    fontWeight: '500',
+    paddingVertical: 0,
   },
   listContent: {
     paddingHorizontal: Spacing.lg,
@@ -313,5 +525,52 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  emptySubText: {
+    fontSize: FontSize.sm,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: -4,
+  },
+  exploreBtn: {
+    marginTop: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  exploreBtnText: {
+    color: '#fff',
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 12,
+  },
+  errorText: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  retryBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
   },
 });
