@@ -13,16 +13,15 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BUTTON_SIZE = 56;
 const SIDE_PADDING = 12;
 
-// حدود الشاشة الحقيقية والدقيقة لمركز الدائرة (مستحيل تخرج برا هاي الحدود)
 const MIN_X = SIDE_PADDING;
 const MAX_X = SCREEN_WIDTH - BUTTON_SIZE - SIDE_PADDING;
 
-// قائمة الرسائل (نفسها)
+// ✅ تقليل طول الرسائل لتناسب الشاشة بشكل أفضل (اختياري)
 const OFFERS_MESSAGES = [
   'عروض نار حصرية 🔥',
-  'الحق عروض اليوم بسرعة! ⚡',
+  'الحق عروض اليوم ⚡',
   'لقطات ما بتتفوت 🛍️',
-  'تخفيضات خيالية  📉',
+  'تخفيضات خيالية 📉',
   'حرررق أسعار بالداخل 🌶️',
   'شوف شو مجهزيلك اليوم 😉',
   'خصومات بتكسر الدنيا 💥',
@@ -48,24 +47,20 @@ export default function FloatingOffersButton() {
   const { colors, isDark } = useTheme();
   const { height: screenHeight } = useWindowDimensions();
 
-  // حساب الحدود السفلية مع مراعاة الـ insets
   const MIN_Y = 80 + insets.top;
   const MAX_Y = screenHeight - 160 - insets.bottom;
 
-  // البداية الافتراضية من اليمين تحت
   const x = useSharedValue(MAX_X);
   const y = useSharedValue(MAX_Y - 50);
 
   const [currentMessage, setCurrentMessage] = useState(OFFERS_MESSAGES[0]);
   const [isSnappedLeft, setIsSnappedLeft] = useState(false);
 
-  // اختيار رسالة عشوائية
   const pickRandomMessage = useCallback(() => {
     const randomIndex = Math.floor(Math.random() * OFFERS_MESSAGES.length);
     setCurrentMessage(OFFERS_MESSAGES[randomIndex]);
   }, []);
 
-  // اختيار رسالة أولى عشوائية
   useEffect(() => {
     pickRandomMessage();
   }, []);
@@ -113,8 +108,7 @@ export default function FloatingOffersButton() {
     transform: [{ translateX: x.value }, { translateY: y.value }],
   }));
 
-  // ✅ الألوان المحسّنة للفقاعة (ألوان نارية)
-  const gradientColors = ['#FF6B6B', '#EE5A24']; // أحمر إلى برتقالي
+  const gradientColors = ['#FF6B6B', '#EE5A24'];
   const bubbleShadowColor = isDark ? 'rgba(0,0,0,0.6)' : 'rgba(238,90,36,0.4)';
 
   return (
@@ -131,13 +125,13 @@ export default function FloatingOffersButton() {
               />
             </View>
 
-            {/* الفقاعة المحسّنة */}
+            {/* الفقاعة المحسّنة - تم تعديل المسافات والعرض */}
             <View
               style={[
                 styles.bubbleMasterContainer,
                 isSnappedLeft
-                  ? { left: BUTTON_SIZE + 4, flexDirection: 'row' }
-                  : { right: BUTTON_SIZE + 4, flexDirection: 'row-reverse' },
+                  ? { left: BUTTON_SIZE - 4, flexDirection: 'row' } // ✅ تقريب الفقاعة للدائرة
+                  : { right: BUTTON_SIZE - 4, flexDirection: 'row-reverse' },
               ]}
               pointerEvents="none"
             >
@@ -145,7 +139,7 @@ export default function FloatingOffersButton() {
               <View
                 style={[
                   styles.tailContainer,
-                  isSnappedLeft ? { marginLeft: 4, flexDirection: 'row' } : { marginRight: 4, flexDirection: 'row-reverse' },
+                  isSnappedLeft ? { marginLeft: 2, flexDirection: 'row' } : { marginRight: 2, flexDirection: 'row-reverse' },
                 ]}
               >
                 <View style={[styles.smallDot, { backgroundColor: '#EE5A24' }]} />
@@ -166,7 +160,7 @@ export default function FloatingOffersButton() {
                   }
                 ]}
               >
-                <Text style={styles.bubbleText} numberOfLines={2}>
+                <Text style={styles.bubbleText} numberOfLines={1} adjustsFontSizeToFit>
                   {currentMessage}
                 </Text>
               </LinearGradient>
@@ -212,7 +206,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: BUTTON_SIZE,
     alignItems: 'center',
-    maxWidth: SCREEN_WIDTH - BUTTON_SIZE - SIDE_PADDING * 4,
+    // ✅ زيادة العرض الأقصى للفقاعة لتجنب التكسر
+    maxWidth: SCREEN_WIDTH - BUTTON_SIZE - 20, // تقليل المسافة المفقودة
+    minWidth: 60,
   },
   tailContainer: {
     alignItems: 'center',
@@ -231,23 +227,23 @@ const styles = StyleSheet.create({
     borderRadius: 2.5,
   },
   textBubble: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,  // ✅ تقليل المسافة الأفقية قليلاً
+    paddingVertical: 8,
     borderRadius: 20,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 8,
     flexShrink: 1,
-    minWidth: 80,
+    minWidth: 50,
   },
   bubbleText: {
-    fontSize: 15,
+    fontSize: 14,           // ✅ تصغير حجم الخط قليلاً ليتسع
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'center',
-    lineHeight: 20,
-    letterSpacing: 0.3,
+    lineHeight: 18,
+    letterSpacing: 0.2,
     textShadowColor: 'rgba(0,0,0,0.2)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
