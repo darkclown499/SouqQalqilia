@@ -54,6 +54,11 @@ export interface Conversation {
   buyer?: { username: string; email: string; avatar_url?: string | null };
   seller?: { username: string; email: string; avatar_url?: string | null };
   unread_count?: number; // ✅ مهم لـ ConversationsBottomSheet
+  // ✅ إضافة حقول محسوبة للأسماء
+  buyer_name?: string;
+  seller_name?: string;
+  buyer_avatar?: string | null;
+  seller_avatar?: string | null;
 }
 
 export interface Message {
@@ -68,6 +73,19 @@ export interface Message {
   created_at: string;
   _pending?: boolean;
   _failed?: boolean;
+}
+
+// ── Helper to enrich conversation with names ─────────────────────────────────
+function enrichConversation(conv: any): Conversation {
+  const buyer = conv.buyer;
+  const seller = conv.seller;
+  return {
+    ...conv,
+    buyer_name: buyer?.username || buyer?.email?.split('@')[0] || 'مستخدم',
+    seller_name: seller?.username || seller?.email?.split('@')[0] || 'مستخدم',
+    buyer_avatar: buyer?.avatar_url || null,
+    seller_avatar: seller?.avatar_url || null,
+  };
 }
 
 export async function fetchMyConversations(): Promise<{ data: Conversation[]; error: string | null }> {
@@ -102,8 +120,10 @@ export async function fetchMyConversations(): Promise<{ data: Conversation[]; er
       unreadMap[row.conversation_id] = (unreadMap[row.conversation_id] ?? 0) + 1;
     });
   }
+
+  // ✅ إثراء البيانات بأسماء المستخدمين
   const enriched = (data as any[]).map((conv) => ({
-    ...conv,
+    ...enrichConversation(conv),
     unread_count: unreadMap[conv.id] ?? 0,
   }));
 
@@ -151,7 +171,8 @@ export async function fetchConversationById(id: string): Promise<{ data: Convers
     .single();
 
   if (error) return { data: null, error: error.message };
-  return { data: data as Conversation, error: null };
+  // ✅ إثراء البيانات بأسماء المستخدمين
+  return { data: enrichConversation(data) as Conversation, error: null };
 }
 
 /**

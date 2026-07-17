@@ -371,6 +371,54 @@ export function triggerUnreadRefresh(): void {
   _globalRefreshUnread?.().catch(() => {});
 }
 
+// ─── Helper to enrich conversations with user names ──────────────────────────
+async function enrichConversationsWithNames(
+  conversations: Conversation[]
+): Promise<Conversation[]> {
+  if (!conversations.length) return conversations;
+
+  // Collect all user IDs from conversations
+  const userIds = new Set<string>();
+  conversations.forEach(c => {
+    if (c.buyer_id) userIds.add(c.buyer_id);
+    if (c.seller_id) userIds.add(c.seller_id);
+  });
+
+  if (userIds.size === 0) return conversations;
+
+  try {
+    const supabase = getSupabaseClient();
+    const { data: profiles, error } = await supabase
+      .from('user_profiles')
+      .select('id, username, email, avatar_url')
+      .in('id', Array.from(userIds));
+
+    if (error) {
+      console.warn('Failed to fetch user profiles for conversations:', error);
+      return conversations;
+    }
+
+    const profileMap = new Map<string, any>();
+    profiles?.forEach(p => profileMap.set(p.id, p));
+
+    // Enrich each conversation with buyer_name and seller_name
+    return conversations.map(conv => {
+      const buyerProfile = conv.buyer_id ? profileMap.get(conv.buyer_id) : null;
+      const sellerProfile = conv.seller_id ? profileMap.get(conv.seller_id) : null;
+      return {
+        ...conv,
+        buyer_name: buyerProfile?.username || buyerProfile?.email?.split('@')[0] || 'مستخدم',
+        seller_name: sellerProfile?.username || sellerProfile?.email?.split('@')[0] || 'مستخدم',
+        buyer_avatar: buyerProfile?.avatar_url || null,
+        seller_avatar: sellerProfile?.avatar_url || null,
+      };
+    });
+  } catch (err) {
+    console.warn('Error enriching conversations:', err);
+    return conversations;
+  }
+}
+
 // ─── useConversations ─────────────────────────────────────────────────────────
 export function useConversations(options?: { enabled?: boolean }) {
   const { enabled = true } = options || {};
@@ -393,7 +441,9 @@ export function useConversations(options?: { enabled?: boolean }) {
     try {
       const convResult = await fetchMyConversations();
       if (!isMountedRef.current) return;
-      const merged = mergeWithLocalReadState(convResult.data);
+      // Enrich with names
+      const enriched = await enrichConversationsWithNames(convResult.data);
+      const merged = mergeWithLocalReadState(enriched);
       setConversations(merged);
       const real = computeUnreadCount(merged);
       // Only update badge if count changed
@@ -450,7 +500,9 @@ export function useConversations(options?: { enabled?: boolean }) {
     try {
       const [convResult] = await Promise.all([fetchMyConversations()]);
       if (!isMountedRef.current) return;
-      const merged = mergeWithLocalReadState(convResult.data);
+      // ✅ إثراء المحادثات بأسماء المستخدمين
+      const enriched = await enrichConversationsWithNames(convResult.data);
+      const merged = mergeWithLocalReadState(enriched);
       setConversations(merged);
       if (showSpinner) setLoading(false);
 
