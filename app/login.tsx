@@ -37,8 +37,9 @@ export default function LoginScreen() {
 
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const authResolvedRef = useRef(false); // لمنع التنظيف المتكرر
 
-  // Pre-warm browser for OAuth
+  // ── Pre-warm browser for OAuth ──
   useEffect(() => {
     if (Platform.OS !== 'web') {
       WebBrowser.warmUpAsync?.().catch(() => {});
@@ -160,6 +161,26 @@ export default function LoginScreen() {
   }, [pulseAnim, pulseOpacity]);
 
   const isSubmittingRef = useRef(false);
+
+  // ── Cleanup Google Auth resources ──────────────────────────────────────────
+  const cleanupGoogleAuth = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (subscriptionRef.current) {
+      subscriptionRef.current.unsubscribe();
+      subscriptionRef.current = null;
+    }
+    authResolvedRef.current = false;
+  }, []);
+
+  // ── Cleanup on unmount ─────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      cleanupGoogleAuth();
+    };
+  }, [cleanupGoogleAuth]);
 
   // Card fade animation
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -426,9 +447,13 @@ export default function LoginScreen() {
   };
 
   // ── Google Sign-In ─────────────────────────────────────────────────────────
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = useCallback(async () => {
     if (googleLoading) return;
     setGoogleLoading(true);
+    // تنظيف أي موارد سابقة
+    cleanupGoogleAuth();
+    authResolvedRef.current = false;
+
     const supabase = getSupabaseClient();
 
     if (Platform.OS === 'web') {
@@ -442,13 +467,12 @@ export default function LoginScreen() {
       return;
     }
 
-    let authResolved = false;
+    // ── Native: setup auth listener ──
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (authResolved) return;
+      if (authResolvedRef.current) return;
       if (event === 'SIGNED_IN' && session) {
-        authResolved = true;
-        subscription.unsubscribe();
-        if (pollRef.current) clearInterval(pollRef.current);
+        authResolvedRef.current = true;
+        cleanupGoogleAuth();
         setGoogleLoading(false);
         router.replace('/(tabs)');
       }
@@ -459,11 +483,12 @@ export default function LoginScreen() {
       const redirectTo = 'souqqalqilya://auth/callback';
       const { data, error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo, skipBrowserRedirect: true, queryParams: { prompt: 'select_account', access_type: 'offline' } } });
       if (error || !data?.url) {
-        subscription.unsubscribe();
+        cleanupGoogleAuth();
         showAlert(isAr ? 'خطأ' : 'Error', error?.message ?? (isAr ? 'تعذّر الاتصال بـ Google' : 'Could not connect to Google'));
         setGoogleLoading(false);
         return;
       }
+
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo) as { type: string; url?: string };
 
       if (result.type === 'success' && result.url) {
@@ -475,9 +500,7 @@ export default function LoginScreen() {
         const errorDesc = params.get('error_description');
 
         if (errorParam) {
-          subscription.unsubscribe();
-          if (pollRef.current) clearInterval(pollRef.current);
-          authResolved = true;
+          cleanupGoogleAuth();
           showAlert(isAr ? 'خطأ Google' : 'Google Error', `${errorParam}: ${errorDesc ?? ''}`);
           setGoogleLoading(false);
           return;
@@ -485,52 +508,44 @@ export default function LoginScreen() {
 
         if (code) {
           const { error: exchErr } = await supabase.auth.exchangeCodeForSession(code);
-          if (!exchErr && !authResolved) {
-            authResolved = true;
-            subscription.unsubscribe();
-            if (pollRef.current) clearInterval(pollRef.current);
+          if (!exchErr && !authResolvedRef.current) {
+            authResolvedRef.current = true;
+            cleanupGoogleAuth();
             setGoogleLoading(false);
             router.replace('/(tabs)');
             return;
           }
-          if (exchErr && !authResolved) {
-            subscription.unsubscribe();
-            if (pollRef.current) clearInterval(pollRef.current);
-            authResolved = true;
+          if (exchErr && !authResolvedRef.current) {
+            cleanupGoogleAuth();
             showAlert(isAr ? 'خطأ' : 'Error', exchErr.message);
             setGoogleLoading(false);
             return;
           }
         } else {
           const at = params.get('access_token'), rt = params.get('refresh_token');
-          if (at && rt && !authResolved) {
+          if (at && rt && !authResolvedRef.current) {
             const { error: sessErr } = await supabase.auth.setSession({ access_token: at, refresh_token: rt });
-            if (sessErr && !authResolved) {
-              subscription.unsubscribe();
-              if (pollRef.current) clearInterval(pollRef.current);
-              authResolved = true;
+            if (sessErr && !authResolvedRef.current) {
+              cleanupGoogleAuth();
               showAlert(isAr ? 'خطأ' : 'Error', sessErr.message);
               setGoogleLoading(false);
               return;
             }
           }
         }
-        // If still not resolved, fallback to poll
-        if (!authResolved) {
+        // إذا لم يتم الحل، نبدأ الـ poll
+        if (!authResolvedRef.current) {
           let attempts = 0;
           pollRef.current = setInterval(async () => {
             attempts++;
             const { data: { session } } = await supabase.auth.getSession();
-            if (session && !authResolved) {
-              authResolved = true;
-              subscription.unsubscribe();
-              if (pollRef.current) clearInterval(pollRef.current);
+            if (session && !authResolvedRef.current) {
+              authResolvedRef.current = true;
+              cleanupGoogleAuth();
               setGoogleLoading(false);
               router.replace('/(tabs)');
-            } else if (attempts >= 10 && !authResolved) {
-              authResolved = true;
-              subscription.unsubscribe();
-              if (pollRef.current) clearInterval(pollRef.current);
+            } else if (attempts >= 10 && !authResolvedRef.current) {
+              cleanupGoogleAuth();
               setGoogleLoading(false);
               showAlert(isAr ? 'لم يكتمل' : 'Not completed', isAr ? 'يرجى المحاولة مجدداً' : 'Please try again.');
             }
@@ -539,34 +554,30 @@ export default function LoginScreen() {
         return;
       }
 
-      // If result not success, attempt poll
-      if (!authResolved) {
+      // إذا لم يكن success، نحاول الـ poll
+      if (!authResolvedRef.current) {
         let attempts = 0;
         pollRef.current = setInterval(async () => {
           attempts++;
           const { data: { session } } = await supabase.auth.getSession();
-          if (session && !authResolved) {
-            authResolved = true;
-            subscription.unsubscribe();
-            if (pollRef.current) clearInterval(pollRef.current);
+          if (session && !authResolvedRef.current) {
+            authResolvedRef.current = true;
+            cleanupGoogleAuth();
             setGoogleLoading(false);
             router.replace('/(tabs)');
-          } else if (attempts >= 10 && !authResolved) {
-            authResolved = true;
-            subscription.unsubscribe();
-            if (pollRef.current) clearInterval(pollRef.current);
+          } else if (attempts >= 10 && !authResolvedRef.current) {
+            cleanupGoogleAuth();
             setGoogleLoading(false);
             showAlert(isAr ? 'لم يكتمل' : 'Not completed', isAr ? 'يرجى المحاولة مجدداً' : 'Please try again.');
           }
         }, 1500);
       }
     } catch (e: any) {
-      subscription.unsubscribe();
-      if (pollRef.current) clearInterval(pollRef.current);
+      cleanupGoogleAuth();
       showAlert(isAr ? 'خطأ' : 'Error', e?.message ?? 'Google sign-in failed');
       setGoogleLoading(false);
     }
-  };
+  }, [cleanupGoogleAuth, googleLoading, isAr, router, showAlert]);
 
   // ── Segment tab widths for iOS only ──────────────────────────────────────
   const segW = (cardMaxW - 32) / 2;
