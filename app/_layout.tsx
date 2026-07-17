@@ -19,6 +19,7 @@ import { Image } from 'expo-image';
 import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
 import { APP_VERSION } from '@/constants/config';
 import { trackEvent } from '@/services/analyticsService';
+import { markMessagesRead } from '@/services/chatService'; // ✅ استيراد ثابت
 
 // ── Lock the splash screen immediately at module evaluation time ──────────────
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -114,7 +115,7 @@ interface BannerPayload {
   senderName: string;
   messagePreview: string;
   avatarUrl?: string | null;
-  messageId: string; // نحتفظ به للاستخدام المستقبلي لكن لن نستخدمه للتحديث
+  messageId: string;
 }
 
 function InAppChatBanner() {
@@ -133,15 +134,16 @@ function InAppChatBanner() {
   }));
 
   const shownMsgIdsRef = useRef<Map<string, number>>(new Map());
-
-  useEffect(() => {
-    loadShownIds().then(map => { shownMsgIdsRef.current = map; });
-  }, []);
-
   const convCooldownRef = useRef<Map<string, number>>(new Map());
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ── Load shown IDs ──
+  useEffect(() => {
+    loadShownIds().then(map => { shownMsgIdsRef.current = map; });
+  }, []);
+
+  // ── Clear banner ──
   const clearBanner = useCallback(() => {
     setBanner(null);
     if (dismissTimerRef.current) {
@@ -150,6 +152,7 @@ function InAppChatBanner() {
     }
   }, []);
 
+  // ── Dismiss banner with animation ──
   const dismissBanner = useCallback(() => {
     if (dismissTimerRef.current) {
       clearTimeout(dismissTimerRef.current);
@@ -157,12 +160,11 @@ function InAppChatBanner() {
     }
     dragY.value = withSpring(0, { damping: 20, stiffness: 300 });
     slideY.value = withTiming(-140, { duration: 260 }, (finished) => {
-      if (finished) runOnJS(setBanner)(null);
+      if (finished) runOnJS(clearBanner)();
     });
-  }, [slideY, dragY]);
+  }, [slideY, dragY, clearBanner]);
 
-  // ❌ تم حذف دالة markMessageRead لأنها تسببت في تحديث read_at فور ظهور الإشعار
-
+  // ── Show banner ──
   const showBanner = useCallback((payload: BannerPayload) => {
     setBanner(payload);
     dragY.value = 0;
@@ -170,11 +172,9 @@ function InAppChatBanner() {
     slideY.value = withSpring(0, { damping: 18, stiffness: 280 });
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     dismissTimerRef.current = setTimeout(() => dismissBanner(), 5000);
-
-    // ✅ إزالة استدعاء markMessageRead – لن يتم تحديث read_at إلا عند النقر
   }, [slideY, dragY, dismissBanner]);
 
-  // Pan gesture
+  // ── Pan gesture ──
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
       dragY.value = Math.min(e.translationY, 16);
@@ -190,64 +190,66 @@ function InAppChatBanner() {
       }
     });
 
-  useEffect(() => {
+  // ── Poll for new messages ──
+  const poll = useCallback(async () => {
     if (!user) return;
 
-    const poll = async () => {
-      const activeChatId: string | null = (() => {
-        const seg = segments as string[];
-        const chatIdx = seg.indexOf('chat');
-        if (chatIdx !== -1 && seg[chatIdx + 1]) return seg[chatIdx + 1];
-        return null;
-      })();
+    const activeChatId: string | null = (() => {
+      const seg = segments as string[];
+      const chatIdx = seg.indexOf('chat');
+      if (chatIdx !== -1 && seg[chatIdx + 1]) return seg[chatIdx + 1];
+      return null;
+    })();
 
-      try {
-        const supabase = getSupabaseClient();
-        const { data } = await supabase
-          .from('messages')
-          .select(`
-            id, content, message_type, conversation_id, sender_id, created_at, read_at,
-            conversations!inner(buyer_id, seller_id, ad_id),
-            user_profiles!messages_sender_id_fkey(username, email, avatar_url)
-          `)
-          .neq('sender_id', user.id)
-          .is('read_at', null)
-          .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`, { referencedTable: 'conversations' })
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+    try {
+      const supabase = getSupabaseClient();
+      const { data } = await supabase
+        .from('messages')
+        .select(`
+          id, content, message_type, conversation_id, sender_id, created_at, read_at,
+          conversations!inner(buyer_id, seller_id, ad_id),
+          user_profiles!messages_sender_id_fkey(username, email, avatar_url)
+        `)
+        .neq('sender_id', user.id)
+        .is('read_at', null)
+        .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`, { referencedTable: 'conversations' })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-        if (!data) return;
-        if (activeChatId && activeChatId === data.conversation_id) return;
-        if ((segments as string[]).includes('messages')) return;
-        if (shownMsgIdsRef.current.has(data.id)) return;
-        const lastConvBanner = convCooldownRef.current.get(data.conversation_id) ?? 0;
-        if (Date.now() - lastConvBanner < 20000) return;
+      if (!data) return;
+      if (activeChatId && activeChatId === data.conversation_id) return;
+      if ((segments as string[]).includes('messages')) return;
+      if (shownMsgIdsRef.current.has(data.id)) return;
+      const lastConvBanner = convCooldownRef.current.get(data.conversation_id) ?? 0;
+      if (Date.now() - lastConvBanner < 20000) return;
 
-        persistShownId(data.id, shownMsgIdsRef.current);
-        convCooldownRef.current.set(data.conversation_id, Date.now());
-        const senderProfile = (data as any).user_profiles;
-        const senderName: string =
-          senderProfile?.username || senderProfile?.email?.split('@')[0] || 'مستخدم';
-        const preview: string =
-          data.message_type === 'image' ? '📷 صورة' : (data.content?.slice(0, 60) ?? '');
+      persistShownId(data.id, shownMsgIdsRef.current);
+      convCooldownRef.current.set(data.conversation_id, Date.now());
+      const senderProfile = (data as any).user_profiles;
+      const senderName: string =
+        senderProfile?.username || senderProfile?.email?.split('@')[0] || 'مستخدم';
+      const preview: string =
+        data.message_type === 'image' ? '📷 صورة' : (data.content?.slice(0, 60) ?? '');
 
-        showBanner({
-          conversationId: data.conversation_id,
-          senderName,
-          messagePreview: preview,
-          avatarUrl: senderProfile?.avatar_url ?? null,
-          messageId: data.id, // نحتفظ به لكن لا نستخدمه للتحديث
-        });
-      } catch { /* silent */ }
-    };
+      showBanner({
+        conversationId: data.conversation_id,
+        senderName,
+        messagePreview: preview,
+        avatarUrl: senderProfile?.avatar_url ?? null,
+        messageId: data.id,
+      });
+    } catch { /* silent */ }
+  }, [user, segments, showBanner]);
 
+  useEffect(() => {
+    if (!user) return;
     intervalRef.current = setInterval(poll, 4000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     };
-  }, [user?.id, segments, showBanner]);
+  }, [user, poll]);
 
   if (!banner) return null;
 
@@ -271,8 +273,7 @@ function InAppChatBanner() {
             dismissBanner();
             try {
               if (user?.id) {
-                const { markMessagesRead } = await import('@/services/chatService');
-                // ✅ هنا يتم تحديث read_at عند النقر فقط
+                // ✅ استدعاء ثابت بعد الاستيراد
                 await markMessagesRead(convId, user.id);
               }
             } catch { /* non-critical */ }
@@ -399,8 +400,12 @@ function AdminGuard() {
 export default function RootLayout() {
   const [forceUpdate, setForceUpdate] = useState<{ required: boolean; minVersion: string } | null>(null);
   const [appIsReady, setAppIsReady] = useState(false);
+  const prepareCalled = useRef(false);
 
   useEffect(() => {
+    if (prepareCalled.current) return;
+    prepareCalled.current = true;
+
     let cancelled = false;
     const MAX_INIT_MS = 3_500;
 
@@ -412,17 +417,17 @@ export default function RootLayout() {
         } catch { /* never block */ }
       })();
       await Promise.race([work, deadline]);
-      if (!cancelled) setAppIsReady(true);
+      if (!cancelled) {
+        setAppIsReady(true);
+        await SplashScreen.hideAsync().catch(() => {});
+      }
     }
 
     prepare();
     return () => { cancelled = true; };
   }, []);
 
-  const onLayoutRootView = useCallback(async () => {
-    if (appIsReady) await SplashScreen.hideAsync().catch(() => {});
-  }, [appIsReady]);
-
+  // ── Force update check ──
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     getSupabaseClient()
@@ -439,35 +444,39 @@ export default function RootLayout() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const handleDeepLink = (url: string) => {
-      try {
-        const match = url.match(/souqqalqilya:\/\/ad\/([^?#]+)/);
-        if (match?.[1]) router.push(`/ad/${match[1]}` as any);
-      } catch (_) {}
-    };
+  // ── Deep link & notification handlers ──
+  const handleDeepLink = useCallback((url: string) => {
+    try {
+      const match = url.match(/souqqalqilya:\/\/ad\/([^?#]+)/);
+      if (match?.[1]) router.push(`/ad/${match[1]}` as any);
+    } catch (_) {}
+  }, []);
 
+  const handleNotificationResponse = useCallback((response: any) => {
+    const data = response?.notification?.request?.content?.data ?? {};
+    const conversationId: string | undefined = data?.conversation_id;
+    if (conversationId) {
+      router.push(`/chat/${conversationId}` as any);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Deep linking
     import('expo-linking').then(({ default: ExpoLinking }) => {
       ExpoLinking.getInitialURL().then(url => { if (url) handleDeepLink(url); }).catch(() => {});
       ExpoLinking.addEventListener('url', ({ url }) => handleDeepLink(url));
     }).catch(() => {});
 
+    // Notification response
     let notifSub: any = null;
     if (Platform.OS !== 'web') {
       try {
         const Notifications = require('expo-notifications');
-        notifSub = Notifications.addNotificationResponseReceivedListener((response: any) => {
-          const data = response?.notification?.request?.content?.data ?? {};
-          const conversationId: string | undefined = data?.conversation_id;
-          if (conversationId) {
-            import('expo-router').then(({ router: r }) => {
-              r.push(`/chat/${conversationId}` as any);
-            });
-          }
-        });
+        notifSub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
       } catch (_) {}
     }
 
+    // Auth state
     const supabase = getSupabaseClient();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
@@ -498,6 +507,7 @@ export default function RootLayout() {
       }
     });
 
+    // Web console.error override
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const originalConsoleError = console.error.bind(console);
       console.error = (...args: any[]) => {
@@ -517,6 +527,7 @@ export default function RootLayout() {
       };
     }
 
+    // Run after interactions
     const task = InteractionManager.runAfterInteractions(() => {
       if (Platform.OS !== 'web') {
         import('@/hooks/useChat').then(({ requestNotificationPermissions }) => {
@@ -525,6 +536,7 @@ export default function RootLayout() {
       }
     });
 
+    // Foreground notification listener
     let foregroundSub: any = null;
     if (Platform.OS !== 'web') {
       try {
@@ -535,15 +547,14 @@ export default function RootLayout() {
           if (convId) {
             import('expo-linking').then(async ({ default: ExpoLinking }) => {
               const url = await ExpoLinking.getInitialURL();
-              if (url && url.includes(convId)) {
-                return;
-              }
+              if (url && url.includes(convId)) return;
             }).catch(() => {});
           }
         });
       } catch (_) {}
     }
 
+    // App state listener
     let appStateSub: any = null;
     if (Platform.OS !== 'web') {
       trackEvent('app_open').catch(() => {});
@@ -564,7 +575,7 @@ export default function RootLayout() {
       if (foregroundSub) { try { foregroundSub.remove(); } catch (_) {} }
       if (appStateSub) { try { appStateSub.remove(); } catch (_) {} }
     };
-  }, []);
+  }, [handleDeepLink, handleNotificationResponse]);
 
   if (!appIsReady) return null;
 
@@ -578,7 +589,7 @@ export default function RootLayout() {
 
   return (
     <AlertProvider>
-      <SafeAreaProvider onLayout={onLayoutRootView}>
+      <SafeAreaProvider>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <ThemeProvider>
             <LanguageProvider>
