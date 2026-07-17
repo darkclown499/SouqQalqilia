@@ -486,12 +486,21 @@ export default function StoreDashboardScreen() {
 
   // ── Refs ──
   const isMountedRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // ── Load data ──
   const loadData = useCallback(async () => {
     if (!user) return;
     setError(null);
     setLoading(true);
+
+    // إلغاء أي طلب سابق
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const signal = controller.signal;
 
     try {
       const supabase = getSupabaseClient();
@@ -500,6 +509,7 @@ export default function StoreDashboardScreen() {
         .select('*, store_categories(id, name, name_ar, icon, color, slug, position, is_active, image_url, created_at)')
         .eq('owner_id', user.id)
         .maybeSingle();
+      if (signal.aborted) return;
       if (storeError) throw storeError;
       if (!isMountedRef.current) return;
 
@@ -508,23 +518,22 @@ export default function StoreDashboardScreen() {
         setStoreCategory(storeData.store_categories as StoreCategory);
       } else if (storeData?.store_category_id) {
         const { data: cats } = await fetchStoreCategories();
-        if (!isMountedRef.current) return;
+        if (signal.aborted || !isMountedRef.current) return;
         const cat = cats.find(c => c.id === storeData.store_category_id);
         if (cat) setStoreCategory(cat);
       }
 
       if (storeData) {
         const { data: prods, error: prodError } = await fetchStoreProducts(storeData.id, true);
+        if (signal.aborted || !isMountedRef.current) return;
         if (prodError) throw prodError;
-        if (!isMountedRef.current) return;
         setProducts(prods || []);
       }
     } catch (e: any) {
-      if (isMountedRef.current) {
-        setError(e?.message || 'Failed to load store data');
-      }
+      if (signal.aborted || !isMountedRef.current) return;
+      setError(e?.message || 'Failed to load store data');
     } finally {
-      if (isMountedRef.current) setLoading(false);
+      if (isMountedRef.current && !signal.aborted) setLoading(false);
     }
   }, [user]);
 
@@ -533,6 +542,10 @@ export default function StoreDashboardScreen() {
     loadData();
     return () => {
       isMountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
     };
   }, [loadData]);
 
@@ -862,6 +875,20 @@ export default function StoreDashboardScreen() {
   const storeName = useMemo(() => isAr ? (store?.name_ar || store?.name) : store?.name, [store, isAr]);
   const availableCount = useMemo(() => products.filter(p => p.is_available).length, [products]);
 
+  // ── Render product item ──
+  const renderProductItem = useCallback(({ item }: { item: StoreProduct }) => (
+    <DashboardProductCard
+      product={item}
+      onEdit={() => { setEditingProduct(item); setProductModalVisible(true); }}
+      onDelete={() => handleDeleteProduct(item)}
+      isAr={isAr}
+      isRTL={isRTL}
+      colors={colors}
+    />
+  ), [handleDeleteProduct, isAr, isRTL, colors]);
+
+  const productKeyExtractor = useCallback((item: StoreProduct) => item.id, []);
+
   // ── Render loading, error, no store ──
   if (loading) {
     return (
@@ -1169,17 +1196,8 @@ export default function StoreDashboardScreen() {
       {activeTab === 'products' ? (
         <FlatList
           data={products}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => (
-            <DashboardProductCard
-              product={item}
-              onEdit={() => { setEditingProduct(item); setProductModalVisible(true); }}
-              onDelete={() => handleDeleteProduct(item)}
-              isAr={isAr}
-              isRTL={isRTL}
-              colors={colors}
-            />
-          )}
+          keyExtractor={productKeyExtractor}
+          renderItem={renderProductItem}
           contentContainerStyle={[s.tabContent, { gap: Spacing.sm }]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={

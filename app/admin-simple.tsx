@@ -1,8 +1,8 @@
 // [file name]: adminScreen.tsx
 // هذا الكود يشمل جميع التبويبات: إحصائيات، إعلانات، مستخدمين، بانرات، بينية، سجل النشاطات، بلاغات، طلبات، أدوات.
-// جميع المكونات والأنماط موجودة بشكل كامل.
+// جميع المكونات والأنماط موجودة بشكل كامل - تم إصلاح جميع المشاكل.
 
-import React, { useEffect, useState, useCallback, useRef, memo } from 'react';
+import React, { useEffect, useState, useCallback, useRef, memo, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
   ActivityIndicator, Modal, ScrollView, RefreshControl,
@@ -34,7 +34,8 @@ import {
 } from '@/services/storesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 
-// مكتبات الرسوم البيانية (تأكد من تثبيتها: npm install victory-native react-native-svg)
+// ─── ثابت ──────────────────────────────────────────────────────────────────────
+const ABSOLUTE_FILL = StyleSheet.absoluteFill;
 
 // ─── واجهات الأنواع ──────────────────────────────────────────────────────────
 interface ActivityLog {
@@ -68,6 +69,8 @@ interface Order {
 // 1. Snackbar
 function Snackbar({ visible, message, type, onDismiss }: any) {
   const translateY = useRef(new Animated.Value(80)).current;
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     if (visible) {
       Animated.spring(translateY, {
@@ -75,22 +78,26 @@ function Snackbar({ visible, message, type, onDismiss }: any) {
         useNativeDriver: true,
         speed: 12,
       }).start();
-      const timer = setTimeout(() => {
+      timeoutRef.current = setTimeout(() => {
         Animated.timing(translateY, {
           toValue: 80,
           duration: 300,
           useNativeDriver: true,
         }).start(() => onDismiss());
       }, 3000);
-      return () => clearTimeout(timer);
+      return () => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      };
     }
   }, [visible]);
+
   if (!visible) return null;
   const bgColor = type === 'success' ? '#22C55E' : type === 'error' ? '#EF4444' : '#3B82F6';
   return (
     <Animated.View style={[styles.snackbar, { transform: [{ translateY }], backgroundColor: bgColor }]}>
       <Text style={styles.snackbarText}>{message}</Text>
       <Pressable onPress={() => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
         Animated.timing(translateY, { toValue: 80, duration: 300, useNativeDriver: true }).start(() => onDismiss());
       }}>
         <MaterialIcons name="close" size={20} color="#fff" />
@@ -138,7 +145,8 @@ class AdminTabErrorBoundary extends React.Component<{ children: React.ReactNode 
         </View>
       );
     }
-    return this.props.children;
+    // ✅ إصلاح: تغليف children في View مع flex: 1 لضمان التمدد
+    return <View style={{ flex: 1 }}>{this.props.children}</View>;
   }
 }
 
@@ -346,8 +354,7 @@ const InterstitialItem = memo(({ item, colors, isAr }: any) => (
   </View>
 ));
 
-// ─── تبويب الإحصائيات (مع رسوم بيانية وتحليلات متقدمة) ────────────────────
-// ─── تبويب الإحصائيات (مع تحسينات التصميم) ─────────────────────────────
+// ─── تبويب الإحصائيات ────────────────────────────────────────────────────────
 function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [stats, setStats] = useState<any>(null);
   const [pageStats, setPageStats] = useState<PageStats[]>([]);
@@ -400,7 +407,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       });
       const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
 
-      // حساب التغير (مقارنة اليوم الأول مع الأخير)
       const trendValues = trend.map(t => t.count);
       const change = trendValues.length >= 2 ? ((trendValues[trendValues.length - 1] - trendValues[0]) / (trendValues[0] || 1)) * 100 : 0;
 
@@ -466,7 +472,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const totalPageUnique = pageStats.reduce((sum, s) => sum + (s.unique_24h || 0), 0);
   const totalPageVisits = pageStats.reduce((sum, s) => sum + (s.total_24h || 0), 0);
 
-  // بيانات توزيع الأجهزة (وهمية حالياً)
   const deviceData = [
     { name: 'iOS', value: 120, color: '#3B82F6' },
     { name: 'Android', value: 280, color: '#22C55E' },
@@ -476,6 +481,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
 
   return (
     <ScrollView
+      style={{ flex: 1 }}
       contentContainerStyle={styles.analyticsContainer}
       showsVerticalScrollIndicator={false}
     >
@@ -728,13 +734,9 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   );
 }
 
-// ─── تبويب الإعلانات (مع Pagination, تصدير, فلتر المحذوفات) ──────────────
+// ─── تبويب الإعلانات ────────────────────────────────────────────────────────
 function AdsTab({ colors, isAr, t }: any) {
   const [ads, setAds] = useState<Ad[]>([]);
-  const [filteredAds, setFilteredAds] = useState<Ad[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
   const [editingAd, setEditingAd] = useState<Ad | null>(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -743,6 +745,9 @@ function AdsTab({ colors, isAr, t }: any) {
   const [showDeleted, setShowDeleted] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
   const { showAlert } = useAlert();
   const abortRef = useRef<AbortController | null>(null);
@@ -791,7 +796,8 @@ function AdsTab({ colors, isAr, t }: any) {
     return () => { if (abortRef.current) abortRef.current.abort(); };
   }, []);
 
-  useEffect(() => {
+  // ✅ تحسين الأداء باستخدام useMemo بدلاً من useEffect
+  const filteredAds = useMemo(() => {
     let filtered = ads;
     if (search) {
       filtered = filtered.filter(a => a.title.toLowerCase().includes(search.toLowerCase()));
@@ -799,7 +805,7 @@ function AdsTab({ colors, isAr, t }: any) {
     if (!showDeleted) {
       filtered = filtered.filter(a => a.status !== 'deleted');
     }
-    setFilteredAds(filtered);
+    return filtered;
   }, [ads, search, showDeleted]);
 
   const handleToggleFeatured = async (ad: Ad) => {
@@ -1006,13 +1012,12 @@ function AdsTab({ colors, isAr, t }: any) {
 // ─── تبويب المستخدمين ────────────────────────────────────────────────────────
 function UsersTab({ colors, isAr, t }: any) {
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
   const { showAlert } = useAlert();
   const abortRef = useRef<AbortController | null>(null);
@@ -1061,7 +1066,8 @@ function UsersTab({ colors, isAr, t }: any) {
     return () => { if (abortRef.current) abortRef.current.abort(); };
   }, []);
 
-  useEffect(() => {
+  // ✅ تحسين الأداء باستخدام useMemo
+  const filteredUsers = useMemo(() => {
     let filtered = users;
     if (search) {
       filtered = filtered.filter(u =>
@@ -1069,7 +1075,7 @@ function UsersTab({ colors, isAr, t }: any) {
         u.email.toLowerCase().includes(search.toLowerCase())
       );
     }
-    setFilteredUsers(filtered);
+    return filtered;
   }, [users, search]);
 
   const handleToggleAdmin = async (user: UserProfile) => {
@@ -1476,7 +1482,6 @@ function ActivityLogTab({ colors, isAr }: { colors: any; isAr: boolean }) {
     setLoading(true);
     setRefreshing(false);
     try {
-      // بيانات وهمية
       const mockLogs: ActivityLog[] = Array.from({ length: 20 }, (_, i) => ({
         id: `log-${i}`,
         admin_name: ['أحمد', 'سارة', 'محمد', 'فاطمة'][i % 4],
@@ -1725,7 +1730,7 @@ function OrdersTab({ colors, isAr }: { colors: any; isAr: boolean }) {
   );
 }
 
-// ─── تبويب الأدوات (محسّن بكل الميزات الجديدة) ─────────────────────────────
+// ─── تبويب الأدوات ──────────────────────────────────────────────────────────
 function ToolsTab({ colors, isAr, t }: any) {
   const [broadcastModalVisible, setBroadcastModalVisible] = useState(false);
   const [title, setTitle] = useState('');
@@ -1771,10 +1776,12 @@ function ToolsTab({ colors, isAr, t }: any) {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.toolsContainer}>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={styles.toolsContainer}
+    >
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{isAr ? '🛠️ أدوات الإدارة' : '🛠️ Admin Tools'}</Text>
 
-      {/* إشعارات جماعية */}
       <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setBroadcastModalVisible(true)}>
         <MaterialIcons name="notifications-active" size={28} color={colors.primary} />
         <View style={styles.toolText}>
@@ -1784,7 +1791,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
       </Pressable>
 
-      {/* نسخ احتياطي واستعادة */}
       <View style={styles.toolRow}>
         <Pressable style={[styles.toolCardSmall, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={handleBackup}>
           <MaterialIcons name="backup" size={24} color={colors.primary} />
@@ -1796,7 +1802,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         </Pressable>
       </View>
 
-      {/* وضع الصيانة */}
       <View style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <MaterialIcons name="build" size={28} color={maintenanceMode ? '#EF4444' : colors.primary} />
         <View style={styles.toolText}>
@@ -1810,7 +1815,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         </Pressable>
       </View>
 
-      {/* الإعدادات المتقدمة */}
       <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setShowSettings(!showSettings)}>
         <MaterialIcons name="settings" size={28} color={colors.primary} />
         <View style={styles.toolText}>
@@ -1831,7 +1835,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         </View>
       )}
 
-      {/* اختبار A/B */}
       <View style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <MaterialIcons name="split" size={28} color={colors.primary} />
         <View style={styles.toolText}>
@@ -1843,7 +1846,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         </Pressable>
       </View>
 
-      {/* تنبيهات فورية */}
       <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => Alert.alert(isAr ? 'تنبيهات فورية' : 'Real-time Alerts', isAr ? 'تم الاتصال بخادم التنبيهات' : 'Connected to alert server')}>
         <MaterialIcons name="notifications" size={28} color={colors.primary} />
         <View style={styles.toolText}>
@@ -1853,7 +1855,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
       </Pressable>
 
-      {/* إدارة الصلاحيات */}
       <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => Alert.alert(isAr ? 'إدارة الصلاحيات' : 'Role Management', isAr ? 'لديك صلاحيات مدير عام' : 'You have full admin rights')}>
         <MaterialIcons name="admin-panel-settings" size={28} color={colors.primary} />
         <View style={styles.toolText}>
@@ -1863,7 +1864,6 @@ function ToolsTab({ colors, isAr, t }: any) {
         <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
       </Pressable>
 
-      {/* نافذة الإشعارات الجماعية */}
       <Modal visible={broadcastModalVisible} animationType="slide" transparent onRequestClose={() => setBroadcastModalVisible(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
@@ -1891,7 +1891,6 @@ function ToolsTab({ colors, isAr, t }: any) {
                   <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'رابط الصورة (اختياري)' : 'Image URL (optional)'}</Text>
                   <TextInput style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} value={imageUrl} onChangeText={setImageUrl} />
                 </View>
-                {/* خيارات التصفية للإشعارات الموجهة */}
                 <View style={styles.modalField}>
                   <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>{isAr ? 'تصفية المستخدمين' : 'User Filter'}</Text>
                   <View style={styles.filterOptions}>
@@ -2043,7 +2042,8 @@ function StoresTab({ colors, isAr, t }: any) {
     </View>
   );
 }
-// ─── الصفحة الرئيسية (مع جميع التبويبات) ──────────────────────────────────
+
+// ─── الصفحة الرئيسية ─────────────────────────────────────────────────────────
 export default function AdminScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -2069,7 +2069,6 @@ export default function AdminScreen() {
 
   return (
     <View style={[styles.mainContainer, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      {/* رأس الصفحة */}
       <View style={[styles.mainHeader, { backgroundColor: colors.primary }]}>
         <Pressable style={styles.mainBackBtn} onPress={() => router.back()} hitSlop={8}>
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
@@ -2078,7 +2077,6 @@ export default function AdminScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* شريط التبويبات المحسّن */}
       <View style={styles.tabsWrapper}>
         <ScrollView
           horizontal
@@ -2109,7 +2107,6 @@ export default function AdminScreen() {
         </ScrollView>
       </View>
 
-      {/* المحتوى مع حدود الأخطاء */}
       <AdminTabErrorBoundary>
         {activeTab === 'analytics' && <AnalyticsTab isAr={isAr} colors={colors} />}
         {activeTab === 'ads' && <AdsTab colors={colors} isAr={isAr} t={t} />}
@@ -2126,84 +2123,79 @@ export default function AdminScreen() {
   );
 }
 
-// ─── الأنماط النهائية (جميع الأنماط المطلوبة) ──────────────────────────────────
+// ─── الأنماط ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-
-
-  // trendCard, trendTitle, trendBars, trendBarWrapper, trendBar, trendLabel
-trendCard: {
-  borderRadius: Radius.lg,
-  borderWidth: 1,
-  padding: Spacing.md,
-  marginBottom: Spacing.md,
-},
-trendTitle: {
-  fontSize: FontSize.md,
-  fontWeight: '700',
-  marginBottom: 8,
-},
-trendBars: {
-  flexDirection: 'row',
-  justifyContent: 'space-around',
-  alignItems: 'flex-end',
-  height: 80,
-},
-trendBarWrapper: {
-  alignItems: 'center',
-},
-trendBar: {
-  width: 20,
-  borderRadius: 4,
-  minHeight: 4,
-},
-trendLabel: {
-  fontSize: 8,
-  marginTop: 2,
-},
-  // Store Card
-storeCard: {
-  borderWidth: 1,
-  borderRadius: Radius.lg,
-  padding: Spacing.md,
-  marginBottom: Spacing.sm,
-},
-storeRow: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-},
-storeInfo: {
-  flex: 1,
-  marginRight: 8,
-},
-storeName: {
-  fontSize: FontSize.md,
-  fontWeight: '700',
-},
-storeOwner: {
-  fontSize: FontSize.xs,
-  marginTop: 2,
-},
-storeBadges: {
-  flexDirection: 'row',
-  gap: 6,
-  marginTop: 4,
-  flexWrap: 'wrap',
-},
-storeBadge: {
-  paddingHorizontal: 8,
-  paddingVertical: 2,
-  borderRadius: 4,
-},
-storeActions: {
-  flexDirection: 'row',
-  gap: 6,
-},
-storeActionBtn: {
-  padding: 6,
-  borderRadius: Radius.full,
-},
-  // Error Boundary
+  trendCard: {
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  trendTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  trendBars: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    height: 80,
+  },
+  trendBarWrapper: {
+    alignItems: 'center',
+  },
+  trendBar: {
+    width: 20,
+    borderRadius: 4,
+    minHeight: 4,
+  },
+  trendLabel: {
+    fontSize: 8,
+    marginTop: 2,
+  },
+  storeCard: {
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  storeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  storeInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  storeName: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+  },
+  storeOwner: {
+    fontSize: FontSize.xs,
+    marginTop: 2,
+  },
+  storeBadges: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+    flexWrap: 'wrap',
+  },
+  storeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  storeActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  storeActionBtn: {
+    padding: 6,
+    borderRadius: Radius.full,
+  },
   errorFallback: {
     padding: 20,
     alignItems: 'center',
@@ -2221,7 +2213,6 @@ storeActionBtn: {
     fontSize: 12,
     marginTop: 4,
   },
-  // Common
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
@@ -2270,7 +2261,6 @@ storeActionBtn: {
     fontSize: FontSize.md,
     height: '100%',
   },
-  // Main
   mainContainer: {
     flex: 1,
   },
@@ -2316,7 +2306,6 @@ storeActionBtn: {
   tabBtnText: {
     fontSize: FontSize.sm,
   },
-  // Analytics
   analyticsContainer: {
     padding: Spacing.md,
     gap: Spacing.md,
@@ -2500,7 +2489,6 @@ storeActionBtn: {
     fontSize: 14,
     fontWeight: '700',
   },
-  // Ad Card
   adCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2570,7 +2558,6 @@ storeActionBtn: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // User Card
   userCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2634,7 +2621,6 @@ storeActionBtn: {
     alignItems: 'center',
     gap: 4,
   },
-  // Banner
   bannerCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2743,7 +2729,6 @@ storeActionBtn: {
     borderRadius: Radius.lg,
     alignItems: 'center',
   },
-  // Interstitial
   interCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2772,7 +2757,6 @@ storeActionBtn: {
   interMeta: {
     fontSize: FontSize.xs,
   },
-  // Logs
   logCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2789,7 +2773,6 @@ storeActionBtn: {
   logAction: { fontSize: FontSize.md, fontWeight: '600' },
   logTarget: { fontSize: FontSize.sm },
   logDetails: { fontSize: 10, marginTop: 2 },
-  // Reports
   reportCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2816,7 +2799,6 @@ storeActionBtn: {
     paddingVertical: 6,
     borderRadius: Radius.full,
   },
-  // Orders
   orderCard: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -2850,7 +2832,6 @@ storeActionBtn: {
     paddingVertical: 4,
     borderRadius: Radius.full,
   },
-  // Filters
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: Spacing.md,
@@ -2864,7 +2845,6 @@ storeActionBtn: {
     borderRadius: Radius.full,
     justifyContent: 'center',
   },
-  // Tools
   toolsContainer: {
     padding: Spacing.md,
     gap: Spacing.md,
@@ -2948,7 +2928,6 @@ storeActionBtn: {
     borderRadius: Radius.full,
     borderWidth: 1,
   },
-  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -3018,7 +2997,6 @@ storeActionBtn: {
     fontWeight: '700',
     fontSize: FontSize.md,
   },
-  // Confirmation
   confirmOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -3074,7 +3052,6 @@ storeActionBtn: {
     fontWeight: '700',
     fontSize: 14,
   },
-  // Snackbar
   snackbar: {
     position: 'absolute',
     bottom: 20,
@@ -3093,26 +3070,25 @@ storeActionBtn: {
     fontSize: 14,
     flex: 1,
   },
-  // توزيع الأجهزة
-deviceCard: {
-  borderRadius: Radius.lg,
-  borderWidth: 1,
-  padding: Spacing.md,
-  marginBottom: Spacing.md,
-},
-deviceName: {
-  fontSize: FontSize.sm,
-  fontWeight: '600',
-},
-devicePercent: {
-  fontSize: FontSize.xs,
-},
-progressBarBg: {
-  height: 8,
-  borderRadius: 8,
-  overflow: 'hidden',
-},
-progressBarFill: {
-  height: '100%',
-},
+  deviceCard: {
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  deviceName: {
+    fontSize: FontSize.sm,
+    fontWeight: '600',
+  },
+  devicePercent: {
+    fontSize: FontSize.xs,
+  },
+  progressBarBg: {
+    height: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+  },
 });

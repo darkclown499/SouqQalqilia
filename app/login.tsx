@@ -37,7 +37,7 @@ export default function LoginScreen() {
 
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const authResolvedRef = useRef(false); // لمنع التنظيف المتكرر
+  const authResolvedRef = useRef(false);
 
   // ── Pre-warm browser for OAuth ──
   useEffect(() => {
@@ -235,7 +235,7 @@ export default function LoginScreen() {
   }, [isAr]);
 
   // ── Phone: Send code via Supabase Edge Function ──────────────────────────
-  const handleSendPhoneCode = async () => {
+  const handleSendPhoneCode = useCallback(async () => {
     if (!phoneEulaAccepted) {
       return showAlert(
         isAr ? 'الموافقة مطلوبة' : 'Agreement Required',
@@ -281,10 +281,10 @@ export default function LoginScreen() {
       setPhoneLoading(false);
       isSubmittingRef.current = false;
     }
-  };
+  }, [phoneEulaAccepted, phoneNumber, countryCode, phoneLoading, isSubmittingRef, isAr, showAlert, mapSmsError]);
 
   // ── Phone: Verify OTP via Supabase Edge Function ──────────────────────────
-  const handleVerifyPhoneOtp = async () => {
+  const handleVerifyPhoneOtp = useCallback(async () => {
     if (!phoneOtp || phoneOtp.length < 6)
       return showAlert(isAr ? 'الرمز مطلوب' : 'Code Required', isAr ? 'أدخل رمز التحقق المكون من 6 أرقام' : 'Enter the 6-digit code');
     if (!fullPhoneForOtp)
@@ -333,7 +333,7 @@ export default function LoginScreen() {
     } finally {
       setPhoneLoading(false);
     }
-  };
+  }, [phoneOtp, fullPhoneForOtp, phoneLoading, isAr, showAlert, mapSmsError, router]);
 
   // ── Friendly error message mapper (email) ──────────────────────────────────
   const mapAuthError = useCallback((error: string): string => {
@@ -355,7 +355,7 @@ export default function LoginScreen() {
   }, [isAr]);
 
   // ── Email: Login ───────────────────────────────────────────────────────────
-  const handleLogin = async () => {
+  const handleLogin = useCallback(async () => {
     if (!email.trim() || !password) return showAlert(t.missingFields, t.fillAllFields);
     if (!isValidEmail(email)) return showAlert(isAr ? 'بريد غير صحيح' : 'Invalid Email', isAr ? 'أدخل بريداً إلكترونياً صحيحاً' : 'Enter a valid email address');
     if (operationLoading || isSubmittingRef.current) return;
@@ -370,17 +370,15 @@ export default function LoginScreen() {
         const friendlyError = mapAuthError(error);
         if (friendlyError) {
           showAlert(t.loginFailed, friendlyError);
-          if (error.includes('RequestRateLimitReached') || error.includes('rate limit')) {
-          }
         }
         return;
       }
       if (u) router.replace('/(tabs)');
     } finally { isSubmittingRef.current = false; }
-  };
+  }, [email, password, operationLoading, isSubmittingRef, isAr, showAlert, t, signInWithPassword, mapAuthError, router]);
 
   // ── Email: Forgot password ────────────────────────────────────────────────
-  const handleForgotPassword = async () => {
+  const handleForgotPassword = useCallback(async () => {
     if (!email.trim()) return showAlert(isAr ? 'البريد مطلوب' : 'Email Required', isAr ? 'أدخل بريدك الإلكتروني أولاً' : 'Enter your email first');
     if (!isValidEmail(email)) return showAlert(isAr ? 'بريد غير صحيح' : 'Invalid Email', isAr ? 'أدخل بريداً صحيحاً' : 'Enter a valid email');
     if (forgotLoading) return;
@@ -394,10 +392,10 @@ export default function LoginScreen() {
       if (error) showAlert(isAr ? 'خطأ' : 'Error', error.message);
       else setEmailMode('forgot_sent');
     } finally { setForgotLoading(false); }
-  };
+  }, [email, forgotLoading, isAr, showAlert]);
 
   // ── Email: Register (send OTP) ─────────────────────────────────────────────
-  const handleSendOTP = async () => {
+  const handleSendOTP = useCallback(async () => {
     if (!eulaAccepted) return showAlert(isAr ? 'الموافقة مطلوبة' : 'Agreement Required', t.eulaMustAgree);
     if (!email.trim() || !password) return showAlert(t.missingFields, t.fillAllFields);
     if (!isValidEmail(email)) return showAlert(isAr ? 'بريد غير صحيح' : 'Invalid Email', isAr ? 'أدخل بريداً صحيحاً' : 'Enter a valid email');
@@ -414,9 +412,9 @@ export default function LoginScreen() {
       setEmailMode('otp');
       setResendCooldown(60);
     } finally { isSubmittingRef.current = false; }
-  };
+  }, [eulaAccepted, email, password, confirmPassword, operationLoading, isSubmittingRef, isAr, showAlert, t, sendOTP, mapAuthError]);
 
-  const handleResendOTP = async () => {
+  const handleResendOTP = useCallback(async () => {
     if (resendCooldown > 0 || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     try {
@@ -425,9 +423,9 @@ export default function LoginScreen() {
       setResendCooldown(60);
       showAlert(isAr ? 'تم الإرسال' : 'Code Sent', isAr ? 'تم إرسال رمز جديد' : 'A new code was sent to your email.');
     } finally { isSubmittingRef.current = false; }
-  };
+  }, [resendCooldown, isSubmittingRef, email, sendOTP, isAr, showAlert]);
 
-  const handleVerifyOTP = async () => {
+  const handleVerifyOTP = useCallback(async () => {
     if (!otp || otp.length < 4) return showAlert(t.enterCode, t.enterCodeMsg);
     if (verifying) return;
     setVerifying(true);
@@ -444,7 +442,7 @@ export default function LoginScreen() {
         router.replace('/(tabs)');
       }
     } finally { setVerifying(false); }
-  };
+  }, [otp, verifying, email, password, isAr, showAlert, t, verifyOTPAndLogin, mapAuthError, router]);
 
   // ── Google Sign-In ─────────────────────────────────────────────────────────
   const handleGoogleSignIn = useCallback(async () => {
@@ -590,6 +588,10 @@ export default function LoginScreen() {
     isSubmittingRef.current = false;
   }, []);
 
+  // ── Toggle functions wrapped in useCallback ──────────────────────────────
+  const togglePassword = useCallback(() => setShowPassword(v => !v), []);
+  const toggleConfirmPassword = useCallback(() => setShowConfirmPassword(v => !v), []);
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="light-content" backgroundColor={isDark ? '#0A0F0D' : '#0A6E5C'} />
@@ -731,7 +733,7 @@ export default function LoginScreen() {
                 <LoginPanel
                   email={email} setEmail={setEmail}
                   password={password} setPassword={setPassword}
-                  showPassword={showPassword} togglePassword={() => setShowPassword(v => !v)}
+                  showPassword={showPassword} togglePassword={togglePassword}
                   loading={operationLoading} onLogin={handleLogin}
                   onForgot={() => setEmailMode('forgot')}
                   cooldown={loginCooldown}
@@ -742,8 +744,8 @@ export default function LoginScreen() {
                   email={email} setEmail={setEmail}
                   password={password} setPassword={setPassword}
                   confirmPassword={confirmPassword} setConfirmPassword={setConfirmPassword}
-                  showPassword={showPassword} togglePassword={() => setShowPassword(v => !v)}
-                  showConfirmPassword={showConfirmPassword} toggleConfirmPassword={() => setShowConfirmPassword(v => !v)}
+                  showPassword={showPassword} togglePassword={togglePassword}
+                  showConfirmPassword={showConfirmPassword} toggleConfirmPassword={toggleConfirmPassword}
                   eulaAccepted={eulaAccepted} setEulaAccepted={setEulaAccepted}
                   onOpenEula={() => setEulaModalVisible(true)}
                   loading={operationLoading} onSend={handleSendOTP}
@@ -974,7 +976,7 @@ const PhoneOtpPanel = React.memo(function PhoneOtpPanel({
 }: any) {
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
-  const handleDigitChange = (idx: number, val: string) => {
+  const handleDigitChange = useCallback((idx: number, val: string) => {
     const cleaned = val.replace(/[^0-9]/g, '');
     if (cleaned.length > 1) {
       const full = cleaned.slice(0, 6);
@@ -987,9 +989,9 @@ const PhoneOtpPanel = React.memo(function PhoneOtpPanel({
     const newOtp = arr.join('').trimEnd();
     setOtp(newOtp);
     if (cleaned && idx < 5) inputRefs.current[idx + 1]?.focus();
-  };
+  }, [otp, setOtp]);
 
-  const handleKeyPress = (idx: number, key: string) => {
+  const handleKeyPress = useCallback((idx: number, key: string) => {
     if (key === 'Backspace') {
       const arr = (otp + '      ').slice(0, 6).split('');
       if (!arr[idx]?.trim() && idx > 0) {
@@ -1001,7 +1003,7 @@ const PhoneOtpPanel = React.memo(function PhoneOtpPanel({
         setOtp(arr.join('').trimEnd());
       }
     }
-  };
+  }, [otp, setOtp]);
 
   return (
     <View style={s.panelBody}>
