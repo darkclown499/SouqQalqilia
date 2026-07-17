@@ -58,7 +58,10 @@ export default function MessagesScreen() {
   const [isOnline, setIsOnline] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false); // ✅ حالة منفصلة للـ Pull-to-Refresh
   const isMounted = useRef(true);
+  const lastReloadTime = useRef(0);
+  const RELOAD_DEBOUNCE_MS = 5000; // 5 ثواني
 
   // مراقبة حالة الاتصال
   useEffect(() => {
@@ -68,10 +71,15 @@ export default function MessagesScreen() {
     return () => unsub();
   }, []);
 
-  // تحديث البيانات عند التركيز على الشاشة مع معالجة الأخطاء
+  // ✅ تحديث البيانات عند التركيز مع منع التحميل المتكرر
   useFocusEffect(
     useCallback(() => {
       if (user && isMounted.current) {
+        const now = Date.now();
+        if (now - lastReloadTime.current < RELOAD_DEBOUNCE_MS) {
+          return;
+        }
+        lastReloadTime.current = now;
         setError(null);
         reload().catch((err) => {
           if (isMounted.current) {
@@ -82,9 +90,10 @@ export default function MessagesScreen() {
     }, [user, reload, isAr])
   );
 
-  // دالة التحديث اليدوي مع معالجة الأخطاء
+  // ✅ دالة التحديث اليدوي مع معالجة الأخطاء وحالة التحميل
   const handleRefresh = useCallback(async () => {
     if (!isMounted.current) return;
+    setRefreshing(true);
     setError(null);
     try {
       await reload();
@@ -92,6 +101,8 @@ export default function MessagesScreen() {
       if (isMounted.current) {
         setError(err?.message || (isAr ? 'فشل التحديث' : 'Refresh failed'));
       }
+    } finally {
+      setRefreshing(false);
     }
   }, [reload, isAr]);
 
@@ -232,7 +243,7 @@ export default function MessagesScreen() {
 
   // ── getItemLayout ديناميكي (تقدير ارتفاع العنصر) ──────────────────────
   const getItemLayout = useCallback((data: any, index: number) => ({
-    length: 80, // ارتفاع تقريبي
+    length: 80,
     offset: 80 * index,
     index,
   }), []);
@@ -295,9 +306,9 @@ export default function MessagesScreen() {
           style={styles.refreshBtn}
           onPress={handleRefresh}
           hitSlop={8}
-          disabled={loading}
+          disabled={refreshing || loading}
         >
-          {loading ? (
+          {(refreshing || loading) ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <MaterialIcons name="refresh" size={24} color="#fff" />
@@ -361,7 +372,7 @@ export default function MessagesScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={loading}
+              refreshing={refreshing}
               onRefresh={handleRefresh}
               colors={[colors.primary]}
               tintColor={colors.primary}
