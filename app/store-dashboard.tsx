@@ -38,7 +38,6 @@ const SUBCATEGORIES_MAP: Record<string, string[]> = {
   'عقارات': ['شقق للبيع', 'شقق للإيجار', 'أراضي للبيع والاستثمار', 'محلات ومكاتب تجارية', 'شاليهات واستراحات', 'فلل وقصور', 'سكن طلاب وموظفين'],
   'صيدليات': ['أدوية وعلاجات', 'مكملات وفيتامينات', 'منتجات عناية شخصية', 'معدات وأجهزة طبية', 'منتجات أطفال ورضع', 'مستحضرات تجميل طبية'],
   'سوبرماركت': ['معلبات ومواد تموينية', 'ألبان وأجبان', 'لحوم ودواجن وأسماك', 'منظفات وأدوات منزلية', 'بهارات وتوابل', 'سناكس وتسالي', 'مشروبات غازية وعصائر'],
-  // إضافة المزيد حسب الحاجة
 };
 
 // ── Add/Edit Product Modal ────────────────────────────────────────────────────
@@ -469,7 +468,6 @@ export default function StoreDashboardScreen() {
 
   // ── Custom categories state ──
   const [customCategories, setCustomCategories] = useState<LocalCategory[]>([]);
-  // ── حالة اختيار التصنيفات الجاهزة ──
   const [selectedSubcategories, setSelectedSubcategories] = useState<Set<string>>(new Set());
 
   // ── Custom Category Modal state ──
@@ -486,56 +484,57 @@ export default function StoreDashboardScreen() {
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [savingWhatsApp, setSavingWhatsApp] = useState(false);
 
+  // ── Refs ──
+  const isMountedRef = useRef(true);
+
   // ── Load data ──
- const isMountedRef = useRef(true);
+  const loadData = useCallback(async () => {
+    if (!user) return;
+    setError(null);
+    setLoading(true);
 
-const loadData = useCallback(async () => {
-  if (!user) return;
-  setError(null);
-  setLoading(true);
-
-  try {
-    const supabase = getSupabaseClient();
-    const { data: storeData, error: storeError } = await supabase
-      .from('stores')
-      .select('*, store_categories(id, name, name_ar, icon, color, slug, position, is_active, image_url, created_at)')
-      .eq('owner_id', user.id)
-      .maybeSingle();
-    if (storeError) throw storeError;
-    if (!isMountedRef.current) return;
-
-    setStore(storeData);
-    if (storeData?.store_categories) {
-      setStoreCategory(storeData.store_categories as StoreCategory);
-    } else if (storeData?.store_category_id) {
-      const { data: cats } = await fetchStoreCategories();
+    try {
+      const supabase = getSupabaseClient();
+      const { data: storeData, error: storeError } = await supabase
+        .from('stores')
+        .select('*, store_categories(id, name, name_ar, icon, color, slug, position, is_active, image_url, created_at)')
+        .eq('owner_id', user.id)
+        .maybeSingle();
+      if (storeError) throw storeError;
       if (!isMountedRef.current) return;
-      const cat = cats.find(c => c.id === storeData.store_category_id);
-      if (cat) setStoreCategory(cat);
-    }
 
-    if (storeData) {
-      const { data: prods, error: prodError } = await fetchStoreProducts(storeData.id, true);
-      if (prodError) throw prodError;
-      if (!isMountedRef.current) return;
-      setProducts(prods || []);
-    }
-  } catch (e: any) {
-    if (isMountedRef.current) {
-      setError(e?.message || 'Failed to load store data');
-    }
-  } finally {
-    if (isMountedRef.current) setLoading(false);
-  }
-}, [user]);
+      setStore(storeData);
+      if (storeData?.store_categories) {
+        setStoreCategory(storeData.store_categories as StoreCategory);
+      } else if (storeData?.store_category_id) {
+        const { data: cats } = await fetchStoreCategories();
+        if (!isMountedRef.current) return;
+        const cat = cats.find(c => c.id === storeData.store_category_id);
+        if (cat) setStoreCategory(cat);
+      }
 
-useEffect(() => {
-  isMountedRef.current = true;
-  loadData();
-  return () => {
-    isMountedRef.current = false;
-  };
-}, [loadData]);
+      if (storeData) {
+        const { data: prods, error: prodError } = await fetchStoreProducts(storeData.id, true);
+        if (prodError) throw prodError;
+        if (!isMountedRef.current) return;
+        setProducts(prods || []);
+      }
+    } catch (e: any) {
+      if (isMountedRef.current) {
+        setError(e?.message || 'Failed to load store data');
+      }
+    } finally {
+      if (isMountedRef.current) setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    loadData();
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [loadData]);
 
   // ── Load custom categories from supabase directly ──
   const loadCustomCategories = useCallback(async (storeId: string) => {
@@ -546,10 +545,11 @@ useEffect(() => {
         .select('*')
         .eq('store_id', storeId);
       if (error) throw error;
-      setCustomCategories(data || []);
-      // تحديث التصنيفات المحددة
-      const selectedNames = new Set((data || []).map(c => c.name_ar));
-      setSelectedSubcategories(selectedNames);
+      if (isMountedRef.current) {
+        setCustomCategories(data || []);
+        const selectedNames = new Set((data || []).map(c => c.name_ar));
+        setSelectedSubcategories(selectedNames);
+      }
     } catch (e) {
       console.warn('loadCustomCategories error:', e);
     }
@@ -706,13 +706,16 @@ useEffect(() => {
   const addAllSubcategories = useCallback(async () => {
     if (!store?.id) return;
     const available = getAvailableSubcategories();
-    let added = 0;
-    for (const name of available) {
-      const success = await addSubcategory(name);
-      if (success) added++;
-    }
+    const results = await Promise.allSettled(available.map(name => addSubcategory(name)));
+    const added = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+    const errors = results.filter(r => r.status === 'rejected');
     if (added > 0) {
       showAlert(isAr ? 'تم' : 'Done', `${isAr ? 'تم إضافة' : 'Added'} ${added} ${isAr ? 'تصنيف' : 'categories'}`);
+      if (errors.length > 0) {
+        showAlert(isAr ? 'تنبيه' : 'Warning', isAr ? `فشل إضافة ${errors.length} تصنيف` : `Failed to add ${errors.length} categories`);
+      }
+    } else if (errors.length > 0) {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل إضافة أي تصنيف' : 'Failed to add any categories');
     } else {
       showAlert(isAr ? 'معلومة' : 'Info', isAr ? 'جميع التصنيفات موجودة مسبقاً' : 'All categories already exist');
     }
@@ -721,7 +724,6 @@ useEffect(() => {
   // ── Get available subcategories based on store category ──
   const getAvailableSubcategories = useCallback(() => {
     if (!storeCategory) return [];
-    // حاول المطابقة باستخدام name_ar، name، أو slug
     const key = storeCategory.name_ar || storeCategory.name || storeCategory.slug;
     return SUBCATEGORIES_MAP[key] || [];
   }, [storeCategory]);
@@ -734,9 +736,6 @@ useEffect(() => {
       loadCustomCategories(store.id);
     }
   }, [store?.id, loadCustomCategories]);
-
-  // ── Load data on mount ──
-
 
   // ── Delete product ──
   const handleDeleteProduct = useCallback((product: StoreProduct) => {
@@ -784,7 +783,9 @@ useEffect(() => {
       });
     } catch (e: any) {
       showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر المشاركة' : 'Could not share'));
-    } finally { setShareLoading(false); }
+    } finally {
+      setShareLoading(false);
+    }
   }, [store, isAr, shareLoading, showAlert]);
 
   // ── Save product ──
@@ -803,7 +804,11 @@ useEffect(() => {
 
   // ── Open WhatsApp edit modal ──
   const openWhatsAppModal = useCallback(() => {
-    const currentWhatsApp = store?.owner_whatsapp || store?.whatsapp || '';
+    if (!store) {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'المتجر غير متاح' : 'Store not available');
+      return;
+    }
+    const currentWhatsApp = store.owner_whatsapp || store.whatsapp || '';
     let prefix = '972';
     let number = '';
     if (currentWhatsApp.startsWith('+972')) {
@@ -818,7 +823,7 @@ useEffect(() => {
     setWhatsappPrefix(prefix);
     setWhatsappNumber(number);
     setShowWhatsAppModal(true);
-  }, [store]);
+  }, [store, isAr, showAlert]);
 
   // ── Save WhatsApp number ──
   const handleSaveWhatsApp = useCallback(async () => {
