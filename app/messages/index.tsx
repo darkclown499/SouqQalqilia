@@ -58,10 +58,13 @@ export default function MessagesScreen() {
   const [isOnline, setIsOnline] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [refreshing, setRefreshing] = useState(false); // ✅ حالة منفصلة للـ Pull-to-Refresh
+  const [refreshing, setRefreshing] = useState(false);
   const isMounted = useRef(true);
+  
+  // ✅ منع التحميل المتزامن
+  const isReloading = useRef(false);
   const lastReloadTime = useRef(0);
-  const RELOAD_DEBOUNCE_MS = 5000; // 5 ثواني
+  const RELOAD_DEBOUNCE_MS = 3000; // 3 ثواني
 
   // مراقبة حالة الاتصال
   useEffect(() => {
@@ -71,40 +74,52 @@ export default function MessagesScreen() {
     return () => unsub();
   }, []);
 
-  // ✅ تحديث البيانات عند التركيز مع منع التحميل المتكرر
-  useFocusEffect(
-    useCallback(() => {
-      if (user && isMounted.current) {
-        const now = Date.now();
-        if (now - lastReloadTime.current < RELOAD_DEBOUNCE_MS) {
-          return;
-        }
-        lastReloadTime.current = now;
-        setError(null);
-        reload().catch((err) => {
-          if (isMounted.current) {
-            setError(err?.message || (isAr ? 'فشل تحميل المحادثات' : 'Failed to load conversations'));
-          }
-        });
-      }
-    }, [user, reload, isAr])
-  );
+  // ✅ دالة تحميل آمنة تمنع التحميل المتكرر
+  const safeReload = useCallback(async () => {
+    // منع التحميل المتزامن
+    if (isReloading.current) {
+      console.log('⏳ تحميل جارٍ بالفعل، تم تجاهل الطلب');
+      return;
+    }
 
-  // ✅ دالة التحديث اليدوي مع معالجة الأخطاء وحالة التحميل
-  const handleRefresh = useCallback(async () => {
-    if (!isMounted.current) return;
-    setRefreshing(true);
+    // منع التحميل المتكرر خلال فترة قصيرة
+    const now = Date.now();
+    if (now - lastReloadTime.current < RELOAD_DEBOUNCE_MS) {
+      console.log('⏳ تم التحميل مؤخراً، تم تجاهل الطلب');
+      return;
+    }
+
+    isReloading.current = true;
+    lastReloadTime.current = now;
     setError(null);
+
     try {
       await reload();
     } catch (err) {
       if (isMounted.current) {
-        setError(err?.message || (isAr ? 'فشل التحديث' : 'Refresh failed'));
+        setError(err?.message || (isAr ? 'فشل تحميل المحادثات' : 'Failed to load conversations'));
       }
     } finally {
-      setRefreshing(false);
+      isReloading.current = false;
     }
   }, [reload, isAr]);
+
+  // ✅ تحديث البيانات عند التركيز مع منع التحميل المتكرر
+  useFocusEffect(
+    useCallback(() => {
+      if (user && isMounted.current) {
+        safeReload();
+      }
+    }, [user, safeReload])
+  );
+
+  // ✅ دالة التحديث اليدوي
+  const handleRefresh = useCallback(async () => {
+    if (!isMounted.current) return;
+    setRefreshing(true);
+    await safeReload();
+    setRefreshing(false);
+  }, [safeReload]);
 
   // ── حذف المحادثة بالضغط المطول ──────────────────────────────────────────
   const handleLongPress = useCallback((conversationId: string) => {
@@ -119,7 +134,7 @@ export default function MessagesScreen() {
           onPress: async () => {
             try {
               await deleteConversation(conversationId);
-              await reload();
+              await safeReload();
             } catch (err) {
               showAlert(isAr ? 'خطأ' : 'Error', err?.message || (isAr ? 'فشل الحذف' : 'Delete failed'));
             }
@@ -127,7 +142,7 @@ export default function MessagesScreen() {
         },
       ]
     );
-  }, [isAr, showAlert, reload]);
+  }, [isAr, showAlert, safeReload]);
 
   // ── تصفية المحادثات بناءً على البحث ─────────────────────────────────────
   const filteredConversations = useMemo(() => {
@@ -241,7 +256,7 @@ export default function MessagesScreen() {
     </View>
   ), [colors, isAr, router, searchQuery]);
 
-  // ── getItemLayout ديناميكي (تقدير ارتفاع العنصر) ──────────────────────
+  // ── getItemLayout ──────────────────────────────────────────────────────
   const getItemLayout = useCallback((data: any, index: number) => ({
     length: 80,
     offset: 80 * index,
