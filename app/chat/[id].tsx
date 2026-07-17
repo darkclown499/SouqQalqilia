@@ -152,6 +152,7 @@ export default function ChatScreen() {
   }, []);
 
   // ----- Handlers (memoized) ----
+  // ✅ تحسين handleSendMessage لإظهار رسالة خطأ عند الفشل
   const handleSendMessage = useCallback(async (content: string, imageUrl?: string) => {
     if (!id || !user) return;
     const clientId = uuidv4();
@@ -170,6 +171,11 @@ export default function ChatScreen() {
 
     const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
     if (error) {
+      // عرض رسالة خطأ للمستخدم
+      showAlert(
+        isAr ? 'فشل الإرسال' : 'Send Failed',
+        isAr ? 'سيتم إعادة المحاولة تلقائياً' : 'Will retry automatically'
+      );
       updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
       await addToOfflineQueue({
         tempId: clientId,
@@ -188,9 +194,9 @@ export default function ChatScreen() {
         }
       }
     }
-  }, [id, user, appendMessage, updateMessage]);
+  }, [id, user, appendMessage, updateMessage, showAlert, isAr]);
 
-  // ----- Audio Recording Handlers -----
+  // ----- Audio Recording Handlers (محسّنة) -----
   const handleStartRecording = useCallback(async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
@@ -198,14 +204,37 @@ export default function ChatScreen() {
         showAlert(isAr ? 'صلاحية' : 'Permission', isAr ? 'يلزم منح صلاحية الميكروفون' : 'Microphone permission required');
         return;
       }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      // إعدادات محسّنة للتسجيل
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+      const { recording } = await Audio.Recording.createAsync({
+        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        android: {
+          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
+          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+          audioEncoder: Audio.AndroidAudioEncoder.AAC,
+        },
+        ios: {
+          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
+          extension: '.m4a',
+          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+          audioQuality: Audio.IOSAudioQuality.MAX,
+          sampleRate: 44100,
+          numberOfChannels: 1,
+        },
+      });
       recordingRef.current = recording;
       setIsRecording(true);
       setRecordingDuration(0);
       recordingTimerRef.current = setInterval(() => setRecordingDuration(d => d + 1), 1000);
     } catch (e) {
       console.warn('Start recording error:', e);
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل بدء التسجيل' : 'Failed to start recording');
     }
   }, [isAr, showAlert]);
 
@@ -217,20 +246,38 @@ export default function ChatScreen() {
     setIsRecording(false);
     setRecordingDuration(0);
     if (!recordingRef.current) return;
+
     let tempUri: string | null = null;
     try {
       await recordingRef.current.stopAndUnloadAsync();
       tempUri = recordingRef.current.getURI() ?? null;
       recordingRef.current = null;
-      if (!send || !tempUri) return;
+
+      if (!send || !tempUri) {
+        if (!tempUri) console.warn('No URI from recording');
+        return;
+      }
+
+      // التحقق من وجود الملف
+      const fileInfo = await FileSystem.getInfoAsync(tempUri);
+      if (!fileInfo.exists || fileInfo.size === 0) {
+        showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'الملف الصوتي فارغ أو تالف' : 'Audio file is empty or corrupted');
+        return;
+      }
+
       setImageUploading(true);
-      const { url } = await uploadChatImage(tempUri, `voice_${Date.now()}.m4a`);
+      // رفع الملف الصوتي عبر uploadChatImage (نفترض أنها تدعم أي ملف)
+      const { url, error } = await uploadChatImage(tempUri, `voice_${Date.now()}.m4a`);
       setImageUploading(false);
-      if (!url) return;
+      if (error || !url) {
+        showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', isAr ? 'تعذر رفع الملف الصوتي' : 'Could not upload audio');
+        return;
+      }
       await handleSendMessage('🎤 رسالة صوتية', url);
     } catch (e) {
       console.warn('Stop recording error:', e);
       setImageUploading(false);
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل معالجة التسجيل' : 'Failed to process recording');
     } finally {
       if (tempUri) {
         try {
@@ -238,7 +285,7 @@ export default function ChatScreen() {
         } catch {}
       }
     }
-  }, [handleSendMessage]);
+  }, [handleSendMessage, isAr, showAlert]);
 
   const handlePlayVoice = useCallback(async (msgId: string, voiceUrl: string) => {
     try {
