@@ -22,11 +22,12 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { MAX_AD_IMAGES } from '@/constants/config';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-interface ImageItem { uri: string; base64: string; blurhash?: string | null }
+interface ImageItem { uri: string; base64: string; blurhash?: string | null; mimeType?: string; size?: number }
 type PostMode = 'product_ad' | 'product_request';
 type Condition = 'new' | 'used';
 
 const PHONE_PREFIXES = ['+970', '+972'];
+const MAX_IMAGE_SIZE_MB = 5; // 5 ميجابايت كحد أقصى
 
 // ── Qalqilya locations ────────────────────────────────────────────────────────
 const QALQILYA_CITY = 'قلقيلية المدينة';
@@ -189,10 +190,13 @@ export default function PostAdScreen() {
   // ── Photo handlers (with useCallback and timeout cleanup) ─────────────────
   const handleAddImage = useCallback(() => {
     if (images.length >= MAX_AD_IMAGES) {
-      return showAlert(t.photos, isAr ? `الحد الأقصى ${MAX_AD_IMAGES} صور.` : `Max ${MAX_AD_IMAGES} photos allowed.`);
+      return showAlert(
+        isAr ? 'الصور' : 'Photos',
+        isAr ? `الحد الأقصى ${MAX_AD_IMAGES} صور.` : `Max ${MAX_AD_IMAGES} photos allowed.`
+      );
     }
     setPhotoModalVisible(true);
-  }, [images.length, showAlert, t.photos, isAr]);
+  }, [images.length, showAlert, isAr]);
 
   const handlePickCamera = useCallback(async () => {
     setPhotoModalVisible(false);
@@ -200,6 +204,17 @@ export default function PostAdScreen() {
     timeoutRefs.current.camera = setTimeout(async () => {
       const result = await pickImage('camera');
       if (result) {
+        // ✅ التحقق من نوع الملف وحجمه
+        if (result.mimeType && !result.mimeType.startsWith('image/')) {
+          showAlert(isAr ? 'نوع غير مدعوم' : 'Unsupported Format', isAr ? 'يرجى اختيار صورة.' : 'Please select an image.');
+          timeoutRefs.current.camera = undefined;
+          return;
+        }
+        if (result.size && result.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+          showAlert(isAr ? 'حجم كبير' : 'File Too Large', isAr ? `الحد الأقصى ${MAX_IMAGE_SIZE_MB} ميجابايت.` : `Max size is ${MAX_IMAGE_SIZE_MB} MB.`);
+          timeoutRefs.current.camera = undefined;
+          return;
+        }
         const newImg = { ...result, blurhash: null as string | null };
         setImages(prev => [...prev, newImg]);
         generateBlurhash(result.uri).then(blurhash => {
@@ -223,7 +238,21 @@ export default function PostAdScreen() {
       if (remaining <= 0) return;
       const results = await pickMultipleImages(Math.min(3, remaining));
       if (results.length > 0) {
-        const withNullHash = results.map(r => ({ ...r, blurhash: null as string | null }));
+        // ✅ فلترة الصور الصالحة فقط
+        const validResults = results.filter(img => {
+          if (img.mimeType && !img.mimeType.startsWith('image/')) return false;
+          if (img.size && img.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+            showAlert(isAr ? 'حجم كبير' : 'File Too Large', isAr ? `بعض الصور تجاوزت الحد الأقصى ${MAX_IMAGE_SIZE_MB} ميجابايت وتم تخطيها.` : `Some images exceeded ${MAX_IMAGE_SIZE_MB} MB limit and were skipped.`);
+            return false;
+          }
+          return true;
+        });
+        if (validResults.length === 0) {
+          showAlert(isAr ? 'تنبيه' : 'Warning', isAr ? 'لم يتم اختيار أي صورة صالحة.' : 'No valid images selected.');
+          timeoutRefs.current.gallery = undefined;
+          return;
+        }
+        const withNullHash = validResults.map(r => ({ ...r, blurhash: null as string | null }));
         setImages(prev => [...prev, ...withNullHash].slice(0, MAX_AD_IMAGES));
         withNullHash.forEach(img => {
           generateBlurhash(img.uri).then(blurhash => {
@@ -233,12 +262,13 @@ export default function PostAdScreen() {
       }
       timeoutRefs.current.gallery = undefined;
     }, 300);
-  }, [images.length]);
+  }, [images.length, isAr, showAlert]);
 
   const handleRemoveImage = useCallback((index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
   }, []);
 
+  // ✅ إضافة useCallback لـ resetForm
   const resetForm = useCallback(() => {
     setTitle('');
     setDescription('');
@@ -249,10 +279,10 @@ export default function PostAdScreen() {
     setPhoneLocal('');
     setCondition('used');
     setPhonePrefix('+970');
-    // ✅ لا نعيد تعيين phonePrefilled لتجنب إعادة جلب الرقم
-    // setPhonePrefilled(false);
+    // لا نعيد تعيين phonePrefilled لتجنب إعادة جلب الرقم
     setRequestStatus('open');
     setContactViaWhatsapp(false);
+    setSelectedCity(QALQILYA_CITY);
   }, []);
 
   // ── AI enhancement ────────────────────────────────────────────────────────
@@ -352,8 +382,8 @@ export default function PostAdScreen() {
     }
 
     setLoading(true);
+    let adId: string | null = null;
     try {
-      // ✅ استدعاء supabase مرة واحدة
       const supabase = getSupabaseClient();
 
       const rawPhoneLocal = phoneLocal.trim().replace(/^0/, '');
@@ -374,6 +404,7 @@ export default function PostAdScreen() {
         ...(mode === 'product_request' ? { status: 'active' } : {}),
       });
       if (adError || !ad) throw new Error(adError ?? 'Failed to create ad');
+      adId = ad.id;
 
       const { error: updateError } = await supabase
         .from('ads')
@@ -425,12 +456,13 @@ export default function PostAdScreen() {
           try {
             await saveAdImages(ad.id, urls, blurhashes);
           } catch (saveErr) {
+            // ✅ في حال فشل حفظ مراجع الصور، نحذف الإعلان
+            await supabase.from('ads').delete().eq('id', ad.id);
             throw new Error(`Failed to save image references: ${saveErr instanceof Error ? saveErr.message : 'unknown'}`);
           }
         }
       }
 
-      setSelectedCity(QALQILYA_CITY);
       resetForm();
       showAlert(
         mode === 'product_ad'
@@ -440,7 +472,7 @@ export default function PostAdScreen() {
           ? (isAr ? 'إعلانك الآن متاح للعرض.' : 'Your listing is now live.')
           : (isAr ? 'طلبك الآن متاح ويمكن للبائعين التواصل معك.' : 'Your request is live and sellers can contact you.'),
         [
-          { text: isAr ? 'عرض' : 'View', onPress: () => router.push(`/ad/${ad.id}`) },
+          { text: isAr ? 'عرض' : 'View', onPress: () => router.push(`/ad/${adId}`) },
           { text: isAr ? 'نشر آخر' : 'Post Another', style: 'cancel' },
         ]
       );
@@ -542,7 +574,7 @@ export default function PostAdScreen() {
             <View style={[styles.sectionCard, { backgroundColor: colors.surface, ...Shadow.xs }]}>
               <View style={[styles.sectionHeader, rtl]}>
                 <MaterialIcons name="photo-camera" size={18} color={colors.primary} />
-                <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.photos}</Text>
+                <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{isAr ? 'الصور' : 'Photos'}</Text>
                 <View style={[styles.sectionBadge, { backgroundColor: colors.primaryGhost }]}>
                   <Text style={[styles.sectionBadgeText, { color: colors.primary }]}>{images.length}/{MAX_AD_IMAGES}</Text>
                 </View>
@@ -569,7 +601,7 @@ export default function PostAdScreen() {
                     <View style={[styles.addImgIcon, { backgroundColor: colors.primaryGhost }]}>
                       <MaterialIcons name="add-photo-alternate" size={26} color={colors.primary} />
                     </View>
-                    <Text style={[styles.addImgText, { color: colors.textMuted }]}>{t.addPhoto}</Text>
+                    <Text style={[styles.addImgText, { color: colors.textMuted }]}>{isAr ? 'إضافة صورة' : 'Add Photo'}</Text>
                   </Pressable>
                 ) : null}
               </ScrollView>
@@ -962,6 +994,7 @@ export default function PostAdScreen() {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
+// ✅ تم إزالة الأنماط غير المستخدمة (sortBar, sortBarContent, sortChip, إلخ)
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
