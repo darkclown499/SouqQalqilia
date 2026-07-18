@@ -469,8 +469,18 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[styles.fullScreen, { backgroundColor: colors.BG, opacity: screenOpacity }]}>
-      {/* الخلفية ثلاثية الأبعاد - تعمل فقط على الأجهزة الفعلية (Android/iOS) وتُخفى على الويب */}
-      <ThreeScene />
+      {/* ✅ إصلاح: حاوية ThreeScene تغطي كامل الشاشة ولا تسبب شريطاً أبيض */}
+      <View
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            backgroundColor: 'transparent',
+            pointerEvents: 'none', // منع التفاعل مع العناصر خلفها
+          },
+        ]}
+      >
+        <ThreeScene />
+      </View>
 
       <View style={styles.glow} />
       {showSkip && (
