@@ -528,8 +528,8 @@ export default function StoreDashboardScreen() {
       }
 
       if (storeData) {
-        // تحميل المنتجات
-        const { data: prods, error: prodError } = await fetchStoreProducts(storeData.id, true);
+        // تحميل المنتجات - تم إزالة المعامل الثاني الزائد
+        const { data: prods, error: prodError } = await fetchStoreProducts(storeData.id);
         if (signal.aborted || !isMountedRef.current) return;
         if (prodError) throw prodError;
         setProducts(prods || []);
