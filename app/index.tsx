@@ -4,7 +4,7 @@ import { preloadBanners } from '@/services/bannersService';
 import { getSupabaseClient } from '@/template';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Platform } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState, memo, useCallback } from 'react';
 import {
@@ -21,6 +21,11 @@ import {
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+
+// ── 3D imports ──────────────────────────────────────────────────────────────
+import { GLView } from 'expo-gl';
+import { Renderer, THREE } from 'expo-three';
+import { AmbientLight, PointLight, Mesh, SphereGeometry, MeshStandardMaterial } from 'three';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const DEVICE_ID_KEY = 'app_device_id_v1';
@@ -80,14 +85,11 @@ async function setCachedData<T>(key: string, data: T): Promise<void> {
 
 // ── Preload with caching & retry ────────────────────────────────────────
 async function preloadWithCache() {
-  // Try cache first
   const [cachedAds, cachedBanners] = await Promise.all([
     getCachedData(CACHE_ADS_KEY),
     getCachedData(CACHE_BANNERS_KEY),
   ]);
 
-  // If cache exists, we can consider preload "done" quickly
-  // But we still update in background
   const loadFresh = async () => {
     try {
       const [ads, banners] = await Promise.all([
@@ -105,14 +107,10 @@ async function preloadWithCache() {
     }
   };
 
-  // If cache exists, return immediately but trigger background update
   if (cachedAds && cachedBanners) {
-    // Fire and forget background update
     loadFresh().catch(() => {});
     return true;
   }
-
-  // No cache: load fresh with timeout
   return loadFresh();
 }
 
@@ -120,10 +118,7 @@ async function preloadWithCache() {
 async function trackVisit() {
   try {
     const netState = await NetInfo.fetch();
-    if (!netState.isConnected) {
-      // Store visit to retry later (optional)
-      return;
-    }
+    if (!netState.isConnected) return;
 
     let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
     if (!deviceId) {
@@ -138,6 +133,134 @@ async function trackVisit() {
     console.warn('Track visit error:', error);
   }
 }
+
+// ─── 3D Background Component ──────────────────────────────────────────────
+const ThreeDBackground = memo(function ThreeDBackground({ 
+  opacity = 0.3,
+  color = '#E8C060',
+  speed = 0.5
+}: { 
+  opacity?: number;
+  color?: string;
+  speed?: number;
+}) {
+  const glRef = useRef<GLView>(null);
+  const animationRef = useRef<number | null>(null);
+  const sceneRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const rendererRef = useRef<any>(null);
+  const meshRef = useRef<any>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    if (!glRef.current) return;
+
+    const initScene = async () => {
+      try {
+        const gl = glRef.current;
+        if (!gl) return;
+
+        // Create renderer
+        const renderer = new Renderer({ gl });
+        renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
+        renderer.setClearColor(0x000000, 0);
+        rendererRef.current = renderer;
+
+        // Scene
+        const scene = new THREE.Scene();
+        sceneRef.current = scene;
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(75, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 1000);
+        camera.position.z = 3;
+        cameraRef.current = camera;
+
+        // Lights
+        const ambientLight = new AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        
+        const pointLight1 = new PointLight(color, 1, 10);
+        pointLight1.position.set(2, 2, 2);
+        scene.add(pointLight1);
+        
+        const pointLight2 = new PointLight(0xffffff, 0.5, 10);
+        pointLight2.position.set(-2, -1, 2);
+        scene.add(pointLight2);
+
+        // Create a sphere with gold material
+        const geometry = new SphereGeometry(0.8, 32, 32);
+        const material = new MeshStandardMaterial({
+          color: color,
+          roughness: 0.3,
+          metalness: 0.7,
+          emissive: color,
+          emissiveIntensity: 0.1,
+        });
+        const sphere = new Mesh(geometry, material);
+        scene.add(sphere);
+        meshRef.current = sphere;
+
+        // Start animation
+        let lastFrameTime = 0;
+        const animate = (time: number) => {
+          if (!mountedRef.current || !rendererRef.current || !sceneRef.current || !cameraRef.current) return;
+          
+          const delta = (time - lastFrameTime) / 1000;
+          lastFrameTime = time;
+
+          // Rotate sphere
+          if (meshRef.current) {
+            meshRef.current.rotation.x += delta * speed * 0.5;
+            meshRef.current.rotation.y += delta * speed;
+          }
+
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+          animationRef.current = requestAnimationFrame(animate);
+        };
+
+        animationRef.current = requestAnimationFrame(animate);
+      } catch (error) {
+        console.warn('3D init error:', error);
+      }
+    };
+
+    initScene();
+
+    return () => {
+      mountedRef.current = false;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+      }
+      if (meshRef.current) {
+        meshRef.current.geometry.dispose();
+        meshRef.current.material.dispose();
+      }
+    };
+  }, [color, speed]);
+
+  // Handle resize
+  const onLayout = useCallback(() => {
+    const gl = glRef.current;
+    if (!gl || !rendererRef.current || !cameraRef.current) return;
+    const { width, height } = gl;
+    rendererRef.current.setSize(width, height);
+    cameraRef.current.aspect = width / height;
+    cameraRef.current.updateProjectionMatrix();
+  }, []);
+
+  return (
+    <GLView
+      ref={glRef}
+      style={StyleSheet.absoluteFillObject}
+      onLayout={onLayout}
+      opacity={opacity}
+      pointerEvents="none"
+    />
+  );
+});
 
 // ─── Loading Dots ──────────────────────────────────────────────────────
 const LoadingDots = memo(function LoadingDots() {
@@ -239,6 +362,9 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
     <Animated.View
       style={[styles.fullScreen, { backgroundColor: colors.BG, opacity: screenOpacity }]}
     >
+      {/* 3D Background */}
+      <ThreeDBackground opacity={0.15} color={colors.GOLD} speed={0.3} />
+      
       <View style={styles.glow} />
       <Animated.View
         style={[
@@ -384,12 +510,10 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
       });
     }, 1600);
 
-    // Show skip button after 3 sec
     const skipTimer = setTimeout(() => {
       if (isMountedRef.current) setShowSkip(true);
     }, SKIP_DELAY);
 
-    // Loading with timeout and retry
     const loadPromise = preloadWithCache()
       .then((success) => {
         loadingComplete = true;
@@ -456,7 +580,7 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
 
   if (loadingError) {
     return (
-      <Animated.View style={[styles.fullScreen, { backgroundColor: colors.BG, opacity: screenOpacity }]}>
+      <Animated.View style={[styles.fullScreen, { backgroundColor: colors.BG, opacity: 1 }]}>
         <View style={styles.errorContainer}>
           <Text style={[styles.errorText, { color: colors.WHITE_DIM }]}>
             حدث خطأ في التحميل
@@ -471,6 +595,9 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[styles.fullScreen, { backgroundColor: colors.BG, opacity: screenOpacity }]}>
+      {/* 3D Background */}
+      <ThreeDBackground opacity={0.2} color={colors.GOLD} speed={0.6} />
+      
       <View style={styles.glow} />
       {showSkip && (
         <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
@@ -535,7 +662,6 @@ function AuthGate() {
     async function check() {
       try {
         const supabase = getSupabaseClient();
-        // Try to get cached session/user info
         const cachedSession = await AsyncStorage.getItem('cached_session');
         let session = null;
         let profile = null;
@@ -545,7 +671,6 @@ function AuthGate() {
             const parsed = JSON.parse(cachedSession);
             if (parsed && parsed.user) {
               session = { user: parsed.user };
-              // Also try cached profile
               const cachedProfile = await AsyncStorage.getItem('cached_profile');
               if (cachedProfile) {
                 profile = JSON.parse(cachedProfile);
@@ -554,7 +679,6 @@ function AuthGate() {
           } catch {}
         }
 
-        // If no cached session, fetch fresh
         if (!session) {
           const { data } = await supabase.auth.getSession();
           session = data.session;
@@ -568,7 +692,6 @@ function AuthGate() {
           return;
         }
 
-        // If profile not cached, fetch
         if (!profile) {
           const { data } = await supabase
             .from('user_profiles')
@@ -603,9 +726,10 @@ function AuthGate() {
   }, []);
 
   if (isLoading) {
+    const scheme = useColorScheme() ?? 'light';
     return (
-      <View style={[styles.fullScreen, { backgroundColor: getColors('light').BG, justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={getColors('light').GOLD} />
+      <View style={[styles.fullScreen, { backgroundColor: getColors(scheme).BG, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={getColors(scheme).GOLD} />
       </View>
     );
   }
@@ -619,11 +743,9 @@ export default function RootScreen() {
   const [phase, setPhase] = useState<'launch' | 'loading' | 'done'>('launch');
   const trackingDone = useRef(false);
 
-  // Track visit only once
   useEffect(() => {
     if (phase === 'done' && !trackingDone.current) {
       trackingDone.current = true;
-      // Use background task or simple fire-and-forget
       trackVisit().catch(() => {});
     }
   }, [phase]);
