@@ -111,41 +111,44 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
 const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
   const size = offer.card_size || 'medium';
 
-  // تحديد العرض والارتفاع بناءً على الحجم
+  // تحديد العرض والارتفاع بناءً على الحجم (مع تكبير القيم لجعل البنر بارزاً)
   let width = SCREEN_W - H_PAD * 2;
   let height = 200;
   let borderRadius = 12;
+  let titleFontSize = 18;
 
   switch (size) {
     case 'full':
       width = SCREEN_W;
-      height = 300; // تكبير البنر الكامل
+      height = 360; // تكبير كبير
       borderRadius = 0;
+      titleFontSize = 28;
       break;
     case 'large':
       width = SCREEN_W - H_PAD * 2;
-      height = 240;
+      height = 280;
+      titleFontSize = 22;
       break;
     case 'medium':
       width = (SCREEN_W - H_PAD * 2) * 0.8;
-      height = 200;
+      height = 210;
+      titleFontSize = 18;
       break;
     case 'small':
       width = (SCREEN_W - H_PAD * 2) * 0.6;
-      height = 160;
+      height = 170;
+      titleFontSize = 15;
       break;
     default:
       width = SCREEN_W - H_PAD * 2;
       height = 200;
+      titleFontSize = 18;
   }
 
   const handlePress = () => {
-    // إذا كان هناك رقم هاتف، نفتح واتساب، وإلا نفتح الرابط إن وجد
     if (offer.phone) {
       openWhatsApp(offer.phone, offer.title, offer.store_name);
-    } else if (offer.image_url) {
-      // يمكن فتح الرابط أو الانتقال إلى تفاصيل العرض
-      // هنا نفتح واتساب بالرقم الافتراضي
+    } else {
       openWhatsApp(DEFAULT_PHONE, offer.title, offer.store_name);
     }
   };
@@ -175,7 +178,7 @@ const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
       />
       {offer.title && (
         <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.7)']}
+          colors={['transparent', 'rgba(0,0,0,0.8)']}
           style={StyleSheet.absoluteFill}
         />
       )}
@@ -186,7 +189,7 @@ const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
               {offer.store_name}
             </Text>
           )}
-          <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left' }]}>
+          <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left' }, { fontSize: titleFontSize }]}>
             {offer.title}
           </Text>
           {offer.description && (
@@ -219,12 +222,12 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
   switch (size) {
     case 'full':
       width = SCREEN_W;
-      height = 280;
+      height = 300;
       borderRadius = 0;
       break;
     case 'large':
       width = SCREEN_W - H_PAD * 2;
-      height = 220;
+      height = 240;
       break;
     case 'medium':
       width = (SCREEN_W - H_PAD * 2) * 0.8;
@@ -305,7 +308,7 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
 
 function SkeletonLoader() {
   const items = 3;
-  const heights = [250, 200, 180];
+  const heights = [300, 240, 200];
 
   return (
     <View style={{ paddingHorizontal: H_PAD, gap: 12 }}>
@@ -392,7 +395,6 @@ export default function OffersScreen() {
       if (dbError) throw new Error(dbError.message);
       const offersData = (data ?? []) as Offer[];
 
-      // نأخذ جميع العروض (بدون تقسيم VIP)
       setAllOffers(offersData);
     } catch (e: any) {
       setError(isAr ? 'فشل تحميل العروض. تحقق من اتصالك.' : 'Failed to load offers. Check your connection.');
@@ -445,11 +447,10 @@ export default function OffersScreen() {
   }, [filteredOffers]);
 
   // ── دمج البانرات مع العروض (اختياري) ──────────────────────────────────
-  // يمكن عرض البانرات في الأعلى أو الأسفل. هنا نعرضها في الأعلى قبل العروض.
   const displayItems = useMemo(() => {
     const items: JSX.Element[] = [];
 
-    // إضافة البانرات من جدول banners إذا وجدت
+    // إضافة البانرات من جدول banners إذا وجدت (تعليقها إذا كنت لا تريدها)
     if (banners.length > 0) {
       banners.forEach((banner, index) => {
         items.push(
@@ -468,6 +469,11 @@ export default function OffersScreen() {
     return items;
   }, [banners, sortedOffers, isAr]);
 
+  // ── الانتقال إلى صفحة إضافة عرض جديد ──────────────────────────────────
+  const handleAddOffer = useCallback(() => {
+    router.push('/admin/offers'); // تأكد من وجود هذه الصفحة أو عدّل المسار
+  }, [router]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────────────────────────────────
@@ -481,18 +487,28 @@ export default function OffersScreen() {
     <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top }]}>
       {/* ── Header ── */}
       <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
-        <Pressable
-          onPress={handleRefresh}
-          hitSlop={12}
-          disabled={refreshing}
-          style={({ pressed }) => [styles.headerIconBtn, pressed && { opacity: 0.6 }]}
-        >
-          {refreshing ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <MaterialIcons name="refresh" size={24} color={headerTitle} />
-          )}
-        </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={handleRefresh}
+            hitSlop={12}
+            disabled={refreshing}
+            style={({ pressed }) => [styles.headerIconBtn, pressed && { opacity: 0.6 }]}
+          >
+            {refreshing ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <MaterialIcons name="refresh" size={24} color={headerTitle} />
+            )}
+          </Pressable>
+          {/* زر إضافة عرض جديد */}
+          <Pressable
+            onPress={handleAddOffer}
+            hitSlop={12}
+            style={({ pressed }) => [styles.headerIconBtn, pressed && { opacity: 0.6 }]}
+          >
+            <MaterialIcons name="add" size={28} color={headerTitle} />
+          </Pressable>
+        </View>
 
         <Text style={[styles.headerTitle, { color: headerTitle }]}>
           {isAr ? 'أقوى العروض 🔥' : 'Best Offers 🔥'}
@@ -587,6 +603,15 @@ export default function OffersScreen() {
             <Text style={[styles.centerTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
               {isAr ? 'لا توجد عروض حالياً' : 'No offers available'}
             </Text>
+            <Pressable
+              onPress={handleAddOffer}
+              style={[styles.addOfferBtn, { backgroundColor: colors.primary }]}
+            >
+              <MaterialIcons name="add" size={18} color="#fff" />
+              <Text style={styles.addOfferBtnText}>
+                {isAr ? 'أضف عرضاً جديداً' : 'Add New Offer'}
+              </Text>
+            </Pressable>
           </View>
         ) : (
           <View style={{ paddingHorizontal: 0 }}>
@@ -660,39 +685,38 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 12,
+    padding: 16,
   },
   offerStore: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   offerTitle: {
     color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
-    textShadowColor: 'rgba(0,0,0,0.8)',
+    fontWeight: '900',
+    textShadowColor: 'rgba(0,0,0,0.9)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    textShadowRadius: 6,
   },
   offerDesc: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 13,
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 15,
     fontWeight: '500',
-    marginTop: 2,
+    marginTop: 4,
   },
   vipChip: {
     backgroundColor: '#FFD700',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    marginTop: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    marginTop: 6,
     alignSelf: 'flex-start',
   },
   vipChipText: {
     color: '#1A1A1A',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '900',
   },
 
@@ -746,13 +770,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  showAllBtn: {
-    marginTop: 6,
+  addOfferBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
     paddingHorizontal: 20,
-    paddingVertical: 9,
+    paddingVertical: 10,
     borderRadius: 10,
   },
-  showAllBtnText: {
+  addOfferBtnText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
