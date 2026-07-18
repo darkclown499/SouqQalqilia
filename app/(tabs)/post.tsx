@@ -291,7 +291,7 @@ export default function PostAdScreen() {
     if (!title.trim() && !description.trim()) {
       return showAlert(
         isAr ? 'مطلوب' : 'Required',
-        isAr ? 'أدخل العنوان أو الوصف أولاً' : 'Please enter a title or description first.'
+        isAr ? 'أدخل اسم المنتج أو الوصف أولاً' : 'Please enter a title or description first.'
       );
     }
     if (aiLoading) return;
@@ -317,7 +317,7 @@ export default function PostAdScreen() {
       if (data?.description) setDescription(data.description);
       showAlert(
         isAr ? 'تم التحسين!' : 'Improved!',
-        isAr ? 'تم تحسين العنوان والوصف بالذكاء الاصطناعي.' : 'Title and description enhanced by AI.'
+        isAr ? 'تم تحسين المنتج والوصف بالذكاء الاصطناعي.' : 'Title and description enhanced by AI.'
       );
     } catch (e: any) {
       showAlert(isAr ? 'خطأ' : 'Error', e.message ?? 'AI failed.');
@@ -689,7 +689,7 @@ export default function PostAdScreen() {
               <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{t.details}</Text>
             </View>
             <Input
-              label={isAr ? 'العنوان *' : 'Title *'}
+              label={isAr ? 'اسم المنتح *' : 'Title *'}
               placeholder={mode === 'product_request'
                 ? (isAr ? 'مثال: أبحث عن آيفون 14 بحالة جيدة' : 'e.g. Looking for iPhone 14 in good condition')
                 : t.titlePlaceholder}
