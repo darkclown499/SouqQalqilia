@@ -178,9 +178,10 @@ export async function fetchMyConversations(options?: {
       .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
       .order('last_message_at', { ascending: false });
 
-    // ✅ تصفية المحادثات المؤرشفة
+    // ✅ تصفية المحادثات المؤرشفة (العمود متوفر في قاعدة البيانات)
     if (!includeArchived) {
-      query = query.is('archived_at', null);
+      // archived_at column now exists — filter safely
+      query = (query as any).is('archived_at', null);
     }
 
     const { data, error } = await query;
