@@ -3,7 +3,11 @@ import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform, View, StyleSheet, Pressable } from 'react-native';
 import Animated, {
-  useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+  withTiming,
 } from 'react-native-reanimated';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
@@ -12,27 +16,36 @@ import { useMemo, useCallback } from 'react';
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { t, isRTL } = useLanguage(); // تم حذف 'language' و 'isAr' لأننا استغنينا عنهما
+  const { t, isRTL } = useLanguage();
 
-  // ─── TabBar Style ───────────────────────────────────────────────────────────
-  // ✅ تم حذف flexDirection نهائياً لتفادي عكس الأزرار في RTL
-  const tabBarStyle = useMemo(() => ({
-    minHeight: Platform.select({ ios: insets.bottom + 62, android: insets.bottom + 62, default: 70 }),
-    paddingTop: 8,
-    paddingBottom: Platform.select({ ios: insets.bottom + 8, android: insets.bottom + 8, default: 8 }),
-    paddingHorizontal: 4,
-    backgroundColor: colors.tabBar,
-    borderTopWidth: 1,
-    borderTopColor: colors.tabBarBorder,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 12,
-    // تم حذف سطر flexDirection
-  }), [insets, colors]); // تم حذف isRTL من التبعيات
+  // نمط شريط التبويب – تم حذف flexDirection لتفادي العكس في RTL
+  const tabBarStyle = useMemo(
+    () => ({
+      minHeight: Platform.select({
+        ios: insets.bottom + 62,
+        android: insets.bottom + 62,
+        default: 70,
+      }),
+      paddingTop: 8,
+      paddingBottom: Platform.select({
+        ios: insets.bottom + 8,
+        android: insets.bottom + 8,
+        default: 8,
+      }),
+      paddingHorizontal: 4,
+      backgroundColor: colors.tabBar,
+      borderTopWidth: 1,
+      borderTopColor: colors.tabBarBorder,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 12,
+    }),
+    [insets, colors]
+  );
 
-  // ─── Post Button Animation ──────────────────────────────────────────────────
+  // حركة زر الإضافة
   const postScale = useSharedValue(1);
   const postRotation = useSharedValue(0);
   const postAnimStyle = useAnimatedStyle(() => ({
@@ -43,49 +56,50 @@ export default function TabLayout() {
     postScale.value = withSequence(
       withSpring(0.85, { damping: 6, stiffness: 400 }),
       withSpring(1.12, { damping: 8, stiffness: 300 }),
-      withSpring(1, { damping: 10, stiffness: 200 }),
+      withSpring(1, { damping: 10, stiffness: 200 })
     );
     postRotation.value = withSequence(
       withTiming(45, { duration: 100 }),
-      withSpring(0, { damping: 8, stiffness: 200 }),
+      withSpring(0, { damping: 8, stiffness: 200 })
     );
   }, [postScale, postRotation]);
 
-  const PostButton = useCallback((props: any) => {
-    const focused = props.accessibilityState?.selected ?? false;
-    return (
-      <View style={styles.postTabWrap} pointerEvents="box-none">
-        <View style={styles.postTabBtn}>
-          <Animated.View
-            style={[
-              styles.postIconOuter,
-              { shadowColor: focused ? colors.accent : colors.primary },
-              postAnimStyle,
-            ]}
-          >
-            <Pressable
-              style={({ pressed }) => [
-                styles.postIconInner,
-                {
-                  backgroundColor: focused ? colors.accent : colors.primary,
-                  opacity: pressed ? 0.8 : 1,
-                },
+  const PostButton = useCallback(
+    (props: any) => {
+      const focused = props.accessibilityState?.selected ?? false;
+      return (
+        <View style={styles.postTabWrap} pointerEvents="box-none">
+          <View style={styles.postTabBtn}>
+            <Animated.View
+              style={[
+                styles.postIconOuter,
+                { shadowColor: focused ? colors.accent : colors.primary },
+                postAnimStyle,
               ]}
-              onPress={() => {
-                animatePost();
-                // ✅ تم الإصلاح: استخدام optional chaining بشكل آمن
-                props.onPress?.();
-              }}
             >
-              <MaterialIcons name="add" size={28} color="#fff" />
-            </Pressable>
-          </Animated.View>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.postIconInner,
+                  {
+                    backgroundColor: focused ? colors.accent : colors.primary,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+                onPress={() => {
+                  animatePost();
+                  props.onPress?.();
+                }}
+              >
+                <MaterialIcons name="add" size={28} color="#fff" />
+              </Pressable>
+            </Animated.View>
+          </View>
         </View>
-      </View>
-    );
-  }, [colors, postAnimStyle, animatePost]);
+      );
+    },
+    [colors, postAnimStyle, animatePost]
+  );
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <Tabs
       screenOptions={{
@@ -101,7 +115,6 @@ export default function TabLayout() {
         options={{
           title: t.home,
           tabBarIcon: ({ color, focused }) => (
-            // ✅ تم الإصلاح: أيقونة مختلفة عند التحديد
             <MaterialIcons name={focused ? 'home-filled' : 'home'} size={24} color={color} />
           ),
         }}
@@ -123,10 +136,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="stores"
         options={{
-          // ✅ تم الإصلاح: استخدام isRTL مباشرة بدلاً من isAr
           title: isRTL ? 'المتاجر' : 'Stores',
           tabBarIcon: ({ color, focused }) => (
-            // ✅ تم الإصلاح: أيقونة مختلفة عند التحديد
             <MaterialIcons name={focused ? 'storefront' : 'store'} size={24} color={color} />
           ),
         }}

@@ -15,21 +15,23 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
-import { AdCard, EmptyState } from '@/components';
+import { AdCard, EmptyState, ProductCard } from '@/components'; // ✅ أضفنا ProductCard
 import { useAds } from '@/hooks/useAds';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useAuth } from '@/template';
+import { useAuth, getSupabaseClient } from '@/template';
 import { useResponsive } from '@/hooks/useResponsive';
 
-import { getSupabaseClient } from '@/template';
-import { fetchAllActiveStores, Store } from '@/services/storesService';
 import { fetchStoreCategories, StoreCategory } from '@/services/storeCategoriesService';
 import { fetchProductsPaginated, fetchStoresPaginated } from '@/services/productsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
-// ─── Category Detail Screen ────────────────────────────────────────────────
+// ─── تعريف الأنواع (افتراضي) ─────────────────────────────────────────────
+type Store = any; // استخدم النوع الفعلي من خدمتك
+type Product = any; // استخدم النوع الفعلي من خدمتك
+
+// ─── المكون الرئيسي ──────────────────────────────────────────────────────
 export default function CategoryDetailScreen() {
   const params = useLocalSearchParams<{ slug: string; type?: string }>();
   const { slug, type } = params;
@@ -40,10 +42,9 @@ export default function CategoryDetailScreen() {
   const isAr = language === 'ar';
   const { user } = useAuth();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
-  const { numColumns, hPad, cardGap, cardWidth: CARD_WIDTH } = useResponsive();
-  const { ads, loading: adsLoading, load: loadAds } = useAds();
+  const { numColumns, hPad, cardWidth: CARD_WIDTH } = useResponsive();
+  const { ads, load: loadAds } = useAds();
 
-  // تحديد نوع التصنيف
   const isStoreCategory = useMemo(() => type === 'store', [type]);
 
   // ── 1. جلب بيانات التصنيف (مرة واحدة) ──────────────────────────────────
@@ -52,6 +53,7 @@ export default function CategoryDetailScreen() {
     isLoading: categoryLoading,
     error: categoryError,
     refetch: refetchCategory,
+    isRefetching: isRefetchingCategory,
   } = useQuery({
     queryKey: ['category', slug, isStoreCategory],
     queryFn: async () => {
@@ -74,35 +76,31 @@ export default function CategoryDetailScreen() {
   // ── 2. التحميل اللانهائي للبيانات (منتجات أو متاجر) ──────────────────
   const {
     data: itemsData,
-    isLoading: itemsLoading,
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
     refetch: refetchItems,
+    isRefetching: isRefetchingItems,
+    isLoading: itemsLoading,
   } = useInfiniteQuery({
     queryKey: ['category-items', category?.id, isStoreCategory],
     queryFn: async ({ pageParam = 1 }) => {
       if (!category) return [];
       const limit = 20;
       if (isStoreCategory) {
-        // جلب المتاجر مع pagination
-        const stores = await fetchStoresPaginated(category.id, pageParam, limit);
-        return stores;
+        return await fetchStoresPaginated(category.id, pageParam, limit);
       } else {
-        // جلب المنتجات مع pagination
-        const products = await fetchProductsPaginated(category.id, pageParam, limit);
-        return products;
+        return await fetchProductsPaginated(category.id, pageParam, limit);
       }
     },
     getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.length < 20) return undefined; // لا توجد صفحة تالية
+      if (lastPage.length < 20) return undefined;
       return allPages.length + 1;
     },
     initialPageParam: 1,
     enabled: !!category?.id,
   });
 
-  // دمج البيانات من جميع الصفحات
   const items = useMemo(() => {
     return itemsData?.pages.flatMap((page) => page) ?? [];
   }, [itemsData]);
@@ -116,18 +114,24 @@ export default function CategoryDetailScreen() {
     }
   }, [category?.id, loadAds, isStoreCategory]);
 
-  // ── 4. تحديث (Pull-to-Refresh) ──────────────────────────────────────────
+  // ── 4. التحديث (Pull-to-Refresh) ──────────────────────────────────────
   const handleRefresh = useCallback(async () => {
     await refetchCategory();
     await refetchItems();
   }, [refetchCategory, refetchItems]);
 
-  // ── 5. التنقل إلى صفحة المتجر ──────────────────────────────────────────
+  const isRefreshing = isRefetchingCategory || isRefetchingItems;
+
+  // ── 5. دوال التنقل ─────────────────────────────────────────────────────
   const handleStorePress = (storeId: string) => {
     router.push(`/store/${storeId}`);
   };
 
-  // ── 6. عرض عنصر المتجر ──────────────────────────────────────────────────
+  const handleProductPress = (productId: string) => {
+    router.push(`/product/${productId}`);
+  };
+
+  // ── 6. عرض عنصر المتجر ─────────────────────────────────────────────────
   const renderStore = ({ item }: { item: Store }) => {
     const name = isAr ? item.name_ar || item.name : item.name;
     const isOpen = checkStoreIsOpen(item);
@@ -193,7 +197,19 @@ export default function CategoryDetailScreen() {
     );
   };
 
-  // ── 7. عرض شريط الإعلانات ──────────────────────────────────────────────
+  // ── 7. عرض عنصر المنتج ──────────────────────────────────────────────────
+  const renderProduct = ({ item }: { item: Product }) => (
+    <View style={styles.productWrapper}>
+      <ProductCard
+        product={item}
+        onPress={() => handleProductPress(item.id)}
+        isFavorited={favIds.has(item.id)}
+        onFavoritePress={user ? toggleFav : undefined}
+      />
+    </View>
+  );
+
+  // ── 8. عرض شريط الإعلانات ──────────────────────────────────────────────
   const renderAdStrip = useCallback(() => {
     if (isStoreCategory || ads.length === 0) return null;
     return (
@@ -224,7 +240,7 @@ export default function CategoryDetailScreen() {
     );
   }, [ads, favIds, user, toggleFav, CARD_WIDTH, isRTL, isStoreCategory]);
 
-  // ── 8. حالات التحميل والخطأ ──────────────────────────────────────────────
+  // ── 9. حالات التحميل والخطأ ────────────────────────────────────────────
   if (categoryLoading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -264,7 +280,7 @@ export default function CategoryDetailScreen() {
 
   const categoryName = isAr ? (category as any).name_ar || category.name : category.name;
 
-  // ── 9. العرض الرئيسي مع التحميل اللانهائي ──────────────────────────────
+  // ── 10. العرض الرئيسي مع التحميل اللانهائي ─────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* الهيدر */}
@@ -280,17 +296,17 @@ export default function CategoryDetailScreen() {
 
       {/* القائمة الرئيسية */}
       <FlatList
-        data={isStoreCategory ? items : []} // للمتاجر فقط (المنتجات تعرض كإعلانات حالياً)
-        keyExtractor={(item) => (item as Store).id}
-        numColumns={isStoreCategory ? 2 : 1}
-        key={isStoreCategory ? 'stores-grid' : 'ads-list'}
-        renderItem={isStoreCategory ? renderStore : undefined}
+        data={items}
+        keyExtractor={(item) => String(item.id)}
+        numColumns={isStoreCategory ? 2 : numColumns}
+        key={isStoreCategory ? 'stores-grid' : 'products-grid'}
+        renderItem={isStoreCategory ? renderStore : renderProduct}
         contentContainerStyle={[styles.listContent, { paddingHorizontal: hPad }]}
         columnWrapperStyle={isStoreCategory ? styles.columnWrapper : undefined}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={false} // نتحكم بالتحديث يدوياً
+            refreshing={isRefreshing}
             onRefresh={handleRefresh}
             colors={[colors.primary]}
             tintColor={colors.primary}
@@ -303,16 +319,15 @@ export default function CategoryDetailScreen() {
             title={
               isStoreCategory
                 ? (isAr ? 'لا توجد متاجر' : 'No stores')
-                : (isAr ? 'لا توجد إعلانات' : 'No ads')
+                : (isAr ? 'لا توجد منتجات' : 'No products')
             }
             subtitle={
               isStoreCategory
                 ? (isAr ? 'لا توجد متاجر في هذا التصنيف حالياً' : 'No stores in this category at the moment')
-                : (isAr ? 'لا توجد إعلانات في هذا التصنيف' : 'No ads in this category')
+                : (isAr ? 'لا توجد منتجات في هذا التصنيف' : 'No products in this category')
             }
           />
         }
-        // ── التحميل اللانهائي ──
         onEndReached={() => {
           if (hasNextPage && !isFetchingNextPage) fetchNextPage();
         }}
@@ -329,7 +344,7 @@ export default function CategoryDetailScreen() {
   );
 }
 
-// ─── دالة التحقق من حالة المتجر ─────────────────────────────────────────
+// ─── دوال مساعدة ──────────────────────────────────────────────────────────
 function checkStoreIsOpen(store: Store): boolean {
   if (!store.opening_time || !store.closing_time) return true;
   const now = new Date();
@@ -342,7 +357,7 @@ function checkStoreIsOpen(store: Store): boolean {
   return current >= open || current < close;
 }
 
-// ─── الأنماط (نفس الأنماط السابقة مع إضافة footerLoader) ──────────────
+// ─── الأنماط ──────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
@@ -474,6 +489,10 @@ const styles = StyleSheet.create({
   },
   waEmoji: { fontSize: 12 },
   waText: { fontSize: 11, fontWeight: '700', color: '#25D366' },
+  productWrapper: {
+    flex: 1,
+    margin: 4,
+  },
   emptyText: { fontSize: 16, fontWeight: '500', textAlign: 'center', marginTop: 12 },
   loadingText: { fontSize: FontSize.md, fontWeight: '500', marginTop: 8 },
   errorText: { fontSize: FontSize.md, fontWeight: '600', textAlign: 'center' },
