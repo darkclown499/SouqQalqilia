@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
   ActivityIndicator, Modal, Linking, Platform, Share, TextInput,
-  Alert, // ✅ إضافة Alert
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -11,9 +11,8 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useAuth, getSupabaseClient } from '@/template'; // تم إزالة useAlert
-import Animated from 'react-native-reanimated';
-import { useSharedValue, useAnimatedStyle, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import { useAuth, getSupabaseClient } from '@/template';
+import Animated, { useSharedValue, useAnimatedStyle, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { fetchStoreProducts, fetchStoreRating, StoreProduct } from '@/services/productsService';
 import { checkStoreIsOpen } from '@/services/storesService';
@@ -298,7 +297,7 @@ export default function StoreDetailScreen() {
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
-      isMountedRef.current = false; // لما يخرج المستخدم، تصير false
+      isMountedRef.current = false;
     };
   }, []);
   const [store, setStore] = useState<any>(null);
@@ -409,7 +408,6 @@ export default function StoreDetailScreen() {
       .catch((error) => {
         console.error('خطأ في التحميل:', error);
         if (isMountedRef.current) {
-          // ✅ استخدم Alert.alert بدلاً من showAlert
           Alert.alert(
             isAr ? 'خطأ' : 'Error',
             isAr ? 'حدث خطأ أثناء تحميل بيانات المتجر' : 'Failed to load store data'
@@ -421,7 +419,7 @@ export default function StoreDetailScreen() {
           setLoading(false);
         }
       });
-  }, [id, isAr]);
+  }, [id]); // ✅ تم إزالة isAr من التبعيات
 
   useEffect(() => {
     if (!store) return;
@@ -476,9 +474,13 @@ export default function StoreDetailScreen() {
 
   const handleConfirmOrder = useCallback(() => {
     if (!store || !isOpen) return;
+
+    // ✅ التحقق من بقاء المستخدم في الشاشة قبل تحديث العداد
+    if (!isMountedRef.current) return;
+
     getSupabaseClient().from('stores').select('whatsapp_clicks_count').eq('id', store.id).single()
       .then(({ data }) => {
-        if (data) {
+        if (data && isMountedRef.current) {
           getSupabaseClient().from('stores')
             .update({ whatsapp_clicks_count: (data.whatsapp_clicks_count ?? 0) + 1 })
             .eq('id', store.id).then(() => {}).catch(() => {});
