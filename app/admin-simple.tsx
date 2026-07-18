@@ -1488,7 +1488,7 @@ function BannersTab({ colors, isAr, t }: any) {
           </View>
           <TextInput style={[styles.bannerFormInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder={isAr ? 'رابط الوجهة (اختياري)' : 'Link URL (optional)'} placeholderTextColor={colors.textMuted} value={bnLinkUrl} onChangeText={setBnLinkUrl} />
           <View style={styles.bannerFormPlacement}>
-            {(['home', 'stores', 'offers'] as BannerPlacement[]).map(p => (
+            {(['home', 'stores_directory'] as BannerPlacement[]).map(p => (
               <Pressable
                 key={p}
                 style={[
