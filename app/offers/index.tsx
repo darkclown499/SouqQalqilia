@@ -58,47 +58,8 @@ const STATIC_CATEGORIES = [
   'أثاث',
 ];
 
-// ── Fallback banners (تظهر عند عدم وجود بيانات من السيرفر) ──────────────
-const FALLBACK_BANNERS_OFFERS: Banner[] = [
-  {
-    id: 'fb-offer-1',
-    image_url: 'https://picsum.photos/seed/offer1/800/250',
-    title: 'عروض حصرية 🔥',
-    subtitle: 'خصومات تصل إلى 50%',
-    link_url: '/offers',
-    type: 'internal',
-    size: 'large',
-    position: 'top',
-    showText: true,
-    isVip: false,
-  },
-  {
-    id: 'fb-offer-2',
-    image_url: 'https://picsum.photos/seed/offer2/800/250',
-    title: 'تسوق الآن',
-    subtitle: 'استفد من العروض المميزة',
-    link_url: '/search',
-    type: 'internal',
-    size: 'medium',
-    position: 'middle',
-    showText: true,
-    isVip: true,
-  },
-  {
-    id: 'fb-offer-3',
-    image_url: 'https://picsum.photos/seed/offer3/800/200',
-    title: 'عرض خاص',
-    subtitle: 'لفترة محدودة',
-    link_url: '/',
-    type: 'internal',
-    size: 'small',
-    position: 'bottom',
-    showText: true,
-    isVip: false,
-  },
-];
-
 // ── Banner placeholder fallback (لحالة عدم وجود صورة) ──────────────────────
+// هذه ليست إعلاناً ثابتاً، بل صورة احتياطية عند فقدان الصورة
 const BANNER_FALLBACK = 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -143,7 +104,7 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Banner Item Component (يعرض البانر حسب حجمه)
+// Banner Item Component (يعرض البانر حسب حجمه من السيرفر)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) => {
@@ -185,7 +146,6 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
         Linking.openURL(banner.link_url).catch(() => {});
       } else {
         // روابط داخلية يمكن معالجتها باستخدام router
-        // لكننا سنفتحها عبر Linking كـ URL عادي
         Linking.openURL(banner.link_url).catch(() => {});
       }
     }
@@ -359,7 +319,7 @@ export default function OffersScreen() {
     }, [])
   );
 
-  // ── جلب البانرات من السيرفر (مثل index و stores) ──────────────────────
+  // ── جلب البانرات من السيرفر (بدون فولباك) ────────────────────────────
   useEffect(() => {
     const cached = getBannersCache('offers');
     if (cached && cached.length > 0) {
@@ -370,18 +330,22 @@ export default function OffersScreen() {
     const controller = new AbortController();
     fetchActiveBanners('offers', { signal: controller.signal })
       .then(({ data }) => {
-        if (data && data.length > 0) {
-          const shuffled = shuffleArray(data);
-          setBannersCache(shuffled, 'offers');
-          setBanners(shuffled);
-        } else {
-          setBanners(FALLBACK_BANNERS_OFFERS);
+        if (!controller.signal.aborted) {
+          if (data && data.length > 0) {
+            const shuffled = shuffleArray(data);
+            setBannersCache(shuffled, 'offers');
+            setBanners(shuffled);
+          } else {
+            // لا توجد بانرات -> نترك المصفوفة فارغة
+            setBanners([]);
+          }
         }
       })
       .catch((err) => {
         if (err.name === 'AbortError') return;
         console.warn('⚠️ فشل جلب بانرات العروض:', err);
-        setBanners(FALLBACK_BANNERS_OFFERS);
+        // في حال الخطأ نترك المصفوفة فارغة
+        setBanners([]);
       });
 
     return () => controller.abort();
@@ -403,7 +367,7 @@ export default function OffersScreen() {
       if (dbError) throw new Error(dbError.message);
       const offersData = (data ?? []) as Offer[];
 
-      // أول 3 عروض كـ VIP
+      // أول 3 عروض كـ VIP (اختياري، يمكنك إزالته)
       const vipCount = Math.min(3, offersData.length);
       const vip = offersData.slice(0, vipCount);
       const normal = offersData.slice(vipCount);
@@ -597,14 +561,14 @@ export default function OffersScreen() {
           />
         }
       >
-        {/* ── عرض البانرات بأحجام مختلفة حسب الموضع ── */}
-        {sortedBanners.map((banner) => (
-          <BannerItem key={banner.id} banner={banner} isAr={isAr} />
-        ))}
+        {/* ── عرض البانرات من السيرفر فقط ── */}
+        {sortedBanners.length > 0 ? (
+          sortedBanners.map((banner) => (
+            <BannerItem key={banner.id} banner={banner} isAr={isAr} />
+          ))
+        ) : null}
 
-        {/* ── VIP Banner القديم (اختياري، يمكن إزالته) ── */}
-        {/* إذا أردت إبقاء VIP Banner من العروض، قم بإلغاء تعليق السطر التالي */}
-        {/* {vipOffer && <VIPBanner offer={vipOffer} isAr={isAr} />} */}
+        {/* ── VIP Banner القديم (تم إزالته نهائياً) ── */}
 
         {loading ? (
           <SkeletonGrid />
@@ -747,8 +711,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
   },
-
-  // VIP Banner القديم (اختياري) - تم إزالته
 
   // Masonry Grid
   masonryContainer: {
