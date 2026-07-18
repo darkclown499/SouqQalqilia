@@ -30,20 +30,19 @@ interface Offer {
   position: number;
   created_at: string;
   is_vip?: boolean;
-  card_size?: string;       // small, medium, large, full
-  card_position?: string;   // top, middle, bottom (يمكن استخدامه لترتيب العرض)
+  card_size?: string;
+  card_position?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const H_PAD = 16;
 const COL_GAP = 12;
 const DEFAULT_PHONE = '972599234230';
 
-// ── التصنيفات الثابتة حسب التصميم ──
 const STATIC_CATEGORIES = [
   'الكل',
   'مطاعم',
@@ -60,11 +59,10 @@ const STATIC_CATEGORIES = [
   'أثاث',
 ];
 
-// ── Banner placeholder fallback (لحالة عدم وجود صورة) ──────────────────────
 const BANNER_FALLBACK = 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Utility: Shuffle array
+// Utility
 // ─────────────────────────────────────────────────────────────────────────────
 
 function shuffleArray<T>(array: T[]): T[] {
@@ -75,10 +73,6 @@ function shuffleArray<T>(array: T[]): T[] {
   }
   return shuffled;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// WhatsApp helper
-// ─────────────────────────────────────────────────────────────────────────────
 
 async function openWhatsApp(phone: string | null, title: string | null, storeName: string | null) {
   const number = (phone ?? DEFAULT_PHONE).replace(/\D/g, '');
@@ -105,44 +99,53 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Offer Item Component – يعرض العرض بحجم محدد من السيرفر
+// Offer Item Component – فخم وكبير
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
   const size = offer.card_size || 'medium';
 
-  // تحديد العرض والارتفاع بناءً على الحجم (مع تكبير القيم لجعل البنر بارزاً)
-  let width = SCREEN_W - H_PAD * 2;
-  let height = 200;
-  let borderRadius = 12;
-  let titleFontSize = 18;
+  let width = SCREEN_W;
+  let height = 300;
+  let borderRadius = 0;
+  let titleFontSize = 32;
+  let descFontSize = 18;
 
   switch (size) {
     case 'full':
       width = SCREEN_W;
-      height = 360; // تكبير كبير
+      height = SCREEN_H * 0.55; // 55% من ارتفاع الشاشة
       borderRadius = 0;
-      titleFontSize = 28;
+      titleFontSize = 36;
+      descFontSize = 20;
       break;
     case 'large':
       width = SCREEN_W - H_PAD * 2;
-      height = 280;
-      titleFontSize = 22;
+      height = 320;
+      borderRadius = 16;
+      titleFontSize = 28;
+      descFontSize = 17;
       break;
     case 'medium':
-      width = (SCREEN_W - H_PAD * 2) * 0.8;
-      height = 210;
-      titleFontSize = 18;
+      width = (SCREEN_W - H_PAD * 2) * 0.85;
+      height = 240;
+      borderRadius = 14;
+      titleFontSize = 22;
+      descFontSize = 15;
       break;
     case 'small':
-      width = (SCREEN_W - H_PAD * 2) * 0.6;
-      height = 170;
-      titleFontSize = 15;
+      width = (SCREEN_W - H_PAD * 2) * 0.65;
+      height = 180;
+      borderRadius = 12;
+      titleFontSize = 18;
+      descFontSize = 13;
       break;
     default:
       width = SCREEN_W - H_PAD * 2;
-      height = 200;
-      titleFontSize = 18;
+      height = 280;
+      borderRadius = 14;
+      titleFontSize = 24;
+      descFontSize = 16;
   }
 
   const handlePress = () => {
@@ -152,6 +155,8 @@ const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
       openWhatsApp(DEFAULT_PHONE, offer.title, offer.store_name);
     }
   };
+
+  const isLarge = size === 'full' || size === 'large';
 
   return (
     <Pressable
@@ -163,9 +168,14 @@ const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
           height,
           borderRadius,
           alignSelf: 'center',
-          marginVertical: 6,
-          opacity: pressed ? 0.9 : 1,
-          transform: [{ scale: pressed ? 0.97 : 1 }],
+          marginVertical: isLarge ? 0 : 6,
+          opacity: pressed ? 0.95 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: isLarge ? 12 : 6 },
+          shadowOpacity: isLarge ? 0.5 : 0.3,
+          shadowRadius: isLarge ? 30 : 16,
+          elevation: isLarge ? 20 : 8,
         },
       ]}
     >
@@ -173,15 +183,40 @@ const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
         source={{ uri: offer.image_url || BANNER_FALLBACK }}
         style={StyleSheet.absoluteFill}
         contentFit="cover"
-        transition={300}
+        transition={500}
         cachePolicy="disk"
       />
-      {offer.title && (
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.8)']}
-          style={StyleSheet.absoluteFill}
-        />
+
+      {/* طبقة التدرج الفاخرة */}
+      <LinearGradient
+        colors={[
+          'rgba(0,0,0,0.1)',
+          'rgba(0,0,0,0.4)',
+          'rgba(0,0,0,0.8)',
+          'rgba(0,0,0,0.95)',
+        ]}
+        locations={[0, 0.3, 0.6, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* تأثير فاخر - خطوط ذهبية جانبية للبنر الكبير */}
+      {isLarge && (
+        <View style={styles.goldFrame}>
+          <LinearGradient
+            colors={['#FFD700', '#FFA500', '#FFD700']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.goldLine, styles.goldLineTop]}
+          />
+          <LinearGradient
+            colors={['#FFD700', '#FFA500', '#FFD700']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.goldLine, styles.goldLineBottom]}
+          />
+        </View>
       )}
+
       {offer.title && (
         <View style={[styles.offerTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
           {offer.store_name && (
@@ -189,17 +224,30 @@ const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
               {offer.store_name}
             </Text>
           )}
-          <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left' }, { fontSize: titleFontSize }]}>
+          <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left', fontSize: titleFontSize }]}>
             {offer.title}
           </Text>
           {offer.description && (
-            <Text style={[styles.offerDesc, { textAlign: isAr ? 'right' : 'left' }]}>
+            <Text style={[styles.offerDesc, { textAlign: isAr ? 'right' : 'left', fontSize: descFontSize }]}>
               {offer.description}
             </Text>
           )}
           {offer.is_vip && (
-            <View style={styles.vipChip}>
-              <Text style={styles.vipChipText}>VIP</Text>
+            <LinearGradient
+              colors={['#FFD700', '#F59E0B']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.vipChipGradient}
+            >
+              <Text style={styles.vipChipText}>👑 VIP</Text>
+            </LinearGradient>
+          )}
+          {isLarge && (
+            <View style={styles.ctaButton}>
+              <Text style={styles.ctaButtonText}>
+                {isAr ? 'اكتشف العرض الآن' : 'Discover Now'}
+              </Text>
+              <MaterialIcons name="arrow-forward" size={20} color="#1A1A1A" />
             </View>
           )}
         </View>
@@ -209,7 +257,7 @@ const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Banner Item Component (من جدول banners) – اختياري
+// Banner Item Component (من جدول banners)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) => {
@@ -222,12 +270,12 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
   switch (size) {
     case 'full':
       width = SCREEN_W;
-      height = 300;
+      height = SCREEN_H * 0.5;
       borderRadius = 0;
       break;
     case 'large':
       width = SCREEN_W - H_PAD * 2;
-      height = 240;
+      height = 260;
       break;
     case 'medium':
       width = (SCREEN_W - H_PAD * 2) * 0.8;
@@ -275,26 +323,30 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
         transition={300}
         cachePolicy="disk"
       />
-      {banner.title && banner.showText !== false && (
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.7)']}
-          style={StyleSheet.absoluteFill}
-        />
-      )}
+      <LinearGradient
+        colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.9)']}
+        locations={[0, 0.4, 1]}
+        style={StyleSheet.absoluteFill}
+      />
       {banner.title && banner.showText !== false && (
         <View style={[styles.offerTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
-          <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left' }]}>
+          <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left', fontSize: 22 }]}>
             {banner.title}
           </Text>
           {banner.subtitle && (
-            <Text style={[styles.offerDesc, { textAlign: isAr ? 'right' : 'left' }]}>
+            <Text style={[styles.offerDesc, { textAlign: isAr ? 'right' : 'left', fontSize: 16 }]}>
               {banner.subtitle}
             </Text>
           )}
           {banner.isVip && (
-            <View style={styles.vipChip}>
-              <Text style={styles.vipChipText}>VIP</Text>
-            </View>
+            <LinearGradient
+              colors={['#FFD700', '#F59E0B']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.vipChipGradient}
+            >
+              <Text style={styles.vipChipText}>👑 VIP</Text>
+            </LinearGradient>
           )}
         </View>
       )}
@@ -307,15 +359,15 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SkeletonLoader() {
-  const items = 3;
-  const heights = [300, 240, 200];
+  const items = 2;
+  const heights = [SCREEN_H * 0.5, 280];
 
   return (
-    <View style={{ paddingHorizontal: H_PAD, gap: 12 }}>
+    <View style={{ paddingHorizontal: 0, gap: 12 }}>
       {Array(items).fill(0).map((_, i) => (
         <View
           key={i}
-          style={[styles.skeletonItem, { width: SCREEN_W - H_PAD * 2, height: heights[i % heights.length] }]}
+          style={[styles.skeletonItem, { width: SCREEN_W, height: heights[i % heights.length] }]}
         />
       ))}
     </View>
@@ -338,18 +390,15 @@ export default function OffersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('الكل');
-
-  // ── حالة البانرات من السيرفر (اختياري) ──
   const [banners, setBanners] = useState<Banner[]>([]);
 
-  // ── Track page view ──────────────────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
       trackPageView('offers').catch(() => {});
     }, [])
   );
 
-  // ── جلب البانرات من السيرفر (اختياري) ────────────────────────────────
+  // ── جلب البانرات ──
   useEffect(() => {
     const cached = getBannersCache('offers');
     if (cached && cached.length > 0) {
@@ -379,7 +428,7 @@ export default function OffersScreen() {
     return () => controller.abort();
   }, []);
 
-  // ── Fetch Offers from Supabase ──────────────────────────────────────────
+  // ── جلب العروض ──
   const fetchOffers = useCallback(async (showLoader = true) => {
     if (showLoader) setLoading(true);
     setError(null);
@@ -393,9 +442,7 @@ export default function OffersScreen() {
         .order('created_at', { ascending: false });
 
       if (dbError) throw new Error(dbError.message);
-      const offersData = (data ?? []) as Offer[];
-
-      setAllOffers(offersData);
+      setAllOffers((data ?? []) as Offer[]);
     } catch (e: any) {
       setError(isAr ? 'فشل تحميل العروض. تحقق من اتصالك.' : 'Failed to load offers. Check your connection.');
     } finally {
@@ -413,7 +460,7 @@ export default function OffersScreen() {
     fetchOffers(false);
   }, [fetchOffers]);
 
-  // ── Categories ──────────────────────────────────────────────────────────
+  // ── Categories ──
   const categories = useMemo(() => {
     const fromOffers = new Set<string>();
     allOffers.forEach(o => { if (o.category) fromOffers.add(o.category); });
@@ -430,13 +477,13 @@ export default function OffersScreen() {
     return result;
   }, [allOffers]);
 
-  // ── Filtered offers ──────────────────────────────────────────────────────
+  // ── Filtered offers ──
   const filteredOffers = useMemo(() => {
     if (activeCategory === 'الكل') return allOffers;
     return allOffers.filter(o => o.category === activeCategory);
   }, [allOffers, activeCategory]);
 
-  // ── ترتيب العروض حسب الحجم (كبير أولاً) ──────────────────────────────
+  // ── ترتيب العروض حسب الحجم ──
   const sortedOffers = useMemo(() => {
     const order = { full: 0, large: 1, medium: 2, small: 3 };
     return [...filteredOffers].sort((a, b) => {
@@ -446,11 +493,10 @@ export default function OffersScreen() {
     });
   }, [filteredOffers]);
 
-  // ── دمج البانرات مع العروض (اختياري) ──────────────────────────────────
+  // ── دمج العناصر ──
   const displayItems = useMemo(() => {
     const items: JSX.Element[] = [];
 
-    // إضافة البانرات من جدول banners إذا وجدت (تعليقها إذا كنت لا تريدها)
     if (banners.length > 0) {
       banners.forEach((banner, index) => {
         items.push(
@@ -459,7 +505,6 @@ export default function OffersScreen() {
       });
     }
 
-    // إضافة العروض
     sortedOffers.forEach((offer) => {
       items.push(
         <OfferItem key={`offer-${offer.id}`} offer={offer} isAr={isAr} />
@@ -469,14 +514,9 @@ export default function OffersScreen() {
     return items;
   }, [banners, sortedOffers, isAr]);
 
-  // ── الانتقال إلى صفحة إضافة عرض جديد ──────────────────────────────────
   const handleAddOffer = useCallback(() => {
-    router.push('/admin/offers'); // تأكد من وجود هذه الصفحة أو عدّل المسار
+    router.push('/admin/offers');
   }, [router]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────────────────
 
   const bgColor = isDark ? '#0F172A' : '#F8FAFC';
   const headerBg = isDark ? '#1E293B' : '#FFFFFF';
@@ -500,7 +540,6 @@ export default function OffersScreen() {
               <MaterialIcons name="refresh" size={24} color={headerTitle} />
             )}
           </Pressable>
-          {/* زر إضافة عرض جديد */}
           <Pressable
             onPress={handleAddOffer}
             hitSlop={12}
@@ -671,10 +710,10 @@ const styles = StyleSheet.create({
   },
 
   body: {
-    paddingTop: 16,
+    paddingTop: 0,
   },
 
-  // Offer Item
+  // ── Offer Item ──
   offerItem: {
     overflow: 'hidden',
     backgroundColor: '#1A1A1A',
@@ -685,56 +724,107 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 16,
+    padding: 20,
   },
   offerStore: {
     color: 'rgba(255,255,255,0.9)',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     marginBottom: 4,
+    letterSpacing: 1,
   },
   offerTitle: {
     color: '#FFFFFF',
     fontWeight: '900',
     textShadowColor: 'rgba(0,0,0,0.9)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+    letterSpacing: 0.5,
   },
   offerDesc: {
     color: 'rgba(255,255,255,0.9)',
-    fontSize: 15,
     fontWeight: '500',
     marginTop: 4,
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
-  vipChip: {
-    backgroundColor: '#FFD700',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 16,
-    marginTop: 6,
+  vipChipGradient: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 8,
     alignSelf: 'flex-start',
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
   },
   vipChipText: {
     color: '#1A1A1A',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  ctaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 12,
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  ctaButtonText: {
+    color: '#1A1A1A',
+    fontSize: 16,
+    fontWeight: '800',
   },
 
-  // Banner Item
+  // ── Gold Frame ──
+  goldFrame: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 5,
+    pointerEvents: 'none',
+  },
+  goldLine: {
+    height: 3,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
+  goldLineTop: {
+    top: 0,
+  },
+  goldLineBottom: {
+    bottom: 0,
+  },
+
+  // ── Banner Item ──
   bannerItem: {
     overflow: 'hidden',
     backgroundColor: '#1A1A1A',
     marginBottom: 8,
   },
 
-  // Skeleton
+  // ── Skeleton ──
   skeletonItem: {
     backgroundColor: '#E5E7EB',
-    borderRadius: 12,
     opacity: 0.6,
   },
 
-  // States
+  // ── States ──
   centerBox: {
     alignItems: 'center',
     justifyContent: 'center',
