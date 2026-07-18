@@ -369,7 +369,7 @@ export default function StoreDetailScreen() {
   // ── Category filter styles (dynamic for dark mode) ─────────────────────────
   const cfStyles = useMemo(() => getCfStyles(colors), [colors]);
 
-  // ── Load data ──
+  // ── تحميل البيانات ──
   useEffect(() => {
     if (!id) {
       setLoading(false);
@@ -380,7 +380,7 @@ export default function StoreDetailScreen() {
     getSupabaseClient()
       .from('stores').select('views_count').eq('id', id).single()
       .then(({ data }) => {
-        if (data) {
+        if (data && isMountedRef.current) {
           getSupabaseClient().from('stores')
             .update({ views_count: (data.views_count ?? 0) + 1 })
             .eq('id', id).then(() => {}).catch(() => {});
@@ -391,8 +391,8 @@ export default function StoreDetailScreen() {
     Promise.all([
       getSupabaseClient().from('stores').select('*').eq('id', id).single(),
       fetchStoreProducts(id),
-      fetchStoreRating(id),
-      getLocalCategories(id),
+      fetchStoreRating(id).catch(() => ({ avg: 0, count: 0 })),
+      getLocalCategories(id).catch(() => []),
     ])
       .then(([storeRes, productsRes, ratingRes, categoriesRes]) => {
         if (!isMountedRef.current) return;
@@ -401,9 +401,9 @@ export default function StoreDetailScreen() {
           setStore(storeRes.data);
           setIsOpen(checkStoreIsOpen(storeRes.data));
         }
-        setProducts(productsRes.data);
-        setRating(ratingRes);
-        setCustomCategories(categoriesRes);
+        setProducts(productsRes.data || []);
+        setRating(ratingRes || { avg: 0, count: 0 });
+        setCustomCategories(categoriesRes || []);
       })
       .catch((error) => {
         console.error('خطأ في التحميل:', error);
@@ -437,7 +437,7 @@ export default function StoreDetailScreen() {
   }, [cartCount]);
 
   const addToCart = useCallback((product: StoreProduct) => {
-    if (!isOpen) return;
+    if (!isOpen || !product) return;
     setCart(prev => {
       const existing = prev[product.id];
       return { ...prev, [product.id]: { product, qty: (existing?.qty ?? 0) + 1 } };
@@ -445,6 +445,7 @@ export default function StoreDetailScreen() {
   }, [isOpen]);
 
   const removeFromCart = useCallback((product: StoreProduct) => {
+    if (!product) return;
     setCart(prev => {
       const existing = prev[product.id];
       if (!existing || existing.qty <= 1) {
