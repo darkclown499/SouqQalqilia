@@ -33,6 +33,34 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useConversations } from '@/hooks/useChat';
 
+// ── Fallback banners (تظهر عند عدم وجود بيانات من السيرفر) ──────────────
+const FALLBACK_BANNERS_HOME: Banner[] = [
+  {
+    id: 'fb-1',
+    image_url: 'https://via.placeholder.com/800x200/FF5733/FFFFFF?text=مرحباً+في+سوق+قلقيلية',
+    title: 'أهلاً بك في التطبيق',
+    subtitle: 'اكتشف العروض المميزة',
+    link_url: '/search',
+    type: 'internal',
+    size: 'large',
+    position: 'top',
+    showText: true,
+    isVip: false,
+  },
+  {
+    id: 'fb-2',
+    image_url: 'https://via.placeholder.com/800x200/1E88E5/FFFFFF?text=عروض+خاصة',
+    title: 'عروض حصرية',
+    subtitle: 'خصومات تصل إلى ٥٠٪',
+    link_url: '/offers',
+    type: 'internal',
+    size: 'large',
+    position: 'middle',
+    showText: true,
+    isVip: true,
+  },
+];
+
 // ── Featured Stores Strip ───────────────────────────────────────────────────
 function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   isAr: boolean; isRTL: boolean; colors: any;
@@ -522,26 +550,35 @@ export default function HomeScreen() {
     });
   }, [selectedCategory, sortBy, appliedArea, appliedMaxPrice, appliedCondition, load]);
 
-  // Banners
+  // Banners with fallback (تم التعديل هنا)
   useEffect(() => {
     const cached = getBannersCache('home');
     if (cached && cached.length > 0) {
       setBanners(cached);
       return;
     }
+
     const controller = new AbortController();
+
     fetchActiveBanners('home', { signal: controller.signal })
       .then(({ data }) => {
-        if (data.length > 0) {
+        if (data && data.length > 0) {
           const shuffled = shuffleArray(data);
           setBannersCache(shuffled, 'home');
           setBanners(shuffled);
+        } else {
+          // 🔄 لا توجد بيانات من السيرفر → استخدم الاحتياطي
+          console.warn('⚠️ لا توجد بانرات من السيرفر، استخدم الاحتياطي');
+          setBanners(FALLBACK_BANNERS_HOME);
         }
       })
       .catch((err) => {
         if (err.name === 'AbortError') return;
-        console.warn('fetchActiveBanners error:', err);
+        console.error('❌ خطأ في جلب البانرات:', err);
+        // ❌ عند حدوث خطأ → استخدم الاحتياطي
+        setBanners(FALLBACK_BANNERS_HOME);
       });
+
     return () => controller.abort();
   }, []);
 
@@ -644,13 +681,11 @@ export default function HomeScreen() {
   const handleAdView = useCallback((ad: Ad) => {
     addToRecentlyViewed(ad);
     setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
-    // ✅ الانتقال إلى صفحة تفاصيل الإعلان
     router.push(`/ad/${ad.id}`);
   }, [router]);
 
   const handleRecentAdPress = useCallback((ad: Ad) => {
     handleAdView(ad);
-    // already navigates, so we can just call handleAdView
   }, [handleAdView]);
 
   const handleRemoveRecent = useCallback((adId: string) => {
@@ -730,7 +765,6 @@ export default function HomeScreen() {
     />
   ), [isAr, isRTL, colors, handleFeaturedStorePress]);
 
-  // ✅ دالة معالجة الضغط على أيقونة المحادثة (مع التحقق من تسجيل الدخول)
   const handleChatPress = useCallback(() => {
     if (!user) {
       showAlert(
@@ -981,7 +1015,6 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
 
-            {/* ✅ أيقونة المحادثة / القفل حسب حالة المستخدم */}
             <Pressable style={styles.headerIconBtn} onPress={handleChatPress} hitSlop={6}>
               {user ? (
                 <>
