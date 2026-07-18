@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router'; // ✅ added useFocusEffect
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
@@ -23,7 +23,7 @@ import {
   fetchStoreCategories,
   StoreCategory,
 } from '@/services/storeCategoriesService';
-import { Banner } from '@/services/bannersService'; // ✅ imported Banner
+import { Banner, fetchActiveBanners } from '@/services/bannersService'; // ✅ استيراد خدمة البانرات
 import NetInfo from '@react-native-community/netinfo';
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
@@ -79,15 +79,36 @@ const get3DIconUrl = (name: string): string => {
   return ICON_URL_MAP.get(name) ?? DEFAULT_ICON_URL;
 };
 
-// ── Banner placeholder fallback ──────────────────────────────────────────────
-const BANNER_FALLBACK = 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80';
-
-const LOCAL_BANNERS = [
-  { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
-  { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
-  { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
-  { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
+// ── Fallback banners (تظهر عند عدم وجود بيانات من السيرفر) ──────────────
+const FALLBACK_BANNERS_STORES: Banner[] = [
+  {
+    id: 'fb-store-1',
+    image_url: 'https://picsum.photos/seed/store1/800/200',
+    title: 'مرحباً في المتاجر',
+    subtitle: 'اكتشف أفضل المتاجر',
+    link_url: '/search',
+    type: 'internal',
+    size: 'large',
+    position: 'top',
+    showText: true,
+    isVip: false,
+  },
+  {
+    id: 'fb-store-2',
+    image_url: 'https://picsum.photos/seed/store2/800/200',
+    title: 'عروض المتاجر',
+    subtitle: 'تسوق واستفد من العروض',
+    link_url: '/offers',
+    type: 'internal',
+    size: 'large',
+    position: 'middle',
+    showText: true,
+    isVip: true,
+  },
 ];
+
+// ── Banner placeholder fallback (لحالة عدم وجود صورة) ──────────────────────
+const BANNER_FALLBACK = 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80';
 
 // ── Function to fetch store ratings map ─────────────────────────────────────
 async function fetchStoreRatingsMap(): Promise<Record<string, { avg: number; count: number }>> {
@@ -713,7 +734,7 @@ export default function StoresScreen() {
     return unsubscribe;
   }, []);
 
-  // ── Load data function ──
+  // ── Load data function (مع جلب البانرات من السيرفر) ──
   const loadData = useCallback(async (showLoading = true) => {
     if (!isMountedRef.current) return;
     if (showLoading) setLoading(true);
@@ -727,8 +748,28 @@ export default function StoresScreen() {
     const signal = controller.signal;
 
     try {
-      setBanners(shuffleArray(LOCAL_BANNERS));
+      // ✅ جلب البانرات من السيرفر مع فولباك
+      let fetchedBanners: Banner[] = [];
+      try {
+        const bannersRes = await fetchActiveBanners('stores', { signal });
+        if (!signal.aborted && isMountedRef.current) {
+          fetchedBanners = bannersRes.data || [];
+        }
+      } catch (bannerErr) {
+        console.warn('⚠️ فشل جلب بانرات المتاجر:', bannerErr);
+      }
 
+      if (!signal.aborted && isMountedRef.current) {
+        if (fetchedBanners.length > 0) {
+          setBanners(shuffleArray(fetchedBanners));
+          console.log('✅ تم تحديث بانرات المتاجر من السيرفر');
+        } else {
+          setBanners(FALLBACK_BANNERS_STORES);
+          console.log('🔄 استخدام فولباك بانرات المتاجر');
+        }
+      }
+
+      // جلب بقية البيانات
       const [storesRes, ratingsMap, catsRes] = await Promise.all([
         fetchAllActiveStores(),
         fetchStoreRatingsMap(),
@@ -815,11 +856,14 @@ export default function StoresScreen() {
     }, [user])
   );
 
-  // ── Shuffle banners on focus ──
+  // ── إعادة خلط البانرات عند التركيز (اختياري) ──
   useFocusEffect(
     useCallback(() => {
-      setBanners(shuffleArray(LOCAL_BANNERS));
-    }, [])
+      // نعيد خلط البانرات إذا كانت موجودة من السيرفر أو الفولباك
+      if (banners.length > 1) {
+        setBanners(prev => shuffleArray(prev));
+      }
+    }, [banners])
   );
 
   useEffect(() => {
