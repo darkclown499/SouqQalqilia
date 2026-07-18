@@ -23,9 +23,10 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth } from '@/template';
 import { useResponsive } from '@/hooks/useResponsive';
 
+import { getSupabaseClient } from '@/template';
 import { fetchAllActiveStores, Store } from '@/services/storesService';
 import { fetchStoreCategories, StoreCategory } from '@/services/storeCategoriesService';
-import { fetchProductsPaginated } from '@/services/productService'; // 👈 تأكد من إنشائها
+import { fetchProductsPaginated, fetchStoresPaginated } from '@/services/productsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
 // ─── Category Detail Screen ────────────────────────────────────────────────

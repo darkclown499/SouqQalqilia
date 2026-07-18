@@ -64,6 +64,44 @@ export async function fetchStoreRating(storeId: string): Promise<{ avg: number; 
   return { avg: Math.round((sum / data.length) * 10) / 10, count: data.length };
 }
 
+export async function fetchProductsPaginated(
+  categoryId: string,
+  page: number,
+  limit: number,
+): Promise<StoreProduct[]> {
+  const supabase = getSupabaseClient();
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  const { data, error } = await supabase
+    .from('store_products')
+    .select('*')
+    .eq('custom_category_id', categoryId)
+    .eq('is_available', true)
+    .order('position', { ascending: true })
+    .range(from, to);
+  if (error) return [];
+  return (data as StoreProduct[]) ?? [];
+}
+
+export async function fetchStoresPaginated(
+  categoryId: string,
+  page: number,
+  limit: number,
+): Promise<StoreWithRating[]> {
+  const supabase = getSupabaseClient();
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  const { data, error } = await supabase
+    .from('stores')
+    .select('*')
+    .eq('store_category_id', categoryId)
+    .eq('is_active', true)
+    .order('position', { ascending: true })
+    .range(from, to);
+  if (error) return [];
+  return (data as any[]) ?? [];
+}
+
 export async function submitStoreRating(storeId: string, userId: string, rating: number): Promise<{ error: string | null }> {
   const supabase = getSupabaseClient();
   const { error } = await supabase
