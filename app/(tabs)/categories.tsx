@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   TextInput,
+  Platform, // ✅ استيراد Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -242,7 +243,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: FontSize.lg,
   },
-  // ✅ شريط البحث
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',

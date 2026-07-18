@@ -2,9 +2,6 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Logger } from '@/utils/errorLogger';
 import { AppState, AppStateStatus } from 'react-native';
-
-// Module-level AbortController reference
-let _activeController: AbortController | null = null;
 import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache, subscribeToCacheInvalidation, CACHE_TTL_MS } from '@/services/adsService';
 
 const PAGE_SIZE = 20;
@@ -60,16 +57,24 @@ export function useAds(params?: {
   const [error, setError] = useState<string | null>(null);
   const regularCountRef = useRef(0);
   const boostCountRef = useRef(0);
+  const isMounted = useRef(true);
 
   // Use a ref to hold the latest params for loadMore and cache invalidation callbacks
   const paramsRef = useRef(params);
   paramsRef.current = params;
 
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
   const load = useCallback(async (overrideParams?: typeof params) => {
+    if (!isMounted.current) return;
     setError(null);
     const p = overrideParams ?? paramsRef.current;
     const isDefaultLoad = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
 
+    // Abort previous request
     if (_activeController) { try { _activeController.abort(); } catch {} }
     _activeController = new AbortController();
     const signal = _activeController.signal;
@@ -79,7 +84,7 @@ export function useAds(params?: {
     setHasMore(true);
 
     const cached = isDefaultLoad ? getAdsCache() : null;
-    if (cached) {
+    if (cached && isMounted.current) {
       setAds(cached.data);
       setHasMore(cached.data.length === PAGE_SIZE);
       setLoading(false);
@@ -105,11 +110,13 @@ export function useAds(params?: {
       Logger.error('useAds', 'load() network error', e instanceof Error ? e : new Error(String(e)));
       if (isDefaultLoad) {
         const staleCache = getAdsCache();
-        if (staleCache && staleCache.data.length > 0) setAds(staleCache.data);
+        if (staleCache && staleCache.data.length > 0 && isMounted.current) {
+          setAds(staleCache.data);
+        }
       }
     }
 
-    if (signal.aborted) return;
+    if (signal.aborted || !isMounted.current) return;
 
     if (!fetchError && fetchedData.length > 0) {
       if (isDefaultLoad) setAdsCache(fetchedData);
@@ -128,26 +135,31 @@ export function useAds(params?: {
     if (fetchError) Logger.warn('useAds', 'fetchAds returned error', { error: fetchError });
     setError(fetchError);
     setLoading(false);
-  }, [categoryId, search, maxPrice, minPrice, condition, location, sortBy]); // stable deps now
+  }, [categoryId, search, maxPrice, minPrice, condition, location, sortBy]);
 
-  // Cache invalidation – uses load with current params
+  // ── Auto-load on mount and when params change ──────────────────────────────
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // ── Cache invalidation ──────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = subscribeToCacheInvalidation(() => {
       const p = paramsRef.current;
       const isDefaultNow = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
-      if (isDefaultNow) load();
+      if (isDefaultNow && isMounted.current) load();
     });
     return unsub;
   }, [load]);
 
-  // App state change – refresh stale cache
+  // ── App state change – refresh stale cache ──────────────────────────────────
   useEffect(() => {
     const p = paramsRef.current;
     const isDefaultNow = !p?.categoryId && !p?.search && !p?.maxPrice && !p?.minPrice && !p?.condition && !p?.location && (!p?.sortBy || p?.sortBy === 'newest');
     if (!isDefaultNow) return;
 
     const handleAppStateChange = (nextState: AppStateStatus) => {
-      if (nextState === 'active') {
+      if (nextState === 'active' && isMounted.current) {
         const cached = getAdsCache();
         const isStale = !cached || (Date.now() - cached.fetchedAt > CACHE_TTL_MS);
         if (isStale) load();
@@ -159,7 +171,7 @@ export function useAds(params?: {
   }, [load]);
 
   const loadMore = useCallback(async (overrideParams?: typeof params) => {
-    if (loadingMore || !hasMore) return;
+    if (loadingMore || !hasMore || !isMounted.current) return;
     setLoadingMore(true);
     const p = overrideParams ?? paramsRef.current;
     const sort = p?.sortBy ?? 'newest';
@@ -180,6 +192,8 @@ export function useAds(params?: {
       setLoadingMore(false);
       return;
     }
+
+    if (!isMounted.current) return;
 
     if (data.length > 0) {
       setAds(prev => {
@@ -207,7 +221,10 @@ export function useAds(params?: {
   return { ads, loading, loadingMore, hasMore, error, load, loadMore, setAds };
 }
 
-// ── useMyAds with AsyncStorage caching + isMounted guard ─────────────────────
+// ─── Module-level AbortController reference ──────────────────────────────────
+let _activeController: AbortController | null = null;
+
+// ─── useMyAds with AsyncStorage caching + isMounted guard ─────────────────────
 export function useMyAds() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(false);
@@ -248,6 +265,11 @@ export function useMyAds() {
       if (isMounted.current) setLoading(false);
     }
   }, []);
+
+  // ── Auto-load on mount ──────────────────────────────────────────────────────
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return { ads, loading, error, load };
 }

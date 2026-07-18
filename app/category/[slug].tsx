@@ -15,7 +15,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
-import { AdCard, EmptyState, ProductCard } from '@/components'; // ✅ أضفنا ProductCard
+import { AdCard, EmptyState, ProductCard } from '@/components';
 import { useAds } from '@/hooks/useAds';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { useTheme } from '@/hooks/useTheme';
@@ -27,11 +27,11 @@ import { fetchStoreCategories, StoreCategory } from '@/services/storeCategoriesS
 import { fetchProductsPaginated, fetchStoresPaginated } from '@/services/productsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
-// ─── تعريف الأنواع (افتراضي) ─────────────────────────────────────────────
-type Store = any; // استخدم النوع الفعلي من خدمتك
-type Product = any; // استخدم النوع الفعلي من خدمتك
+// ─── تعريف الأنواع ──────────────────────────────────────────────────────────
+type Store = any;
+type Product = any;
 
-// ─── المكون الرئيسي ──────────────────────────────────────────────────────
+// ─── المكون الرئيسي ──────────────────────────────────────────────────────────
 export default function CategoryDetailScreen() {
   const params = useLocalSearchParams<{ slug: string; type?: string }>();
   const { slug, type } = params;
@@ -47,7 +47,7 @@ export default function CategoryDetailScreen() {
 
   const isStoreCategory = useMemo(() => type === 'store', [type]);
 
-  // ── 1. جلب بيانات التصنيف (مرة واحدة) ──────────────────────────────────
+  // ── 1. جلب بيانات التصنيف ──────────────────────────────────────────────────
   const {
     data: category,
     isLoading: categoryLoading,
@@ -73,7 +73,7 @@ export default function CategoryDetailScreen() {
     enabled: !!slug,
   });
 
-  // ── 2. التحميل اللانهائي للبيانات (منتجات أو متاجر) ──────────────────
+  // ── 2. التحميل اللانهائي للبيانات (منتجات أو متاجر) ──────────────────────
   const {
     data: itemsData,
     isFetchingNextPage,
@@ -81,7 +81,6 @@ export default function CategoryDetailScreen() {
     fetchNextPage,
     refetch: refetchItems,
     isRefetching: isRefetchingItems,
-    isLoading: itemsLoading,
   } = useInfiniteQuery({
     queryKey: ['category-items', category?.id, isStoreCategory],
     queryFn: async ({ pageParam = 1 }) => {
@@ -105,7 +104,7 @@ export default function CategoryDetailScreen() {
     return itemsData?.pages.flatMap((page) => page) ?? [];
   }, [itemsData]);
 
-  // ── 3. تحميل الإعلانات (للمنتجات فقط) ──────────────────────────────────
+  // ── 3. تحميل الإعلانات (للمنتجات فقط) ────────────────────────────────────
   useEffect(() => {
     if (!isStoreCategory && category?.id) {
       loadAds({ categoryId: category.id });
@@ -114,7 +113,7 @@ export default function CategoryDetailScreen() {
     }
   }, [category?.id, loadAds, isStoreCategory]);
 
-  // ── 4. التحديث (Pull-to-Refresh) ──────────────────────────────────────
+  // ── 4. التحديث (Pull-to-Refresh) ──────────────────────────────────────────
   const handleRefresh = useCallback(async () => {
     await refetchCategory();
     await refetchItems();
@@ -122,7 +121,7 @@ export default function CategoryDetailScreen() {
 
   const isRefreshing = isRefetchingCategory || isRefetchingItems;
 
-  // ── 5. دوال التنقل ─────────────────────────────────────────────────────
+  // ── 5. دوال التنقل ─────────────────────────────────────────────────────────
   const handleStorePress = (storeId: string) => {
     router.push(`/store/${storeId}`);
   };
@@ -131,7 +130,7 @@ export default function CategoryDetailScreen() {
     router.push(`/product/${productId}`);
   };
 
-  // ── 6. عرض عنصر المتجر ─────────────────────────────────────────────────
+  // ── 6. عرض عنصر المتجر ────────────────────────────────────────────────────
   const renderStore = ({ item }: { item: Store }) => {
     const name = isAr ? item.name_ar || item.name : item.name;
     const isOpen = checkStoreIsOpen(item);
@@ -197,19 +196,19 @@ export default function CategoryDetailScreen() {
     );
   };
 
-  // ── 7. عرض عنصر المنتج ──────────────────────────────────────────────────
+  // ── 7. عرض عنصر المنتج (مع تمرير id إلى toggleFav) ────────────────────────
   const renderProduct = ({ item }: { item: Product }) => (
     <View style={styles.productWrapper}>
       <ProductCard
         product={item}
         onPress={() => handleProductPress(item.id)}
         isFavorited={favIds.has(item.id)}
-        onFavoritePress={user ? toggleFav : undefined}
+        onFavoritePress={user ? () => toggleFav(item.id) : undefined}
       />
     </View>
   );
 
-  // ── 8. عرض شريط الإعلانات ──────────────────────────────────────────────
+  // ── 8. عرض شريط الإعلانات ──────────────────────────────────────────────────
   const renderAdStrip = useCallback(() => {
     if (isStoreCategory || ads.length === 0) return null;
     return (
@@ -224,7 +223,7 @@ export default function CategoryDetailScreen() {
                 ad={item}
                 width={CARD_WIDTH}
                 isFavorited={favIds.has(item.id)}
-                onFavoritePress={user ? toggleFav : undefined}
+                onFavoritePress={user ? () => toggleFav(item.id) : undefined}
               />
             </View>
           )}
@@ -240,7 +239,7 @@ export default function CategoryDetailScreen() {
     );
   }, [ads, favIds, user, toggleFav, CARD_WIDTH, isRTL, isStoreCategory]);
 
-  // ── 9. حالات التحميل والخطأ ────────────────────────────────────────────
+  // ── 9. حالات التحميل والخطأ ────────────────────────────────────────────────
   if (categoryLoading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -280,7 +279,7 @@ export default function CategoryDetailScreen() {
 
   const categoryName = isAr ? (category as any).name_ar || category.name : category.name;
 
-  // ── 10. العرض الرئيسي مع التحميل اللانهائي ─────────────────────────────
+  // ── 10. العرض الرئيسي مع التحميل اللانهائي ──────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* الهيدر */}
@@ -344,7 +343,7 @@ export default function CategoryDetailScreen() {
   );
 }
 
-// ─── دوال مساعدة ──────────────────────────────────────────────────────────
+// ─── دوال مساعدة ──────────────────────────────────────────────────────────────
 function checkStoreIsOpen(store: Store): boolean {
   if (!store.opening_time || !store.closing_time) return true;
   const now = new Date();
@@ -357,7 +356,7 @@ function checkStoreIsOpen(store: Store): boolean {
   return current >= open || current < close;
 }
 
-// ─── الأنماط ──────────────────────────────────────────────────────────────
+// ─── الأنماط ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },

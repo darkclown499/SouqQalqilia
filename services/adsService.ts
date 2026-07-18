@@ -1,82 +1,10 @@
 import { getSupabaseClient } from '@/template';
-import { Image } from 'expo-image';
+import { Image } from 'expo-image'; // يُستخدم فقط في preloadAds للـ prefetch
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
 
-// ── Module-level ads cache ────────────────────────────────────────────────────
-export interface AdsCache {
-  data: Ad[];
-  fetchedAt: number;
-}
-let _adsCache: AdsCache | null = null;
-export const CACHE_TTL_MS = 90_000; // 90 seconds
-
-export function getAdsCache(): AdsCache | null {
-  if (!_adsCache) return null;
-  if (Date.now() - _adsCache.fetchedAt > CACHE_TTL_MS) {
-    _adsCache = null;
-    return null;
-  }
-  return _adsCache;
-}
-
-export function setAdsCache(data: Ad[]): void {
-  _adsCache = { data, fetchedAt: Date.now() };
-}
-
-// ── Cache invalidation listeners ─────────────────────────────────────────────
-type CacheListener = () => void;
-const _cacheListeners = new Set<CacheListener>();
-
-export function subscribeToCacheInvalidation(cb: CacheListener): () => void {
-  _cacheListeners.add(cb);
-  return () => _cacheListeners.delete(cb);
-}
-
-export function clearAdsCache(): void {
-  _adsCache = null;
-  _cacheListeners.forEach(cb => { try { cb(); } catch {} });
-}
-
-function extractImageUrls(ads: Ad[], maxAds = 50): string[] {
-  const urls: string[] = [];
-  ads.slice(0, maxAds).forEach(ad => {
-    const sorted = (ad.ad_images ?? []).sort((a, b) => a.position - b.position);
-    sorted.forEach(img => { if (img.url) urls.push(img.url); });
-  });
-  return urls;
-}
-
-async function loadRecentlyViewedUrls(): Promise<string[]> {
-  try {
-    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
-    if (!raw) return [];
-    const recentAds: Ad[] = JSON.parse(raw);
-    return extractImageUrls(recentAds, recentAds.length);
-  } catch {
-    return [];
-  }
-}
-
-async function prefetchAdImages(feedAds: Ad[], recentUrls: string[]): Promise<void> {
-  const feedUrls = extractImageUrls(feedAds, 50);
-  const combined = Array.from(new Set([...feedUrls, ...recentUrls]));
-  if (combined.length === 0) return;
-  try {
-    await Image.prefetch(combined, 'memory-disk');
-  } catch { /* partial failure acceptable */ }
-}
-
-export async function preloadAds(): Promise<void> {
-  const [{ data }, recentUrls] = await Promise.all([
-    fetchAds({ limit: 50, offset: 0, sortBy: 'boosted' }),
-    loadRecentlyViewedUrls(),
-  ]);
-  if (data.length > 0) setAdsCache(data);
-  await prefetchAdImages(data, recentUrls);
-}
-
+// ─── تعريف الأنواع أولاً ──────────────────────────────────────────────────────
 export interface AdImage {
   id: string;
   ad_id: string;
@@ -117,6 +45,87 @@ export interface CreateAdInput {
   condition: 'new' | 'used';
 }
 
+// ─── Module-level ads cache ────────────────────────────────────────────────────
+export interface AdsCache {
+  data: Ad[];
+  fetchedAt: number;
+}
+let _adsCache: AdsCache | null = null;
+export const CACHE_TTL_MS = 90_000; // 90 seconds
+
+export function getAdsCache(): AdsCache | null {
+  if (!_adsCache) return null;
+  if (Date.now() - _adsCache.fetchedAt > CACHE_TTL_MS) {
+    _adsCache = null;
+    return null;
+  }
+  return _adsCache;
+}
+
+export function setAdsCache(data: Ad[]): void {
+  _adsCache = { data, fetchedAt: Date.now() };
+}
+
+// ─── Cache invalidation listeners ─────────────────────────────────────────────
+type CacheListener = () => void;
+const _cacheListeners = new Set<CacheListener>();
+
+export function subscribeToCacheInvalidation(cb: CacheListener): () => void {
+  _cacheListeners.add(cb);
+  return () => _cacheListeners.delete(cb);
+}
+
+export function clearAdsCache(): void {
+  _adsCache = null;
+  _cacheListeners.forEach(cb => { try { cb(); } catch {} });
+}
+
+// ─── دوال مساعدة للصور ──────────────────────────────────────────────────────
+function extractImageUrls(ads: Ad[], maxAds = 50): string[] {
+  const urls: string[] = [];
+  ads.slice(0, maxAds).forEach(ad => {
+    const sorted = (ad.ad_images ?? []).sort((a, b) => a.position - b.position);
+    sorted.forEach(img => { if (img.url) urls.push(img.url); });
+  });
+  return urls;
+}
+
+async function loadRecentlyViewedUrls(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(RECENTLY_VIEWED_KEY);
+    if (!raw) return [];
+    const recentAds: Ad[] = JSON.parse(raw);
+    return extractImageUrls(recentAds, recentAds.length);
+  } catch {
+    return [];
+  }
+}
+
+async function prefetchAdImages(feedAds: Ad[], recentUrls: string[]): Promise<void> {
+  const feedUrls = extractImageUrls(feedAds, 50);
+  const combined = Array.from(new Set([...feedUrls, ...recentUrls]));
+  if (combined.length === 0) return;
+  try {
+    await Image.prefetch(combined, 'memory-disk');
+  } catch {
+    // تجاهل الأخطاء الجزئية
+  }
+}
+
+export async function preloadAds(): Promise<void> {
+  try {
+    const [{ data }, recentUrls] = await Promise.all([
+      fetchAds({ limit: 50, offset: 0, sortBy: 'boosted' }),
+      loadRecentlyViewedUrls(),
+    ]);
+    if (data.length > 0) setAdsCache(data);
+    await prefetchAdImages(data, recentUrls);
+  } catch {
+    // تجاهل أخطاء التحميل المسبق
+  }
+}
+
+// ─── دالة جلب الإعلانات الرئيسية ─────────────────────────────────────────────
 export async function fetchAds(params?: {
   categoryId?: string;
   userId?: string;
@@ -128,7 +137,7 @@ export async function fetchAds(params?: {
   sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'boosted';
   limit?: number;
   offset?: number;
-  signal?: AbortSignal; // ✅ add AbortSignal support
+  signal?: AbortSignal;
 }): Promise<{ data: Ad[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const limit = params?.limit ?? 20;
@@ -158,7 +167,6 @@ export async function fetchAds(params?: {
     return q;
   }
 
-  // Build query with abortSignal
   const buildQuery = (baseQuery: any, abortSignal?: AbortSignal) => {
     if (abortSignal) {
       return baseQuery.abortSignal(abortSignal);
@@ -202,7 +210,6 @@ export async function fetchAds(params?: {
     boostQuery = applyFilters(boostQuery);
     boostQuery = boostQuery.order('boosted_until', { ascending: false });
 
-    // Apply abortSignal to both queries
     boostQuery = buildQuery(boostQuery, signal);
     regularQuery = buildQuery(regularQuery, signal);
 

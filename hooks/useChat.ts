@@ -152,6 +152,78 @@ export function useMessages(
   const isScreenFocusedRef = useRef(true);
   const isMountedRef = useRef(true);
 
+  // ─── دوال جديدة (مضافة) ──────────────────────────────────────────────────────
+
+  // إضافة رسالة جديدة إلى القائمة (مثل رسالة مؤقتة)
+  const appendMessage = useCallback((msg: Message) => {
+    setMessages(prev => {
+      const exists = prev.some(m => m.id === msg.id);
+      if (exists) return prev;
+      const updated = [...prev, msg];
+      // تحديث الكاش
+      cacheMessages(conversationId, updated).catch(() => {});
+      return updated;
+    });
+  }, [conversationId]);
+
+  // تحديث رسالة مؤقتة (بـ tempId) إلى الرسالة الحقيقية
+  const updateMessage = useCallback((tempId: string, real: Message) => {
+    setMessages(prev => {
+      const index = prev.findIndex(m => m.id === tempId);
+      if (index === -1) {
+        // إذا لم توجد، نضيفها
+        return [...prev, real];
+      }
+      const updated = [...prev];
+      updated[index] = real;
+      cacheMessages(conversationId, updated).catch(() => {});
+      return updated;
+    });
+  }, [conversationId]);
+
+  // تحديث قراءة الرسائل محلياً (تعيين read_at للرسائل التي يملكها المستخدم الحالي)
+  const markReadLocally = useCallback((userId: string) => {
+    setMessages(prev => {
+      const now = new Date().toISOString();
+      const updated = prev.map(msg => {
+        // إذا كانت الرسالة من الطرف الآخر ولم يتم قراءتها بعد
+        if (msg.sender_id !== userId && !msg.read_at) {
+          return { ...msg, read_at: now };
+        }
+        return msg;
+      });
+      cacheMessages(conversationId, updated).catch(() => {});
+      return updated;
+    });
+  }, [conversationId]);
+
+  // تحديث تسليم الرسائل محلياً (delivered_at)
+  const markDeliveredLocally = useCallback((userId: string) => {
+    setMessages(prev => {
+      const now = new Date().toISOString();
+      const updated = prev.map(msg => {
+        // إذا كانت الرسالة من الطرف الآخر ولم يتم تسليمها بعد
+        if (msg.sender_id !== userId && !msg.delivered_at) {
+          return { ...msg, delivered_at: now };
+        }
+        return msg;
+      });
+      cacheMessages(conversationId, updated).catch(() => {});
+      return updated;
+    });
+  }, [conversationId]);
+
+  // حذف رسالة من القائمة المحلية
+  const removeMessage = useCallback((id: string) => {
+    setMessages(prev => {
+      const updated = prev.filter(m => m.id !== id);
+      cacheMessages(conversationId, updated).catch(() => {});
+      return updated;
+    });
+  }, [conversationId]);
+
+  // ─── نهاية الدوال الجديدة ──────────────────────────────────────────────────
+
   // مراقبة الاتصال
   useEffect(() => {
     const unsub = NetInfo.addEventListener(state => {
@@ -408,11 +480,11 @@ export function useMessages(
     isOnline,
     reload,
     pollSilent,
-    appendMessage,
-    updateMessage,
-    markReadLocally,
-    markDeliveredLocally,
-    removeMessage,
+    appendMessage,         // ✅
+    updateMessage,         // ✅
+    markReadLocally,       // ✅
+    markDeliveredLocally,  // ✅
+    removeMessage,         // ✅
     deleteMessage,
     forwardMessage,
   };
