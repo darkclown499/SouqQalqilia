@@ -22,7 +22,6 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { GLView } from 'expo-gl';
-import { Renderer, TextureLoader, THREE } from 'expo-three';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const DEVICE_ID_KEY = 'app_device_id_v1';
