@@ -11,7 +11,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   Animated,
   Easing,
   useWindowDimensions,
@@ -131,22 +130,22 @@ async function trackVisit() {
   }
 }
 
-// ─── 3D Scene Component ──────────────────────────────────────────────────
-// يتم تحميل three.js فقط على الـ Native (ليس على الـ Web)
+// ─── 3D Scene Component (Native only, dynamic imports) ──────────────────
 const ThreeScene = memo(function ThreeScene() {
   const glViewRef = useRef<GLView>(null);
   const sceneRef = useRef<any>(null);
   const animationFrameRef = useRef<number>();
 
   useEffect(() => {
-    if (Platform.OS === 'web') return; // لا تعمل على الـ web
+    // لا تعمل على الويب
+    if (Platform.OS === 'web') return;
 
     let mount = true;
 
     const setupScene = async () => {
       if (!glViewRef.current || !mount) return;
 
-      // استيراد three.js و expo-three ديناميكياً
+      // استيراد ديناميكي للمكتبات (يحدث فقط على الجهاز)
       const { Renderer, TextureLoader } = await import('expo-three');
       const THREE = await import('three');
 
@@ -155,12 +154,12 @@ const ThreeScene = memo(function ThreeScene() {
       renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x0a6e5c); // لون متناسق مع الخلفية
+      scene.background = new THREE.Color(0x0a6e5c); // لون الخلفية
 
       const camera = new THREE.PerspectiveCamera(75, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 1000);
       camera.position.z = 3;
 
-      // إنشاء شكل ثلاثي الأبعاد (شعار أو كرة)
+      // شكل ثلاثي الأبعاد (كرة ذهبية)
       const geometry = new THREE.SphereGeometry(1, 32, 32);
       const material = new THREE.MeshStandardMaterial({
         color: 0xe8c060,
@@ -203,14 +202,12 @@ const ThreeScene = memo(function ThreeScene() {
     return () => {
       mount = false;
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      // تنظيف الموارد (اختياري)
       if (sceneRef.current) {
         sceneRef.current.renderer.dispose();
       }
     };
   }, []);
 
-  // لا نعرض أي شيء على الـ web
   if (Platform.OS === 'web') return null;
 
   return (
@@ -361,7 +358,7 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
 // ─── Phase 2: Loading Screen ─────────────────────────────────────────────
 function LoadingPhase({ onDone }: { onDone: () => void }) {
   const insets = useSafeAreaInsets();
-  const { width: W, height: H } = useWindowDimensions();
+  const { width: W } = useWindowDimensions();
   const scheme = useColorScheme() ?? 'light';
   const colors = getColors(scheme);
   const screenOpacity = useRef(new Animated.Value(0)).current;
@@ -552,7 +549,7 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[styles.fullScreen, { backgroundColor: colors.BG, opacity: screenOpacity }]}>
-      {/* الخلفية ثلاثية الأبعاد (تظهر خلف كل العناصر) */}
+      {/* الخلفية ثلاثية الأبعاد */}
       <ThreeScene />
 
       <View style={styles.glow} />
