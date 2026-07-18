@@ -21,7 +21,7 @@ import {
   addLocalCategory,
   updateLocalCategory,
   deleteLocalCategory,
-  fetchLocalCategories,
+  getLocalCategories, // ✅ استيراد الدالة الصحيحة
   LocalCategory,
 } from '@/services/localCategoriesService';
 
@@ -528,19 +528,17 @@ export default function StoreDashboardScreen() {
       }
 
       if (storeData) {
-        // ✅ تحميل المنتجات - الدالة تعيد { data: StoreProduct[] } فقط (بدون error)
+        // تحميل المنتجات
         const { data: prods } = await fetchStoreProducts(storeData.id);
         if (signal.aborted || !isMountedRef.current) return;
         setProducts(prods || []);
 
-        // تحميل التصنيفات المخصصة
-        const { data: localCats, error: localError } = await fetchLocalCategories(storeData.id);
+        // ✅ تحميل التصنيفات المخصصة باستخدام getLocalCategories (الصحيحة)
+        const localCats = await getLocalCategories(storeData.id);
         if (signal.aborted || !isMountedRef.current) return;
-        if (!localError && localCats) {
-          setCustomCategories(localCats);
-          const selectedNames = new Set(localCats.map(c => c.name_ar));
-          setSelectedSubcategories(selectedNames);
-        }
+        setCustomCategories(localCats);
+        const selectedNames = new Set(localCats.map(c => c.name_ar));
+        setSelectedSubcategories(selectedNames);
       }
     } catch (e: any) {
       if (signal.aborted || !isMountedRef.current) return;
