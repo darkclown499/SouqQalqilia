@@ -127,7 +127,8 @@ export default function CategoryDetailScreen() {
   };
 
   const handleProductPress = (productId: string) => {
-    router.push(`/product/${productId}`);
+    // ✅ إصلاح التنقل: استخدام المسار الصحيح للإعلانات
+    router.push(`/ad/${productId}`);
   };
 
   // ── 6. عرض عنصر المتجر ────────────────────────────────────────────────────
@@ -196,7 +197,7 @@ export default function CategoryDetailScreen() {
     );
   };
 
-  // ── 7. عرض عنصر المنتج (مع تمرير id إلى toggleFav) ────────────────────────
+  // ── 7. عرض عنصر المنتج ────────────────────────────────────────────────────
   const renderProduct = ({ item }: { item: Product }) => (
     <View style={styles.productWrapper}>
       <ProductCard

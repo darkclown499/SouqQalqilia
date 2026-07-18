@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   TextInput,
-  Platform, // ✅ استيراد Platform
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -197,8 +197,7 @@ export default function CategoriesScreen() {
                 }
                 subtitle={
                   searchQuery.trim()
-                    ? t.noSearchResultsSub ||
-                      'جرب كلمة بحث مختلفة'
+                    ? t.noSearchResultsSub || 'جرب كلمة بحث مختلفة'
                     : t.noCategoriesSub || 'سيتم إضافة التصنيفات قريباً'
                 }
               />

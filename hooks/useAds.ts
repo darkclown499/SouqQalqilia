@@ -4,6 +4,9 @@ import { Logger } from '@/utils/errorLogger';
 import { AppState, AppStateStatus } from 'react-native';
 import { fetchAds, fetchMyAds, Ad, getAdsCache, setAdsCache, subscribeToCacheInvalidation, CACHE_TTL_MS } from '@/services/adsService';
 
+// ─── Module-level AbortController reference ──────────────────────────────────
+let _activeController: AbortController | null = null;
+
 const PAGE_SIZE = 20;
 
 // ── AsyncStorage cache for My Ads (persists across tab switches) ──────────────
@@ -220,9 +223,6 @@ export function useAds(params?: {
 
   return { ads, loading, loadingMore, hasMore, error, load, loadMore, setAds };
 }
-
-// ─── Module-level AbortController reference ──────────────────────────────────
-let _activeController: AbortController | null = null;
 
 // ─── useMyAds with AsyncStorage caching + isMounted guard ─────────────────────
 export function useMyAds() {

@@ -88,7 +88,15 @@ export function useCategories() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // ── Auto-load on mount ──────────────────────────────────────────────────────
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  return { categories, loading, error, reload: load };
+  return {
+    categories,
+    loading,
+    error,
+    refetch: load, // ✅ الآن load يُستخدم كـ refetch
+  };
 }
