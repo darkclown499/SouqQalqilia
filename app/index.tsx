@@ -20,6 +20,7 @@ import {
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import ThreeScene from '@/components/feature/ThreeScene';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const DEVICE_ID_KEY = 'app_device_id_v1';
@@ -128,9 +129,6 @@ async function trackVisit() {
     console.warn('Track visit error:', error);
   }
 }
-
-// ─── 3D Scene Component (platform-specific, safe for web) ──────────────────
-import ThreeScene from '@/components/feature/ThreeScene';
 
 // ─── Loading Dots ──────────────────────────────────────────────────────
 const LoadingDots = memo(function LoadingDots() {
@@ -427,7 +425,10 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
     return () => {
       clearInterval(cycle);
       clearTimeout(skipTimer);
-      if (abortControllerRef.current) abortControllerRef.current.abort();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.signal.removeAllListeners?.();
+        abortControllerRef.current.abort();
+      }
     };
   }, [W, onDone]);
 
@@ -436,12 +437,18 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
     startLoading();
     return () => {
       isMountedRef.current = false;
-      if (abortControllerRef.current) abortControllerRef.current.abort();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.signal.removeAllListeners?.();
+        abortControllerRef.current.abort();
+      }
     };
   }, [startLoading]);
 
   const handleSkip = useCallback(() => {
-    if (abortControllerRef.current) abortControllerRef.current.abort();
+    if (abortControllerRef.current) {
+      abortControllerRef.current.signal.removeAllListeners?.();
+      abortControllerRef.current.abort();
+    }
     onDone();
   }, [onDone]);
 
@@ -462,7 +469,7 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[styles.fullScreen, { backgroundColor: colors.BG, opacity: screenOpacity }]}>
-      {/* الخلفية ثلاثية الأبعاد */}
+      {/* الخلفية ثلاثية الأبعاد - تعمل فقط على الأجهزة الفعلية (Android/iOS) وتُخفى على الويب */}
       <ThreeScene />
 
       <View style={styles.glow} />
