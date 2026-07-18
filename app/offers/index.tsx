@@ -30,6 +30,8 @@ interface Offer {
   position: number;
   created_at: string;
   is_vip?: boolean;
+  card_size?: string;       // small, medium, large, full
+  card_position?: string;   // top, middle, bottom (يمكن استخدامه لترتيب العرض)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,7 +61,6 @@ const STATIC_CATEGORIES = [
 ];
 
 // ── Banner placeholder fallback (لحالة عدم وجود صورة) ──────────────────────
-// هذه ليست إعلاناً ثابتاً، بل صورة احتياطية عند فقدان الصورة
 const BANNER_FALLBACK = 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,12 +105,11 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Banner Item Component (يعرض البانر حسب حجمه من السيرفر)
+// Offer Item Component – يعرض العرض بحجم محدد من السيرفر
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) => {
-  const size = banner.size || 'medium';
-  const position = banner.position || 'middle';
+const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
+  const size = offer.card_size || 'medium';
 
   // تحديد العرض والارتفاع بناءً على الحجم
   let width = SCREEN_W - H_PAD * 2;
@@ -119,7 +119,107 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
   switch (size) {
     case 'full':
       width = SCREEN_W;
-      height = 250;
+      height = 300; // تكبير البنر الكامل
+      borderRadius = 0;
+      break;
+    case 'large':
+      width = SCREEN_W - H_PAD * 2;
+      height = 240;
+      break;
+    case 'medium':
+      width = (SCREEN_W - H_PAD * 2) * 0.8;
+      height = 200;
+      break;
+    case 'small':
+      width = (SCREEN_W - H_PAD * 2) * 0.6;
+      height = 160;
+      break;
+    default:
+      width = SCREEN_W - H_PAD * 2;
+      height = 200;
+  }
+
+  const handlePress = () => {
+    // إذا كان هناك رقم هاتف، نفتح واتساب، وإلا نفتح الرابط إن وجد
+    if (offer.phone) {
+      openWhatsApp(offer.phone, offer.title, offer.store_name);
+    } else if (offer.image_url) {
+      // يمكن فتح الرابط أو الانتقال إلى تفاصيل العرض
+      // هنا نفتح واتساب بالرقم الافتراضي
+      openWhatsApp(DEFAULT_PHONE, offer.title, offer.store_name);
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => [
+        styles.offerItem,
+        {
+          width,
+          height,
+          borderRadius,
+          alignSelf: 'center',
+          marginVertical: 6,
+          opacity: pressed ? 0.9 : 1,
+          transform: [{ scale: pressed ? 0.97 : 1 }],
+        },
+      ]}
+    >
+      <Image
+        source={{ uri: offer.image_url || BANNER_FALLBACK }}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        transition={300}
+        cachePolicy="disk"
+      />
+      {offer.title && (
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.7)']}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      {offer.title && (
+        <View style={[styles.offerTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
+          {offer.store_name && (
+            <Text style={[styles.offerStore, { textAlign: isAr ? 'right' : 'left' }]}>
+              {offer.store_name}
+            </Text>
+          )}
+          <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left' }]}>
+            {offer.title}
+          </Text>
+          {offer.description && (
+            <Text style={[styles.offerDesc, { textAlign: isAr ? 'right' : 'left' }]}>
+              {offer.description}
+            </Text>
+          )}
+          {offer.is_vip && (
+            <View style={styles.vipChip}>
+              <Text style={styles.vipChipText}>VIP</Text>
+            </View>
+          )}
+        </View>
+      )}
+    </Pressable>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Banner Item Component (من جدول banners) – اختياري
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) => {
+  const size = banner.size || 'medium';
+
+  let width = SCREEN_W - H_PAD * 2;
+  let height = 200;
+  let borderRadius = 12;
+
+  switch (size) {
+    case 'full':
+      width = SCREEN_W;
+      height = 280;
       borderRadius = 0;
       break;
     case 'large':
@@ -141,11 +241,9 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
 
   const handlePress = () => {
     if (banner.link_url) {
-      // دعم الروابط الداخلية والخارجية
       if (banner.link_url.startsWith('http') || banner.link_url.startsWith('https')) {
         Linking.openURL(banner.link_url).catch(() => {});
       } else {
-        // روابط داخلية يمكن معالجتها باستخدام router
         Linking.openURL(banner.link_url).catch(() => {});
       }
     }
@@ -181,12 +279,12 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
         />
       )}
       {banner.title && banner.showText !== false && (
-        <View style={[styles.bannerTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
-          <Text style={[styles.bannerTitle, { textAlign: isAr ? 'right' : 'left' }]}>
+        <View style={[styles.offerTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
+          <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left' }]}>
             {banner.title}
           </Text>
           {banner.subtitle && (
-            <Text style={[styles.bannerSubtitle, { textAlign: isAr ? 'right' : 'left' }]}>
+            <Text style={[styles.offerDesc, { textAlign: isAr ? 'right' : 'left' }]}>
               {banner.subtitle}
             </Text>
           )}
@@ -202,86 +300,19 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Grid Item Component (Masonry card) - للعروض
-// ─────────────────────────────────────────────────────────────────────────────
-
-const GridOfferItem = memo(function GridOfferItem({
-  offer,
-  width,
-  height,
-}: {
-  offer: Offer;
-  width: number;
-  height: number;
-}) {
-  const [pressed, setPressed] = useState(false);
-
-  return (
-    <Pressable
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={() => openWhatsApp(offer.phone, offer.title, offer.store_name)}
-      style={[
-        styles.gridItem,
-        { width, height },
-        pressed && { opacity: 0.9, transform: [{ scale: 0.97 }] },
-      ]}
-    >
-      <Image
-        source={{ uri: offer.image_url || 'https://via.placeholder.com/300x200/cccccc/666666?text=No+Image' }}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        transition={200}
-        cachePolicy="memory-disk"
-      />
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.8)']}
-        locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      {/* شارة "لقطة 🔥" */}
-      <View style={[styles.gridBadge, { alignSelf: 'flex-start' }]}>
-        <Text style={styles.gridBadgeText}>لقطة 🔥</Text>
-      </View>
-
-      {/* النصوص في الأسفل - اختيارية */}
-      <View style={styles.gridBottom}>
-        {offer.store_name ? (
-          <Text style={styles.gridStore} numberOfLines={1}>
-            {offer.store_name}
-          </Text>
-        ) : null}
-        {offer.title ? (
-          <Text style={styles.gridTitle} numberOfLines={2}>
-            {offer.title}
-          </Text>
-        ) : null}
-        {offer.description ? (
-          <Text style={styles.gridDesc} numberOfLines={1}>
-            {offer.description}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Skeleton Loader
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SkeletonGrid() {
-  const items = 6;
-  const itemWidth = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
-  const heights = [200, 240, 210, 260, 190, 230];
+function SkeletonLoader() {
+  const items = 3;
+  const heights = [250, 200, 180];
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP, paddingHorizontal: H_PAD }}>
+    <View style={{ paddingHorizontal: H_PAD, gap: 12 }}>
       {Array(items).fill(0).map((_, i) => (
         <View
           key={i}
-          style={[styles.skeletonItem, { width: itemWidth, height: heights[i % heights.length] }]}
+          style={[styles.skeletonItem, { width: SCREEN_W - H_PAD * 2, height: heights[i % heights.length] }]}
         />
       ))}
     </View>
@@ -305,11 +336,7 @@ export default function OffersScreen() {
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('الكل');
 
-  // Carousel offers (VIP) - نستخدم أول عنصر كـ VIP Banner
-  const [carouselOffers, setCarouselOffers] = useState<Offer[]>([]);
-  const [offers, setOffers] = useState<Offer[]>([]);
-
-  // ── حالة البانرات من السيرفر ──
+  // ── حالة البانرات من السيرفر (اختياري) ──
   const [banners, setBanners] = useState<Banner[]>([]);
 
   // ── Track page view ──────────────────────────────────────────────────────
@@ -319,7 +346,7 @@ export default function OffersScreen() {
     }, [])
   );
 
-  // ── جلب البانرات من السيرفر (بدون فولباك) ────────────────────────────
+  // ── جلب البانرات من السيرفر (اختياري) ────────────────────────────────
   useEffect(() => {
     const cached = getBannersCache('offers');
     if (cached && cached.length > 0) {
@@ -336,7 +363,6 @@ export default function OffersScreen() {
             setBannersCache(shuffled, 'offers');
             setBanners(shuffled);
           } else {
-            // لا توجد بانرات -> نترك المصفوفة فارغة
             setBanners([]);
           }
         }
@@ -344,7 +370,6 @@ export default function OffersScreen() {
       .catch((err) => {
         if (err.name === 'AbortError') return;
         console.warn('⚠️ فشل جلب بانرات العروض:', err);
-        // في حال الخطأ نترك المصفوفة فارغة
         setBanners([]);
       });
 
@@ -367,14 +392,8 @@ export default function OffersScreen() {
       if (dbError) throw new Error(dbError.message);
       const offersData = (data ?? []) as Offer[];
 
-      // أول 3 عروض كـ VIP (اختياري، يمكنك إزالته)
-      const vipCount = Math.min(3, offersData.length);
-      const vip = offersData.slice(0, vipCount);
-      const normal = offersData.slice(vipCount);
-
+      // نأخذ جميع العروض (بدون تقسيم VIP)
       setAllOffers(offersData);
-      setCarouselOffers(vip.map(o => ({ ...o, is_vip: true })));
-      setOffers(normal);
     } catch (e: any) {
       setError(isAr ? 'فشل تحميل العروض. تحقق من اتصالك.' : 'Failed to load offers. Check your connection.');
     } finally {
@@ -411,59 +430,43 @@ export default function OffersScreen() {
 
   // ── Filtered offers ──────────────────────────────────────────────────────
   const filteredOffers = useMemo(() => {
-    if (activeCategory === 'الكل') return offers;
-    return offers.filter(o => o.category === activeCategory);
-  }, [offers, activeCategory]);
+    if (activeCategory === 'الكل') return allOffers;
+    return allOffers.filter(o => o.category === activeCategory);
+  }, [allOffers, activeCategory]);
 
-  // ── Masonry Layout ──────────────────────────────────────────────────────
-  const masonryData = useMemo(() => {
-    const col1: Offer[] = [];
-    const col2: Offer[] = [];
-    filteredOffers.forEach((item, index) => {
-      if (index % 2 === 0) col1.push(item);
-      else col2.push(item);
+  // ── ترتيب العروض حسب الحجم (كبير أولاً) ──────────────────────────────
+  const sortedOffers = useMemo(() => {
+    const order = { full: 0, large: 1, medium: 2, small: 3 };
+    return [...filteredOffers].sort((a, b) => {
+      const sizeA = a.card_size || 'medium';
+      const sizeB = b.card_size || 'medium';
+      return (order[sizeA as keyof typeof order] ?? 2) - (order[sizeB as keyof typeof order] ?? 2);
     });
-    return { col1, col2 };
   }, [filteredOffers]);
 
-  const getRandomHeight = (index: number) => {
-    const base = 200;
-    const variations = [0, 30, 60, -20, 40, -10, 50, 20];
-    return base + (variations[index % variations.length] || 0);
-  };
+  // ── دمج البانرات مع العروض (اختياري) ──────────────────────────────────
+  // يمكن عرض البانرات في الأعلى أو الأسفل. هنا نعرضها في الأعلى قبل العروض.
+  const displayItems = useMemo(() => {
+    const items: JSX.Element[] = [];
 
-  const renderColumn = (columnData: Offer[], columnIndex: number) => {
-    const itemWidth = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
+    // إضافة البانرات من جدول banners إذا وجدت
+    if (banners.length > 0) {
+      banners.forEach((banner, index) => {
+        items.push(
+          <BannerItem key={`banner-${banner.id || index}`} banner={banner} isAr={isAr} />
+        );
+      });
+    }
 
-    return (
-      <View style={{ flex: 1, gap: COL_GAP }}>
-        {columnData.map((offer, idx) => {
-          const height = getRandomHeight(idx + columnIndex * 100);
-          return (
-            <GridOfferItem
-              key={offer.id}
-              offer={offer}
-              width={itemWidth}
-              height={height}
-            />
-          );
-        })}
-      </View>
-    );
-  };
-
-  // ── VIP Banner (أول عرض من carouselOffers) ─────────────────────────────
-  const vipOffer = carouselOffers.length > 0 ? carouselOffers[0] : null;
-
-  // ── ترتيب البانرات حسب الموضع (top, middle, bottom) ──────────────────
-  const sortedBanners = useMemo(() => {
-    const order = { top: 0, middle: 1, bottom: 2 };
-    return [...banners].sort((a, b) => {
-      const posA = a.position || 'middle';
-      const posB = b.position || 'middle';
-      return (order[posA as keyof typeof order] || 1) - (order[posB as keyof typeof order] || 1);
+    // إضافة العروض
+    sortedOffers.forEach((offer) => {
+      items.push(
+        <OfferItem key={`offer-${offer.id}`} offer={offer} isAr={isAr} />
+      );
     });
-  }, [banners]);
+
+    return items;
+  }, [banners, sortedOffers, isAr]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -561,17 +564,8 @@ export default function OffersScreen() {
           />
         }
       >
-        {/* ── عرض البانرات من السيرفر فقط ── */}
-        {sortedBanners.length > 0 ? (
-          sortedBanners.map((banner) => (
-            <BannerItem key={banner.id} banner={banner} isAr={isAr} />
-          ))
-        ) : null}
-
-        {/* ── VIP Banner القديم (تم إزالته نهائياً) ── */}
-
         {loading ? (
-          <SkeletonGrid />
+          <SkeletonLoader />
         ) : error ? (
           <View style={styles.centerBox}>
             <MaterialIcons name="wifi-off" size={52} color="#CBD5E1" />
@@ -587,30 +581,17 @@ export default function OffersScreen() {
               <Text style={styles.retryBtnText}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
             </Pressable>
           </View>
+        ) : displayItems.length === 0 ? (
+          <View style={[styles.centerBox, { paddingTop: 40 }]}>
+            <Text style={styles.emptyEmoji}>🏷️</Text>
+            <Text style={[styles.centerTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+              {isAr ? 'لا توجد عروض حالياً' : 'No offers available'}
+            </Text>
+          </View>
         ) : (
-          <>
-            {/* ── Grid (Masonry) ── */}
-            {filteredOffers.length === 0 ? (
-              <View style={[styles.centerBox, { paddingTop: 40 }]}>
-                <Text style={styles.emptyEmoji}>🏷️</Text>
-                <Text style={[styles.centerTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                  {activeCategory === 'الكل'
-                    ? (isAr ? 'لا توجد عروض حالياً' : 'No offers available')
-                    : (isAr ? `لا يوجد عروض في "${activeCategory}"` : `No offers in "${activeCategory}"`)}
-                </Text>
-                {activeCategory !== 'الكل' && (
-                  <Pressable onPress={() => setActiveCategory('الكل')} style={[styles.showAllBtn, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.showAllBtnText}>{isAr ? 'عرض الكل' : 'Show all'}</Text>
-                  </Pressable>
-                )}
-              </View>
-            ) : (
-              <View style={[styles.masonryContainer, { gap: COL_GAP }]}>
-                {renderColumn(masonryData.col1, 0)}
-                {renderColumn(masonryData.col2, 1)}
-              </View>
-            )}
-          </>
+          <View style={{ paddingHorizontal: 0 }}>
+            {displayItems}
+          </View>
         )}
       </ScrollView>
     </View>
@@ -624,7 +605,6 @@ export default function OffersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -646,7 +626,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
 
-  // Filter bar
   filterBar: {
     borderBottomWidth: 1,
     paddingVertical: 10,
@@ -666,25 +645,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Body
   body: {
     paddingTop: 16,
   },
 
-  // Banner Item
-  bannerItem: {
+  // Offer Item
+  offerItem: {
     overflow: 'hidden',
     backgroundColor: '#1A1A1A',
     marginBottom: 8,
   },
-  bannerTextContainer: {
+  offerTextContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     padding: 12,
   },
-  bannerTitle: {
+  offerStore: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  offerTitle: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '800',
@@ -692,7 +676,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  bannerSubtitle: {
+  offerDesc: {
     color: 'rgba(255,255,255,0.8)',
     fontSize: 13,
     fontWeight: '500',
@@ -712,61 +696,11 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
-  // Masonry Grid
-  masonryContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: H_PAD,
-  },
-
-  // Grid Item
-  gridItem: {
-    borderRadius: 12,
+  // Banner Item
+  bannerItem: {
     overflow: 'hidden',
-    backgroundColor: '#E5E7EB',
-    position: 'relative',
-  },
-  gridBadge: {
-    position: 'absolute',
-    top: 8,
-    backgroundColor: '#FDE68A',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginHorizontal: 8,
-    zIndex: 2,
-  },
-  gridBadgeText: {
-    color: '#1F2937',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  gridBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 10,
-  },
-  gridStore: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  gridTitle: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
-    lineHeight: 18,
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  gridDesc: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
+    backgroundColor: '#1A1A1A',
+    marginBottom: 8,
   },
 
   // Skeleton
