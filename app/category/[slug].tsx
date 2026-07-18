@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,130 +13,120 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { AdCard, EmptyState } from '@/components';
 import { useAds } from '@/hooks/useAds';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useAuth, getSupabaseClient } from '@/template';
+import { useAuth } from '@/template';
 import { useResponsive } from '@/hooks/useResponsive';
 
 import { fetchAllActiveStores, Store } from '@/services/storesService';
 import { fetchStoreCategories, StoreCategory } from '@/services/storeCategoriesService';
+import { fetchProductsPaginated } from '@/services/productService'; // 👈 تأكد من إنشائها
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 
 // ─── Category Detail Screen ────────────────────────────────────────────────
 export default function CategoryDetailScreen() {
-  // ✅ قراءة المعاملات مباشرة من useLocalSearchParams
   const params = useLocalSearchParams<{ slug: string; type?: string }>();
   const { slug, type } = params;
-  
   const router = useRouter();
   const insets = useSafeAreaInsets();
-
   const { colors } = useTheme();
   const { language, isRTL } = useLanguage();
   const isAr = language === 'ar';
   const { user } = useAuth();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
   const { numColumns, hPad, cardGap, cardWidth: CARD_WIDTH } = useResponsive();
-
   const { ads, loading: adsLoading, load: loadAds } = useAds();
 
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [category, setCategory] = useState<any | null>(null);
-  const [stores, setStores] = useState<Store[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  // ✅ تحديد نوع التصنيف من المعامل (افتراضي: 'product')
+  // تحديد نوع التصنيف
   const isStoreCategory = useMemo(() => type === 'store', [type]);
 
-  // ── Load category data ────────────────────────────────────────────────────
-  const loadCategoryData = useCallback(async () => {
-    if (!slug) return;
-
-    try {
-      setLoadError(null);
-      const supabase = getSupabaseClient();
-
+  // ── 1. جلب بيانات التصنيف (مرة واحدة) ──────────────────────────────────
+  const {
+    data: category,
+    isLoading: categoryLoading,
+    error: categoryError,
+    refetch: refetchCategory,
+  } = useQuery({
+    queryKey: ['category', slug, isStoreCategory],
+    queryFn: async () => {
       if (isStoreCategory) {
-        // ── تحميل تصنيف متجر ────────────────────────────────────────────────
-        const [catsRes, storesRes] = await Promise.all([
-          fetchStoreCategories(),
-          fetchAllActiveStores(),
-        ]);
-
-        const found = catsRes.data.find((c: StoreCategory) => c.slug === slug);
-        setCategory(found || null);
-
-        if (found) {
-          const filtered = storesRes.data.filter(
-            (s: Store) =>
-              s.store_category_id === found.id ||
-              s.category_id === found.id
-          );
-          setStores(filtered);
-        } else {
-          setStores([]);
-        }
+        const { data: cats } = await fetchStoreCategories();
+        return cats.find((c: StoreCategory) => c.slug === slug) || null;
       } else {
-        // ── تحميل تصنيف منتج ────────────────────────────────────────────────
-        // جلب التصنيف من جدول categories
-        const { data: catData, error: catError } = await supabase
+        const supabase = getSupabaseClient();
+        const { data } = await supabase
           .from('categories')
           .select('*')
           .eq('slug', slug)
           .single();
-
-        if (catError) {
-          console.error('Error fetching product category:', catError);
-          setCategory(null);
-        } else {
-          setCategory(catData);
-        }
-        setStores([]); // لا نحتاج متاجر لتصنيفات المنتجات
+        return data;
       }
-    } catch (err) {
-      console.error('Error loading category:', err);
-      setLoadError(isAr ? 'فشل تحميل التصنيف' : 'Failed to load category');
-      setStores([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [slug, isAr, isStoreCategory]);
+    },
+    enabled: !!slug,
+  });
 
-  // ── Initial load ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    setLoading(true);
-    loadCategoryData();
-  }, [loadCategoryData]);
+  // ── 2. التحميل اللانهائي للبيانات (منتجات أو متاجر) ──────────────────
+  const {
+    data: itemsData,
+    isLoading: itemsLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    refetch: refetchItems,
+  } = useInfiniteQuery({
+    queryKey: ['category-items', category?.id, isStoreCategory],
+    queryFn: async ({ pageParam = 1 }) => {
+      if (!category) return [];
+      const limit = 20;
+      if (isStoreCategory) {
+        // جلب المتاجر مع pagination
+        const stores = await fetchStoresPaginated(category.id, pageParam, limit);
+        return stores;
+      } else {
+        // جلب المنتجات مع pagination
+        const products = await fetchProductsPaginated(category.id, pageParam, limit);
+        return products;
+      }
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < 20) return undefined; // لا توجد صفحة تالية
+      return allPages.length + 1;
+    },
+    initialPageParam: 1,
+    enabled: !!category?.id,
+  });
 
-  // ── Load ads (only for product categories) ───────────────────────────────
+  // دمج البيانات من جميع الصفحات
+  const items = useMemo(() => {
+    return itemsData?.pages.flatMap((page) => page) ?? [];
+  }, [itemsData]);
+
+  // ── 3. تحميل الإعلانات (للمنتجات فقط) ──────────────────────────────────
   useEffect(() => {
     if (!isStoreCategory && category?.id) {
       loadAds({ categoryId: category.id });
     } else {
-      // إذا كان تصنيف متجر، لا نحمل إعلانات
       loadAds({ categoryId: undefined });
     }
   }, [category?.id, loadAds, isStoreCategory]);
 
-  // ── Refresh ───────────────────────────────────────────────────────────────
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadCategoryData();
-  }, [loadCategoryData]);
+  // ── 4. تحديث (Pull-to-Refresh) ──────────────────────────────────────────
+  const handleRefresh = useCallback(async () => {
+    await refetchCategory();
+    await refetchItems();
+  }, [refetchCategory, refetchItems]);
 
-  // ── Navigate ──────────────────────────────────────────────────────────────
+  // ── 5. التنقل إلى صفحة المتجر ──────────────────────────────────────────
   const handleStorePress = (storeId: string) => {
-    router.push(`/store/${storeId}` as any);
+    router.push(`/store/${storeId}`);
   };
 
-  // ── Render Store Card ─────────────────────────────────────────────────────
+  // ── 6. عرض عنصر المتجر ──────────────────────────────────────────────────
   const renderStore = ({ item }: { item: Store }) => {
     const name = isAr ? item.name_ar || item.name : item.name;
     const isOpen = checkStoreIsOpen(item);
@@ -163,7 +153,6 @@ export default function CategoryDetailScreen() {
               <Text style={styles.storeLogoEmoji}>🏪</Text>
             </View>
           )}
-
           {isVIP && (
             <View style={styles.vipBadge}>
               <MaterialIcons name="stars" size={10} color="#FFD700" />
@@ -171,15 +160,12 @@ export default function CategoryDetailScreen() {
             </View>
           )}
         </View>
-
         <Text style={[styles.storeName, { color: colors.textPrimary }]} numberOfLines={2}>
           {name}
         </Text>
-
         <Text style={[styles.storeAddress, { color: colors.textMuted }]} numberOfLines={1}>
           {item.address || (isAr ? 'قلقيلية' : 'Qalqilya')}
         </Text>
-
         <View style={styles.storeMeta}>
           <View style={[styles.statusBadge, { backgroundColor: isOpen ? '#DCFCE7' : '#FEE2E2' }]}>
             <View style={[styles.statusDot, { backgroundColor: isOpen ? '#22C55E' : '#EF4444' }]} />
@@ -191,7 +177,6 @@ export default function CategoryDetailScreen() {
             {item.opening_time} - {item.closing_time}
           </Text>
         </View>
-
         {wa && (
           <Pressable
             style={styles.waBtn}
@@ -207,11 +192,9 @@ export default function CategoryDetailScreen() {
     );
   };
 
-  // ── Render Ad Strip ──────────────────────────────────────────────────────
+  // ── 7. عرض شريط الإعلانات ──────────────────────────────────────────────
   const renderAdStrip = useCallback(() => {
-    // ✅ عرض الإعلانات فقط إذا كان التصنيف من نوع "منتج"
     if (isStoreCategory || ads.length === 0) return null;
-
     return (
       <View style={styles.adStrip}>
         <FlatList
@@ -240,8 +223,8 @@ export default function CategoryDetailScreen() {
     );
   }, [ads, favIds, user, toggleFav, CARD_WIDTH, isRTL, isStoreCategory]);
 
-  // ── Loading ──────────────────────────────────────────────────────────────
-  if (loading && !refreshing) {
+  // ── 8. حالات التحميل والخطأ ──────────────────────────────────────────────
+  if (categoryLoading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -252,8 +235,7 @@ export default function CategoryDetailScreen() {
     );
   }
 
-  // ── Error ─────────────────────────────────────────────────────────────────
-  if (loadError && !category) {
+  if (categoryError || !category) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <View style={[styles.header, { backgroundColor: colors.primary }]}>
@@ -265,14 +247,12 @@ export default function CategoryDetailScreen() {
         </View>
         <View style={styles.center}>
           <MaterialIcons name="error-outline" size={48} color={colors.error} />
-          <Text style={[styles.errorText, { color: colors.error }]}>{loadError}</Text>
+          <Text style={[styles.errorText, { color: colors.error }]}>
+            {isAr ? 'فشل تحميل التصنيف' : 'Failed to load category'}
+          </Text>
           <Pressable
             style={[styles.retryBtn, { backgroundColor: colors.primary }]}
-            onPress={() => {
-              setLoadError(null);
-              setLoading(true);
-              loadCategoryData();
-            }}
+            onPress={handleRefresh}
           >
             <Text style={styles.retryBtnText}>{isAr ? 'إعادة المحاولة' : 'Retry'}</Text>
           </Pressable>
@@ -281,33 +261,12 @@ export default function CategoryDetailScreen() {
     );
   }
 
-  // ── Category not found ────────────────────────────────────────────────────
-  if (!category) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <View style={[styles.header, { backgroundColor: colors.primary }]}>
-          <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
-            <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#fff" />
-          </Pressable>
-          <Text style={styles.headerTitle}>{isAr ? 'تصنيف غير موجود' : 'Category Not Found'}</Text>
-          <View style={{ width: 40 }} />
-        </View>
-        <View style={styles.center}>
-          <MaterialIcons name="category" size={48} color={colors.textMuted} />
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-            {isAr ? 'التصنيف غير موجود' : 'Category not found'}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  // ── Main UI ──────────────────────────────────────────────────────────────
   const categoryName = isAr ? (category as any).name_ar || category.name : category.name;
 
+  // ── 9. العرض الرئيسي مع التحميل اللانهائي ──────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      {/* Header */}
+      {/* الهيدر */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#fff" />
@@ -315,27 +274,22 @@ export default function CategoryDetailScreen() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {categoryName}
         </Text>
-        <Text style={styles.storeCount}>
-          {isStoreCategory ? stores.length : ads.length}
-        </Text>
+        <Text style={styles.storeCount}>{items.length}</Text>
       </View>
 
-      {/* Main FlatList */}
+      {/* القائمة الرئيسية */}
       <FlatList
-        data={isStoreCategory ? stores : []}
+        data={isStoreCategory ? items : []} // للمتاجر فقط (المنتجات تعرض كإعلانات حالياً)
         keyExtractor={(item) => (item as Store).id}
         numColumns={isStoreCategory ? 2 : 1}
         key={isStoreCategory ? 'stores-grid' : 'ads-list'}
         renderItem={isStoreCategory ? renderStore : undefined}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingHorizontal: hPad },
-        ]}
+        contentContainerStyle={[styles.listContent, { paddingHorizontal: hPad }]}
         columnWrapperStyle={isStoreCategory ? styles.columnWrapper : undefined}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
+            refreshing={false} // نتحكم بالتحديث يدوياً
             onRefresh={handleRefresh}
             colors={[colors.primary]}
             tintColor={colors.primary}
@@ -357,12 +311,24 @@ export default function CategoryDetailScreen() {
             }
           />
         }
+        // ── التحميل اللانهائي ──
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        }}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          ) : null
+        }
       />
     </View>
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
+// ─── دالة التحقق من حالة المتجر ─────────────────────────────────────────
 function checkStoreIsOpen(store: Store): boolean {
   if (!store.opening_time || !store.closing_time) return true;
   const now = new Date();
@@ -372,15 +338,13 @@ function checkStoreIsOpen(store: Store): boolean {
   const open = openH * 60 + openM;
   const close = closeH * 60 + closeM;
   if (open < close) return current >= open && current < close;
-  // Overnight
   return current >= open || current < close;
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────
+// ─── الأنماط (نفس الأنماط السابقة مع إضافة footerLoader) ──────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
-
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -413,7 +377,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
   },
-
   listContent: {
     paddingVertical: Spacing.md,
     paddingBottom: 40,
@@ -423,7 +386,6 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 12,
   },
-
   adStrip: {
     marginBottom: Spacing.md,
     paddingVertical: 8,
@@ -435,7 +397,6 @@ const styles = StyleSheet.create({
   adWrapper: {
     flex: 1,
   },
-
   storeCard: {
     width: '48%',
     borderRadius: Radius.xl,
@@ -445,7 +406,6 @@ const styles = StyleSheet.create({
     gap: 4,
     ...Shadow.xs,
   },
-
   logoWrapper: {
     position: 'relative',
     width: 56,
@@ -462,7 +422,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   storeLogoEmoji: { fontSize: 26 },
-
   vipBadge: {
     position: 'absolute',
     top: -2,
@@ -482,10 +441,8 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '800',
   },
-
   storeName: { fontSize: FontSize.sm, fontWeight: '700', textAlign: 'center', lineHeight: 18 },
   storeAddress: { fontSize: 10, textAlign: 'center' },
-
   storeMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -504,7 +461,6 @@ const styles = StyleSheet.create({
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 10, fontWeight: '700' },
   hoursText: { fontSize: 9, color: '#9CA3AF' },
-
   waBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -517,11 +473,13 @@ const styles = StyleSheet.create({
   },
   waEmoji: { fontSize: 12 },
   waText: { fontSize: 11, fontWeight: '700', color: '#25D366' },
-
   emptyText: { fontSize: 16, fontWeight: '500', textAlign: 'center', marginTop: 12 },
-
   loadingText: { fontSize: FontSize.md, fontWeight: '500', marginTop: 8 },
   errorText: { fontSize: FontSize.md, fontWeight: '600', textAlign: 'center' },
   retryBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: Radius.full, marginTop: 8 },
   retryBtnText: { color: '#fff', fontWeight: '700', fontSize: FontSize.sm },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
 });
