@@ -389,37 +389,36 @@ export function useMessages(
     if (forEveryone) {
       const { error } = await deleteMessageForEveryone(messageId, conversationId);
       if (!error) {
-        setMessages(prev => prev.filter(m => m.id !== messageId));
-        // تحديث cache
-        const updated = messages.filter(m => m.id !== messageId);
-        cacheMessages(conversationId, updated).catch(() => {});
-        // إعادة تحميل last_message عن طريق إعادة تحميل المحادثة (سيتم في UI)
+        setMessages(prev => {
+          const updated = prev.filter(m => m.id !== messageId);
+          cacheMessages(conversationId, updated).catch(() => {});
+          return updated;
+        });
       }
     } else {
       await deleteMessageForUser(messageId, currentUserId);
-      setMessages(prev =>
-        prev.map(m => m.id === messageId ? { ...m, deleted_by: currentUserId } : m)
-      );
-      // تحديث cache
-      const updated = messages.map(m =>
-        m.id === messageId ? { ...m, deleted_by: currentUserId } : m
-      );
-      cacheMessages(conversationId, updated).catch(() => {});
+      setMessages(prev => {
+        const updated = prev.map(m => m.id === messageId ? { ...m, deleted_by: currentUserId } : m);
+        cacheMessages(conversationId, updated).catch(() => {});
+        return updated;
+      });
     }
-  }, [conversationId, currentUserId, messages]);
+  }, [conversationId, currentUserId]);
 
   const forwardMessage = useCallback(async (messageId: string, targetConversationId: string) => {
     const result = await forwardMessageService(messageId, targetConversationId);
     if (result.data) {
-      // يمكن إضافة الرسالة إلى القائمة المحلية إذا كانت نفس المحادثة
       if (targetConversationId === conversationId) {
-        setMessages(prev => [...prev, result.data!]);
-        cacheMessages(conversationId, [...messages, result.data!]).catch(() => {});
+        setMessages(prev => {
+          const updated = [...prev, result.data!];
+          cacheMessages(conversationId, updated).catch(() => {});
+          return updated;
+        });
       }
       return result.data;
     }
     return null;
-  }, [conversationId, messages]);
+  }, [conversationId]);
 
   // ─── Main effect ─────────────────────────────────────────────────────────────
   useEffect(() => {

@@ -868,11 +868,8 @@ export default function ChatScreen() {
     return items;
   }, [pagedMessages]);
 
-  // ── getItemLayout ──
-  const getItemLayout = useCallback((data: any, index: number) => {
-    const itemHeight = 70;
-    return { length: itemHeight, offset: itemHeight * index, index };
-  }, []);
+  // ── getItemLayout ── (removed fixed height to avoid wrong scroll positions)
+  // We intentionally omit getItemLayout as messages have variable height.
 
   // ----- Render functions -----
   const renderItem = useCallback(({ item }: { item: MsgItem }) => {
@@ -1286,7 +1283,6 @@ export default function ChatScreen() {
           renderItem={renderItem}
           ListFooterComponent={footerComponent}
           onScroll={handleScroll}
-          getItemLayout={getItemLayout}
         />
 
         {/* ── Scroll to bottom button ── */}

@@ -842,14 +842,14 @@ export async function forwardMessage(
 
 // ── Track chat event ────────────────────────────────────────────────────────
 export async function trackChatEvent(event: string, data?: any): Promise<void> {
+  // No-op: analytics_events table does not exist. Events are tracked via app_statistics.
   try {
     const supabase = getSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from('analytics_events').insert({
-      event,
+    await supabase.from('app_statistics').insert({
+      event_name: event,
       user_id: user?.id ?? null,
-      data,
-      timestamp: new Date().toISOString(),
+      metadata: data ?? null,
     }).catch(() => {});
   } catch {}
 }

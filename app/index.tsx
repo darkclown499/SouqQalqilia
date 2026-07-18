@@ -4,7 +4,7 @@ import { preloadBanners } from '@/services/bannersService';
 import { getSupabaseClient } from '@/template';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { useColorScheme, Platform } from 'react-native';
+import { useColorScheme, Platform, Dimensions } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState, memo, useCallback } from 'react';
 import {
@@ -13,7 +13,6 @@ import {
   StyleSheet,
   Animated,
   Easing,
-  useWindowDimensions,
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
@@ -29,6 +28,16 @@ const CACHE_BANNERS_KEY = 'cached_banners';
 const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes
 const MAX_LOAD_TIME = 5000;
 const SKIP_DELAY = 3000; // show skip after 3 sec
+
+// ── Safe dimensions hook (web-compatible) ──────────────────────────────────
+function useDimensions() {
+  const [dims, setDims] = useState(() => Dimensions.get('window'));
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ window }) => setDims(window));
+    return () => sub?.remove();
+  }, []);
+  return dims;
+}
 
 // ── Colors (supports dark mode) ──────────────────────────────────────────
 const getColors = (scheme: 'light' | 'dark') => ({
@@ -269,7 +278,7 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
 // ─── Phase 2: Loading Screen ─────────────────────────────────────────────
 function LoadingPhase({ onDone }: { onDone: () => void }) {
   const insets = useSafeAreaInsets();
-  const { width: W } = useWindowDimensions();
+  const { width: W } = useDimensions();
   const scheme = useColorScheme() ?? 'light';
   const colors = getColors(scheme);
   const screenOpacity = useRef(new Animated.Value(0)).current;
@@ -652,7 +661,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: '100%',
     height: '100%',
-    borderRadius: '50%',
+    borderRadius: 9999,
     backgroundColor: 'rgba(255,255,255,0.04)',
     top: '40%',
     left: '-10%',
