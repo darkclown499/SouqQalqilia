@@ -40,7 +40,6 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const H_PAD = 16;
 const COL_GAP = 12;
 const DEFAULT_PHONE = '972599234230';
-const BANNER_H = 250; // ارتفاع ثابت متناسق مع المتاجر
 
 // ── التصنيفات الثابتة حسب التصميم ──
 const STATIC_CATEGORIES = [
@@ -80,10 +79,22 @@ const FALLBACK_BANNERS_OFFERS: Banner[] = [
     subtitle: 'استفد من العروض المميزة',
     link_url: '/search',
     type: 'internal',
-    size: 'large',
+    size: 'medium',
     position: 'middle',
     showText: true,
     isVip: true,
+  },
+  {
+    id: 'fb-offer-3',
+    image_url: 'https://picsum.photos/seed/offer3/800/200',
+    title: 'عرض خاص',
+    subtitle: 'لفترة محدودة',
+    link_url: '/',
+    type: 'internal',
+    size: 'small',
+    position: 'bottom',
+    showText: true,
+    isVip: false,
   },
 ];
 
@@ -132,138 +143,106 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. BANNER CAROUSEL (نسخة مطابقة لـ stores و home)
+// Banner Item Component (يعرض البانر حسب حجمه)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRTL: boolean }) => {
-  const [activeIdx, setActiveIdx] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
-  const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const userScrolling = useRef(false);
+const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) => {
+  const size = banner.size || 'medium';
+  const position = banner.position || 'middle';
 
-  useEffect(() => {
-    if (banners.length <= 1) return;
+  // تحديد العرض والارتفاع بناءً على الحجم
+  let width = SCREEN_W - H_PAD * 2;
+  let height = 200;
+  let borderRadius = 12;
 
-    const startAuto = () => {
-      if (autoRef.current) clearInterval(autoRef.current);
-      autoRef.current = setInterval(() => {
-        if (userScrolling.current) return;
-        setActiveIdx(prev => {
-          const next = (prev + 1) % banners.length;
-          scrollRef.current?.scrollTo({ x: next * SCREEN_W, animated: true });
-          return next;
-        });
-      }, 4500);
-    };
-    startAuto();
+  switch (size) {
+    case 'full':
+      width = SCREEN_W;
+      height = 250;
+      borderRadius = 0;
+      break;
+    case 'large':
+      width = SCREEN_W - H_PAD * 2;
+      height = 220;
+      break;
+    case 'medium':
+      width = (SCREEN_W - H_PAD * 2) * 0.8;
+      height = 180;
+      break;
+    case 'small':
+      width = (SCREEN_W - H_PAD * 2) * 0.6;
+      height = 150;
+      break;
+    default:
+      width = SCREEN_W - H_PAD * 2;
+      height = 200;
+  }
 
-    return () => {
-      if (autoRef.current) clearInterval(autoRef.current);
-    };
-  }, [banners.length]);
-
-  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
-    setActiveIdx(Math.max(0, Math.min(idx, banners.length - 1)));
-  }, [banners.length]);
-
-  if (banners.length === 0) return null;
-
-  return (
-    <View style={[bc.wrap, { height: BANNER_H, marginBottom: 12 }]}>
-      <ScrollView
-        horizontal
-        pagingEnabled
-        ref={scrollRef}
-        scrollEventThrottle={16}
-        showsHorizontalScrollIndicator={false}
-        onScroll={handleScroll}
-        onScrollBeginDrag={() => { userScrolling.current = true; }}
-        onScrollEndDrag={() => { userScrolling.current = false; }}
-        onMomentumScrollEnd={handleScroll}
-      >
-        {banners.map((banner, i) => (
-          <View key={banner.id || i} style={{ width: SCREEN_W, height: BANNER_H }}>
-            <View style={bc.slide}>
-              <Image
-                source={{ uri: banner.image_url || BANNER_FALLBACK }}
-                cachePolicy="disk"
-                contentFit="cover"
-                style={StyleSheet.absoluteFill}
-                transition={300}
-              />
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-      <View style={bc.paginationWrap}>
-        {banners.map((_, i) => (
-          <View key={i} style={[bc.dot, activeIdx === i && bc.activeDot]} />
-        ))}
-      </View>
-    </View>
-  );
-});
-
-const bc = StyleSheet.create({
-  wrap: { width: '100%', position: 'relative' },
-  slide: { flex: 1, overflow: 'hidden', borderRadius: 0 },
-  paginationWrap: { flexDirection: 'row', position: 'absolute', top: 16, alignSelf: 'center', gap: 6, zIndex: 10 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)' },
-  activeDot: { backgroundColor: '#FFFFFF', width: 8, height: 8, borderRadius: 4, borderColor: 'transparent' },
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 2. VIP Banner Component (مستند من العروض – يبقى كما هو)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const VIPBanner = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
-  if (!offer) return null;
+  const handlePress = () => {
+    if (banner.link_url) {
+      // دعم الروابط الداخلية والخارجية
+      if (banner.link_url.startsWith('http') || banner.link_url.startsWith('https')) {
+        Linking.openURL(banner.link_url).catch(() => {});
+      } else {
+        // روابط داخلية يمكن معالجتها باستخدام router
+        // لكننا سنفتحها عبر Linking كـ URL عادي
+        Linking.openURL(banner.link_url).catch(() => {});
+      }
+    }
+  };
 
   return (
     <Pressable
-      style={styles.vipBannerContainer}
-      onPress={() => openWhatsApp(offer.phone, offer.title, offer.store_name)}
+      onPress={handlePress}
+      style={({ pressed }) => [
+        styles.bannerItem,
+        {
+          width,
+          height,
+          borderRadius,
+          alignSelf: 'center',
+          marginVertical: 6,
+          opacity: pressed ? 0.9 : 1,
+          transform: [{ scale: pressed ? 0.97 : 1 }],
+        },
+      ]}
     >
       <Image
-        source={{ uri: offer.image_url }}
+        source={{ uri: banner.image_url || BANNER_FALLBACK }}
         style={StyleSheet.absoluteFill}
         contentFit="cover"
         transition={300}
-        cachePolicy="memory-disk"
+        cachePolicy="disk"
       />
-      <LinearGradient
-        colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.85)']}
-        locations={[0, 0.4, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      {/* شارة VIP */}
-      <View style={[styles.vipBadge, { alignSelf: isAr ? 'flex-end' : 'flex-start' }]}>
-        <Text style={styles.vipBadgeText}>عرض VIP 👑</Text>
-      </View>
-
-      <View style={[styles.vipContent, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
-        <Text style={styles.vipSponsor}>الراعي الرسمي</Text>
-        <Text style={styles.vipTitle} numberOfLines={2}>
-          {offer.title || 'عرض حصري'}
-        </Text>
-        {offer.description && (
-          <Text style={styles.vipDescription} numberOfLines={2}>
-            {offer.description}
+      {banner.title && banner.showText !== false && (
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.7)']}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      {banner.title && banner.showText !== false && (
+        <View style={[styles.bannerTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
+          <Text style={[styles.bannerTitle, { textAlign: isAr ? 'right' : 'left' }]}>
+            {banner.title}
           </Text>
-        )}
-        <View style={styles.vipCta}>
-          <Text style={styles.vipCtaText}>اكتشف العرض الآن</Text>
-          <MaterialIcons name="arrow-forward" size={16} color="#fff" />
+          {banner.subtitle && (
+            <Text style={[styles.bannerSubtitle, { textAlign: isAr ? 'right' : 'left' }]}>
+              {banner.subtitle}
+            </Text>
+          )}
+          {banner.isVip && (
+            <View style={styles.vipChip}>
+              <Text style={styles.vipChipText}>VIP</Text>
+            </View>
+          )}
         </View>
-      </View>
+      )}
     </Pressable>
   );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. Grid Item Component (Masonry card)
+// Grid Item Component (Masonry card) - للعروض
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GridOfferItem = memo(function GridOfferItem({
@@ -329,7 +308,7 @@ const GridOfferItem = memo(function GridOfferItem({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. Skeleton Loader
+// Skeleton Loader
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SkeletonGrid() {
@@ -512,6 +491,16 @@ export default function OffersScreen() {
   // ── VIP Banner (أول عرض من carouselOffers) ─────────────────────────────
   const vipOffer = carouselOffers.length > 0 ? carouselOffers[0] : null;
 
+  // ── ترتيب البانرات حسب الموضع (top, middle, bottom) ──────────────────
+  const sortedBanners = useMemo(() => {
+    const order = { top: 0, middle: 1, bottom: 2 };
+    return [...banners].sort((a, b) => {
+      const posA = a.position || 'middle';
+      const posB = b.position || 'middle';
+      return (order[posA as keyof typeof order] || 1) - (order[posB as keyof typeof order] || 1);
+    });
+  }, [banners]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────────────────────────────────
@@ -608,8 +597,14 @@ export default function OffersScreen() {
           />
         }
       >
-        {/* ── Banner Carousel (من السيرفر) ── */}
-        <BannerCarousel banners={banners} isRTL={language === 'ar'} />
+        {/* ── عرض البانرات بأحجام مختلفة حسب الموضع ── */}
+        {sortedBanners.map((banner) => (
+          <BannerItem key={banner.id} banner={banner} isAr={isAr} />
+        ))}
+
+        {/* ── VIP Banner القديم (اختياري، يمكن إزالته) ── */}
+        {/* إذا أردت إبقاء VIP Banner من العروض، قم بإلغاء تعليق السطر التالي */}
+        {/* {vipOffer && <VIPBanner offer={vipOffer} isAr={isAr} />} */}
 
         {loading ? (
           <SkeletonGrid />
@@ -630,9 +625,6 @@ export default function OffersScreen() {
           </View>
         ) : (
           <>
-            {/* ── VIP Banner (من العروض) ── */}
-            {vipOffer && <VIPBanner offer={vipOffer} isAr={isAr} />}
-
             {/* ── Grid (Masonry) ── */}
             {filteredOffers.length === 0 ? (
               <View style={[styles.centerBox, { paddingTop: 40 }]}>
@@ -715,72 +707,48 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
 
-  // VIP Banner
-  vipBannerContainer: {
-    marginHorizontal: H_PAD,
-    marginBottom: 20,
-    height: 200,
-    borderRadius: 16,
+  // Banner Item
+  bannerItem: {
     overflow: 'hidden',
     backgroundColor: '#1A1A1A',
-    position: 'relative',
+    marginBottom: 8,
   },
-  vipBadge: {
+  bannerTextContainer: {
     position: 'absolute',
-    top: 12,
-    backgroundColor: '#FDE68A',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginHorizontal: 12,
-    zIndex: 2,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 12,
   },
-  vipBadgeText: {
-    color: '#1F2937',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  vipContent: {
-    position: 'absolute',
-    bottom: 20,
-    left: 16,
-    right: 16,
-    zIndex: 2,
-  },
-  vipSponsor: {
-    color: '#F97316',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  vipTitle: {
+  bannerTitle: {
     color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
-    lineHeight: 28,
-    marginBottom: 4,
+    fontSize: 18,
+    fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
-  vipDescription: {
+  bannerSubtitle: {
     color: 'rgba(255,255,255,0.8)',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
-    marginBottom: 10,
+    marginTop: 2,
   },
-  vipCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+  vipChip: {
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginTop: 4,
     alignSelf: 'flex-start',
   },
-  vipCtaText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
+  vipChipText: {
+    color: '#1A1A1A',
+    fontSize: 10,
+    fontWeight: '900',
   },
+
+  // VIP Banner القديم (اختياري) - تم إزالته
 
   // Masonry Grid
   masonryContainer: {
