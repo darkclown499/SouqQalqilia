@@ -299,10 +299,10 @@ export default function CategoryDetailScreen() {
         data={items}
         keyExtractor={(item) => String(item.id)}
         numColumns={isStoreCategory ? 2 : numColumns}
-        key={isStoreCategory ? 'stores-grid' : 'products-grid'}
+        key={isStoreCategory ? 'stores-grid' : `products-grid-${numColumns}`}
         renderItem={isStoreCategory ? renderStore : renderProduct}
         contentContainerStyle={[styles.listContent, { paddingHorizontal: hPad }]}
-        columnWrapperStyle={isStoreCategory ? styles.columnWrapper : undefined}
+        columnWrapperStyle={(isStoreCategory || numColumns > 1) ? styles.columnWrapper : undefined}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -315,7 +315,7 @@ export default function CategoryDetailScreen() {
         ListHeaderComponent={renderAdStrip}
         ListEmptyComponent={
           <EmptyState
-            icon={isStoreCategory ? 'store-off' : 'search-off'}
+            icon={isStoreCategory ? 'storefront' : 'search'}
             title={
               isStoreCategory
                 ? (isAr ? 'لا توجد متاجر' : 'No stores')

@@ -225,7 +225,7 @@ export default function SearchScreen() {
         contentContainerStyle={[styles.listContent, { padding: hPad }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        columnWrapperStyle={[styles.columnWrapper, { gap: cardGap, marginBottom: cardGap }]}
+        columnWrapperStyle={numColumns > 1 ? [styles.columnWrapper, { gap: cardGap, marginBottom: cardGap }] : undefined}
         windowSize={7}
         maxToRenderPerBatch={8}
         initialNumToRender={8}

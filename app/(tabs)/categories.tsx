@@ -55,7 +55,7 @@ export default function CategoriesScreen() {
       router.push(
         `/category/${cat.slug}?categoryId=${cat.id}&name=${encodeURIComponent(
           localizedName
-        )}&type=product`
+        )}`
       );
 
       setTimeout(() => {
