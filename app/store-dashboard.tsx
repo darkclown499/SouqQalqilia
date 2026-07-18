@@ -21,7 +21,7 @@ import {
   addLocalCategory,
   updateLocalCategory,
   deleteLocalCategory,
-  getLocalCategories, // ✅ استيراد الدالة الصحيحة
+  getLocalCategories,
   LocalCategory,
 } from '@/services/localCategoriesService';
 
@@ -494,11 +494,13 @@ export default function StoreDashboardScreen() {
 
   // ── Load data ──
   const loadData = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     setError(null);
     setLoading(true);
 
-    // إلغاء أي طلب سابق
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -513,9 +515,9 @@ export default function StoreDashboardScreen() {
         .select('*, store_categories(id, name, name_ar, icon, color, slug, position, is_active, image_url, created_at)')
         .eq('owner_id', user.id)
         .maybeSingle();
-      if (signal.aborted) return;
+
+      if (signal.aborted || !isMountedRef.current) return;
       if (storeError) throw storeError;
-      if (!isMountedRef.current) return;
 
       setStore(storeData);
       if (storeData?.store_categories) {
@@ -528,12 +530,10 @@ export default function StoreDashboardScreen() {
       }
 
       if (storeData) {
-        // ✅ تحميل المنتجات - fetchStoreProducts تُعيد { data } فقط
         const { data: prods } = await fetchStoreProducts(storeData.id);
         if (signal.aborted || !isMountedRef.current) return;
         setProducts(prods || []);
 
-        // ✅ تحميل التصنيفات المخصصة - getLocalCategories تُعيد مصفوفة مباشرة
         const localCats = await getLocalCategories(storeData.id);
         if (signal.aborted || !isMountedRef.current) return;
         setCustomCategories(localCats);
@@ -544,7 +544,9 @@ export default function StoreDashboardScreen() {
       if (signal.aborted || !isMountedRef.current) return;
       setError(e?.message || 'Failed to load store data');
     } finally {
-      if (isMountedRef.current && !signal.aborted) setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [user]);
 
@@ -655,7 +657,6 @@ export default function StoreDashboardScreen() {
   const addSubcategory = useCallback(async (nameAr: string) => {
     if (!store?.id) return false;
     try {
-      // استخدام الخدمة الموحدة
       const { data, error } = await addLocalCategory(store.id, nameAr, nameAr);
       if (error) throw new Error(error);
       if (data) {
@@ -665,9 +666,7 @@ export default function StoreDashboardScreen() {
       }
       return false;
     } catch (e: any) {
-      // إذا كان التصنيف موجوداً مسبقاً، قد يظهر خطأ، نتجاهله
       if (e.message?.includes('duplicate') || e.message?.includes('already exists')) {
-        // نضيفه إلى القائمة المحلية فقط
         setSelectedSubcategories(prev => new Set(prev).add(nameAr));
         return true;
       }
@@ -719,13 +718,11 @@ export default function StoreDashboardScreen() {
   const getAvailableSubcategories = useCallback(() => {
     if (!storeCategory) return [];
 
-    // محاولة المطابقة بالاسم العربي أولاً، ثم الإنجليزي، ثم الـ slug
     const keys = Object.keys(SUBCATEGORIES_MAP);
     let matchedKey = keys.find(k => k === storeCategory.name_ar);
     if (!matchedKey) matchedKey = keys.find(k => k === storeCategory.name);
     if (!matchedKey) matchedKey = keys.find(k => k === storeCategory.slug);
     if (!matchedKey) {
-      // محاولة مطابقة جزئية
       const searchTerms = [storeCategory.name_ar, storeCategory.name, storeCategory.slug].filter(Boolean);
       for (const term of searchTerms) {
         if (!term) continue;
@@ -806,10 +803,13 @@ export default function StoreDashboardScreen() {
 
   // ── Open WhatsApp edit modal ──
   const openWhatsAppModal = useCallback(() => {
+    // ✅ التحقق من وجود store قبل استدعاء showAlert
     if (!store) {
+      // إذا لم يكن هناك store، نعرض رسالة خطأ مناسبة
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'المتجر غير متاح' : 'Store not available');
       return;
     }
+    
     const currentWhatsApp = store.owner_whatsapp || store.whatsapp || '';
     let prefix = '972';
     let number = '';
@@ -992,7 +992,6 @@ export default function StoreDashboardScreen() {
         >
           {/* ── إدارة التصنيفات الديناميكية ── */}
           <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: Spacing.md }]}>
-            {/* عنوان + زر إضافة */}
             <View style={{ flexDirection: rtl, justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={[s.catBadgeText, { color: colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' }]}>
                 {isAr ? 'تصنيفات المتجر' : 'Store Categories'}
@@ -1019,7 +1018,6 @@ export default function StoreDashboardScreen() {
               </View>
             </View>
 
-            {/* قائمة التصنيفات المضافة */}
             {customCategories.length === 0 ? (
               <View style={cat.emptyWrap}>
                 <MaterialIcons name="category" size={28} color={colors.textMuted} />
@@ -1070,7 +1068,6 @@ export default function StoreDashboardScreen() {
               </View>
             )}
 
-            {/* التصنيفات الجاهزة (preset) */}
             {availableSubcategories.length > 0 && (
               <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.borderLight, paddingTop: 10 }}>
                 <Text style={{ color: colors.textSecondary, fontSize: FontSize.xs, fontWeight: '600', marginBottom: 6, textAlign }}>
@@ -1099,7 +1096,7 @@ export default function StoreDashboardScreen() {
             )}
           </View>
 
-          {/* ── Store info card (مع زر تعديل واتساب) ── */}
+          {/* ── Store info card ── */}
           <View style={[s.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {storeCategory ? (
               <View style={[s.infoRow, { flexDirection: rtl }]}>
@@ -1311,7 +1308,6 @@ export default function StoreDashboardScreen() {
               </View>
 
               <View style={[pm.content, { gap: 16 }]}>
-                {/* اختيار البادئة */}
                 <View>
                   <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>
                     {isAr ? 'اختر البادئة' : 'Select Prefix'}
@@ -1347,7 +1343,6 @@ export default function StoreDashboardScreen() {
                   </View>
                 </View>
 
-                {/* حقل الرقم المحلي */}
                 <View>
                   <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>
                     {isAr ? 'رقم الهاتف المحلي' : 'Local Phone Number'}
