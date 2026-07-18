@@ -22,11 +22,9 @@ import { shortenUrl } from '@/utils/shortenUrl';
 import { getLocalCategories, LocalCategory } from '@/services/localCategoriesService';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-
 const { width: SCREEN_W } = Dimensions.get('window');
 const BANNER_H = 240;
 const LOGO_SIZE = 84;
-const HALF_LOGO = LOGO_SIZE / 2;
 
 // ── Cart types ────────────────────────────────────────────────────────────────
 interface CartItem { product: StoreProduct; qty: number }
@@ -38,7 +36,7 @@ const ORDER_LABELS: Record<OrderType, { ar: string; en: string; icon: string }> 
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PRODUCT CARD
+// PRODUCT CARD (local component)
 // ─────────────────────────────────────────────────────────────────────────────
 function ProductCard({
   product, qty, onAdd, onRemove, isAr, isRTL, colors, disabled,
@@ -292,18 +290,12 @@ export default function StoreDetailScreen() {
   const { user } = useAuth();
   const isAr = language === 'ar';
   
-  // حارس لمنع التحديث بعد خروج المستخدم
   const isMountedRef = useRef(true);
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
   const [store, setStore] = useState<any>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [rating, setRating] = useState({ avg: 0, count: 0 });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(true);
   const { ids: favoriteIds, toggle: toggleFav } = useFavoriteIds();
   const isFavorited = favoriteIds.has(id ?? '');
@@ -325,7 +317,7 @@ export default function StoreDetailScreen() {
   const cartTotal = useMemo(() => cartItems.reduce((s, i) => s + i.product.price * i.qty, 0), [cartItems]);
   const cartCount = useMemo(() => cartItems.reduce((s, i) => s + i.qty, 0), [cartItems]);
 
-  // ── Group products by category (all groups, unfiltered) ────────────────────
+  // ── Group products by category ──────────────────────────────────────────────
   const allGroupedProducts = useMemo(() => {
     const map = new Map<string, { id: string | null; items: StoreProduct[] }>();
 
@@ -360,66 +352,74 @@ export default function StoreDetailScreen() {
     return result;
   }, [products, customCategories, isAr]);
 
-  // ── Filtered groups based on active tab ─────────────────────────────────────
   const groupedProducts = useMemo(() => {
     if (!activeCatId) return allGroupedProducts;
     return allGroupedProducts.filter(g => g.id === activeCatId);
   }, [allGroupedProducts, activeCatId]);
 
-  // ── Category filter styles (dynamic for dark mode) ─────────────────────────
   const cfStyles = useMemo(() => getCfStyles(colors), [colors]);
 
-  // ── تحميل البيانات ──
+  // ── Load data ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id) {
       setLoading(false);
+      setError(isAr ? 'معرف المتجر غير موجود' : 'Store ID missing');
       return;
     }
 
-    // زيادة عدد المشاهدات (مع إهمال الخطأ)
-    getSupabaseClient()
-      .from('stores').select('views_count').eq('id', id).single()
-      .then(({ data }) => {
-        if (data && isMountedRef.current) {
-          getSupabaseClient().from('stores')
-            .update({ views_count: (data.views_count ?? 0) + 1 })
-            .eq('id', id).then(() => {}).catch(() => {});
-        }
-      }).catch(() => {});
+    let isCancelled = false;
 
-    // جلب البيانات الرئيسية
-    Promise.all([
-      getSupabaseClient().from('stores').select('*').eq('id', id).single(),
-      fetchStoreProducts(id),
-      fetchStoreRating(id).catch(() => ({ avg: 0, count: 0 })),
-      getLocalCategories(id).catch(() => []),
-    ])
-      .then(([storeRes, productsRes, ratingRes, categoriesRes]) => {
-        if (!isMountedRef.current) return;
+    (async () => {
+      try {
+        // زيادة عدد المشاهدات (غير حرج)
+        try {
+          const { data } = await getSupabaseClient()
+            .from('stores')
+            .select('views_count')
+            .eq('id', id)
+            .single();
+          if (data && !isCancelled && isMountedRef.current) {
+            await getSupabaseClient()
+              .from('stores')
+              .update({ views_count: (data.views_count ?? 0) + 1 })
+              .eq('id', id);
+          }
+        } catch { /* ignore */ }
 
-        if (storeRes.data) {
-          setStore(storeRes.data);
-          setIsOpen(checkStoreIsOpen(storeRes.data));
+        // جلب البيانات الرئيسية
+        const [storeRes, productsRes, ratingRes, categoriesRes] = await Promise.all([
+          getSupabaseClient().from('stores').select('*').eq('id', id).single(),
+          fetchStoreProducts(id).catch(() => ({ data: [] as StoreProduct[] })),
+          fetchStoreRating(id).catch(() => ({ avg: 0, count: 0 })),
+          getLocalCategories(id).catch(() => [] as LocalCategory[]),
+        ]);
+
+        if (isCancelled || !isMountedRef.current) return;
+
+        if (!storeRes.data) {
+          setError(isAr ? 'المتجر غير موجود' : 'Store not found');
+          setLoading(false);
+          return;
         }
+
+        setStore(storeRes.data);
+        setIsOpen(checkStoreIsOpen(storeRes.data));
         setProducts(productsRes.data || []);
         setRating(ratingRes || { avg: 0, count: 0 });
         setCustomCategories(categoriesRes || []);
-      })
-      .catch((error) => {
-        console.error('خطأ في التحميل:', error);
-        if (isMountedRef.current) {
-          Alert.alert(
-            isAr ? 'خطأ' : 'Error',
-            isAr ? 'حدث خطأ أثناء تحميل بيانات المتجر' : 'Failed to load store data'
-          );
-        }
-      })
-      .finally(() => {
-        if (isMountedRef.current) {
+      } catch (err) {
+        if (isCancelled || !isMountedRef.current) return;
+        console.error('StoreDetailScreen load error:', err);
+        setError(isAr ? 'حدث خطأ أثناء التحميل' : 'Failed to load store');
+      } finally {
+        if (!isCancelled && isMountedRef.current) {
           setLoading(false);
         }
-      });
-  }, [id]); // ✅ تم إزالة isAr من التبعيات
+      }
+    })();
+
+    return () => { isCancelled = true; };
+  }, [id, isAr]);
 
   useEffect(() => {
     if (!store) return;
@@ -474,19 +474,24 @@ export default function StoreDetailScreen() {
   }, [store, isAr, shareLoading]);
 
   const handleConfirmOrder = useCallback(() => {
-    if (!store || !isOpen) return;
+    if (!store || !isOpen || !isMountedRef.current) return;
 
-    // ✅ التحقق من بقاء المستخدم في الشاشة قبل تحديث العداد
-    if (!isMountedRef.current) return;
-
-    getSupabaseClient().from('stores').select('whatsapp_clicks_count').eq('id', store.id).single()
+    getSupabaseClient()
+      .from('stores')
+      .select('whatsapp_clicks_count')
+      .eq('id', store.id)
+      .single()
       .then(({ data }) => {
         if (data && isMountedRef.current) {
-          getSupabaseClient().from('stores')
+          getSupabaseClient()
+            .from('stores')
             .update({ whatsapp_clicks_count: (data.whatsapp_clicks_count ?? 0) + 1 })
-            .eq('id', store.id).then(() => {}).catch(() => {});
+            .eq('id', store.id)
+            .then(() => {})
+            .catch(() => {});
         }
-      }).catch(() => {});
+      })
+      .catch(() => {});
 
     const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
     const orderTypeLabel = isAr ? ORDER_LABELS[orderType].ar : ORDER_LABELS[orderType].en;
@@ -538,6 +543,24 @@ export default function StoreDetailScreen() {
     transform: [{ scale: 1 + cartAnim.value * 0.18 }],
   }));
 
+  // ── Error handling ─────────────────────────────────────────────────────────
+  if (error) {
+    return (
+      <View style={[s.loadingScreen, { backgroundColor: colors.background }]}>
+        <MaterialIcons name="error-outline" size={44} color={colors.error || '#EF4444'} />
+        <Text style={{ color: colors.textMuted, marginTop: 12, fontSize: 16, textAlign: 'center' }}>
+          {error}
+        </Text>
+        <Pressable
+          style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20, backgroundColor: colors.primary }}
+          onPress={() => router.back()}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{isAr ? 'العودة' : 'Go Back'}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   if (!id) {
     return (
       <View style={[s.loadingScreen, { backgroundColor: colors.background }]}>
@@ -580,6 +603,7 @@ export default function StoreDetailScreen() {
     ? `${store.opening_time} – ${store.closing_time}`
     : null;
 
+  // ── Main render ─────────────────────────────────────────────────────────────
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
       <ScrollView
@@ -805,6 +829,7 @@ export default function StoreDetailScreen() {
         </Animated.View>
       ) : null}
 
+      {/* ── Cart Modal ── */}
       <Modal visible={cartVisible} animationType="slide" transparent onRequestClose={() => setCartVisible(false)}>
         <View style={m.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setCartVisible(false)} />
