@@ -528,10 +528,9 @@ export default function StoreDashboardScreen() {
       }
 
       if (storeData) {
-        // تحميل المنتجات - تم إزالة المعامل الثاني الزائد
-        const { data: prods, error: prodError } = await fetchStoreProducts(storeData.id);
+        // ✅ تحميل المنتجات - الدالة تعيد { data: StoreProduct[] } فقط (بدون error)
+        const { data: prods } = await fetchStoreProducts(storeData.id);
         if (signal.aborted || !isMountedRef.current) return;
-        if (prodError) throw prodError;
         setProducts(prods || []);
 
         // تحميل التصنيفات المخصصة

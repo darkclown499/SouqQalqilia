@@ -467,6 +467,7 @@ export default function ChatScreen() {
   // ----- Typing indicator -----
   const handleTyping = useCallback((val: string) => {
     setText(val);
+    // ✅ التحقق من أن isBuyer ليس null قبل استدعاء updateTypingIndicator
     if (!id || !user || isBuyer === null) return;
     updateTypingIndicator(id, isBuyer, true).catch(() => {});
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -475,6 +476,7 @@ export default function ChatScreen() {
     }, 3000);
   }, [id, user, isBuyer]);
 
+  // ✅ إضافة التحقق من isBuyer في useEffect الخاص بالتنظيف
   useEffect(() => {
     return () => {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -496,12 +498,14 @@ export default function ChatScreen() {
 
     try {
       const supabase = getSupabaseClient();
+      // ✅ إضافة شرط .is('deleted_by', null) لاستبعاد الرسائل المحذوفة
       const { error } = await supabase
         .from('messages')
         .update({ read_at: new Date().toISOString() })
         .eq('conversation_id', id)
         .neq('sender_id', user.id)
-        .is('read_at', null);
+        .is('read_at', null)
+        .is('deleted_by', null); // ✅ التعديل المطلوب
       if (!error) {
         markReadLocally(user.id);
       }
@@ -596,6 +600,7 @@ export default function ChatScreen() {
       await handleSendMessage(finalContent);
     } finally {
       setSending(false);
+      // ✅ التحقق من أن isBuyer ليس null قبل استدعاء updateTypingIndicator
       if (isBuyer !== null) {
         updateTypingIndicator(id!, isBuyer, false).catch(() => {});
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);

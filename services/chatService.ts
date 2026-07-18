@@ -178,9 +178,8 @@ export async function fetchMyConversations(options?: {
       .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
       .order('last_message_at', { ascending: false });
 
-    // ✅ تصفية المحادثات المؤرشفة (العمود متوفر في قاعدة البيانات)
+    // ✅ تصفية المحادثات المؤرشفة
     if (!includeArchived) {
-      // archived_at column now exists — filter safely
       query = (query as any).is('archived_at', null);
     }
 
@@ -256,14 +255,29 @@ export async function unarchiveConversation(conversationId: string): Promise<{ e
 export async function markAllMessagesRead(userId: string): Promise<{ error: string | null }> {
   try {
     const supabase = getSupabaseClient();
-    // ✅ تحديث جميع الرسائل غير المقروءة في جميع محادثات المستخدم
+    
+    // ✅ الحصول على جميع conversation IDs التي يشارك فيها المستخدم
+    const { data: conversations, error: convError } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
+    
+    if (convError) throw convError;
+    if (!conversations || conversations.length === 0) {
+      return { error: null }; // لا توجد محادثات
+    }
+    
+    const conversationIds = conversations.map(c => c.id);
+    
+    // ✅ تحديث جميع الرسائل غير المقروءة في تلك المحادثات
     const { error } = await supabase
       .from('messages')
       .update({ read_at: new Date().toISOString() })
+      .in('conversation_id', conversationIds)
       .neq('sender_id', userId)
       .is('read_at', null)
-      .is('deleted_by', null)
-      .or(`conversations.buyer_id.eq.${userId},conversations.seller_id.eq.${userId}`);
+      .is('deleted_by', null);
+    
     if (error) throw error;
     return { error: null };
   } catch (e: any) {
@@ -276,13 +290,28 @@ export async function markAllMessagesRead(userId: string): Promise<{ error: stri
 export async function getUnreadCount(userId: string): Promise<{ count: number; error: string | null }> {
   try {
     const supabase = getSupabaseClient();
+    
+    // ✅ الحصول على جميع conversation IDs
+    const { data: conversations, error: convError } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
+    
+    if (convError) throw convError;
+    if (!conversations || conversations.length === 0) {
+      return { count: 0, error: null };
+    }
+    
+    const conversationIds = conversations.map(c => c.id);
+    
     const { count, error } = await supabase
       .from('messages')
       .select('*', { count: 'exact', head: true })
+      .in('conversation_id', conversationIds)
       .neq('sender_id', userId)
       .is('read_at', null)
-      .is('deleted_by', null)
-      .or(`conversations.buyer_id.eq.${userId},conversations.seller_id.eq.${userId}`);
+      .is('deleted_by', null);
+    
     if (error) throw error;
     return { count: count ?? 0, error: null };
   } catch (e: any) {
@@ -624,7 +653,7 @@ export async function markMessagesRead(
       .eq('conversation_id', conversationId)
       .neq('sender_id', currentUserId)
       .is('read_at', null)
-      .is('deleted_by', null);
+      .is('deleted_by', null); // ✅ التأكد من عدم قراءة الرسائل المحذوفة
 
     if (error) {
       console.warn('[markMessagesRead] DB error:', error.message);
