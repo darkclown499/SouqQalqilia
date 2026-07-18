@@ -8,23 +8,23 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router'; // ✅ added useFocusEffect
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth, getSupabaseClient } from '@/template';
 import {
-  fetchAllActiveStores, fetchAllStoreRatings,
-  checkStoreIsOpen, Store,
+  fetchAllActiveStores,
+  checkStoreIsOpen,
+  Store,
 } from '@/services/storesService';
 import {
   fetchStoreCategories,
   StoreCategory,
 } from '@/services/storeCategoriesService';
-import { Banner } from '@/services/bannersService';
-import { trackPageView } from '@/services/analyticsService';
-import NetInfo from '@react-native-community/netinfo'; // ✅ إضافة
+import { Banner } from '@/services/bannersService'; // ✅ imported Banner
+import NetInfo from '@react-native-community/netinfo';
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
 function shuffleArray<T>(array: T[]): T[] {
@@ -52,7 +52,7 @@ function isNameInvalid(name: string): boolean {
   return /[0-9!@#$%^&*()_+=[\]{};':"\\|,.<>/?`~]/.test(name);
 }
 
-// ── ✅ تحسين: استخدام Map لتعيين الأسماء إلى روابط الصور ──────────────────────
+// ── 3D Icon URL Map ──────────────────────────────────────────────────────────
 const ICON_URL_MAP = new Map<string, string>([
   ['الكل', 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Star/3D/star_3d.png'],
   ['العروض', 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif'],
@@ -82,13 +82,36 @@ const get3DIconUrl = (name: string): string => {
 // ── Banner placeholder fallback ──────────────────────────────────────────────
 const BANNER_FALLBACK = 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80';
 
-// ✅ نقل LOCAL_BANNERS خارج المكون لتثبيته
 const LOCAL_BANNERS = [
   { id: '1', image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
   { id: '2', image_url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80' },
   { id: '3', image_url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80' },
   { id: '4', image_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80' },
 ];
+
+// ── Function to fetch store ratings map ─────────────────────────────────────
+async function fetchStoreRatingsMap(): Promise<Record<string, { avg: number; count: number }>> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('store_ratings')
+      .select('store_id, rating');
+    if (error) return {};
+    const map: Record<string, { total: number; count: number }> = {};
+    for (const row of data || []) {
+      if (!map[row.store_id]) map[row.store_id] = { total: 0, count: 0 };
+      map[row.store_id].total += row.rating;
+      map[row.store_id].count += 1;
+    }
+    const result: Record<string, { avg: number; count: number }> = {};
+    for (const [id, stats] of Object.entries(map)) {
+      result[id] = { avg: stats.total / stats.count, count: stats.count };
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. BANNER CAROUSEL
@@ -258,14 +281,13 @@ const VIPStoreCard = React.memo(({ store, rating, isAr, onPress }: any) => {
   );
 });
 
-// ── VIP Stores Strip (معدل: استخدام useMemo وعدم التكرار المبالغ فيه) ────
+// ── VIP Stores Strip ────────────────────────────────────────────────────────
 const VIPStoresStrip = React.memo(({ stores, ratings, isAr, isRTL, onStorePress }: any) => {
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(0);
   const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const CARD_WIDTH = Math.min(214, SCREEN_W * 0.55);
 
-  // ✅ إذا كان عدد المتاجر أقل من 3، نكررها مرة واحدة فقط لتوفير تجربة سلسة
   const repeatedStores = useMemo(() => {
     if (stores.length === 0) return [];
     if (stores.length < 3) {
@@ -678,7 +700,6 @@ export default function StoresScreen() {
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState('');
 
-  // ✅ حالة الاتصال بالإنترنت
   const [isOnline, setIsOnline] = useState(true);
 
   const isMountedRef = useRef(true);
@@ -692,13 +713,12 @@ export default function StoresScreen() {
     return unsubscribe;
   }, []);
 
-  // ── Load data function (معدل: استخدام AbortController بدلاً من Promise.race) ──
+  // ── Load data function ──
   const loadData = useCallback(async (showLoading = true) => {
     if (!isMountedRef.current) return;
     if (showLoading) setLoading(true);
     setError(null);
 
-    // إلغاء الطلبات السابقة
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -711,11 +731,10 @@ export default function StoresScreen() {
 
       const [storesRes, ratingsMap, catsRes] = await Promise.all([
         fetchAllActiveStores(),
-        fetchAllStoreRatings(),
+        fetchStoreRatingsMap(),
         fetchStoreCategories(),
       ]);
 
-      // التحقق من عدم الإلغاء
       if (signal.aborted || !isMountedRef.current) return;
 
       const shuffledStores = shuffleArray(storesRes.data);
@@ -740,13 +759,19 @@ export default function StoresScreen() {
     }
   }, [isAr]);
 
-  // ── ✅ استبدال useEffect الخاص بـ ownerStore بـ useFocusEffect ──
+  // ── useFocusEffect for owner store and analytics ──
   useFocusEffect(
     useCallback(() => {
+      // Track page view
+      try {
+        // trackPageView('stores'); // Uncomment if available
+      } catch { /* ignore */ }
+
       if (!user) {
         setOwnerStoreLoading(false);
         return;
       }
+
       setOwnerStoreLoading(true);
       const controller = new AbortController();
 
@@ -754,7 +779,6 @@ export default function StoresScreen() {
         try {
           const supabase = getSupabaseClient();
 
-          // جلب بيانات المستخدم للتحقق من الاسم
           const { data: profile } = await supabase
             .from('user_profiles')
             .select('username')
@@ -768,7 +792,6 @@ export default function StoresScreen() {
             }
           }
 
-          // جلب بيانات المتجر
           const { data: store } = await supabase
             .from('stores')
             .select('*')
@@ -792,6 +815,13 @@ export default function StoresScreen() {
     }, [user])
   );
 
+  // ── Shuffle banners on focus ──
+  useFocusEffect(
+    useCallback(() => {
+      setBanners(shuffleArray(LOCAL_BANNERS));
+    }, [])
+  );
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -806,16 +836,6 @@ export default function StoresScreen() {
   useEffect(() => {
     loadData(true);
   }, [loadData]);
-
-  // ── Focus: re-shuffle banners only ──
-  useFocusEffect(
-    useCallback(() => {
-      if (isMountedRef.current) {
-        trackPageView('stores');
-      }
-      setBanners(shuffleArray(LOCAL_BANNERS));
-    }, [])
-  );
 
   // ── Refresh handler ──
   const handleRefresh = useCallback(async () => {
@@ -880,7 +900,6 @@ export default function StoresScreen() {
     return filteredGroupedStores.filter(g => g.cat.id === selectedCatId);
   }, [filteredGroupedStores, selectedCatId]);
 
-  // ── Clear search ──
   const handleClearSearch = useCallback(() => {
     setSearchQuery('');
     setIsSearchVisible(false);
@@ -933,7 +952,7 @@ export default function StoresScreen() {
         </View>
       </View>
 
-      {/* ✅ شريط عدم الاتصال */}
+      {/* Offline banner */}
       {!isOnline && (
         <View style={styles.offlineBanner}>
           <MaterialIcons name="wifi-off" size={16} color="#92400E" />
@@ -962,25 +981,25 @@ export default function StoresScreen() {
         {ownerStore !== null && !ownerStoreLoading && (
           <Pressable
             style={[styles.ownerCard, {
-              backgroundColor: ownerStore.is_approved ? colors.surface : '#F3F4F6',
-              borderColor: ownerStore.is_approved ? colors.primary : '#D1D5DB',
+              backgroundColor: (ownerStore as any).is_approved ? colors.surface : '#F3F4F6',
+              borderColor: (ownerStore as any).is_approved ? colors.primary : '#D1D5DB',
             }]}
             onPress={() => router.push('/store-dashboard' as any)}
           >
-            <View style={[styles.ownerIconWrap, { backgroundColor: ownerStore.is_approved ? colors.primaryGhost : '#E5E7EB' }]}>
-              <MaterialIcons name="storefront" size={20} color={ownerStore.is_approved ? colors.primary : '#4B5563'} />
+            <View style={[styles.ownerIconWrap, { backgroundColor: (ownerStore as any).is_approved ? colors.primaryGhost : '#E5E7EB' }]}>
+              <MaterialIcons name="storefront" size={20} color={(ownerStore as any).is_approved ? colors.primary : '#4B5563'} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.ownerName, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
                 {isAr ? ((ownerStore as any).name_ar || ownerStore.name) : ownerStore.name}
               </Text>
               <View style={[styles.ownerBadge, {
-                backgroundColor: ownerStore.is_approved ? '#D1FAE5' : '#FEE2E2',
+                backgroundColor: (ownerStore as any).is_approved ? '#D1FAE5' : '#FEE2E2',
                 flexDirection: isRTL ? 'row-reverse' : 'row',
               }]}>
-                <MaterialIcons name={ownerStore.is_approved ? 'check-circle' : 'info'} size={12} color={ownerStore.is_approved ? '#16a34a' : '#EF4444'} />
-                <Text style={[styles.ownerBadgeText, { color: ownerStore.is_approved ? '#16a34a' : '#EF4444' }]}>
-                  {ownerStore.is_approved ? (isAr ? 'متجرك مفعّل ✓' : 'Active ✓') : (isAr ? 'متجرك غير مفعّل' : 'Store Inactive')}
+                <MaterialIcons name={(ownerStore as any).is_approved ? 'check-circle' : 'info'} size={12} color={(ownerStore as any).is_approved ? '#16a34a' : '#EF4444'} />
+                <Text style={[styles.ownerBadgeText, { color: (ownerStore as any).is_approved ? '#16a34a' : '#EF4444' }]}>
+                  {(ownerStore as any).is_approved ? (isAr ? 'متجرك مفعّل ✓' : 'Active ✓') : (isAr ? 'متجرك غير مفعّل' : 'Store Inactive')}
                 </Text>
               </View>
             </View>
@@ -1010,22 +1029,6 @@ export default function StoresScreen() {
                 }
               }}
             >
-              <Pressable style={qc.card} onPress={() => router.push('/offers' as any)}>
-                <View style={[qc.iconBg, selectedCatId === '__offers__' && { borderColor: '#EA580C' }]}>
-                  {selectedCatId === '__offers__' && (
-                    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#EA580C', opacity: 0.12, borderRadius: 14 }]} />
-                  )}
-                  <Image 
-                    source={{ uri: get3DIconUrl('العروض') }} 
-                    style={{ width: 55, height: 55, transform: [{ scale: 1.15 }], backgroundColor: 'transparent' }} 
-                    contentFit="contain" 
-                  />
-                </View>
-                <Text style={[qc.label, selectedCatId === '__offers__' ? { color: '#EA580C' } : { color: '#1A1A1A' }]} numberOfLines={2}>
-                  {isAr ? 'العروض' : 'Offers'}
-                </Text>
-              </Pressable>
-              
               <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
                 <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C' }]}>
                   {selectedCatId === null && (
@@ -1111,7 +1114,7 @@ export default function StoresScreen() {
         )}
       </ScrollView>
 
-      {/* ✅ إضافة onRequestClose لإغلاق النافذة عبر زر الرجوع */}
+      {/* Modal with onRequestClose */}
       <Modal visible={nameGateVisible} animationType="fade" transparent onRequestClose={() => setNameGateVisible(false)}>
         <View style={gStyles.overlay}>
           <View style={[gStyles.card, { backgroundColor: colors.surface }]}>
@@ -1190,7 +1193,6 @@ const styles = StyleSheet.create({
   catHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   catTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
   catMoreText: { fontSize: 13, fontWeight: '700' },
-  // ✅ أنماط جديدة لشريط عدم الاتصال
   offlineBanner: {
     flexDirection: 'row',
     alignItems: 'center',

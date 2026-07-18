@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { shortenUrl } from '@/utils/shortenUrl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
@@ -17,8 +17,13 @@ import {
 } from '@/services/storeCategoriesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
-import { addLocalCategory, updateLocalCategory, deleteLocalCategory } from '@/services/localCategoriesService';
-import type { LocalCategory } from '@/services/localCategoriesService';
+import {
+  addLocalCategory,
+  updateLocalCategory,
+  deleteLocalCategory,
+  fetchLocalCategories,
+  LocalCategory,
+} from '@/services/localCategoriesService';
 
 // ── الخريطة الثابتة للتصنيفات الفرعية حسب نوع المتجر ──
 const SUBCATEGORIES_MAP: Record<string, string[]> = {
@@ -59,14 +64,13 @@ const EMPTY_FORM: ProductForm = {
 
 // ── Product Modal Component ───────────────────────────────────────────────────
 function ProductModal({
-  visible, onClose, onSave, storeId, editProduct, storeCategoryNameAr, isAr, isRTL, colors,
+  visible, onClose, onSave, storeId, editProduct, isAr, isRTL, colors,
   customCategories,
 }: {
   visible: boolean; onClose: () => void;
   onSave: (product: StoreProduct) => void;
   storeId: string;
   editProduct: StoreProduct | null;
-  storeCategoryNameAr: string;
   customCategories: LocalCategory[];
   isAr: boolean; isRTL: boolean; colors: any;
 }) {
@@ -524,10 +528,20 @@ export default function StoreDashboardScreen() {
       }
 
       if (storeData) {
+        // تحميل المنتجات
         const { data: prods, error: prodError } = await fetchStoreProducts(storeData.id, true);
         if (signal.aborted || !isMountedRef.current) return;
         if (prodError) throw prodError;
         setProducts(prods || []);
+
+        // تحميل التصنيفات المخصصة
+        const { data: localCats, error: localError } = await fetchLocalCategories(storeData.id);
+        if (signal.aborted || !isMountedRef.current) return;
+        if (!localError && localCats) {
+          setCustomCategories(localCats);
+          const selectedNames = new Set(localCats.map(c => c.name_ar));
+          setSelectedSubcategories(selectedNames);
+        }
       }
     } catch (e: any) {
       if (signal.aborted || !isMountedRef.current) return;
@@ -537,6 +551,7 @@ export default function StoreDashboardScreen() {
     }
   }, [user]);
 
+  // ── Initial load ──
   useEffect(() => {
     isMountedRef.current = true;
     loadData();
@@ -549,24 +564,12 @@ export default function StoreDashboardScreen() {
     };
   }, [loadData]);
 
-  // ── Load custom categories from supabase directly ──
-  const loadCustomCategories = useCallback(async (storeId: string) => {
-    try {
-      const supabase = getSupabaseClient();
-      const { data, error } = await supabase
-        .from('local_categories')
-        .select('*')
-        .eq('store_id', storeId);
-      if (error) throw error;
-      if (isMountedRef.current) {
-        setCustomCategories(data || []);
-        const selectedNames = new Set((data || []).map(c => c.name_ar));
-        setSelectedSubcategories(selectedNames);
-      }
-    } catch (e) {
-      console.warn('loadCustomCategories error:', e);
-    }
-  }, []);
+  // ── Refresh on focus ──
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   // ── Open add category modal ──
   const openAddCatModal = useCallback(() => {
@@ -651,58 +654,37 @@ export default function StoreDashboardScreen() {
     );
   }, [isAr, showAlert]);
 
-  // ── Add a subcategory directly to database ──
+  // ── Add a subcategory using service ──
   const addSubcategory = useCallback(async (nameAr: string) => {
     if (!store?.id) return false;
     try {
-      const supabase = getSupabaseClient();
-      // تحقق من وجود التصنيف مسبقاً
-      const { data: existing, error: checkError } = await supabase
-        .from('local_categories')
-        .select('id')
-        .eq('store_id', store.id)
-        .eq('name_ar', nameAr)
-        .maybeSingle();
-      if (checkError) throw checkError;
-      if (existing) return true; // موجود مسبقاً
-
-      const newCat = {
-        store_id: store.id,
-        name: nameAr, // اسم انجليزي مؤقت
-        name_ar: nameAr,
-        type: 'category',
-        color: '#6B7280',
-        created_at: new Date().toISOString(),
-      };
-      const { data, error } = await supabase
-        .from('local_categories')
-        .insert(newCat)
-        .select()
-        .single();
-      if (error) throw error;
+      // استخدام الخدمة الموحدة
+      const { data, error } = await addLocalCategory(store.id, nameAr, nameAr);
+      if (error) throw new Error(error);
       if (data) {
         setCustomCategories(prev => [...prev, data]);
         setSelectedSubcategories(prev => new Set(prev).add(nameAr));
+        return true;
       }
-      return true;
-    } catch (e) {
-      console.warn('addSubcategory error:', e);
+      return false;
+    } catch (e: any) {
+      // إذا كان التصنيف موجوداً مسبقاً، قد يظهر خطأ، نتجاهله
+      if (e.message?.includes('duplicate') || e.message?.includes('already exists')) {
+        // نضيفه إلى القائمة المحلية فقط
+        setSelectedSubcategories(prev => new Set(prev).add(nameAr));
+        return true;
+      }
       showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر إضافة التصنيف' : 'Could not add category'));
       return false;
     }
   }, [store?.id, isAr, showAlert]);
 
-  // ── Delete subcategory directly from database ──
+  // ── Delete subcategory using service ──
   const deleteSubcategory = useCallback(async (id: string, nameAr: string) => {
     if (!store?.id) return;
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase
-        .from('local_categories')
-        .delete()
-        .eq('id', id)
-        .eq('store_id', store.id);
-      if (error) throw error;
+      const { error } = await deleteLocalCategory(id);
+      if (error) throw new Error(error);
       setCustomCategories(prev => prev.filter(c => c.id !== id));
       setSelectedSubcategories(prev => {
         const newSet = new Set(prev);
@@ -719,17 +701,19 @@ export default function StoreDashboardScreen() {
   const addAllSubcategories = useCallback(async () => {
     if (!store?.id) return;
     const available = getAvailableSubcategories();
-    const results = await Promise.allSettled(available.map(name => addSubcategory(name)));
-    const added = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
-    const errors = results.filter(r => r.status === 'rejected');
-    if (added > 0) {
-      showAlert(isAr ? 'تم' : 'Done', `${isAr ? 'تم إضافة' : 'Added'} ${added} ${isAr ? 'تصنيف' : 'categories'}`);
-      if (errors.length > 0) {
-        showAlert(isAr ? 'تنبيه' : 'Warning', isAr ? `فشل إضافة ${errors.length} تصنيف` : `Failed to add ${errors.length} categories`);
+    let addedCount = 0;
+    let errorCount = 0;
+    for (const name of available) {
+      const result = await addSubcategory(name);
+      if (result) addedCount++;
+      else errorCount++;
+    }
+    if (addedCount > 0) {
+      showAlert(isAr ? 'تم' : 'Done', `${isAr ? 'تم إضافة' : 'Added'} ${addedCount} ${isAr ? 'تصنيف' : 'categories'}`);
+      if (errorCount > 0) {
+        showAlert(isAr ? 'تنبيه' : 'Warning', isAr ? `فشل إضافة ${errorCount} تصنيف` : `Failed to add ${errorCount} categories`);
       }
-    } else if (errors.length > 0) {
-      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل إضافة أي تصنيف' : 'Failed to add any categories');
-    } else {
+    } else if (errorCount > 0) {
       showAlert(isAr ? 'معلومة' : 'Info', isAr ? 'جميع التصنيفات موجودة مسبقاً' : 'All categories already exist');
     }
   }, [store?.id, addSubcategory, isAr, showAlert]);
@@ -737,18 +721,26 @@ export default function StoreDashboardScreen() {
   // ── Get available subcategories based on store category ──
   const getAvailableSubcategories = useCallback(() => {
     if (!storeCategory) return [];
-    const key = storeCategory.name_ar || storeCategory.name || storeCategory.slug;
-    return SUBCATEGORIES_MAP[key] || [];
+
+    // محاولة المطابقة بالاسم العربي أولاً، ثم الإنجليزي، ثم الـ slug
+    const keys = Object.keys(SUBCATEGORIES_MAP);
+    let matchedKey = keys.find(k => k === storeCategory.name_ar);
+    if (!matchedKey) matchedKey = keys.find(k => k === storeCategory.name);
+    if (!matchedKey) matchedKey = keys.find(k => k === storeCategory.slug);
+    if (!matchedKey) {
+      // محاولة مطابقة جزئية
+      const searchTerms = [storeCategory.name_ar, storeCategory.name, storeCategory.slug].filter(Boolean);
+      for (const term of searchTerms) {
+        if (!term) continue;
+        const found = keys.find(k => k.includes(term) || term.includes(k));
+        if (found) { matchedKey = found; break; }
+      }
+    }
+    if (!matchedKey) return [];
+    return SUBCATEGORIES_MAP[matchedKey] || [];
   }, [storeCategory]);
 
   const availableSubcategories = useMemo(() => getAvailableSubcategories(), [getAvailableSubcategories]);
-
-  // ── Load categories when store loads ──
-  useEffect(() => {
-    if (store?.id) {
-      loadCustomCategories(store.id);
-    }
-  }, [store?.id, loadCustomCategories]);
 
   // ── Delete product ──
   const handleDeleteProduct = useCallback((product: StoreProduct) => {
@@ -1230,7 +1222,6 @@ export default function StoreDashboardScreen() {
           onSave={handleSaveProduct}
           storeId={store.id}
           editProduct={editingProduct}
-          storeCategoryNameAr={storeCategory?.name_ar || storeCategory?.name || ''}
           customCategories={customCategories}
           isAr={isAr}
           isRTL={isRTL}
