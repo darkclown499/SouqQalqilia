@@ -19,7 +19,21 @@ import { Image } from 'expo-image';
 import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
 import { APP_VERSION } from '@/constants/config';
 import { trackEvent } from '@/services/analyticsService';
-import { markMessagesRead } from '@/services/chatService'; // ✅ استيراد ثابت
+import { markMessagesRead } from '@/services/chatService';
+
+// ✅ استيراد QueryClient و Provider
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// ── إنشاء QueryClient ──────────────────────────────────────────────────────
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 دقائق
+      gcTime: 1000 * 60 * 10, // 10 دقائق (بدلاً من cacheTime)
+      retry: 1,
+    },
+  },
+});
 
 // ── Lock the splash screen immediately at module evaluation time ──────────────
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -125,7 +139,6 @@ function InAppChatBanner() {
   const router = useRouter();
   const [banner, setBanner] = useState<BannerPayload | null>(null);
 
-  // Reanimated shared values
   const slideY = useSharedValue(-120);
   const dragY = useSharedValue(0);
 
@@ -138,12 +151,10 @@ function InAppChatBanner() {
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Load shown IDs ──
   useEffect(() => {
     loadShownIds().then(map => { shownMsgIdsRef.current = map; });
   }, []);
 
-  // ── Clear banner ──
   const clearBanner = useCallback(() => {
     setBanner(null);
     if (dismissTimerRef.current) {
@@ -152,7 +163,6 @@ function InAppChatBanner() {
     }
   }, []);
 
-  // ── Dismiss banner with animation ──
   const dismissBanner = useCallback(() => {
     if (dismissTimerRef.current) {
       clearTimeout(dismissTimerRef.current);
@@ -164,7 +174,6 @@ function InAppChatBanner() {
     });
   }, [slideY, dragY, clearBanner]);
 
-  // ── Show banner ──
   const showBanner = useCallback((payload: BannerPayload) => {
     setBanner(payload);
     dragY.value = 0;
@@ -174,7 +183,6 @@ function InAppChatBanner() {
     dismissTimerRef.current = setTimeout(() => dismissBanner(), 5000);
   }, [slideY, dragY, dismissBanner]);
 
-  // ── Pan gesture ──
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
       dragY.value = Math.min(e.translationY, 16);
@@ -190,7 +198,6 @@ function InAppChatBanner() {
       }
     });
 
-  // ── Poll for new messages ──
   const poll = useCallback(async () => {
     if (!user) return;
 
@@ -273,7 +280,6 @@ function InAppChatBanner() {
             dismissBanner();
             try {
               if (user?.id) {
-                // ✅ استدعاء ثابت بعد الاستيراد
                 await markMessagesRead(convId, user.id);
               }
             } catch { /* non-critical */ }
@@ -587,48 +593,52 @@ export default function RootLayout() {
     );
   }
 
+  // ── العرض الرئيسي مع QueryClientProvider ──────────────────────────────
   return (
-    <AlertProvider>
-      <SafeAreaProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <ThemeProvider>
-            <LanguageProvider>
-              <AuthProvider>
-                <AdminGuard />
-                <InAppChatBanner />
-                <Stack screenOptions={{
-                  headerShown: false,
-                  gestureEnabled: true,
-                  fullScreenGestureEnabled: true,
-                }}>
-                  <Stack.Screen name="index" options={{ headerShown: false }} />
-                  <Stack.Screen name="login" options={{ headerShown: false }} />
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  {/* ✅ إضافة مسار messages */}
-                  <Stack.Screen name="messages" options={{ headerShown: false }} />
-                  <Stack.Screen name="ad/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="search" options={{ headerShown: false }} />
-                  <Stack.Screen name="category/[slug]" options={{ headerShown: false }} />
-                  <Stack.Screen name="admin/index" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
-                  <Stack.Screen name="favorites" options={{ headerShown: false }} />
-                  <Stack.Screen name="privacy" options={{ headerShown: false }} />
-                  <Stack.Screen name="faq" options={{ headerShown: false }} />
-                  <Stack.Screen name="support-form" options={{ headerShown: false }} />
-                  <Stack.Screen name="edit-ad/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
-                  <Stack.Screen name="seller/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="ai-support" options={{ headerShown: false }} />
-                  <Stack.Screen name="store/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="register-store" options={{ headerShown: false }} />
-                  <Stack.Screen name="store-dashboard" options={{ headerShown: false }} />
-                </Stack>
-              </AuthProvider>
-            </LanguageProvider>
-          </ThemeProvider>
-        </GestureHandlerRootView>
-      </SafeAreaProvider>
-    </AlertProvider>
+    <QueryClientProvider client={queryClient}>
+      <AlertProvider>
+        <SafeAreaProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <ThemeProvider>
+              <LanguageProvider>
+                <AuthProvider>
+                  <AdminGuard />
+                  <InAppChatBanner />
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      gestureEnabled: true,
+                      fullScreenGestureEnabled: true,
+                    }}
+                  >
+                    <Stack.Screen name="index" options={{ headerShown: false }} />
+                    <Stack.Screen name="login" options={{ headerShown: false }} />
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="messages" options={{ headerShown: false }} />
+                    <Stack.Screen name="ad/[id]" options={{ headerShown: false }} />
+                    <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+                    <Stack.Screen name="search" options={{ headerShown: false }} />
+                    <Stack.Screen name="category/[slug]" options={{ headerShown: false }} />
+                    <Stack.Screen name="admin/index" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+                    <Stack.Screen name="favorites" options={{ headerShown: false }} />
+                    <Stack.Screen name="privacy" options={{ headerShown: false }} />
+                    <Stack.Screen name="faq" options={{ headerShown: false }} />
+                    <Stack.Screen name="support-form" options={{ headerShown: false }} />
+                    <Stack.Screen name="edit-ad/[id]" options={{ headerShown: false }} />
+                    <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
+                    <Stack.Screen name="seller/[id]" options={{ headerShown: false }} />
+                    <Stack.Screen name="ai-support" options={{ headerShown: false }} />
+                    <Stack.Screen name="store/[id]" options={{ headerShown: false }} />
+                    <Stack.Screen name="register-store" options={{ headerShown: false }} />
+                    <Stack.Screen name="store-dashboard" options={{ headerShown: false }} />
+                  </Stack>
+                </AuthProvider>
+              </LanguageProvider>
+            </ThemeProvider>
+          </GestureHandlerRootView>
+        </SafeAreaProvider>
+      </AlertProvider>
+    </QueryClientProvider>
   );
 }

@@ -10,3 +10,4 @@ export { PromotionModal } from './feature/PromotionModal';
 export { InterstitialAdOverlay } from './feature/InterstitialAdOverlay';
 export { SkeletonCard, SkeletonGrid } from './feature/SkeletonCard';
 export { ImageZoomGallery } from './feature/ImageZoomGallery';
+export { ProductCard } from './feature/ProductCard'; // ✅ أضف هذا
