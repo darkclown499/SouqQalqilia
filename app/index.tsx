@@ -22,10 +22,27 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 
-// ── 3D imports ──────────────────────────────────────────────────────────────
-import { GLView } from 'expo-gl';
-import { Renderer, THREE } from 'expo-three';
-import { AmbientLight, PointLight, Mesh, SphereGeometry, MeshStandardMaterial } from 'three';
+// ── 3D imports (native only) ────────────────────────────────────────────────
+import { Platform } from 'react-native';
+let GLView: any = null;
+let Renderer: any = null;
+let THREE: any = null;
+let AmbientLight: any, PointLight: any, Mesh: any, SphereGeometry: any, MeshStandardMaterial: any;
+if (Platform.OS !== 'web') {
+  try {
+    const expoGl = require('expo-gl');
+    GLView = expoGl.GLView;
+    const expoThree = require('expo-three');
+    Renderer = expoThree.Renderer;
+    THREE = expoThree.THREE;
+    const threeLib = require('three');
+    AmbientLight = threeLib.AmbientLight;
+    PointLight = threeLib.PointLight;
+    Mesh = threeLib.Mesh;
+    SphereGeometry = threeLib.SphereGeometry;
+    MeshStandardMaterial = threeLib.MeshStandardMaterial;
+  } catch (_) {}
+}
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const DEVICE_ID_KEY = 'app_device_id_v1';
@@ -153,7 +170,7 @@ const ThreeDBackground = memo(function ThreeDBackground({
   const mountedRef = useRef(true);
 
   useEffect(() => {
-    if (!glRef.current) return;
+    if (!glRef.current || !Renderer || !THREE) return;
 
     const initScene = async () => {
       try {
@@ -251,6 +268,7 @@ const ThreeDBackground = memo(function ThreeDBackground({
     cameraRef.current.updateProjectionMatrix();
   }, []);
 
+  if (!GLView) return null;
   return (
     <GLView
       ref={glRef}
