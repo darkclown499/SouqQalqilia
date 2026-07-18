@@ -23,7 +23,7 @@ import {
   fetchStoreCategories,
   StoreCategory,
 } from '@/services/storeCategoriesService';
-import { Banner } from '@/services/bannersService'; // ✅ imported Banner
+import { fetchActiveBanners, getBannersCache, setBannersCache, getBannerPressHandler, Banner } from '@/services/bannersService';
 import NetInfo from '@react-native-community/netinfo';
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
@@ -727,8 +727,6 @@ export default function StoresScreen() {
     const signal = controller.signal;
 
     try {
-      setBanners(shuffleArray(LOCAL_BANNERS));
-
       const [storesRes, ratingsMap, catsRes] = await Promise.all([
         fetchAllActiveStores(),
         fetchStoreRatingsMap(),
@@ -815,12 +813,21 @@ export default function StoresScreen() {
     }, [user])
   );
 
-  // ── Shuffle banners on focus ──
-  useFocusEffect(
-    useCallback(() => {
-      setBanners(shuffleArray(LOCAL_BANNERS));
-    }, [])
-  );
+  // ── Load stores page banners from DB ──
+  useEffect(() => {
+    const cached = getBannersCache('stores');
+    if (cached && cached.length > 0) { setBanners(cached); return; }
+    fetchActiveBanners('stores')
+      .then(({ data }) => {
+        if (data.length > 0) {
+          setBannersCache(data, 'stores');
+          setBanners(data);
+        } else {
+          setBanners(shuffleArray(LOCAL_BANNERS));
+        }
+      })
+      .catch(() => setBanners(shuffleArray(LOCAL_BANNERS)));
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
