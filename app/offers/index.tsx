@@ -12,6 +12,7 @@ import { getSupabaseClient } from '@/template';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { trackPageView } from '@/services/analyticsService';
+import { fetchActiveBanners, getBannersCache, setBannersCache, Banner } from '@/services/bannersService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -39,6 +40,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const H_PAD = 16;
 const COL_GAP = 12;
 const DEFAULT_PHONE = '972599234230';
+const BANNER_H = 250; // ارتفاع ثابت متناسق مع المتاجر
 
 // ── التصنيفات الثابتة حسب التصميم ──
 const STATIC_CATEGORIES = [
@@ -56,6 +58,50 @@ const STATIC_CATEGORIES = [
   'سيارات ومركبات',
   'أثاث',
 ];
+
+// ── Fallback banners (تظهر عند عدم وجود بيانات من السيرفر) ──────────────
+const FALLBACK_BANNERS_OFFERS: Banner[] = [
+  {
+    id: 'fb-offer-1',
+    image_url: 'https://picsum.photos/seed/offer1/800/250',
+    title: 'عروض حصرية 🔥',
+    subtitle: 'خصومات تصل إلى 50%',
+    link_url: '/offers',
+    type: 'internal',
+    size: 'large',
+    position: 'top',
+    showText: true,
+    isVip: false,
+  },
+  {
+    id: 'fb-offer-2',
+    image_url: 'https://picsum.photos/seed/offer2/800/250',
+    title: 'تسوق الآن',
+    subtitle: 'استفد من العروض المميزة',
+    link_url: '/search',
+    type: 'internal',
+    size: 'large',
+    position: 'middle',
+    showText: true,
+    isVip: true,
+  },
+];
+
+// ── Banner placeholder fallback (لحالة عدم وجود صورة) ──────────────────────
+const BANNER_FALLBACK = 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utility: Shuffle array
+// ─────────────────────────────────────────────────────────────────────────────
+
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WhatsApp helper
@@ -86,7 +132,89 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VIP Banner Component
+// 1. BANNER CAROUSEL (نسخة مطابقة لـ stores و home)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRTL: boolean }) => {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const userScrolling = useRef(false);
+
+  useEffect(() => {
+    if (banners.length <= 1) return;
+
+    const startAuto = () => {
+      if (autoRef.current) clearInterval(autoRef.current);
+      autoRef.current = setInterval(() => {
+        if (userScrolling.current) return;
+        setActiveIdx(prev => {
+          const next = (prev + 1) % banners.length;
+          scrollRef.current?.scrollTo({ x: next * SCREEN_W, animated: true });
+          return next;
+        });
+      }, 4500);
+    };
+    startAuto();
+
+    return () => {
+      if (autoRef.current) clearInterval(autoRef.current);
+    };
+  }, [banners.length]);
+
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+    setActiveIdx(Math.max(0, Math.min(idx, banners.length - 1)));
+  }, [banners.length]);
+
+  if (banners.length === 0) return null;
+
+  return (
+    <View style={[bc.wrap, { height: BANNER_H, marginBottom: 12 }]}>
+      <ScrollView
+        horizontal
+        pagingEnabled
+        ref={scrollRef}
+        scrollEventThrottle={16}
+        showsHorizontalScrollIndicator={false}
+        onScroll={handleScroll}
+        onScrollBeginDrag={() => { userScrolling.current = true; }}
+        onScrollEndDrag={() => { userScrolling.current = false; }}
+        onMomentumScrollEnd={handleScroll}
+      >
+        {banners.map((banner, i) => (
+          <View key={banner.id || i} style={{ width: SCREEN_W, height: BANNER_H }}>
+            <View style={bc.slide}>
+              <Image
+                source={{ uri: banner.image_url || BANNER_FALLBACK }}
+                cachePolicy="disk"
+                contentFit="cover"
+                style={StyleSheet.absoluteFill}
+                transition={300}
+              />
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+      <View style={bc.paginationWrap}>
+        {banners.map((_, i) => (
+          <View key={i} style={[bc.dot, activeIdx === i && bc.activeDot]} />
+        ))}
+      </View>
+    </View>
+  );
+});
+
+const bc = StyleSheet.create({
+  wrap: { width: '100%', position: 'relative' },
+  slide: { flex: 1, overflow: 'hidden', borderRadius: 0 },
+  paginationWrap: { flexDirection: 'row', position: 'absolute', top: 16, alignSelf: 'center', gap: 6, zIndex: 10 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)' },
+  activeDot: { backgroundColor: '#FFFFFF', width: 8, height: 8, borderRadius: 4, borderColor: 'transparent' },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. VIP Banner Component (مستند من العروض – يبقى كما هو)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VIPBanner = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
@@ -135,7 +263,7 @@ const VIPBanner = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Grid Item Component (Masonry card) - مع نصوص اختيارية
+// 3. Grid Item Component (Masonry card)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GridOfferItem = memo(function GridOfferItem({
@@ -173,12 +301,12 @@ const GridOfferItem = memo(function GridOfferItem({
         style={StyleSheet.absoluteFill}
       />
 
-      {/* شارة "لقطة 🔥" - يمكن جعلها اختيارية أيضاً إذا أردت */}
+      {/* شارة "لقطة 🔥" */}
       <View style={[styles.gridBadge, { alignSelf: 'flex-start' }]}>
         <Text style={styles.gridBadgeText}>لقطة 🔥</Text>
       </View>
 
-      {/* النصوص في الأسفل - اختيارية بالكامل */}
+      {/* النصوص في الأسفل - اختيارية */}
       <View style={styles.gridBottom}>
         {offer.store_name ? (
           <Text style={styles.gridStore} numberOfLines={1}>
@@ -201,13 +329,12 @@ const GridOfferItem = memo(function GridOfferItem({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Skeleton Loader
+// 4. Skeleton Loader
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SkeletonGrid() {
   const items = 6;
   const itemWidth = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
-  // ارتفاعات عشوائية للهيكل العظمي
   const heights = [200, 240, 210, 260, 190, 230];
 
   return (
@@ -223,7 +350,7 @@ function SkeletonGrid() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main Screen
+// MAIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function OffersScreen() {
@@ -243,6 +370,9 @@ export default function OffersScreen() {
   const [carouselOffers, setCarouselOffers] = useState<Offer[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
 
+  // ── حالة البانرات من السيرفر ──
+  const [banners, setBanners] = useState<Banner[]>([]);
+
   // ── Track page view ──────────────────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
@@ -250,7 +380,35 @@ export default function OffersScreen() {
     }, [])
   );
 
-  // ── Fetch from Supabase ──────────────────────────────────────────────────
+  // ── جلب البانرات من السيرفر (مثل index و stores) ──────────────────────
+  useEffect(() => {
+    const cached = getBannersCache('offers');
+    if (cached && cached.length > 0) {
+      setBanners(cached);
+      return;
+    }
+
+    const controller = new AbortController();
+    fetchActiveBanners('offers', { signal: controller.signal })
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const shuffled = shuffleArray(data);
+          setBannersCache(shuffled, 'offers');
+          setBanners(shuffled);
+        } else {
+          setBanners(FALLBACK_BANNERS_OFFERS);
+        }
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        console.warn('⚠️ فشل جلب بانرات العروض:', err);
+        setBanners(FALLBACK_BANNERS_OFFERS);
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  // ── Fetch Offers from Supabase ──────────────────────────────────────────
   const fetchOffers = useCallback(async (showLoader = true) => {
     if (showLoader) setLoading(true);
     setError(null);
@@ -266,7 +424,7 @@ export default function OffersScreen() {
       if (dbError) throw new Error(dbError.message);
       const offersData = (data ?? []) as Offer[];
 
-      // أول 3 عروض كـ VIP (نأخذ الأول للبانر، والباقي للكاروسيل)
+      // أول 3 عروض كـ VIP
       const vipCount = Math.min(3, offersData.length);
       const vip = offersData.slice(0, vipCount);
       const normal = offersData.slice(vipCount);
@@ -314,7 +472,7 @@ export default function OffersScreen() {
     return offers.filter(o => o.category === activeCategory);
   }, [offers, activeCategory]);
 
-  // ── Masonry Layout: تقسيم إلى عمودين مع ارتفاعات مختلفة ──────────────
+  // ── Masonry Layout ──────────────────────────────────────────────────────
   const masonryData = useMemo(() => {
     const col1: Offer[] = [];
     const col2: Offer[] = [];
@@ -325,14 +483,12 @@ export default function OffersScreen() {
     return { col1, col2 };
   }, [filteredOffers]);
 
-  // ── ارتفاعات عشوائية للبطاقات (تأثير Masonry) ─────────────────────────
   const getRandomHeight = (index: number) => {
     const base = 200;
     const variations = [0, 30, 60, -20, 40, -10, 50, 20];
     return base + (variations[index % variations.length] || 0);
   };
 
-  // ── عرض العمود ──────────────────────────────────────────────────────────
   const renderColumn = (columnData: Offer[], columnIndex: number) => {
     const itemWidth = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
 
@@ -369,7 +525,6 @@ export default function OffersScreen() {
     <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top }]}>
       {/* ── Header ── */}
       <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
-        {/* أيقونة التحديث (يسار) */}
         <Pressable
           onPress={handleRefresh}
           hitSlop={12}
@@ -383,12 +538,10 @@ export default function OffersScreen() {
           )}
         </Pressable>
 
-        {/* العنوان في المنتصف */}
         <Text style={[styles.headerTitle, { color: headerTitle }]}>
           {isAr ? 'أقوى العروض 🔥' : 'Best Offers 🔥'}
         </Text>
 
-        {/* أيقونة الرجوع (يمين) */}
         <Pressable
           onPress={() => router.back()}
           hitSlop={12}
@@ -455,6 +608,9 @@ export default function OffersScreen() {
           />
         }
       >
+        {/* ── Banner Carousel (من السيرفر) ── */}
+        <BannerCarousel banners={banners} isRTL={language === 'ar'} />
+
         {loading ? (
           <SkeletonGrid />
         ) : error ? (
@@ -474,7 +630,7 @@ export default function OffersScreen() {
           </View>
         ) : (
           <>
-            {/* ── VIP Banner ── */}
+            {/* ── VIP Banner (من العروض) ── */}
             {vipOffer && <VIPBanner offer={vipOffer} isAr={isAr} />}
 
             {/* ── Grid (Masonry) ── */}
