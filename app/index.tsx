@@ -20,7 +20,6 @@ import {
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
-import { GLView } from 'expo-gl';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const DEVICE_ID_KEY = 'app_device_id_v1';
@@ -130,94 +129,8 @@ async function trackVisit() {
   }
 }
 
-// ─── 3D Scene Component (Native only, dynamic imports) ──────────────────
-const ThreeScene = memo(function ThreeScene() {
-  const glViewRef = useRef<GLView>(null);
-  const sceneRef = useRef<any>(null);
-  const animationFrameRef = useRef<number>();
-
-  useEffect(() => {
-    // لا تعمل على الويب
-    if (Platform.OS === 'web') return;
-
-    let mount = true;
-
-    const setupScene = async () => {
-      if (!glViewRef.current || !mount) return;
-
-      // استيراد ديناميكي للمكتبات (يحدث فقط على الجهاز)
-      const { Renderer, TextureLoader } = await import('expo-three');
-      const THREE = await import('three');
-
-      const gl = glViewRef.current;
-      const renderer = new Renderer({ gl });
-      renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
-
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x0a6e5c); // لون الخلفية
-
-      const camera = new THREE.PerspectiveCamera(75, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 1000);
-      camera.position.z = 3;
-
-      // شكل ثلاثي الأبعاد (كرة ذهبية)
-      const geometry = new THREE.SphereGeometry(1, 32, 32);
-      const material = new THREE.MeshStandardMaterial({
-        color: 0xe8c060,
-        roughness: 0.4,
-        metalness: 0.6,
-        emissive: new THREE.Color(0xe8c060),
-        emissiveIntensity: 0.2,
-      });
-      const sphere = new THREE.Mesh(geometry, material);
-      scene.add(sphere);
-
-      // إضاءة
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-      scene.add(ambientLight);
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-      directionalLight.position.set(1, 2, 3);
-      scene.add(directionalLight);
-      const backLight = new THREE.DirectionalLight(0x444466, 0.5);
-      backLight.position.set(-1, -1, -2);
-      scene.add(backLight);
-
-      // حلقة الرسم
-      const animate = () => {
-        if (!mount) return;
-        requestAnimationFrame(animate);
-
-        sphere.rotation.x += 0.01;
-        sphere.rotation.y += 0.02;
-
-        renderer.render(scene, camera);
-        gl.endFrameEXP();
-      };
-
-      animate();
-      sceneRef.current = { scene, camera, sphere, renderer };
-    };
-
-    setupScene().catch(console.warn);
-
-    return () => {
-      mount = false;
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      if (sceneRef.current) {
-        sceneRef.current.renderer.dispose();
-      }
-    };
-  }, []);
-
-  if (Platform.OS === 'web') return null;
-
-  return (
-    <GLView
-      ref={glViewRef}
-      style={StyleSheet.absoluteFillObject}
-      onContextCreate={() => {}}
-    />
-  );
-});
+// ─── 3D Scene Component (platform-specific, safe for web) ──────────────────
+import ThreeScene from '@/components/feature/ThreeScene';
 
 // ─── Loading Dots ──────────────────────────────────────────────────────
 const LoadingDots = memo(function LoadingDots() {
