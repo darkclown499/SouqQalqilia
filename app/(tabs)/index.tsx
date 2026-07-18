@@ -24,7 +24,7 @@ import { useAds } from '@/hooks/useAds';
 import { useCategories } from '@/hooks/useCategories';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { useResponsive } from '@/hooks/useResponsive';
-import { fetchActiveBanners, getBannersCache, setBannersCache, getBannerPressHandler, Banner } from '@/services/bannersService';
+import { fetchActiveBanners, getBannersCache, setBannersCache, Banner } from '@/services/bannersService';
 import { fetchActiveInterstitials, InterstitialAd } from '@/services/interstitialService';
 import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockService';
 import { getCategoryName } from '@/services/categoriesService';
