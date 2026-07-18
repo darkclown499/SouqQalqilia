@@ -21,28 +21,8 @@ import {
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
-
-// ── 3D imports (native only) ────────────────────────────────────────────────
-import { Platform } from 'react-native';
-let GLView: any = null;
-let Renderer: any = null;
-let THREE: any = null;
-let AmbientLight: any, PointLight: any, Mesh: any, SphereGeometry: any, MeshStandardMaterial: any;
-if (Platform.OS !== 'web') {
-  try {
-    const expoGl = require('expo-gl');
-    GLView = expoGl.GLView;
-    const expoThree = require('expo-three');
-    Renderer = expoThree.Renderer;
-    THREE = expoThree.THREE;
-    const threeLib = require('three');
-    AmbientLight = threeLib.AmbientLight;
-    PointLight = threeLib.PointLight;
-    Mesh = threeLib.Mesh;
-    SphereGeometry = threeLib.SphereGeometry;
-    MeshStandardMaterial = threeLib.MeshStandardMaterial;
-  } catch (_) {}
-}
+import { GLView } from 'expo-gl';
+import { Renderer, TextureLoader, THREE } from 'expo-three';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const DEVICE_ID_KEY = 'app_device_id_v1';
@@ -128,6 +108,7 @@ async function preloadWithCache() {
     loadFresh().catch(() => {});
     return true;
   }
+
   return loadFresh();
 }
 
@@ -151,131 +132,93 @@ async function trackVisit() {
   }
 }
 
-// ─── 3D Background Component ──────────────────────────────────────────────
-const ThreeDBackground = memo(function ThreeDBackground({ 
-  opacity = 0.3,
-  color = '#E8C060',
-  speed = 0.5
-}: { 
-  opacity?: number;
-  color?: string;
-  speed?: number;
-}) {
-  const glRef = useRef<GLView>(null);
-  const animationRef = useRef<number | null>(null);
+// ─── 3D Scene Component ──────────────────────────────────────────────────
+// يتم تحميل three.js فقط على الـ Native (ليس على الـ Web)
+const ThreeScene = memo(function ThreeScene() {
+  const glViewRef = useRef<GLView>(null);
   const sceneRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
-  const rendererRef = useRef<any>(null);
-  const meshRef = useRef<any>(null);
-  const mountedRef = useRef(true);
+  const animationFrameRef = useRef<number>();
 
   useEffect(() => {
-    if (!glRef.current || !Renderer || !THREE) return;
+    if (Platform.OS === 'web') return; // لا تعمل على الـ web
 
-    const initScene = async () => {
-      try {
-        const gl = glRef.current;
-        if (!gl) return;
+    let mount = true;
 
-        // Create renderer
-        const renderer = new Renderer({ gl });
-        renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
-        renderer.setClearColor(0x000000, 0);
-        rendererRef.current = renderer;
+    const setupScene = async () => {
+      if (!glViewRef.current || !mount) return;
 
-        // Scene
-        const scene = new THREE.Scene();
-        sceneRef.current = scene;
+      // استيراد three.js و expo-three ديناميكياً
+      const { Renderer, TextureLoader } = await import('expo-three');
+      const THREE = await import('three');
 
-        // Camera
-        const camera = new THREE.PerspectiveCamera(75, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 1000);
-        camera.position.z = 3;
-        cameraRef.current = camera;
+      const gl = glViewRef.current;
+      const renderer = new Renderer({ gl });
+      renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
 
-        // Lights
-        const ambientLight = new AmbientLight(0xffffff, 0.5);
-        scene.add(ambientLight);
-        
-        const pointLight1 = new PointLight(color, 1, 10);
-        pointLight1.position.set(2, 2, 2);
-        scene.add(pointLight1);
-        
-        const pointLight2 = new PointLight(0xffffff, 0.5, 10);
-        pointLight2.position.set(-2, -1, 2);
-        scene.add(pointLight2);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0a6e5c); // لون متناسق مع الخلفية
 
-        // Create a sphere with gold material
-        const geometry = new SphereGeometry(0.8, 32, 32);
-        const material = new MeshStandardMaterial({
-          color: color,
-          roughness: 0.3,
-          metalness: 0.7,
-          emissive: color,
-          emissiveIntensity: 0.1,
-        });
-        const sphere = new Mesh(geometry, material);
-        scene.add(sphere);
-        meshRef.current = sphere;
+      const camera = new THREE.PerspectiveCamera(75, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 1000);
+      camera.position.z = 3;
 
-        // Start animation
-        let lastFrameTime = 0;
-        const animate = (time: number) => {
-          if (!mountedRef.current || !rendererRef.current || !sceneRef.current || !cameraRef.current) return;
-          
-          const delta = (time - lastFrameTime) / 1000;
-          lastFrameTime = time;
+      // إنشاء شكل ثلاثي الأبعاد (شعار أو كرة)
+      const geometry = new THREE.SphereGeometry(1, 32, 32);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0xe8c060,
+        roughness: 0.4,
+        metalness: 0.6,
+        emissive: new THREE.Color(0xe8c060),
+        emissiveIntensity: 0.2,
+      });
+      const sphere = new THREE.Mesh(geometry, material);
+      scene.add(sphere);
 
-          // Rotate sphere
-          if (meshRef.current) {
-            meshRef.current.rotation.x += delta * speed * 0.5;
-            meshRef.current.rotation.y += delta * speed;
-          }
+      // إضاءة
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+      directionalLight.position.set(1, 2, 3);
+      scene.add(directionalLight);
+      const backLight = new THREE.DirectionalLight(0x444466, 0.5);
+      backLight.position.set(-1, -1, -2);
+      scene.add(backLight);
 
-          rendererRef.current.render(sceneRef.current, cameraRef.current);
-          animationRef.current = requestAnimationFrame(animate);
-        };
+      // حلقة الرسم
+      const animate = () => {
+        if (!mount) return;
+        requestAnimationFrame(animate);
 
-        animationRef.current = requestAnimationFrame(animate);
-      } catch (error) {
-        console.warn('3D init error:', error);
-      }
+        sphere.rotation.x += 0.01;
+        sphere.rotation.y += 0.02;
+
+        renderer.render(scene, camera);
+        gl.endFrameEXP();
+      };
+
+      animate();
+      sceneRef.current = { scene, camera, sphere, renderer };
     };
 
-    initScene();
+    setupScene().catch(console.warn);
 
     return () => {
-      mountedRef.current = false;
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-      if (rendererRef.current) {
-        rendererRef.current.dispose();
-      }
-      if (meshRef.current) {
-        meshRef.current.geometry.dispose();
-        meshRef.current.material.dispose();
+      mount = false;
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      // تنظيف الموارد (اختياري)
+      if (sceneRef.current) {
+        sceneRef.current.renderer.dispose();
       }
     };
-  }, [color, speed]);
-
-  // Handle resize
-  const onLayout = useCallback(() => {
-    const gl = glRef.current;
-    if (!gl || !rendererRef.current || !cameraRef.current) return;
-    const { width, height } = gl;
-    rendererRef.current.setSize(width, height);
-    cameraRef.current.aspect = width / height;
-    cameraRef.current.updateProjectionMatrix();
   }, []);
 
-  if (!GLView) return null;
+  // لا نعرض أي شيء على الـ web
+  if (Platform.OS === 'web') return null;
+
   return (
     <GLView
-      ref={glRef}
+      ref={glViewRef}
       style={StyleSheet.absoluteFillObject}
-      onLayout={onLayout}
-      opacity={opacity}
-      pointerEvents="none"
+      onContextCreate={() => {}}
     />
   );
 });
@@ -380,9 +323,6 @@ function LaunchPhase({ onDone }: { onDone: () => void }) {
     <Animated.View
       style={[styles.fullScreen, { backgroundColor: colors.BG, opacity: screenOpacity }]}
     >
-      {/* 3D Background */}
-      <ThreeDBackground opacity={0.15} color={colors.GOLD} speed={0.3} />
-      
       <View style={styles.glow} />
       <Animated.View
         style={[
@@ -613,9 +553,9 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[styles.fullScreen, { backgroundColor: colors.BG, opacity: screenOpacity }]}>
-      {/* 3D Background */}
-      <ThreeDBackground opacity={0.2} color={colors.GOLD} speed={0.6} />
-      
+      {/* الخلفية ثلاثية الأبعاد (تظهر خلف كل العناصر) */}
+      <ThreeScene />
+
       <View style={styles.glow} />
       {showSkip && (
         <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
@@ -672,6 +612,8 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
 function AuthGate() {
   const [target, setTarget] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const scheme = useColorScheme() ?? 'light';
+  const colors = getColors(scheme);
 
   useEffect(() => {
     let cancelled = false;
@@ -744,10 +686,9 @@ function AuthGate() {
   }, []);
 
   if (isLoading) {
-    const scheme = useColorScheme() ?? 'light';
     return (
-      <View style={[styles.fullScreen, { backgroundColor: getColors(scheme).BG, justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={getColors(scheme).GOLD} />
+      <View style={[styles.fullScreen, { backgroundColor: colors.BG, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.GOLD} />
       </View>
     );
   }
