@@ -528,12 +528,12 @@ export default function StoreDashboardScreen() {
       }
 
       if (storeData) {
-        // تحميل المنتجات
+        // ✅ تحميل المنتجات - fetchStoreProducts تُعيد { data } فقط
         const { data: prods } = await fetchStoreProducts(storeData.id);
         if (signal.aborted || !isMountedRef.current) return;
         setProducts(prods || []);
 
-        // ✅ تحميل التصنيفات المخصصة باستخدام getLocalCategories (الصحيحة)
+        // ✅ تحميل التصنيفات المخصصة - getLocalCategories تُعيد مصفوفة مباشرة
         const localCats = await getLocalCategories(storeData.id);
         if (signal.aborted || !isMountedRef.current) return;
         setCustomCategories(localCats);
