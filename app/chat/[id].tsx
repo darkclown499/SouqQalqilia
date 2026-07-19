@@ -8,7 +8,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
-import { useChat } from '@/hooks/useChat';
+import { useChat } from '../../hooks/useChat';
 import {
   fetchConversationById,
   updateTypingIndicator,

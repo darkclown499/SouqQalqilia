@@ -9,7 +9,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import NetInfo from '@react-native-community/netinfo';
 import { useAuth, useAlert } from '@/template';
-import { useConversations } from '@/hooks/useChat';
+import { useConversations } from '../../hooks/useChat';
 import { deleteConversation } from '@/services/chatService';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';

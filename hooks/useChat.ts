@@ -414,3 +414,6 @@ export function useConversations(options?: { enabled?: boolean }) {
     unarchive,
   };
 }
+
+// ─── ✅ التصدير النهائي ───────────────────────────────────────────────────────
+export { useChat, useConversations };
