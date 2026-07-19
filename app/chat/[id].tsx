@@ -8,7 +8,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
-import { useChat } from '@/hooks/useChat'; // ✅ استيراد useChat الجديد
+import { useChat } from '@/hooks/useChat';
 import {
   fetchConversationById,
   updateTypingIndicator,
@@ -34,7 +34,7 @@ if (Platform.OS !== 'web') {
   } catch (_) {}
 }
 
-// ---- TypingDots component (unchanged) ----
+// ---- TypingDots component ----
 function TypingDots({ color }: { color: string }) {
   const dot1 = useRef(new Animated.Value(0)).current;
   const dot2 = useRef(new Animated.Value(0)).current;
@@ -113,14 +113,14 @@ export default function ChatScreen() {
 
   const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
 
-  // ✅ استخدام useChat الجديد بدلاً من useMessages
+  // ✅ استخدام useChat الجديد
   const {
     messages,
     loading,
     sending,
     otherTyping,
     isOnline,
-    error,
+    error: chatError,
     sendMessage,
     uploadImage,
     sendTyping,
@@ -141,6 +141,13 @@ export default function ChatScreen() {
 
   // ── Quote/Reply State ──
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+
+  // ----- عرض أخطاء useChat -----
+  useEffect(() => {
+    if (chatError) {
+      showAlert(isAr ? 'خطأ' : 'Error', chatError);
+    }
+  }, [chatError, showAlert, isAr]);
 
   // ----- Helper: Cleanup sound and recording resources -----
   const cleanupAudioResources = useCallback(async () => {
@@ -165,10 +172,10 @@ export default function ChatScreen() {
     setRecordingDuration(0);
   }, []);
 
-  // ----- Mark read using the new markRead from useChat -----
-  const doMark = useCallback(async () => {
+  // ----- Mark read using markRead from useChat -----
+  const doMark = useCallback(() => {
     if (!id || !user) return;
-    markRead(); // استدعاء markRead من useChat
+    markRead();
   }, [id, user, markRead]);
 
   // ----- Force mark read on focus and whenever messages change -----
@@ -183,7 +190,6 @@ export default function ChatScreen() {
     }, [doMark])
   );
 
-  // استدعاء doMark عند تغير قائمة الرسائل (إذا ظهرت رسائل جديدة غير مقروءة)
   useEffect(() => {
     const hasUnread = messages.some(m => m.sender_id !== user?.id && !m.read_at);
     if (hasUnread) {
@@ -191,19 +197,16 @@ export default function ChatScreen() {
     }
   }, [messages, user?.id, doMark]);
 
-  // ----- Send message handler (using new sendMessage from useChat) -----
+  // ----- Send message handler (using sendMessage from useChat) -----
   const handleSendMessage = useCallback(async (content: string, imageUrl?: string): Promise<boolean> => {
     if (!id || !user) {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'المستخدم أو المحادثة غير موجودة' : 'User or conversation missing');
       return false;
     }
 
-    // استخدام دالة sendMessage من useChat
     const success = await sendMessage(content, imageUrl);
     if (success) {
-      // بعد الإرسال، نضع علامة قراءة للرسائل السابقة
       doMark();
-      // إشعار للمستلم (يمكن إضافته لاحقاً)
       return true;
     }
     return false;
@@ -214,7 +217,7 @@ export default function ChatScreen() {
     await retryMessage(failedMsg.id);
   }, [retryMessage]);
 
-  // ----- Audio Recording Handlers (unchanged) -----
+  // ----- Audio Recording Handlers (modified to use uploadImage) -----
   const handleStartRecording = useCallback(async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
@@ -281,14 +284,17 @@ export default function ChatScreen() {
         return;
       }
 
+      // ✅ استخدام uploadImage من useChat بدلاً من uploadChatImage + handleSendMessage
       setImageUploading(true);
-      const { url, error } = await uploadChatImage(tempUri, `voice_${Date.now()}.m4a`);
+      const fileName = `voice_${Date.now()}.m4a`;
+      const url = await uploadImage(tempUri, fileName);
       setImageUploading(false);
-      if (error || !url) {
+
+      if (!url) {
         showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', isAr ? 'تعذر رفع الملف الصوتي' : 'Could not upload audio');
         return;
       }
-      await handleSendMessage('🎤 رسالة صوتية', url);
+      // uploadImage يقوم بإرسال الرسالة تلقائياً، لا حاجة لاستدعاء handleSendMessage مرة أخرى
     } catch (e) {
       console.warn('Stop recording error:', e);
       setImageUploading(false);
@@ -300,7 +306,7 @@ export default function ChatScreen() {
         } catch {}
       }
     }
-  }, [handleSendMessage, isAr, showAlert]);
+  }, [uploadImage, isAr, showAlert]);
 
   const handlePlayVoice = useCallback(async (msgId: string, voiceUrl: string) => {
     try {
@@ -349,7 +355,7 @@ export default function ChatScreen() {
     };
   }, [cleanupAudioResources]);
 
-  // ----- Search functionality (unchanged) -----
+  // ----- Search functionality -----
   const searchMatchIds = useMemo<string[]>(() => {
     if (!searchQuery.trim()) return [];
     return messages
@@ -507,7 +513,7 @@ export default function ChatScreen() {
       setShowQuickReplies(false);
       doMark();
     }
-  }, [text, id, sending, handleSendMessage, isBuyer, isOnline, showAlert, isAr, replyTo, doMark]);
+  }, [text, id, sending, handleSendMessage, isOnline, showAlert, isAr, replyTo, doMark]);
 
   // ── Copy message text ──
   const handleCopyMessage = useCallback((content: string) => {
@@ -537,7 +543,6 @@ export default function ChatScreen() {
       });
       if (result.canceled || !result.assets?.[0]) return;
       setImageUploading(true);
-      // استخدام uploadImage من useChat
       const url = await uploadImage(result.assets[0].uri, result.assets[0].fileName ?? `cam_${Date.now()}.jpg`);
       setImageUploading(false);
       if (url) {
@@ -566,7 +571,6 @@ export default function ChatScreen() {
       });
       if (result.canceled || !result.assets?.[0]) return;
       setImageUploading(true);
-      // استخدام uploadImage من useChat
       const url = await uploadImage(result.assets[0].uri, result.assets[0].fileName ?? `chat_${Date.now()}.jpg`);
       setImageUploading(false);
       if (url) {
@@ -578,7 +582,7 @@ export default function ChatScreen() {
     }
   }, [id, imageUploading, uploadImage, handleSendMessage, isAr, showAlert]);
 
-  // ----- Conversation actions (unchanged) -----
+  // ----- Conversation actions -----
   const isSeller = conversation?.seller_id === user?.id;
   const adStatus = (conversation as any)?.ads?.status as string | undefined;
   const adId = conversation?.ad_id;
@@ -765,7 +769,7 @@ export default function ChatScreen() {
     return items;
   }, [pagedMessages]);
 
-  // ----- Render functions (unchanged) -----
+  // ----- Render functions -----
   const renderItem = useCallback(({ item }: { item: MsgItem }) => {
     if (item._type === 'date') {
       return (

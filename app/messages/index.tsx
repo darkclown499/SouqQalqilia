@@ -51,9 +51,26 @@ export default function MessagesScreen() {
   const { language, isRTL } = useLanguage();
   const isAr = language === 'ar';
 
-  const { conversations, loading, reload, unreadCount } = useConversations({
-    enabled: !!user,
-  });
+  // ✅ استدعاء useConversations مع معالجة الخطأ
+  let conversationsData;
+  try {
+    conversationsData = useConversations({ enabled: !!user });
+  } catch (err) {
+    console.error('[MessagesScreen] useConversations error:', err);
+    conversationsData = {
+      conversations: [],
+      loading: false,
+      reload: () => Promise.resolve(),
+      unreadCount: 0,
+    };
+  }
+
+  const {
+    conversations = [],
+    loading = false,
+    reload = () => Promise.resolve(),
+    unreadCount = 0,
+  } = conversationsData;
 
   const [isOnline, setIsOnline] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +89,7 @@ export default function MessagesScreen() {
     return () => unsub();
   }, []);
 
-  // ✅ دالة تحميل آمنة تمنع التحميل المتكرر
+  // ✅ دالة تحميل آمنة مع التحقق من وجود reload
   const safeReload = useCallback(async () => {
     if (isReloading.current) {
       console.log('⏳ تحميل جارٍ بالفعل، تم تجاهل الطلب');
@@ -86,9 +103,16 @@ export default function MessagesScreen() {
     isReloading.current = true;
     lastReloadTime.current = now;
     setError(null);
+
     try {
-      await reload();
-    } catch (err) {
+      if (typeof reload === 'function') {
+        await reload();
+      } else {
+        console.warn('[MessagesScreen] reload is not a function');
+        setError(isAr ? 'تعذر تحديث المحادثات' : 'Failed to reload conversations');
+      }
+    } catch (err: any) {
+      console.error('[MessagesScreen] reload error:', err);
       if (isMounted.current) {
         setError(err?.message || (isAr ? 'فشل تحميل المحادثات' : 'Failed to load conversations'));
       }
@@ -128,7 +152,7 @@ export default function MessagesScreen() {
             try {
               await deleteConversation(conversationId);
               await safeReload();
-            } catch (err) {
+            } catch (err: any) {
               showAlert(isAr ? 'خطأ' : 'Error', err?.message || (isAr ? 'فشل الحذف' : 'Delete failed'));
             }
           },
