@@ -115,7 +115,7 @@ const OfferItem = memo(({ offer, isAr, forceFull = false }: { offer: Offer; isAr
   switch (size) {
     case 'full':
       width = SCREEN_W;
-      height = SCREEN_H * 0.55; // 55% من ارتفاع الشاشة
+      height = SCREEN_H * 0.6; // زيادة إلى 60% لجعله أكبر
       borderRadius = 0;
       titleFontSize = 36;
       descFontSize = 20;
@@ -188,7 +188,6 @@ const OfferItem = memo(({ offer, isAr, forceFull = false }: { offer: Offer; isAr
         cachePolicy="disk"
       />
 
-      {/* طبقة التدرج الفاخرة */}
       <LinearGradient
         colors={[
           'rgba(0,0,0,0.1)',
@@ -200,7 +199,6 @@ const OfferItem = memo(({ offer, isAr, forceFull = false }: { offer: Offer; isAr
         style={StyleSheet.absoluteFill}
       />
 
-      {/* تأثير فاخر - خطوط ذهبية جانبية للبنر الكبير */}
       {isLarge && (
         <View style={styles.goldFrame}>
           <LinearGradient
@@ -361,7 +359,7 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
 
 function SkeletonLoader() {
   const items = 2;
-  const heights = [SCREEN_H * 0.55, 280];
+  const heights = [SCREEN_H * 0.6, 280];
 
   return (
     <View style={{ paddingHorizontal: 0, gap: 12 }}>
@@ -385,6 +383,7 @@ export default function OffersScreen() {
   const { colors, isDark } = useTheme();
   const { language } = useLanguage();
   const isAr = language === 'ar';
+  const isRTL = language === 'ar'; // افتراض أن اللغة العربية هي RTL
 
   const [allOffers, setAllOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -498,9 +497,8 @@ export default function OffersScreen() {
   const displayItems = useMemo(() => {
     const items: JSX.Element[] = [];
 
-    // أولاً: نعرض البانرات من جدول banners (إذا وجدت)
+    // إذا كانت هناك بانرات من جدول banners نعرضها
     if (banners.length > 0) {
-      // نضع البانرات الكبيرة أولاً، ثم الباقي
       const sortedBanners = [...banners].sort((a, b) => {
         const order = { full: 0, large: 1, medium: 2, small: 3 };
         const sizeA = a.size || 'medium';
@@ -512,21 +510,36 @@ export default function OffersScreen() {
           <BannerItem key={`banner-${banner.id || index}`} banner={banner} isAr={isAr} />
         );
       });
-    } else {
-      // إذا لم توجد بانرات، نعرض أول عرض بحجم full (إذا كان موجوداً)
-      if (sortedOffers.length > 0) {
-        // أول عرض نجعله full إجبارياً
-        const firstOffer = sortedOffers[0];
+    } else if (sortedOffers.length > 0) {
+      // إذا لم توجد بانرات، نعرض أول عرض بحجم full إجبارياً
+      const firstOffer = sortedOffers[0];
+      items.push(
+        <OfferItem key={`offer-${firstOffer.id}`} offer={firstOffer} isAr={isAr} forceFull={true} />
+      );
+      sortedOffers.slice(1).forEach((offer) => {
         items.push(
-          <OfferItem key={`offer-${firstOffer.id}`} offer={firstOffer} isAr={isAr} forceFull={true} />
+          <OfferItem key={`offer-${offer.id}`} offer={offer} isAr={isAr} />
         );
-        // باقي العروض تعرض بحجمها الطبيعي
-        sortedOffers.slice(1).forEach((offer) => {
-          items.push(
-            <OfferItem key={`offer-${offer.id}`} offer={offer} isAr={isAr} />
-          );
-        });
-      }
+      });
+    } else {
+      // لا يوجد عروض ولا بانرات -> نعرض بنر وهمي كبير جداً لعرض الصفحة بشكل جميل
+      const dummyOffer: Offer = {
+        id: 'dummy',
+        title: isAr ? 'مرحباً في سوق قلقيلية' : 'Welcome to Souq Qalqilya',
+        description: isAr ? 'اكتشف العروض المميزة' : 'Discover amazing offers',
+        image_url: 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80',
+        category: null,
+        phone: null,
+        store_name: isAr ? 'سوق قلقيلية' : 'Souq Qalqilya',
+        is_active: true,
+        position: 0,
+        created_at: new Date().toISOString(),
+        card_size: 'full',
+        is_vip: true,
+      };
+      items.push(
+        <OfferItem key="dummy-offer" offer={dummyOffer} isAr={isAr} forceFull={true} />
+      );
     }
 
     return items;
@@ -545,7 +558,7 @@ export default function OffersScreen() {
     <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top }]}>
       {/* ── Header ── */}
       <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', gap: 8 }}>
           <Pressable
             onPress={handleRefresh}
             hitSlop={12}
@@ -588,7 +601,7 @@ export default function OffersScreen() {
             data={categories}
             keyExtractor={(item) => item}
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterScroll}
+            contentContainerStyle={[styles.filterScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
             renderItem={({ item: cat }) => {
               const isActive = activeCategory === cat;
               return (
