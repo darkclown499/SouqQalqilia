@@ -176,14 +176,18 @@ export default function ChatScreen() {
       created_at: new Date().toISOString(),
       _pending: true,
     };
+
+    // ✅ إضافة الرسالة مؤقتاً
     appendMessage(tempMsg);
 
     const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
+
     if (error) {
       showAlert(
         isAr ? 'فشل الإرسال' : 'Send Failed',
         isAr ? 'سيتم إعادة المحاولة تلقائياً' : 'Will retry automatically'
       );
+      // ✅ تحديث الرسالة بحالة فشل
       updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
       await addToOfflineQueue({
         tempId: clientId,
@@ -193,14 +197,17 @@ export default function ChatScreen() {
         message_type: imageUrl ? 'image' : 'text',
         created_at: tempMsg.created_at,
       });
+      return false;
     } else {
       if (sent) {
+        // ✅ استبدال الرسالة المؤقتة بالرسالة النهائية
         updateMessage(clientId, sent);
         if (recipientId && recipientId !== user.id) {
           const senderName = user.username || user.email?.split('@')[0] || 'مستخدم';
           notifyRecipient(recipientId, senderName, content || '📷 صورة', id, !isBuyerSending);
         }
       }
+      return true;
     }
   }, [id, user, appendMessage, updateMessage, showAlert, isAr]);
 
@@ -467,7 +474,6 @@ export default function ChatScreen() {
   // ----- Typing indicator -----
   const handleTyping = useCallback((val: string) => {
     setText(val);
-    // ✅ التحقق من أن isBuyer ليس null قبل استدعاء updateTypingIndicator
     if (!id || !user || isBuyer === null) return;
     updateTypingIndicator(id, isBuyer, true).catch(() => {});
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -476,7 +482,6 @@ export default function ChatScreen() {
     }, 3000);
   }, [id, user, isBuyer]);
 
-  // ✅ إضافة التحقق من isBuyer في useEffect الخاص بالتنظيف
   useEffect(() => {
     return () => {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -498,14 +503,13 @@ export default function ChatScreen() {
 
     try {
       const supabase = getSupabaseClient();
-      // ✅ إضافة شرط .is('deleted_by', null) لاستبعاد الرسائل المحذوفة
       const { error } = await supabase
         .from('messages')
         .update({ read_at: new Date().toISOString() })
         .eq('conversation_id', id)
         .neq('sender_id', user.id)
         .is('read_at', null)
-        .is('deleted_by', null); // ✅ التعديل المطلوب
+        .is('deleted_by', null);
       if (!error) {
         markReadLocally(user.id);
       }
@@ -575,6 +579,7 @@ export default function ChatScreen() {
     setShowQuickReplies(false);
   }, []);
 
+  // ✅ إصلاح مشكلة اختفاء الرسالة - تم تعديل handleSend
   const handleSend = useCallback(async () => {
     const content = text.trim();
     if (!content || !id || sending) return;
@@ -595,12 +600,22 @@ export default function ChatScreen() {
     }
 
     setSending(true);
-    setText('');
+    // ✅ لا نمسح النص قبل الإرسال، بل نمسحه بعد نجاح الإرسال
+    // ✅ نمرر النص إلى handleSendMessage ونمسحه هناك بعد النجاح
+
     try {
-      await handleSendMessage(finalContent);
+      const success = await handleSendMessage(finalContent);
+      if (success) {
+        // ✅ نمسح النص فقط بعد نجاح الإرسال
+        setText('');
+        // ✅ إخفاء الردود السريعة بعد الإرسال
+        setShowQuickReplies(false);
+      }
+    } catch (err) {
+      console.warn('Send error:', err);
+      // ✅ في حالة الخطأ، يبقى النص في حقل الإدخال ليتمكن المستخدم من إعادة المحاولة
     } finally {
       setSending(false);
-      // ✅ التحقق من أن isBuyer ليس null قبل استدعاء updateTypingIndicator
       if (isBuyer !== null) {
         updateTypingIndicator(id!, isBuyer, false).catch(() => {});
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -617,7 +632,6 @@ export default function ChatScreen() {
   // ── Reply to message ──
   const handleReplyToMessage = useCallback((msg: Message) => {
     setReplyTo(msg);
-    // التركيز على حقل الإدخال
     setTimeout(() => {
       // يمكنك استخدام ref للتركيز على TextInput
     }, 100);
@@ -867,9 +881,6 @@ export default function ChatScreen() {
     }
     return items;
   }, [pagedMessages]);
-
-  // ── getItemLayout ── (removed fixed height to avoid wrong scroll positions)
-  // We intentionally omit getItemLayout as messages have variable height.
 
   // ----- Render functions -----
   const renderItem = useCallback(({ item }: { item: MsgItem }) => {
