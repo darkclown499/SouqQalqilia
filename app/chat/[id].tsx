@@ -88,15 +88,7 @@ export default function ChatScreen() {
   const { t, language } = useLanguage();
   const isAr = language === 'ar';
 
-  // ---- التحقق من وجود معرف المحادثة ----
-  if (!id) {
-    return (
-      <View style={styles.center}>
-        <Text>Conversation ID not provided.</Text>
-      </View>
-    );
-  }
-
+  // ========== 1️⃣ جميع الخطافات في الأعلى (بدون عودة شرطية) ==========
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [text, setText] = useState('');
   const [showQuickReplies, setShowQuickReplies] = useState(false);
@@ -113,17 +105,12 @@ export default function ChatScreen() {
   const [searchMatchIndex, setSearchMatchIndex] = useState(0);
   const searchInputRef = useRef<TextInput>(null);
 
-  // ── Image Preview State ──
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-
-  // ── Scroll to Bottom Button ──
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
-  const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
-
-  // ✅ استخدام useChat مع التحقق من الدوال
-  const chatHook = useChat(id);
+  // ✅ استدعاء useChat بدون شرط (حتى لو id غير معرف)
+  const chatHook = useChat(id || ''); // تمرير سلسلة فارغة كـ fallback (useChat يتعامل معها)
   const {
     messages,
     loading,
@@ -139,9 +126,6 @@ export default function ChatScreen() {
     retryMessage,
   } = chatHook;
 
-  // ---- التحقق من وجود الدوال الأساسية ----
-  const isChatReady = typeof sendMessage === 'function' && typeof uploadImage === 'function';
-
   const [imageUploading, setImageUploading] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
@@ -152,20 +136,21 @@ export default function ChatScreen() {
   const soundRef = useRef<any>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Quote/Reply State ──
   const [replyTo, setReplyTo] = useState<Message | null>(null);
 
-  // ----- عرض أخطاء useChat -----
+  // ---- تحقق من صحة id بعد استدعاء الخطافات ----
+  const isIdValid = !!id && typeof id === 'string' && id.length > 0;
+
+  // ========== 2️⃣ بقية الكود (useEffect, useCallback, إلخ) ==========
+
+  // عرض أخطاء useChat
   useEffect(() => {
     if (chatError) {
       showAlert(isAr ? 'خطأ' : 'Error', chatError);
     }
-    if (!isChatReady) {
-      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'الخدمة غير متاحة حالياً' : 'Service unavailable');
-    }
-  }, [chatError, showAlert, isAr, isChatReady]);
+  }, [chatError, showAlert, isAr]);
 
-  // ----- Helper: Cleanup sound and recording resources -----
+  // ---- Helper: تنظيف الموارد الصوتية ----
   const cleanupAudioResources = useCallback(async () => {
     if (soundRef.current) {
       try {
@@ -188,15 +173,14 @@ export default function ChatScreen() {
     setRecordingDuration(0);
   }, []);
 
-  // ----- Mark read using markRead from useChat -----
+  // ---- تعليم الرسائل كمقروءة ----
   const doMark = useCallback(() => {
-    if (!id || !user) return;
+    if (!isIdValid || !user) return;
     if (typeof markRead === 'function') {
       markRead();
     }
-  }, [id, user, markRead]);
+  }, [isIdValid, user, markRead]);
 
-  // ----- Force mark read on focus and whenever messages change -----
   useFocusEffect(
     useCallback(() => {
       doMark();
@@ -215,9 +199,9 @@ export default function ChatScreen() {
     }
   }, [messages, user?.id, doMark]);
 
-  // ----- Send message handler (using sendMessage from useChat) -----
+  // ---- إرسال رسالة ----
   const handleSendMessage = useCallback(async (content: string, imageUrl?: string): Promise<boolean> => {
-    if (!id || !user) {
+    if (!isIdValid || !user) {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'المستخدم أو المحادثة غير موجودة' : 'User or conversation missing');
       return false;
     }
@@ -231,16 +215,16 @@ export default function ChatScreen() {
       return true;
     }
     return false;
-  }, [id, user, sendMessage, doMark, isAr, showAlert]);
+  }, [isIdValid, user, sendMessage, doMark, isAr, showAlert]);
 
-  // ── Retry failed message (using retryMessage from useChat) ──
+  // ---- إعادة محاولة رسالة فاشلة ----
   const handleRetryMessage = useCallback(async (failedMsg: Message) => {
     if (typeof retryMessage === 'function') {
       await retryMessage(failedMsg.id);
     }
   }, [retryMessage]);
 
-  // ----- Audio Recording Handlers (modified to use uploadImage) -----
+  // ---- تسجيل الصوت ----
   const handleStartRecording = useCallback(async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
@@ -321,7 +305,6 @@ export default function ChatScreen() {
         showAlert(isAr ? 'فشل الرفع' : 'Upload Failed', isAr ? 'تعذر رفع الملف الصوتي' : 'Could not upload audio');
         return;
       }
-      // uploadImage يقوم بإرسال الرسالة تلقائياً، لا حاجة لاستدعاء handleSendMessage مرة أخرى
     } catch (e) {
       console.warn('Stop recording error:', e);
       setImageUploading(false);
@@ -373,7 +356,6 @@ export default function ChatScreen() {
     }
   }, [playingVoiceId]);
 
-  // ----- Cleanup on unmount -----
   useEffect(() => {
     return () => {
       cleanupAudioResources();
@@ -382,7 +364,7 @@ export default function ChatScreen() {
     };
   }, [cleanupAudioResources]);
 
-  // ----- Search functionality -----
+  // ---- البحث ----
   const searchMatchIds = useMemo<string[]>(() => {
     if (!searchQuery.trim()) return [];
     return messages
@@ -392,7 +374,6 @@ export default function ChatScreen() {
 
   const totalMatches = searchMatchIds.length;
   const clampedMatchIdx = totalMatches > 0 ? Math.min(searchMatchIndex, totalMatches - 1) : 0;
-  const activeMatchId = searchMatchIds[clampedMatchIdx] ?? null;
 
   const scrollToMatch = useCallback((idx: number) => {
     const msgId = searchMatchIds[idx];
@@ -447,9 +428,9 @@ export default function ChatScreen() {
     }
   }, [isSearchActive, totalMatches, scrollToMatch]);
 
-  // ----- Fetch conversation and block status -----
+  // ---- جلب المحادثة وحالة الحظر (فقط إذا id صحيح) ----
   useEffect(() => {
-    if (!id) return;
+    if (!isIdValid) return;
     fetchConversationById(id)
       .then(({ data }) => {
         setConversation(data);
@@ -467,23 +448,23 @@ export default function ChatScreen() {
           isAr ? 'فشل تحميل المحادثة' : 'Failed to load conversation'
         );
       });
-  }, [id, user?.id, isAr, showAlert]);
+  }, [isIdValid, id, user?.id, isAr, showAlert]);
 
-  // ----- Quick replies -----
+  // ---- الردود السريعة ----
   const QUICK_REPLIES_AR = ['هل السعر قابل للتفاوض؟', 'هل المنتج لا يزال متاحاً؟', 'ما هو موقعك؟', 'هل يمكن التوصيل؟'];
   const QUICK_REPLIES_EN = ['Is the price negotiable?', 'Is this still available?', 'Where is your location?', 'Can you deliver?'];
   const quickReplies = isAr ? QUICK_REPLIES_AR : QUICK_REPLIES_EN;
 
-  // ----- Typing indicator using sendTyping from useChat -----
+  // ---- مؤشر الكتابة ----
   const handleTyping = useCallback((val: string) => {
     setText(val);
-    if (!id || !user) return;
+    if (!isIdValid || !user) return;
     if (typeof sendTyping === 'function') {
       sendTyping(val.length > 0);
     }
-  }, [id, user, sendTyping]);
+  }, [isIdValid, user, sendTyping]);
 
-  // ----- Scroll to bottom -----
+  // ---- التمرير للأسفل ----
   const scrollToBottom = useCallback(() => {
     if (isSearchActive) return;
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
@@ -501,7 +482,6 @@ export default function ChatScreen() {
     }
   }, [messages.length, isSearchActive, scrollToBottom]);
 
-  // ── Handle scroll events for "scroll to bottom" button ──
   const handleScroll = useCallback((event: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const bottom = contentSize.height - layoutMeasurement.height - 40;
@@ -510,7 +490,7 @@ export default function ChatScreen() {
     setShowScrollToBottom(!atBottom && messages.length > 5);
   }, [messages.length]);
 
-  // ----- Other Handlers -----
+  // ---- إرسال النص ----
   const handleQuickReply = useCallback((reply: string) => {
     setText(reply);
     setShowQuickReplies(false);
@@ -518,9 +498,7 @@ export default function ChatScreen() {
 
   const handleSend = useCallback(async () => {
     const content = text.trim();
-    if (!content || !id || sending) {
-      return;
-    }
+    if (!content || !isIdValid || sending) return;
 
     if (!isOnline) {
       showAlert(
@@ -542,21 +520,20 @@ export default function ChatScreen() {
       setShowQuickReplies(false);
       doMark();
     }
-  }, [text, id, sending, handleSendMessage, isOnline, showAlert, isAr, replyTo, doMark]);
+  }, [text, isIdValid, sending, handleSendMessage, isOnline, showAlert, isAr, replyTo, doMark]);
 
-  // ── Copy message text ──
   const handleCopyMessage = useCallback((content: string) => {
     Clipboard.setString(content);
     showAlert(isAr ? 'تم النسخ' : 'Copied', isAr ? 'تم نسخ النص' : 'Text copied');
   }, [isAr, showAlert]);
 
-  // ── Reply to message ──
   const handleReplyToMessage = useCallback((msg: Message) => {
     setReplyTo(msg);
   }, []);
 
+  // ---- رفع الصور والكاميرا ----
   const handleCameraCapture = useCallback(async () => {
-    if (!id || imageUploading) return;
+    if (!isIdValid || imageUploading) return;
     if (typeof uploadImage !== 'function') {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'خدمة رفع الصور غير متاحة' : 'Upload service unavailable');
       return;
@@ -585,10 +562,10 @@ export default function ChatScreen() {
       console.warn('Camera error:', e);
       setImageUploading(false);
     }
-  }, [id, imageUploading, uploadImage, handleSendMessage, isAr, showAlert]);
+  }, [isIdValid, imageUploading, uploadImage, handleSendMessage, isAr, showAlert]);
 
   const handleImagePick = useCallback(async () => {
-    if (!id || imageUploading) return;
+    if (!isIdValid || imageUploading) return;
     if (typeof uploadImage !== 'function') {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'خدمة رفع الصور غير متاحة' : 'Upload service unavailable');
       return;
@@ -617,9 +594,9 @@ export default function ChatScreen() {
       console.warn('Image pick error:', e);
       setImageUploading(false);
     }
-  }, [id, imageUploading, uploadImage, handleSendMessage, isAr, showAlert]);
+  }, [isIdValid, imageUploading, uploadImage, handleSendMessage, isAr, showAlert]);
 
-  // ----- Conversation actions -----
+  // ---- إجراءات المحادثة ----
   const isSeller = conversation?.seller_id === user?.id;
   const adStatus = (conversation as any)?.ads?.status as string | undefined;
   const adId = conversation?.ad_id;
@@ -766,13 +743,14 @@ export default function ChatScreen() {
     );
   }, [id, isAr, showAlert, router]);
 
-  // ----- Derived values -----
+  // ---- مشتقات ----
+  const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
   const otherUser = isBuyer ? conversation?.seller : conversation?.buyer;
   const otherName = otherUser?.username || otherUser?.email?.split('@')[0] || 'User';
   const otherInitial = otherName.charAt(0).toUpperCase();
   const otherAvatarUrl = (otherUser as any)?.avatar_url ?? null;
 
-  // ----- Pagination -----
+  // ---- ترقيم الصفحات ----
   const PAGE_SIZE = 60;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   useEffect(() => {
@@ -789,7 +767,6 @@ export default function ChatScreen() {
     setVisibleCount(v => Math.min(v + PAGE_SIZE, max));
   }, [messages.length]);
 
-  // ----- Date grouping -----
   type MsgItem = (Message & { _type?: undefined }) | { _type: 'date'; _date: string; id: string };
 
   const withDates = useMemo<MsgItem[]>(() => {
@@ -806,7 +783,18 @@ export default function ChatScreen() {
     return items;
   }, [pagedMessages]);
 
-  // ----- Render functions -----
+  // ========== 3️⃣ التصيير (JSX) ==========
+
+  // إذا لم يكن id صالحاً، نعرض رسالة بديلة (بعد استدعاء جميع الخطافات)
+  if (!isIdValid) {
+    return (
+      <View style={styles.center}>
+        <Text>Conversation ID not provided.</Text>
+      </View>
+    );
+  }
+
+  // ---- دوال التصيير ----
   const renderItem = useCallback(({ item }: { item: MsgItem }) => {
     if (item._type === 'date') {
       return (
@@ -941,7 +929,6 @@ export default function ChatScreen() {
               )}
             </View>
 
-            {/* Reply button on long press */}
             {!isImage && !isVoice && (
               <Pressable
                 style={[styles.replyBtn, { position: 'absolute', top: 4, right: isMine ? 4 : undefined, left: isMine ? undefined : 4 }]}
@@ -967,6 +954,7 @@ export default function ChatScreen() {
     );
   }, [otherTyping, isAr, colors]);
 
+  // ---- الإرجاع النهائي ----
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -983,7 +971,6 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {/* ── Reply to message indicator ── */}
         {replyTo && (
           <View style={[styles.replyIndicator, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
             <View style={{ flex: 1 }}>
@@ -1212,7 +1199,6 @@ export default function ChatScreen() {
           onScroll={handleScroll}
         />
 
-        {/* ── Scroll to bottom button ── */}
         {showScrollToBottom && (
           <Pressable
             style={[styles.scrollToBottomBtn, { backgroundColor: colors.primary }]}
@@ -1319,7 +1305,6 @@ export default function ChatScreen() {
 
       </View>
 
-      {/* ── Image Preview Modal ── */}
       <Modal visible={!!previewImage} transparent animationType="fade" statusBarTranslucent>
         <Pressable style={styles.imagePreviewOverlay} onPress={() => setPreviewImage(null)}>
           <Image
