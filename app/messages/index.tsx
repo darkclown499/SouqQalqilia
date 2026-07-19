@@ -60,11 +60,9 @@ export default function MessagesScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const isMounted = useRef(true);
-  
-  // ✅ منع التحميل المتزامن
   const isReloading = useRef(false);
   const lastReloadTime = useRef(0);
-  const RELOAD_DEBOUNCE_MS = 3000; // 3 ثواني
+  const RELOAD_DEBOUNCE_MS = 3000;
 
   // مراقبة حالة الاتصال
   useEffect(() => {
@@ -76,23 +74,18 @@ export default function MessagesScreen() {
 
   // ✅ دالة تحميل آمنة تمنع التحميل المتكرر
   const safeReload = useCallback(async () => {
-    // منع التحميل المتزامن
     if (isReloading.current) {
       console.log('⏳ تحميل جارٍ بالفعل، تم تجاهل الطلب');
       return;
     }
-
-    // منع التحميل المتكرر خلال فترة قصيرة
     const now = Date.now();
     if (now - lastReloadTime.current < RELOAD_DEBOUNCE_MS) {
       console.log('⏳ تم التحميل مؤخراً، تم تجاهل الطلب');
       return;
     }
-
     isReloading.current = true;
     lastReloadTime.current = now;
     setError(null);
-
     try {
       await reload();
     } catch (err) {
@@ -144,26 +137,34 @@ export default function MessagesScreen() {
     );
   }, [isAr, showAlert, safeReload]);
 
-  // ── تصفية المحادثات بناءً على البحث ─────────────────────────────────────
+  // ── تصفية المحادثات مع التحقق من البيانات ─────────────────────────────
   const filteredConversations = useMemo(() => {
+    // ✅ تأكد من وجود conversations وأنها مصفوفة
+    if (!conversations || !Array.isArray(conversations)) return [];
     if (!searchQuery.trim()) return conversations;
     const query = searchQuery.trim().toLowerCase();
     return conversations.filter((item: ConversationItem) => {
+      if (!item) return false;
       const otherName = item.buyer_id === user?.id ? item.seller_name : item.buyer_name;
       const name = otherName || (isAr ? 'مستخدم' : 'User');
       return name.toLowerCase().includes(query) || (item.last_message || '').toLowerCase().includes(query);
     });
   }, [conversations, searchQuery, user, isAr]);
 
-  // ── Render item ───────────────────────────────────────────────────────────
+  // ── Render item مع التحقق من العنصر ─────────────────────────────────────
   const renderItem = useCallback(
     ({ item }: { item: ConversationItem }) => {
+      // ✅ تأكد من وجود item
+      if (!item || !item.id) {
+        return null;
+      }
+
       const otherId = item.buyer_id === user?.id ? item.seller_id : item.buyer_id;
       const otherName = item.buyer_id === user?.id ? item.seller_name : item.buyer_name;
       const otherAvatar = item.buyer_id === user?.id ? item.seller_avatar : item.buyer_avatar;
       const displayName = otherName || (isAr ? 'مستخدم' : 'User');
       const lastMessage = item.last_message || '';
-      const unread = item.unread_count || 0;
+      const unread = item.unread_count ?? 0; // ✅ استخدام ?? بدلاً من ||
       const time = item.last_message_at ? timeAgo(item.last_message_at, isAr) : '';
 
       return (
@@ -208,7 +209,7 @@ export default function MessagesScreen() {
             >
               {lastMessage || (isAr ? 'لا توجد رسائل' : 'No messages')}
             </Text>
-            {time && (
+            {time ? (
               <Text
                 style={[
                   styles.time,
@@ -217,7 +218,7 @@ export default function MessagesScreen() {
               >
                 {time}
               </Text>
-            )}
+            ) : null}
           </View>
           {unread > 0 && (
             <View style={[styles.badge, { backgroundColor: '#EF4444' }]}>
@@ -256,12 +257,17 @@ export default function MessagesScreen() {
     </View>
   ), [colors, isAr, router, searchQuery]);
 
-  // ── getItemLayout ──────────────────────────────────────────────────────
-  const getItemLayout = useCallback((data: any, index: number) => ({
-    length: 80,
-    offset: 80 * index,
-    index,
-  }), []);
+  // ── getItemLayout محسن ──────────────────────────────────────────────────
+  const getItemLayout = useCallback((data: any, index: number) => {
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return { length: 80, offset: 0, index };
+    }
+    return {
+      length: 80,
+      offset: 80 * index,
+      index,
+    };
+  }, []);
 
   // ── التحقق من تسجيل الدخول ──────────────────────────────────────────────
   if (!user) {
@@ -276,7 +282,7 @@ export default function MessagesScreen() {
   }
 
   // ── حالة التحميل الأولي ──────────────────────────────────────────────────
-  if (loading && conversations.length === 0) {
+  if (loading && (!conversations || conversations.length === 0)) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.primary} />
