@@ -131,7 +131,7 @@ function getOfferHeight(size: string): number {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Carousel Component (للعروض الكبيرة Full/Large) – بدون نصوص
+// Carousel Component (للعروض الكبيرة Full/Large) – بدون تعتيم
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }) => {
@@ -184,12 +184,7 @@ const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }
           transition={500}
           cachePolicy="disk"
         />
-        <LinearGradient
-          colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
-          locations={[0, 0.3, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-        {/* ❌ تم إخفاء النصوص (العنوان، الوصف، اسم المتجر) */}
+        {/* ❌ تم إزالة التدرج الأسود بالكامل */}
         {isVip && (
           <View style={[styles.vipBadgeCarousel, { alignSelf: isAr ? 'flex-end' : 'flex-start' }]}>
             <Text style={styles.vipBadgeText}>VIP</Text>
@@ -234,7 +229,7 @@ const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Offer Item Component (للشبكة الماسونية) – بدون نصوص
+// Offer Item Component (للشبكة الماسونية) – بدون تعتيم
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OfferItem = memo(({ offer, isAr, width, height }: { offer: Offer; isAr: boolean; width: number; height: number }) => {
@@ -268,12 +263,7 @@ const OfferItem = memo(({ offer, isAr, width, height }: { offer: Offer; isAr: bo
         transition={300}
         cachePolicy="disk"
       />
-      <LinearGradient
-        colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
-        locations={[0, 0.4, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-      {/* ❌ تم إخفاء كل النصوص (العنوان، الوصف، اسم المتجر) */}
+      {/* ❌ تم إزالة التدرج الأسود بالكامل */}
       {isVip && (
         <View style={[styles.vipBadgeMasonry, { alignSelf: isAr ? 'flex-end' : 'flex-start' }]}>
           <Text style={styles.vipBadgeTextSmall}>VIP</Text>
