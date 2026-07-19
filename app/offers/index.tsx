@@ -13,7 +13,6 @@ import { getSupabaseClient } from '@/template';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { trackPageView } from '@/services/analyticsService';
-import { fetchActiveBanners, getBannersCache, setBannersCache, Banner } from '@/services/bannersService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -117,19 +116,17 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Banner Carousel Component (عروض متعددة مع نقاط تنقل)
+// Carousel Component (للعروض الكبيرة Full/Large)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BannerCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }) => {
+const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<FlatList>(null);
   const autoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const userScrolling = useRef(false);
 
-  // بدء التمرير التلقائي
   useEffect(() => {
     if (offers.length <= 1) return;
-
     const startAutoScroll = () => {
       if (autoTimer.current) clearInterval(autoTimer.current);
       autoTimer.current = setInterval(() => {
@@ -140,7 +137,6 @@ const BannerCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean 
       }, 4000);
     };
     startAutoScroll();
-
     return () => {
       if (autoTimer.current) clearInterval(autoTimer.current);
     };
@@ -153,53 +149,67 @@ const BannerCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean 
     setActiveIndex(Math.min(index, offers.length - 1));
   };
 
-  const renderItem = ({ item }: { item: Offer }) => (
-    <View style={{ width: SCREEN_W, height: SCREEN_H * 0.6 }}>
-      <Image
-        source={{ uri: item.image_url || BANNER_FALLBACK }}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        transition={500}
-        cachePolicy="disk"
-      />
-      <LinearGradient
-        colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
-        locations={[0, 0.3, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={[styles.bannerTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
-        {item.store_name && (
-          <Text style={[styles.offerStore, { textAlign: isAr ? 'right' : 'left' }]}>
-            {item.store_name}
-          </Text>
-        )}
-        <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left', fontSize: 36 }]}>
-          {item.title}
-        </Text>
-        {item.description && (
-          <Text style={[styles.offerDesc, { textAlign: isAr ? 'right' : 'left', fontSize: 20 }]}>
-            {item.description}
-          </Text>
-        )}
-        {item.is_vip && (
-          <LinearGradient
-            colors={['#FFD700', '#F59E0B']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.vipChipGradient}
-          >
-            <Text style={styles.vipChipText}>👑 VIP</Text>
-          </LinearGradient>
-        )}
-        <View style={styles.ctaButton}>
-          <Text style={styles.ctaButtonText}>
-            {isAr ? 'اكتشف العرض الآن' : 'Discover Now'}
-          </Text>
-          <MaterialIcons name="arrow-forward" size={20} color="#1A1A1A" />
+  const renderItem = ({ item }: { item: Offer }) => {
+    const isVip = item.is_vip || false;
+    return (
+      <Pressable
+        style={{ width: SCREEN_W, height: SCREEN_H * 0.55 }}
+        onPress={() => {
+          if (item.phone) {
+            openWhatsApp(item.phone, item.title, item.store_name);
+          } else {
+            openWhatsApp(DEFAULT_PHONE, item.title, item.store_name);
+          }
+        }}
+      >
+        <Image
+          source={{ uri: item.image_url || BANNER_FALLBACK }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={500}
+          cachePolicy="disk"
+        />
+        <LinearGradient
+          colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
+          locations={[0, 0.3, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.carouselTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
+          {item.store_name && (
+            <Text style={[styles.carouselStore, { textAlign: isAr ? 'right' : 'left' }]}>
+              {item.store_name}
+            </Text>
+          )}
+          {item.title && (
+            <Text style={[styles.carouselTitle, { textAlign: isAr ? 'right' : 'left' }]}>
+              {item.title}
+            </Text>
+          )}
+          {item.description && (
+            <Text style={[styles.carouselDesc, { textAlign: isAr ? 'right' : 'left' }]}>
+              {item.description}
+            </Text>
+          )}
+          {isVip && (
+            <LinearGradient
+              colors={['#FFD700', '#F59E0B']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.vipChipGradient}
+            >
+              <Text style={styles.vipChipText}>👑 VIP</Text>
+            </LinearGradient>
+          )}
+          <View style={styles.ctaButton}>
+            <Text style={styles.ctaButtonText}>
+              {isAr ? 'اكتشف العرض الآن' : 'Discover Now'}
+            </Text>
+            <MaterialIcons name="arrow-forward" size={20} color="#1A1A1A" />
+          </View>
         </View>
-      </View>
-    </View>
-  );
+      </Pressable>
+    );
+  };
 
   if (offers.length === 0) return null;
 
@@ -384,111 +394,13 @@ const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Banner Item Component (من جدول banners)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) => {
-  const size = banner.size || 'medium';
-
-  let width = SCREEN_W - H_PAD * 2;
-  let height = 200;
-  let borderRadius = 12;
-
-  switch (size) {
-    case 'full':
-      width = SCREEN_W;
-      height = SCREEN_H * 0.5;
-      borderRadius = 0;
-      break;
-    case 'large':
-      width = SCREEN_W - H_PAD * 2;
-      height = 260;
-      break;
-    case 'medium':
-      width = (SCREEN_W - H_PAD * 2) * 0.8;
-      height = 180;
-      break;
-    case 'small':
-      width = (SCREEN_W - H_PAD * 2) * 0.6;
-      height = 150;
-      break;
-    default:
-      width = SCREEN_W - H_PAD * 2;
-      height = 200;
-  }
-
-  const handlePress = () => {
-    if (banner.link_url) {
-      if (banner.link_url.startsWith('http') || banner.link_url.startsWith('https')) {
-        Linking.openURL(banner.link_url).catch(() => {});
-      } else {
-        Linking.openURL(banner.link_url).catch(() => {});
-      }
-    }
-  };
-
-  return (
-    <Pressable
-      onPress={handlePress}
-      style={({ pressed }) => [
-        styles.bannerItem,
-        {
-          width,
-          height,
-          borderRadius,
-          alignSelf: 'center',
-          marginVertical: 6,
-          opacity: pressed ? 0.9 : 1,
-          transform: [{ scale: pressed ? 0.97 : 1 }],
-        },
-      ]}
-    >
-      <Image
-        source={{ uri: banner.image_url || BANNER_FALLBACK }}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        transition={300}
-        cachePolicy="disk"
-      />
-      <LinearGradient
-        colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.9)']}
-        locations={[0, 0.4, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-      {banner.title && banner.showText !== false && (
-        <View style={[styles.offerTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
-          <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left', fontSize: 22 }]}>
-            {banner.title}
-          </Text>
-          {banner.subtitle && (
-            <Text style={[styles.offerDesc, { textAlign: isAr ? 'right' : 'left', fontSize: 16 }]}>
-              {banner.subtitle}
-            </Text>
-          )}
-          {banner.isVip && (
-            <LinearGradient
-              colors={['#FFD700', '#F59E0B']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.vipChipGradient}
-            >
-              <Text style={styles.vipChipText}>👑 VIP</Text>
-            </LinearGradient>
-          )}
-        </View>
-      )}
-    </Pressable>
-  );
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Skeleton Loader
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SkeletonLoader() {
   return (
     <View style={{ paddingHorizontal: 0, gap: 12 }}>
-      <View style={[styles.skeletonItem, { width: SCREEN_W, height: SCREEN_H * 0.6 }]} />
+      <View style={[styles.skeletonItem, { width: SCREEN_W, height: SCREEN_H * 0.55 }]} />
       <View style={[styles.skeletonItem, { width: SCREEN_W - H_PAD * 2, height: 240, alignSelf: 'center', borderRadius: 14 }]} />
       <View style={[styles.skeletonItem, { width: SCREEN_W - H_PAD * 2, height: 200, alignSelf: 'center', borderRadius: 14 }]} />
     </View>
@@ -512,7 +424,6 @@ export default function OffersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('الكل');
-  const [banners, setBanners] = useState<Banner[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
 
@@ -521,36 +432,6 @@ export default function OffersScreen() {
       trackPageView('offers').catch(() => {});
     }, [])
   );
-
-  // ── جلب البانرات ──
-  useEffect(() => {
-    const cached = getBannersCache('offers');
-    if (cached && cached.length > 0) {
-      setBanners(cached);
-      return;
-    }
-
-    const controller = new AbortController();
-    fetchActiveBanners('offers', { signal: controller.signal })
-      .then(({ data }) => {
-        if (!controller.signal.aborted) {
-          if (data && data.length > 0) {
-            const shuffled = shuffleArray(data);
-            setBannersCache(shuffled, 'offers');
-            setBanners(shuffled);
-          } else {
-            setBanners([]);
-          }
-        }
-      })
-      .catch((err) => {
-        if (err.name === 'AbortError') return;
-        console.warn('⚠️ فشل جلب بانرات العروض:', err);
-        setBanners([]);
-      });
-
-    return () => controller.abort();
-  }, []);
 
   // ── جلب العروض ──
   const fetchOffers = useCallback(async (showLoader = true) => {
@@ -607,7 +488,6 @@ export default function OffersScreen() {
       name: cat,
       count: map.get(cat) || 0,
     }));
-    // إضافة تصنيفات من العروض غير الموجودة في القائمة الثابتة
     for (const [cat, count] of map.entries()) {
       if (!STATIC_CATEGORIES.includes(cat)) {
         result.push({ name: cat, count });
@@ -632,52 +512,104 @@ export default function OffersScreen() {
     });
   }, [filteredOffers]);
 
-  // ── Carousel offers (أول 5 عروض كبيرة) ──
-  const carouselOffers = useMemo(() => {
-    const fullOffers = sortedOffers.filter(o => o.card_size === 'full' || o.card_size === 'large');
-    if (fullOffers.length > 0) return fullOffers.slice(0, 5);
-    return sortedOffers.slice(0, 5);
+  // ── تقسيم العروض حسب الموضع ──
+  const categorizedOffers = useMemo(() => {
+    const top: Offer[] = [];
+    const middle: Offer[] = [];
+    const bottom: Offer[] = [];
+    const carousel: Offer[] = [];
+
+    sortedOffers.forEach((offer) => {
+      const pos = offer.card_position || 'middle';
+      const size = offer.card_size || 'medium';
+      // العروض الكبيرة تذهب إلى الكاروسيل
+      if (size === 'full' || size === 'large') {
+        carousel.push(offer);
+      } else {
+        if (pos === 'top') top.push(offer);
+        else if (pos === 'middle') middle.push(offer);
+        else bottom.push(offer);
+      }
+    });
+
+    return { carousel, top, middle, bottom };
   }, [sortedOffers]);
 
-  // ── باقي العروض (بعد الكاروسيل) ──
-  const remainingOffers = useMemo(() => {
-    const carouselIds = new Set(carouselOffers.map(o => o.id));
-    return sortedOffers.filter(o => !carouselIds.has(o.id));
-  }, [sortedOffers, carouselOffers]);
-
-  // ── دمج البانرات مع العروض ──
+  // ── دمج العناصر للعرض ──
   const displayItems = useMemo(() => {
     const items: JSX.Element[] = [];
 
-    // إذا كانت هناك بانرات من جدول banners نعرضها
-    if (banners.length > 0) {
-      const sortedBanners = [...banners].sort((a, b) => {
-        const order = { full: 0, large: 1, medium: 2, small: 3 };
-        const sizeA = a.size || 'medium';
-        const sizeB = b.size || 'medium';
-        return (order[sizeA as keyof typeof order] ?? 2) - (order[sizeB as keyof typeof order] ?? 2);
-      });
-      sortedBanners.forEach((banner, index) => {
-        items.push(
-          <BannerItem key={`banner-${banner.id || index}`} banner={banner} isAr={isAr} />
-        );
-      });
-    } else if (carouselOffers.length > 0) {
-      // كاروسيل العروض
+    // 1. كاروسيل العروض الكبيرة
+    if (categorizedOffers.carousel.length > 0) {
       items.push(
-        <BannerCarousel key="carousel" offers={carouselOffers} isAr={isAr} />
+        <OfferCarousel key="carousel" offers={categorizedOffers.carousel} isAr={isAr} />
       );
     }
 
-    // باقي العروض
-    remainingOffers.forEach((offer) => {
+    // 2. العروض في الموضع العلوي (شبكة أو قائمة حسب العدد)
+    if (categorizedOffers.top.length > 0) {
+      const topOffers = categorizedOffers.top;
+      if (topOffers.length <= 2) {
+        topOffers.forEach((offer) => {
+          items.push(
+            <OfferItem key={`top-list-${offer.id}`} offer={offer} isAr={isAr} />
+          );
+        });
+      } else {
+        // شبكة بعمودين
+        const col1 = topOffers.filter((_, i) => i % 2 === 0);
+        const col2 = topOffers.filter((_, i) => i % 2 === 1);
+        const itemWidth = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
+        const itemHeight = 200;
+        items.push(
+          <View key="top-grid" style={[styles.offerGridRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View style={{ flex: 1, gap: COL_GAP }}>
+              {col1.map((offer) => (
+                <OfferItem key={offer.id} offer={offer} isAr={isAr} />
+              ))}
+            </View>
+            <View style={{ flex: 1, gap: COL_GAP }}>
+              {col2.map((offer) => (
+                <OfferItem key={offer.id} offer={offer} isAr={isAr} />
+              ))}
+            </View>
+          </View>
+        );
+      }
+    }
+
+    // 3. العروض في المنتصف (شبكة)
+    if (categorizedOffers.middle.length > 0) {
+      const midOffers = categorizedOffers.middle;
+      const col1 = midOffers.filter((_, i) => i % 2 === 0);
+      const col2 = midOffers.filter((_, i) => i % 2 === 1);
       items.push(
-        <OfferItem key={`offer-${offer.id}`} offer={offer} isAr={isAr} />
+        <View key="mid-grid" style={[styles.offerGridRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={{ flex: 1, gap: COL_GAP }}>
+            {col1.map((offer) => (
+              <OfferItem key={offer.id} offer={offer} isAr={isAr} />
+            ))}
+          </View>
+          <View style={{ flex: 1, gap: COL_GAP }}>
+            {col2.map((offer) => (
+              <OfferItem key={offer.id} offer={offer} isAr={isAr} />
+            ))}
+          </View>
+        </View>
       );
-    });
+    }
+
+    // 4. العروض في الأسفل (قائمة)
+    if (categorizedOffers.bottom.length > 0) {
+      categorizedOffers.bottom.forEach((offer) => {
+        items.push(
+          <OfferItem key={`bottom-list-${offer.id}`} offer={offer} isAr={isAr} />
+        );
+      });
+    }
 
     return items;
-  }, [banners, carouselOffers, remainingOffers, isAr]);
+  }, [categorizedOffers, isAr, isRTL]);
 
   const handleAddOffer = useCallback(() => {
     router.push('/admin/offers');
@@ -965,13 +897,38 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
 
-  // ── Banner Carousel ──
-  bannerTextContainer: {
+  // ── Carousel (للعروض الكبيرة) ──
+  carouselTextContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     padding: 24,
+  },
+  carouselStore: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: 1,
+  },
+  carouselTitle: {
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '900',
+    textShadowColor: 'rgba(0,0,0,0.9)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+    letterSpacing: 0.5,
+  },
+  carouselDesc: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 18,
+    fontWeight: '500',
+    marginTop: 4,
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   paginationDots: {
     position: 'absolute',
@@ -1090,10 +1047,11 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
 
-  // ── Banner Item ──
-  bannerItem: {
-    overflow: 'hidden',
-    backgroundColor: '#1A1A1A',
+  // ── Grid Row ──
+  offerGridRow: {
+    flexDirection: 'row',
+    paddingHorizontal: H_PAD,
+    gap: COL_GAP,
     marginBottom: 8,
   },
 
@@ -1118,10 +1076,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
-  },
-  emptyEmoji: {
-    fontSize: 52,
     marginBottom: 4,
   },
   centerTitle: {
