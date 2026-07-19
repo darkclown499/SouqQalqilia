@@ -23,7 +23,7 @@ import {
   fetchStoreCategories,
   StoreCategory,
 } from '@/services/storeCategoriesService';
-import { Banner, fetchActiveBanners } from '@/services/bannersService'; // ✅ استيراد خدمة البانرات
+import { Banner, fetchActiveBanners } from '@/services/bannersService';
 import NetInfo from '@react-native-community/netinfo';
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
@@ -239,12 +239,11 @@ const QuickStoreCatCard = React.memo(({ cat, isAr, isSelected, onPress }: any) =
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. VIP STORE CARD
+// 3. VIP STORE CARD (تم تعديلها لعرض الوجو فقط)
 // ─────────────────────────────────────────────────────────────────────────────
 const VIPStoreCard = React.memo(({ store, rating, isAr, onPress }: any) => {
   const isOpen = checkStoreIsOpen(store);
   const name = isAr ? (store.name_ar || store.name) : store.name;
-  const backgroundImage = store.logo_url;
 
   return (
     <Pressable 
@@ -258,8 +257,9 @@ const VIPStoreCard = React.memo(({ store, rating, isAr, onPress }: any) => {
         style={vip.goldBorder}
       >
         <View style={vip.inner}>
+          {/* ✅ استخدام الوجو كصورة خلفية بدلاً من البنر */}
           <Image 
-            source={{ uri: backgroundImage }} 
+            source={{ uri: store.logo_url }} 
             style={StyleSheet.absoluteFill} 
             contentFit="cover"
           />
@@ -275,9 +275,7 @@ const VIPStoreCard = React.memo(({ store, rating, isAr, onPress }: any) => {
           </View>
 
           <View style={vip.content}>
-            <View style={vip.logoWrap}>
-              <Image source={{ uri: store.logo_url }} style={vip.logo} contentFit="cover" />
-            </View>
+            {/* ✅ إزالة الوجو الصغير الدائري لتجنب التكرار (أو يمكن تركه حسب الرغبة) */}
             <Text style={vip.name} numberOfLines={1}>{name}</Text>
             <Text style={vip.address} numberOfLines={1}>{store.address || (isAr ? 'قلقيلية' : 'Qalqilya')}</Text>
             
@@ -438,7 +436,7 @@ const vip = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. STORE VERTICAL CARD
+// 4. STORE VERTICAL CARD (تم تعديلها لعرض الوجو فقط)
 // ─────────────────────────────────────────────────────────────────────────────
 const StoreVerticalCard = React.memo(({ store, rating, isAr, onPress }: any) => {
   const isOpen = checkStoreIsOpen(store);
@@ -451,9 +449,10 @@ const StoreVerticalCard = React.memo(({ store, rating, isAr, onPress }: any) => 
       onPress={onPress}
     >
       <View style={svcStyles.imageWrap}>
-        {store.banner_url || store.logo_url ? (
+        {/* ✅ استخدام الوجو فقط، إزالة البنر */}
+        {store.logo_url ? (
           <Image
-            source={{ uri: store.banner_url || store.logo_url }}
+            source={{ uri: store.logo_url }}
             style={svcStyles.image}
             contentFit="cover"
             transition={200}
