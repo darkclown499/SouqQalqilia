@@ -524,7 +524,7 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
         </View>
         <LoadingDots />
         <Text style={[styles.versionText, { color: colors.WHITE_DIM }]}>
-          الإصدار {Constants.expoConfig?.version || '1.0.0'}
+          الإصدار {Constants.expoConfig?.version || '1.5.0'}
         </Text>
       </Animated.View>
     </Animated.View>
