@@ -43,11 +43,52 @@ try {
   Notifications = require('expo-notifications');
 } catch (_) {}
 
-// EAS project ID from app.json extra.eas.projectId
 const EAS_PROJECT_ID = 'c102ae5b-583e-4af3-9643-7f32b9e5f1b1';
-
-// AsyncStorage key for caching the last registered token (avoids redundant DB writes)
 const PUSH_TOKEN_CACHE_KEY = 'push_token_registered_v1';
+
+// ─── دالة مساعدة لتنقية الرسائل من أي خصائص غريبة ──────────────────────────
+function sanitizeMessage(msg: any): Message {
+  if (!msg) return msg;
+  // القائمة المسموح بها فقط
+  const allowedKeys = [
+    'id', 'conversation_id', 'sender_id', 'content',
+    'image_url', 'message_type', 'read_at', 'delivered_at',
+    'created_at', 'deleted_by', '_pending', '_failed', 'reactions'
+  ];
+  const sanitized: any = {};
+  for (const key of allowedKeys) {
+    if (key in msg) {
+      sanitized[key] = msg[key];
+    }
+  }
+  return sanitized as Message;
+}
+
+function sanitizeMessages(messages: any[]): Message[] {
+  if (!messages || !Array.isArray(messages)) return [];
+  return messages.map((m: any) => sanitizeMessage(m));
+}
+
+// ─── دالة مساعدة لتنقية المحادثات ────────────────────────────────────────────
+function sanitizeConversation(conv: any): Conversation {
+  if (!conv) return conv;
+  const allowedKeys = [
+    'id', 'ad_id', 'buyer_id', 'seller_id', 'last_message',
+    'last_message_at', 'created_at', 'archived_at', 'unread_count',
+    'buyer_typing_at', 'seller_typing_at', 'buyer_last_polled_at',
+    'seller_last_polled_at', 'ads', 'buyer', 'seller',
+    'buyer_name', 'seller_name', 'buyer_avatar', 'seller_avatar'
+  ];
+  const sanitized: any = {};
+  for (const key of allowedKeys) {
+    if (key in conv) {
+      sanitized[key] = conv[key];
+    }
+  }
+  return sanitized as Conversation;
+}
+
+// ─── باقي الكود ──────────────────────────────────────────────────────────────
 
 export async function requestNotificationPermissions(): Promise<void> {
   if (!Notifications || Platform.OS === 'web') return;
@@ -155,26 +196,28 @@ export function useMessages(
   const isMountedRef = useRef(true);
   const hasMarkedReadRef = useRef(false);
 
-  // ─── تعريف الدوال الأساسية (قبل استخدامها في markConversationRead) ──────────
+  // ─── دوال أساسية (مع تنقية البيانات) ──────────────────────────────────────
 
   const appendMessage = useCallback((msg: Message) => {
+    const clean = sanitizeMessage(msg);
     setMessages(prev => {
-      const exists = prev.some(m => m.id === msg.id);
+      const exists = prev.some(m => m.id === clean.id);
       if (exists) return prev;
-      const updated = [...prev, msg];
+      const updated = [...prev, clean];
       cacheMessages(conversationId, updated).catch(() => {});
       return updated;
     });
   }, [conversationId]);
 
   const updateMessage = useCallback((tempId: string, real: Message) => {
+    const clean = sanitizeMessage(real);
     setMessages(prev => {
       const index = prev.findIndex(m => m.id === tempId);
       if (index === -1) {
-        return [...prev, real];
+        return [...prev, clean];
       }
       const updated = [...prev];
-      updated[index] = real;
+      updated[index] = clean;
       cacheMessages(conversationId, updated).catch(() => {});
       return updated;
     });
@@ -216,7 +259,7 @@ export function useMessages(
     });
   }, [conversationId]);
 
-  // ─── الآن تعريف markConversationRead بعد تعريف الدوال التي تستخدمها ──────
+  // ─── markConversationRead ──────────────────────────────────────────────────
 
   const markConversationRead = useCallback(async () => {
     if (!conversationId || !currentUserId || isMarkingRead) return;
@@ -224,11 +267,8 @@ export function useMessages(
     try {
       const result = await markConversationAsRead(conversationId, currentUserId);
       if (!result.error) {
-        // تحديث الحالة المحلية (للتأكد من أن القراءة تظهر فوراً)
         markReadLocally(currentUserId);
-        // مسح كاش المحادثات ليجلب العداد الجديد
         await clearConversationsCache();
-        // إطلاق تحديث عام للعداد (الدالة معرفة في نهاية الملف)
         if (typeof triggerUnreadRefresh === 'function') {
           triggerUnreadRefresh();
         }
@@ -243,9 +283,7 @@ export function useMessages(
     }
   }, [conversationId, currentUserId, isMarkingRead, markReadLocally]);
 
-  // ─── باقي الكود كما هو (بدون تغيير) ──────────────────────────────────────────
-
-  // مراقبة الاتصال
+  // ─── مراقبة الاتصال ─────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = NetInfo.addEventListener(state => {
       setIsOnline(state.isConnected !== false);
@@ -253,7 +291,7 @@ export function useMessages(
     return unsub;
   }, []);
 
-  // Realtime disabled
+  // ─── Realtime disabled ──────────────────────────────────────────────────────
   const setupRealtimeSubscription = useCallback(() => {
     return () => {};
   }, []);
@@ -298,11 +336,14 @@ export function useMessages(
           scheduleNextPoll();
         }
 
+        // ✅ تنقية البيانات الواردة من الخادم
+        const cleanNewMsgs = sanitizeMessages(newMsgs);
+
         setMessages(prev => {
           const existingIds = new Set(prev.map(m => m.id));
-          const trulyNew = newMsgs.filter(m => !existingIds.has(m.id));
+          const trulyNew = cleanNewMsgs.filter(m => !existingIds.has(m.id));
           const updated = prev.map(m => {
-            const fresh = newMsgs.find(nm => nm.id === m.id);
+            const fresh = cleanNewMsgs.find(nm => nm.id === m.id);
             if (!fresh) return m;
             return {
               ...m,
@@ -347,13 +388,15 @@ export function useMessages(
           setIsOnline(true);
           scheduleNextPoll();
         }
-        if (data.length > 0) {
-          setMessages(data);
-          lastCreatedAtRef.current = data[data.length - 1].created_at;
+        if (data && data.length > 0) {
+          // ✅ تنقية البيانات الواردة من الخادم
+          const cleanData = sanitizeMessages(data);
+          setMessages(cleanData);
+          lastCreatedAtRef.current = cleanData[cleanData.length - 1].created_at;
           if (currentUserId) {
             markMessagesDelivered(conversationId, currentUserId).catch(() => {});
           }
-          cacheMessages(conversationId, data).catch(() => {});
+          cacheMessages(conversationId, cleanData).catch(() => {});
           if (!hasMarkedReadRef.current) {
             setTimeout(() => markConversationRead(), 500);
           }
@@ -374,9 +417,12 @@ export function useMessages(
   const reload = useCallback(async () => {
     setRefreshing(true);
     const { data } = await fetchMessages(conversationId);
-    setMessages(data);
-    if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
-    cacheMessages(conversationId, data).catch(() => {});
+    if (data) {
+      const cleanData = sanitizeMessages(data);
+      setMessages(cleanData);
+      if (cleanData.length > 0) lastCreatedAtRef.current = cleanData[cleanData.length - 1].created_at;
+      cacheMessages(conversationId, cleanData).catch(() => {});
+    }
     setRefreshing(false);
     if (!hasMarkedReadRef.current) {
       setTimeout(() => markConversationRead(), 500);
@@ -387,22 +433,26 @@ export function useMessages(
   const loadInitial = useCallback(async () => {
     if (!conversationId) return;
     setLoading(true);
+    // عرض الكاش أولاً
     const cached = await getCachedMessages(conversationId);
     if (cached && cached.length > 0 && isMountedRef.current) {
-      setMessages(cached);
-      lastCreatedAtRef.current = cached[cached.length - 1]?.created_at ?? null;
+      const cleanCached = sanitizeMessages(cached);
+      setMessages(cleanCached);
+      lastCreatedAtRef.current = cleanCached[cleanCached.length - 1]?.created_at ?? null;
       setLoading(false);
     }
+    // جلب من الخادم
     const { data, error } = await fetchMessages(conversationId);
     if (error) {
       console.warn('fetchMessages error:', error);
       setLoading(false);
       return;
     }
-    if (data.length > 0) {
-      setMessages(data);
-      lastCreatedAtRef.current = data[data.length - 1].created_at;
-      cacheMessages(conversationId, data).catch(() => {});
+    if (data && data.length > 0) {
+      const cleanData = sanitizeMessages(data);
+      setMessages(cleanData);
+      lastCreatedAtRef.current = cleanData[cleanData.length - 1].created_at;
+      cacheMessages(conversationId, cleanData).catch(() => {});
       if (currentUserId) {
         markMessagesDelivered(conversationId, currentUserId).catch(() => {});
       }
@@ -438,19 +488,20 @@ export function useMessages(
   const forwardMessage = useCallback(async (messageId: string, targetConversationId: string) => {
     const result = await forwardMessageService(messageId, targetConversationId);
     if (result.data) {
+      const clean = sanitizeMessage(result.data);
       if (targetConversationId === conversationId) {
         setMessages(prev => {
-          const updated = [...prev, result.data!];
+          const updated = [...prev, clean];
           cacheMessages(conversationId, updated).catch(() => {});
           return updated;
         });
       }
-      return result.data;
+      return clean;
     }
     return null;
   }, [conversationId]);
 
-  // ─── تأثير للتحقق من الرسائل غير المقروءة ──────────────────
+  // ─── تأثير للتحقق من الرسائل غير المقروءة ──────────────────────────────────
   useEffect(() => {
     if (!conversationId || !currentUserId || isMarkingRead || hasMarkedReadRef.current) return;
     const hasUnread = messages.some(m => m.sender_id !== currentUserId && !m.read_at);
