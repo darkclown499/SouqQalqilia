@@ -10,7 +10,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingOffersButton from '@/components/FloatingOffersButton';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
-import { trackEvent, trackPageView } from '@/services/analyticsService';
+// ✅ تأمين analyticsService: إذا فشل الاستيراد، استخدم دوال فارغة
+import { trackEvent as _trackEvent, trackPageView as _trackPageView } from '@/services/analyticsService';
 import { fetchFeaturedStores, checkStoreIsOpen, Store as StoreType } from '@/services/storesService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -27,11 +28,17 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { fetchActiveBanners, getBannersCache, setBannersCache, Banner } from '@/services/bannersService';
 import { fetchActiveInterstitials, InterstitialAd } from '@/services/interstitialService';
 import { fetchBlockedIds, subscribeToBlockChanges } from '@/services/blockService';
-import { getCategoryName } from '@/services/categoriesService';
+import { getCategoryName as _getCategoryName } from '@/services/categoriesService';
 import { Ad } from '@/services/adsService';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useConversations } from '@/hooks/useChat';
+
+// ── تأمين الدوال المستوردة ────────────────────────────────────────────────
+// إذا فشل الاستيراد، استخدم دوال فارغة لتجنب الانهيار
+const trackEvent = typeof _trackEvent === 'function' ? _trackEvent : () => Promise.resolve();
+const trackPageView = typeof _trackPageView === 'function' ? _trackPageView : () => Promise.resolve();
+const getCategoryName = typeof _getCategoryName === 'function' ? _getCategoryName : (cat: any, lang: string) => cat.name || cat.name_ar || '';
 
 // ── Fallback banners ──────────────────────────────────────────────────────────
 const FALLBACK_BANNERS_HOME: Banner[] = [
@@ -273,7 +280,8 @@ const BannerCarousel = React.memo(({
   if (!currentBanner) return null;
 
   const handlePress = () => {
-    trackEvent('banner_click').catch(() => {});
+    // ✅ تأمين trackEvent
+    try { trackEvent('banner_click').catch(() => {}); } catch (_) {}
     const link = currentBanner.link_url?.trim();
     if (link && (link.startsWith('http://') || link.startsWith('https://'))) {
       Linking.openURL(link).catch(() => {});
@@ -444,12 +452,12 @@ export default function HomeScreen() {
   const { t, language, isRTL } = useLanguage();
   const { user } = useAuth();
   const { showAlert } = useAlert();
-  const { categories } = useCategories();
-  const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
+  const { categories = [] } = useCategories(); // ✅ تأمين categories
+  const { ads = [], loading, loadingMore, hasMore, load, loadMore } = useAds();
   const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
   
-  // ✅ تأمين استخدام useConversations بإضافة قيم افتراضية للدوال
+  // ✅ تأمين useConversations بإضافة قيم افتراضية للدوال
   const { 
     conversations = [], 
     loading: convLoading = false, 
@@ -495,9 +503,12 @@ export default function HomeScreen() {
   const isAr = language === 'ar';
   const appTitle = useMemo(() => isAr ? 'سوق قلقيلية' : 'Souq Qalqilya', [isAr]);
 
+  // ✅ تأمين trackPageView داخل useFocusEffect
   useFocusEffect(
     useCallback(() => {
-      trackPageView('home');
+      try {
+        trackPageView('home');
+      } catch (_) {}
     }, [])
   );
 
