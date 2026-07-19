@@ -162,15 +162,12 @@ export default function ChatScreen() {
   }, []);
 
   // ----- Handlers (memoized) ----
-  // ✅ إصلاح جذري لدالة الإرسال: ضمان عدم رمي استثناءات وعدم التصرف بشكل غير متوقع
   const handleSendMessage = useCallback(async (content: string, imageUrl?: string): Promise<boolean> => {
-    // التحقق من البيانات الأساسية
     if (!id || !user) {
       console.warn('❌ Cannot send: missing id or user');
       return false;
     }
 
-    // إنشاء معرف مؤقت للرسالة
     const clientId = uuidv4();
     const tempMsg: Message = {
       id: clientId,
@@ -184,33 +181,22 @@ export default function ChatScreen() {
       _pending: true,
     };
 
-    // ✅ إضافة الرسالة مؤقتاً (مع التعامل مع أي خطأ في appendMessage)
     try {
       appendMessage(tempMsg);
     } catch (appendErr) {
       console.error('❌ appendMessage error:', appendErr);
-      // حتى لو فشلت الإضافة، نستمر في محاولة الإرسال الفعلي
-      // لكننا نعرض خطأ للمستخدم
-      showAlert(
-        isAr ? 'خطأ داخلي' : 'Internal Error',
-        isAr ? 'تعذر إضافة الرسالة مؤقتاً، لكن سيتم محاولة الإرسال' : 'Could not add message locally, but will try to send'
-      );
     }
 
     try {
-      // محاولة الإرسال الفعلي
       const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
 
       if (error) {
         console.warn('⚠️ sendMessage error:', error);
-        // عرض خطأ للمستخدم
         showAlert(
           isAr ? 'فشل الإرسال' : 'Send Failed',
           isAr ? 'سيتم إعادة المحاولة تلقائياً' : 'Will retry automatically'
         );
-        // تحديث الرسالة بحالة فشل
         updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
-        // إضافة إلى قائمة الانتظار لإعادة المحاولة لاحقاً
         try {
           await addToOfflineQueue({
             tempId: clientId,
@@ -225,11 +211,8 @@ export default function ChatScreen() {
         }
         return false;
       } else {
-        // نجاح الإرسال
         if (sent) {
-          // استبدال الرسالة المؤقتة بالرسالة النهائية
           updateMessage(clientId, sent);
-          // إرسال إشعار للمتلقي (إن لم يكن هو المرسل)
           if (recipientId && recipientId !== user.id) {
             const senderName = user.username || user.email?.split('@')[0] || 'مستخدم';
             try {
@@ -242,15 +225,12 @@ export default function ChatScreen() {
         return true;
       }
     } catch (sendErr) {
-      // ❌ خطأ غير متوقع في sendMessage (مثل مشكلة في الشبكة أو استثناء)
       console.error('❌ Unhandled send error:', sendErr);
       showAlert(
         isAr ? 'فشل الإرسال' : 'Send Failed',
-        isAr ? 'حدث خطأ غير متوقع، سيتم حفظ الرسالة وإعادة المحاولة' : 'Unexpected error, message will be saved and retried'
+        isAr ? 'حدث خطأ في الاتصال، سيتم حفظ الرسالة وإعادة المحاولة' : 'Connection error, message will be saved and retried'
       );
-      // تحديث الرسالة بحالة فشل
       updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
-      // إضافة إلى قائمة الانتظار
       try {
         await addToOfflineQueue({
           tempId: clientId,
@@ -641,11 +621,9 @@ export default function ChatScreen() {
     setShowQuickReplies(false);
   }, []);
 
-  // ✅ إصلاح جذري لمشكلة عدم استجابة زر الإرسال
   const handleSend = useCallback(async () => {
     const content = text.trim();
     if (!content || !id || sending) {
-      console.log('⏳ Cannot send: no content, no id, or already sending');
       return;
     }
 
@@ -656,7 +634,6 @@ export default function ChatScreen() {
       );
     }
 
-    // إذا كان هناك رد على رسالة، نضيف اقتباساً
     let finalContent = content;
     if (replyTo) {
       const quotedText = replyTo.content || (replyTo.message_type === 'image' ? '📷 صورة' : '');
@@ -664,32 +641,22 @@ export default function ChatScreen() {
       setReplyTo(null);
     }
 
-    // تعيين حالة الإرسال
     setSending(true);
-    console.log('📤 Sending message...');
 
     try {
       const success = await handleSendMessage(finalContent);
-      console.log('📤 Send result:', success);
-      if (success === true) {
-        // ✅ مسح النص فقط عند النجاح
+      if (success) {
         setText('');
         setShowQuickReplies(false);
-      } else {
-        // في حالة الفشل، نترك النص في الحقل ليتمكن المستخدم من إعادة المحاولة
-        console.log('⚠️ Send failed, keeping text');
       }
     } catch (err) {
-      // أي خطأ غير متوقع
       console.error('❌ Unhandled error in handleSend:', err);
       showAlert(
         isAr ? 'خطأ' : 'Error',
         isAr ? 'حدث خطأ غير متوقع، حاول مرة أخرى' : 'Unexpected error, please try again'
       );
     } finally {
-      // دائمًا ننهي حالة الإرسال
       setSending(false);
-      // إيقاف مؤشر الكتابة
       if (isBuyer !== null) {
         updateTypingIndicator(id!, isBuyer, false).catch(() => {});
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -1595,7 +1562,6 @@ const styles = StyleSheet.create({
   menuDivider: { height: 1, marginVertical: 6 },
   menuCancelBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   menuCancelText: { fontSize: 16, fontWeight: '700' },
-  // ── New styles ──
   retryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
