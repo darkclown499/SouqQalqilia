@@ -14,10 +14,13 @@ import {
   getCachedMessages,
   clearConversationsCache,
 } from '@/services/chatService';
-import { useAuth } from '@/template';
+import { useAuth, getSupabaseClient } from '@/template';
 
 const POLL_INTERVAL = 3000; // 3 seconds
 
+// ──────────────────────────────────────────────────────────────────────────────
+// useChat - لإدارة محادثة واحدة
+// ──────────────────────────────────────────────────────────────────────────────
 export function useChat(conversationId: string) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -182,8 +185,6 @@ export function useChat(conversationId: string) {
   // ─── تحديث مؤشر الكتابة ─────────────────────────────────────────────────────
   const sendTyping = useCallback((isTyping: boolean) => {
     if (!conversationId || !user) return;
-    // افترض أن المستخدم الحالي هو البائع أو المشتري حسب السياق
-    // يمكن تمرير isBuyer كـ prop إذا لزم الأمر
     const isBuyer = true; // سيتم تحديثه حسب الحالة
     updateTyping(conversationId, isBuyer, isTyping);
   }, [conversationId, user]);
@@ -242,5 +243,163 @@ export function useChat(conversationId: string) {
       if (user?.id) markMessagesRead(conversationId, user.id);
     },
     retryMessage,
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// useConversations - لجلب قائمة المحادثات مع عدد الرسائل غير المقروءة
+// ──────────────────────────────────────────────────────────────────────────────
+export function useConversations(options?: { enabled?: boolean }) {
+  const { enabled = true } = options || {};
+  const { user } = useAuth();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(true);
+
+  // مراقبة الاتصال
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected !== false);
+    });
+    return unsub;
+  }, []);
+
+  // ─── تحميل المحادثات ──────────────────────────────────────────────────────
+  const reload = useCallback(async () => {
+    if (!enabled || !user) {
+      setConversations([]);
+      setUnreadCount(0);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+
+      // جلب المحادثات
+      const { data, error } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          ad_id,
+          buyer_id,
+          seller_id,
+          last_message,
+          last_message_at,
+          created_at,
+          buyer:buyer_id (username, email, avatar_url),
+          seller:seller_id (username, email, avatar_url)
+        `)
+        .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
+        .is('archived_at', null)
+        .order('last_message_at', { ascending: false });
+
+      if (error) throw error;
+
+      // جلب عدد الرسائل غير المقروءة لكل محادثة
+      const convIds = data.map(c => c.id);
+      let unreadMap: Record<string, number> = {};
+      if (convIds.length > 0) {
+        const { data: unread } = await supabase
+          .from('messages')
+          .select('conversation_id')
+          .in('conversation_id', convIds)
+          .is('read_at', null)
+          .neq('sender_id', user.id);
+        unread?.forEach(row => {
+          unreadMap[row.conversation_id] = (unreadMap[row.conversation_id] || 0) + 1;
+        });
+      }
+
+      // تنقية البيانات وإضافة الأسماء
+      const enriched = data.map(conv => {
+        const buyer = conv.buyer || {};
+        const seller = conv.seller || {};
+        return {
+          ...conv,
+          buyer_name: buyer.username || buyer.email?.split('@')[0] || 'مستخدم',
+          seller_name: seller.username || seller.email?.split('@')[0] || 'مستخدم',
+          buyer_avatar: buyer.avatar_url || null,
+          seller_avatar: seller.avatar_url || null,
+          unread_count: unreadMap[conv.id] || 0,
+        };
+      });
+
+      setConversations(enriched);
+      const totalUnread = enriched.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+      setUnreadCount(totalUnread);
+    } catch (err) {
+      console.warn('[useConversations] Error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled, user]);
+
+  // ─── تحديث يدوي ──────────────────────────────────────────────────────────
+  const refreshUnread = useCallback(async () => {
+    await reload();
+  }, [reload]);
+
+  // ─── تعليم جميع الرسائل كمقروءة ──────────────────────────────────────────
+  const markAllRead = useCallback(async () => {
+    if (!user) return;
+    try {
+      const supabase = getSupabaseClient();
+      await supabase
+        .from('messages')
+        .update({ read_at: new Date().toISOString() })
+        .neq('sender_id', user.id)
+        .is('read_at', null);
+      await reload();
+    } catch (err) {
+      console.warn('[useConversations] markAllRead error:', err);
+    }
+  }, [user, reload]);
+
+  // ─── أرشفة محادثة ────────────────────────────────────────────────────────
+  const archive = useCallback(async (conversationId: string) => {
+    try {
+      const supabase = getSupabaseClient();
+      await supabase
+        .from('conversations')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('id', conversationId);
+      await reload();
+    } catch (err) {
+      console.warn('[useConversations] archive error:', err);
+    }
+  }, [reload]);
+
+  // ─── إلغاء أرشفة محادثة ──────────────────────────────────────────────────
+  const unarchive = useCallback(async (conversationId: string) => {
+    try {
+      const supabase = getSupabaseClient();
+      await supabase
+        .from('conversations')
+        .update({ archived_at: null })
+        .eq('id', conversationId);
+      await reload();
+    } catch (err) {
+      console.warn('[useConversations] unarchive error:', err);
+    }
+  }, [reload]);
+
+  // ─── التحميل الأولي ──────────────────────────────────────────────────────
+  useEffect(() => {
+    reload();
+  }, [enabled]);
+
+  return {
+    conversations,
+    loading,
+    unreadCount,
+    isOnline,
+    reload,
+    refreshUnread,
+    markAllRead,
+    archive,
+    unarchive,
   };
 }
