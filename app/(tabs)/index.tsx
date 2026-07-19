@@ -33,7 +33,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useConversations } from '@/hooks/useChat';
 
-// ── Fallback banners (تظهر عند عدم وجود بيانات من السيرفر) ──────────────
+// ── Fallback banners ──────────────────────────────────────────────────────────
 const FALLBACK_BANNERS_HOME: Banner[] = [
   {
     id: 'fb-1',
@@ -251,7 +251,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
   );
 }
 
-// ── Banner Carousel (مفصول بـ React.memo لتحسين الأداء) ──────────────────
+// ── Banner Carousel ──────────────────────────────────────────────────────────
 const BannerCarousel = React.memo(({
   banners,
   featuredIndex,
@@ -448,8 +448,15 @@ export default function HomeScreen() {
   const { ads, loading, loadingMore, hasMore, load, loadMore } = useAds();
   const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
-  const { conversations, loading: convLoading, reload, unreadCount } = useConversations({
-    enabled: !!user
+  
+  // ✅ FIX: استخدام useConversations مع قيم افتراضية آمنة
+  const { 
+    conversations = [], 
+    loading: convLoading = false, 
+    reload, 
+    unreadCount = 0 
+  } = useConversations({
+    enabled: !!user,
   });
 
   const [isOnline, setIsOnline] = useState(true);
@@ -484,6 +491,7 @@ export default function HomeScreen() {
   const appStartTime = useRef(Date.now());
   const interstitialShown = useRef(false);
 
+  // ✅ استخدام القيم الافتراضية مع ?? 0
   const activeFilterCount = [appliedArea, appliedMaxPrice !== undefined ? '1' : null, appliedCondition].filter(Boolean).length;
   const isAr = language === 'ar';
   const appTitle = useMemo(() => isAr ? 'سوق قلقيلية' : 'Souq Qalqilya', [isAr]);
@@ -550,7 +558,7 @@ export default function HomeScreen() {
     });
   }, [selectedCategory, sortBy, appliedArea, appliedMaxPrice, appliedCondition, load]);
 
-  // Banners with fallback (تم التعديل هنا)
+  // Banners with fallback
   useEffect(() => {
     const cached = getBannersCache('home');
     if (cached && cached.length > 0) {
@@ -567,7 +575,6 @@ export default function HomeScreen() {
           setBannersCache(shuffled, 'home');
           setBanners(shuffled);
         } else {
-          // 🔄 لا توجد بيانات من السيرفر → استخدم الاحتياطي
           console.warn('⚠️ لا توجد بانرات من السيرفر، استخدم الاحتياطي');
           setBanners(FALLBACK_BANNERS_HOME);
         }
@@ -575,7 +582,6 @@ export default function HomeScreen() {
       .catch((err) => {
         if (err.name === 'AbortError') return;
         console.error('❌ خطأ في جلب البانرات:', err);
-        // ❌ عند حدوث خطأ → استخدم الاحتياطي
         setBanners(FALLBACK_BANNERS_HOME);
       });
 
@@ -622,7 +628,9 @@ export default function HomeScreen() {
 
   const displayName = user?.username || user?.email?.split('@')[0] || '';
 
-  const filteredAds = useMemo(() => ads.filter(ad => !blockedIds.has(ad.user_id)), [ads, blockedIds]);
+  // ✅ FIX: التأكد من أن ads مصفوفة قبل التصفية
+  const adsArray = Array.isArray(ads) ? ads : [];
+  const filteredAds = useMemo(() => adsArray.filter(ad => !blockedIds.has(ad.user_id)), [adsArray, blockedIds]);
   const feedRows = useMemo(() => buildFeedRows(filteredAds, numColumns), [filteredAds, numColumns]);
 
   const handleLoadMore = useCallback(() => {
@@ -677,8 +685,8 @@ export default function HomeScreen() {
     setFilterVisible(false);
   }, []);
 
-  // ✅ FIX: Add navigation to ad detail page
   const handleAdView = useCallback((ad: Ad) => {
+    if (!ad || !ad.id) return;
     addToRecentlyViewed(ad);
     setRecentlyViewed(prev => [ad, ...prev.filter((a: Ad) => a.id !== ad.id)].slice(0, MAX_RECENTLY_VIEWED));
     router.push(`/ad/${ad.id}`);
@@ -731,10 +739,12 @@ export default function HomeScreen() {
   const activeCardWidth = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
 
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
-    const cols = item.ads.length;
+    // ✅ FIX: التأكد من وجود ads
+    const adsInRow = Array.isArray(item?.ads) ? item.ads : [];
+    const cols = adsInRow.length;
     return (
       <View style={[styles.pairRow, { flexDirection: isRTL ? 'row-reverse' : 'row', gap: cardGap, marginBottom: cardGap, paddingHorizontal: hPad }]}>
-        {item.ads.map(ad => (
+        {adsInRow.map(ad => (
           <View key={ad.id} style={styles.adWrapper}>
             <AdCard
               ad={ad}
@@ -1019,10 +1029,11 @@ export default function HomeScreen() {
               {user ? (
                 <>
                   <MaterialCommunityIcons name="chat" size={20} color="#fff" />
-                  {unreadCount > 0 && (
+                  {/* ✅ استخدام unreadCount بأمان مع التحقق من القيمة */}
+                  {Number(unreadCount) > 0 && (
                     <View style={styles.filterDot}>
                       <Text style={styles.filterDotText}>
-                        {unreadCount > 9 ? '9+' : String(unreadCount)}
+                        {Number(unreadCount) > 9 ? '9+' : String(Number(unreadCount))}
                       </Text>
                     </View>
                   )}
