@@ -131,7 +131,7 @@ function getOfferHeight(size: string): number {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Carousel Component (للعروض الكبيرة Full/Large)
+// Carousel Component (للعروض الكبيرة Full/Large) – بدون نصوص
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }) => {
@@ -189,39 +189,12 @@ const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }
           locations={[0, 0.3, 1]}
           style={StyleSheet.absoluteFill}
         />
-        <View style={[styles.carouselTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
-          {item.store_name && (
-            <Text style={[styles.carouselStore, { textAlign: isAr ? 'right' : 'left' }]}>
-              {item.store_name}
-            </Text>
-          )}
-          {item.title && (
-            <Text style={[styles.carouselTitle, { textAlign: isAr ? 'right' : 'left' }]}>
-              {item.title}
-            </Text>
-          )}
-          {item.description && (
-            <Text style={[styles.carouselDesc, { textAlign: isAr ? 'right' : 'left' }]}>
-              {item.description}
-            </Text>
-          )}
-          {isVip && (
-            <LinearGradient
-              colors={['#FFD700', '#F59E0B']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.vipChipGradient}
-            >
-              <Text style={styles.vipChipText}>👑 VIP</Text>
-            </LinearGradient>
-          )}
-          <View style={styles.ctaButton}>
-            <Text style={styles.ctaButtonText}>
-              {isAr ? 'اكتشف العرض الآن' : 'Discover Now'}
-            </Text>
-            <MaterialIcons name="arrow-forward" size={20} color="#1A1A1A" />
+        {/* ❌ تم إخفاء النصوص (العنوان، الوصف، اسم المتجر) */}
+        {isVip && (
+          <View style={[styles.vipBadgeCarousel, { alignSelf: isAr ? 'flex-end' : 'flex-start' }]}>
+            <Text style={styles.vipBadgeText}>VIP</Text>
           </View>
-        </View>
+        )}
       </Pressable>
     );
   };
@@ -261,7 +234,7 @@ const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Offer Item Component (للشبكة الماسونية)
+// Offer Item Component (للشبكة الماسونية) – بدون نصوص
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OfferItem = memo(({ offer, isAr, width, height }: { offer: Offer; isAr: boolean; width: number; height: number }) => {
@@ -300,23 +273,12 @@ const OfferItem = memo(({ offer, isAr, width, height }: { offer: Offer; isAr: bo
         locations={[0, 0.4, 1]}
         style={StyleSheet.absoluteFill}
       />
-      <View style={[styles.masonryTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
-        {offer.store_name && (
-          <Text style={[styles.masonryStore, { textAlign: isAr ? 'right' : 'left' }]} numberOfLines={1}>
-            {offer.store_name}
-          </Text>
-        )}
-        {offer.title && (
-          <Text style={[styles.masonryTitle, { textAlign: isAr ? 'right' : 'left' }]} numberOfLines={2}>
-            {offer.title}
-          </Text>
-        )}
-        {isVip && (
-          <View style={styles.vipChipSmall}>
-            <Text style={styles.vipChipSmallText}>VIP</Text>
-          </View>
-        )}
-      </View>
+      {/* ❌ تم إخفاء كل النصوص (العنوان، الوصف، اسم المتجر) */}
+      {isVip && (
+        <View style={[styles.vipBadgeMasonry, { alignSelf: isAr ? 'flex-end' : 'flex-start' }]}>
+          <Text style={styles.vipBadgeTextSmall}>VIP</Text>
+        </View>
+      )}
     </Pressable>
   );
 });
@@ -805,38 +767,6 @@ const styles = StyleSheet.create({
   },
 
   // ── Carousel ──
-  carouselTextContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 24,
-  },
-  carouselStore: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
-    letterSpacing: 1,
-  },
-  carouselTitle: {
-    color: '#FFFFFF',
-    fontSize: 32,
-    fontWeight: '900',
-    textShadowColor: 'rgba(0,0,0,0.9)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
-    letterSpacing: 0.5,
-  },
-  carouselDesc: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 18,
-    fontWeight: '500',
-    marginTop: 4,
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
   paginationDots: {
     position: 'absolute',
     bottom: 12,
@@ -855,6 +785,26 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
+  vipBadgeCarousel: {
+    position: 'absolute',
+    top: 16,
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginHorizontal: 16,
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  vipBadgeText: {
+    color: '#1A1A1A',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
 
   // ── Masonry ──
   masonryRow: {
@@ -869,80 +819,25 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     position: 'relative',
   },
-  masonryTextContainer: {
+  vipBadgeMasonry: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 12,
-  },
-  masonryStore: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  masonryTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-    textShadowColor: 'rgba(0,0,0,0.9)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-
-  // ── VIP ──
-  vipChipGradient: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginTop: 8,
-    alignSelf: 'flex-start',
-    shadowColor: '#FFD700',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  vipChipText: {
-    color: '#1A1A1A',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  vipChipSmall: {
+    top: 10,
     backgroundColor: '#FFD700',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginTop: 4,
-    alignSelf: 'flex-start',
-  },
-  vipChipSmallText: {
-    color: '#1A1A1A',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-
-  ctaButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#FFD700',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginTop: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    marginHorizontal: 10,
     shadowColor: '#FFD700',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  ctaButtonText: {
+  vipBadgeTextSmall: {
     color: '#1A1A1A',
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.3,
   },
 
   // ── Skeleton ──

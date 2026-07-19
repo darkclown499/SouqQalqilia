@@ -19,7 +19,6 @@ import {
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
-import ThreeScene from '@/components/feature/ThreeScene';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const DEVICE_ID_KEY = 'app_device_id_v1';
@@ -479,17 +478,6 @@ function LoadingPhase({ onDone }: { onDone: () => void }) {
   return (
     <Animated.View style={[styles.fullScreen, { backgroundColor: colors.BG, opacity: screenOpacity }]}>
       {/* ✅ إصلاح: حاوية ThreeScene تغطي كامل الشاشة ولا تسبب شريطاً أبيض */}
-      <View
-        style={[
-          StyleSheet.absoluteFillObject,
-          {
-            backgroundColor: 'transparent',
-            pointerEvents: 'none', // منع التفاعل مع العناصر خلفها
-          },
-        ]}
-      >
-        <ThreeScene />
-      </View>
 
       <View style={styles.glow} />
       {showSkip && (
