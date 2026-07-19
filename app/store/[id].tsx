@@ -36,7 +36,7 @@ const ORDER_LABELS: Record<OrderType, { ar: string; en: string; icon: string }> 
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PRODUCT CARD (local component)
+// PRODUCT CARD (local component) - مع زر + تحت السعر
 // ─────────────────────────────────────────────────────────────────────────────
 function ProductCard({
   product, qty, onAdd, onRemove, isAr, isRTL, colors, disabled,
@@ -64,21 +64,7 @@ function ProductCard({
             <MaterialIcons name="fastfood" size={32} color="#D1D5DB" />
           </View>
         )}
-        
-        {!unavailable ? (
-          <Pressable
-            style={[pc.addCircle, { backgroundColor: colors.primary }]}
-            onPress={onAdd}
-            hitSlop={8}
-          >
-            <MaterialIcons name="add" size={20} color="#fff" />
-            {qty > 0 ? (
-              <View style={pc.qtyBadge}>
-                <Text style={pc.qtyBadgeText}>{qty}</Text>
-              </View>
-            ) : null}
-          </Pressable>
-        ) : null}
+        {/* ✅ تم إزالة زر + من هنا - أصبح في الأسفل */}
       </View>
 
       <View style={[pc.body, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
@@ -99,6 +85,41 @@ function ProductCard({
               : (isAr ? 'مجاني' : 'Free')}
           </Text>
         </View>
+
+        {/* ✅ زر + في الأسفل على اليسار تحت السعر */}
+        {!unavailable ? (
+          <View style={[pc.actionRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <Pressable
+              style={[pc.addBtn, { backgroundColor: colors.primary }]}
+              onPress={onAdd}
+              hitSlop={8}
+            >
+              <MaterialIcons name="add" size={18} color="#fff" />
+            </Pressable>
+            {qty > 0 && (
+              <View style={pc.qtyBadge}>
+                <Text style={pc.qtyBadgeText}>{qty}</Text>
+              </View>
+            )}
+            {qty > 0 && (
+              <Pressable
+                style={[pc.removeBtn, { borderColor: colors.border }]}
+                onPress={onRemove}
+                hitSlop={8}
+              >
+                <MaterialIcons name="remove" size={14} color={colors.textMuted} />
+              </Pressable>
+            )}
+          </View>
+        ) : (
+          <View style={[pc.actionRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View style={[pc.unavailableBadge, { backgroundColor: colors.borderLight }]}>
+              <Text style={[pc.unavailableText, { color: colors.textMuted }]}>
+                {isAr ? 'غير متوفر' : 'Unavailable'}
+              </Text>
+            </View>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -136,42 +157,9 @@ const pc = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addCircle: {
-    position: 'absolute',
-    bottom: 10,
-    right: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-    zIndex: 10,
-  },
-  qtyBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    backgroundColor: '#111827',
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  qtyBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
   body: {
     paddingHorizontal: 12,
-    paddingTop: 14,
+    paddingTop: 12,
     paddingBottom: 12,
     gap: 4,
   },
@@ -190,7 +178,7 @@ const pc = StyleSheet.create({
   priceRow: {
     alignItems: 'center',
     gap: 4,
-    marginTop: 4,
+    marginTop: 2,
   },
   priceLabel: {
     fontSize: 11,
@@ -200,6 +188,60 @@ const pc = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     color: '#BE123C',
+  },
+  // ✅ أنماط زر + الجديد في الأسفل
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  addBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  removeBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    backgroundColor: '#fff',
+  },
+  qtyBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  qtyBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  unavailableBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  unavailableText: {
+    fontSize: 10,
+    fontWeight: '600',
   },
 });
 
