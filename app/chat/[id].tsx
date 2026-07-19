@@ -88,6 +88,15 @@ export default function ChatScreen() {
   const { t, language } = useLanguage();
   const isAr = language === 'ar';
 
+  // ---- التحقق من وجود معرف المحادثة ----
+  if (!id) {
+    return (
+      <View style={styles.center}>
+        <Text>Conversation ID not provided.</Text>
+      </View>
+    );
+  }
+
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [text, setText] = useState('');
   const [showQuickReplies, setShowQuickReplies] = useState(false);
@@ -113,7 +122,8 @@ export default function ChatScreen() {
 
   const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
 
-  // ✅ استخدام useChat الجديد
+  // ✅ استخدام useChat مع التحقق من الدوال
+  const chatHook = useChat(id);
   const {
     messages,
     loading,
@@ -127,7 +137,10 @@ export default function ChatScreen() {
     refresh,
     markRead,
     retryMessage,
-  } = useChat(id);
+  } = chatHook;
+
+  // ---- التحقق من وجود الدوال الأساسية ----
+  const isChatReady = typeof sendMessage === 'function' && typeof uploadImage === 'function';
 
   const [imageUploading, setImageUploading] = useState(false);
 
@@ -147,7 +160,10 @@ export default function ChatScreen() {
     if (chatError) {
       showAlert(isAr ? 'خطأ' : 'Error', chatError);
     }
-  }, [chatError, showAlert, isAr]);
+    if (!isChatReady) {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'الخدمة غير متاحة حالياً' : 'Service unavailable');
+    }
+  }, [chatError, showAlert, isAr, isChatReady]);
 
   // ----- Helper: Cleanup sound and recording resources -----
   const cleanupAudioResources = useCallback(async () => {
@@ -175,7 +191,9 @@ export default function ChatScreen() {
   // ----- Mark read using markRead from useChat -----
   const doMark = useCallback(() => {
     if (!id || !user) return;
-    markRead();
+    if (typeof markRead === 'function') {
+      markRead();
+    }
   }, [id, user, markRead]);
 
   // ----- Force mark read on focus and whenever messages change -----
@@ -203,7 +221,10 @@ export default function ChatScreen() {
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'المستخدم أو المحادثة غير موجودة' : 'User or conversation missing');
       return false;
     }
-
+    if (typeof sendMessage !== 'function') {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'وظيفة الإرسال غير متاحة' : 'Send function unavailable');
+      return false;
+    }
     const success = await sendMessage(content, imageUrl);
     if (success) {
       doMark();
@@ -214,7 +235,9 @@ export default function ChatScreen() {
 
   // ── Retry failed message (using retryMessage from useChat) ──
   const handleRetryMessage = useCallback(async (failedMsg: Message) => {
-    await retryMessage(failedMsg.id);
+    if (typeof retryMessage === 'function') {
+      await retryMessage(failedMsg.id);
+    }
   }, [retryMessage]);
 
   // ----- Audio Recording Handlers (modified to use uploadImage) -----
@@ -284,7 +307,11 @@ export default function ChatScreen() {
         return;
       }
 
-      // ✅ استخدام uploadImage من useChat بدلاً من uploadChatImage + handleSendMessage
+      if (typeof uploadImage !== 'function') {
+        showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'خدمة رفع الصور غير متاحة' : 'Upload service unavailable');
+        return;
+      }
+
       setImageUploading(true);
       const fileName = `voice_${Date.now()}.m4a`;
       const url = await uploadImage(tempUri, fileName);
@@ -451,7 +478,9 @@ export default function ChatScreen() {
   const handleTyping = useCallback((val: string) => {
     setText(val);
     if (!id || !user) return;
-    sendTyping(val.length > 0);
+    if (typeof sendTyping === 'function') {
+      sendTyping(val.length > 0);
+    }
   }, [id, user, sendTyping]);
 
   // ----- Scroll to bottom -----
@@ -528,6 +557,10 @@ export default function ChatScreen() {
 
   const handleCameraCapture = useCallback(async () => {
     if (!id || imageUploading) return;
+    if (typeof uploadImage !== 'function') {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'خدمة رفع الصور غير متاحة' : 'Upload service unavailable');
+      return;
+    }
     try {
       const ImagePicker = await import('expo-image-picker');
       const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -556,6 +589,10 @@ export default function ChatScreen() {
 
   const handleImagePick = useCallback(async () => {
     if (!id || imageUploading) return;
+    if (typeof uploadImage !== 'function') {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'خدمة رفع الصور غير متاحة' : 'Upload service unavailable');
+      return;
+    }
     try {
       const ImagePicker = await import('expo-image-picker');
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -930,14 +967,6 @@ export default function ChatScreen() {
     );
   }, [otherTyping, isAr, colors]);
 
-  if (!id) {
-    return (
-      <View style={styles.center}>
-        <Text>Conversation not found.</Text>
-      </View>
-    );
-  }
-
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -948,7 +977,7 @@ export default function ChatScreen() {
             <Text style={[styles.offlineBannerText, { color: '#fff' }]}>
               {isAr ? 'غير متصل بالإنترنت' : 'No Internet Connection'}
             </Text>
-            <Pressable onPress={() => refresh()} hitSlop={8}>
+            <Pressable onPress={() => refresh && typeof refresh === 'function' && refresh()} hitSlop={8}>
               <MaterialIcons name="refresh" size={16} color="#fff" />
             </Pressable>
           </View>
@@ -1166,7 +1195,7 @@ export default function ChatScreen() {
           refreshControl={
             <RefreshControl
               refreshing={loading}
-              onRefresh={refresh}
+              onRefresh={() => refresh && typeof refresh === 'function' && refresh()}
               colors={[colors.primary]}
               tintColor={colors.primary}
             />
