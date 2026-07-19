@@ -144,6 +144,26 @@ export async function clearConversationCache(conversationId: string): Promise<vo
   } catch {}
 }
 
+// ── Helper to sanitize conversation data (remove unexpected props) ──────────
+function sanitizeConversation(conv: any): Conversation {
+  // قائمة بالخصائص المسموح بها فقط
+  const allowedKeys = [
+    'id', 'ad_id', 'buyer_id', 'seller_id', 'last_message',
+    'last_message_at', 'created_at', 'archived_at', 'unread_count',
+    'buyer_typing_at', 'seller_typing_at', 'buyer_last_polled_at',
+    'seller_last_polled_at', 'ads', 'buyer', 'seller',
+    'buyer_name', 'seller_name', 'buyer_avatar', 'seller_avatar'
+  ];
+
+  const sanitized: any = {};
+  for (const key of allowedKeys) {
+    if (key in conv) {
+      sanitized[key] = conv[key];
+    }
+  }
+  return sanitized as Conversation;
+}
+
 // ── Helper to enrich conversation with names ─────────────────────────────────
 function enrichConversation(conv: any): Conversation {
   const buyer = conv.buyer;
@@ -167,13 +187,37 @@ export async function fetchMyConversations(options?: {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { data: [], error: 'Not authenticated' };
 
+    // استعلام محدد الأعمدة لتجنب جلب أعمدة غير موجودة
     let query = supabase
       .from('conversations')
       .select(`
-        *,
-        ads(title, status, user_id, ad_images(url, position)),
-        buyer:user_profiles!conversations_buyer_id_fkey(username, email, avatar_url),
-        seller:user_profiles!conversations_seller_id_fkey(username, email, avatar_url)
+        id,
+        ad_id,
+        buyer_id,
+        seller_id,
+        last_message,
+        last_message_at,
+        created_at,
+        archived_at,
+        buyer_typing_at,
+        seller_typing_at,
+        ads(
+          title,
+          status,
+          user_id
+        ),
+        buyer:user_profiles!conversations_buyer_id_fkey(
+          id,
+          username,
+          email,
+          avatar_url
+        ),
+        seller:user_profiles!conversations_seller_id_fkey(
+          id,
+          username,
+          email,
+          avatar_url
+        )
       `)
       .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
       .order('last_message_at', { ascending: false });
@@ -186,6 +230,7 @@ export async function fetchMyConversations(options?: {
 
     if (error) return { data: [], error: error.message };
 
+    // جلب عدد الرسائل غير المقروءة
     const convIds = (data as any[]).map((c) => c.id);
     let unreadMap: Record<string, number> = {};
     if (convIds.length > 0) {
@@ -201,10 +246,18 @@ export async function fetchMyConversations(options?: {
       });
     }
 
-    const enriched = (data as any[]).map((conv) => ({
-      ...enrichConversation(conv),
-      unread_count: unreadMap[conv.id] ?? 0,
-    }));
+    // تنقية البيانات وإضافة unread_count والأسماء
+    const enriched = (data as any[]).map((conv) => {
+      const clean = sanitizeConversation(conv);
+      return {
+        ...clean,
+        unread_count: unreadMap[conv.id] ?? 0,
+        buyer_name: (conv as any).buyer?.username || (conv as any).buyer?.email?.split('@')[0] || 'مستخدم',
+        seller_name: (conv as any).seller?.username || (conv as any).seller?.email?.split('@')[0] || 'مستخدم',
+        buyer_avatar: (conv as any).buyer?.avatar_url || null,
+        seller_avatar: (conv as any).seller?.avatar_url || null,
+      };
+    });
 
     await cacheConversations(enriched);
     return { data: enriched as Conversation[], error: null };
@@ -311,23 +364,28 @@ export async function fetchOrCreateConversation(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { data: null, error: 'Not authenticated' };
 
+    // استعلام محدد الأعمدة
     const { data: existing } = await supabase
       .from('conversations')
-      .select('*')
+      .select('id, ad_id, buyer_id, seller_id, last_message, last_message_at, created_at, archived_at')
       .eq('ad_id', adId)
       .eq('buyer_id', user.id)
       .single();
 
-    if (existing) return { data: existing as Conversation, error: null };
+    if (existing) {
+      const clean = sanitizeConversation(existing);
+      return { data: clean as Conversation, error: null };
+    }
 
     const { data, error } = await supabase
       .from('conversations')
       .insert({ ad_id: adId, buyer_id: user.id, seller_id: sellerId })
-      .select()
+      .select('id, ad_id, buyer_id, seller_id, last_message, last_message_at, created_at, archived_at')
       .single();
 
     if (error) return { data: null, error: error.message };
-    return { data: data as Conversation, error: null };
+    const clean = sanitizeConversation(data);
+    return { data: clean as Conversation, error: null };
   } catch (e: any) {
     console.error('[fetchOrCreateConversation] Error:', e);
     return { data: null, error: e?.message ?? 'Failed to create conversation' };
@@ -341,16 +399,40 @@ export async function fetchConversationById(id: string): Promise<{ data: Convers
     const { data, error } = await supabase
       .from('conversations')
       .select(`
-        *,
-        ads(title, status, user_id, ad_images(url, position)),
-        buyer:user_profiles!conversations_buyer_id_fkey(username, email, avatar_url),
-        seller:user_profiles!conversations_seller_id_fkey(username, email, avatar_url)
+        id,
+        ad_id,
+        buyer_id,
+        seller_id,
+        last_message,
+        last_message_at,
+        created_at,
+        archived_at,
+        buyer_typing_at,
+        seller_typing_at,
+        ads(
+          title,
+          status,
+          user_id
+        ),
+        buyer:user_profiles!conversations_buyer_id_fkey(
+          id,
+          username,
+          email,
+          avatar_url
+        ),
+        seller:user_profiles!conversations_seller_id_fkey(
+          id,
+          username,
+          email,
+          avatar_url
+        )
       `)
       .eq('id', id)
       .single();
 
     if (error) return { data: null, error: error.message };
-    return { data: enrichConversation(data) as Conversation, error: null };
+    const clean = sanitizeConversation(data);
+    return { data: enrichConversation(clean) as Conversation, error: null };
   } catch (e: any) {
     console.error('[fetchConversationById] Error:', e);
     return { data: null, error: e?.message ?? 'Failed to fetch conversation' };
@@ -622,9 +704,6 @@ export async function sendMessage(
       : null;
     const isBuyerSending = conv?.buyer_id === user.id;
 
-    // إعادة تعيين حالة القراءة في قاعدة البيانات (للمستخدم الآخر) - نقوم بذلك فوراً
-    // لكن سيتم التعامل معها في الدالة markMessagesRead عند فتح المحادثة.
-
     return { data: result as Message, recipientId, isBuyerSending, error: null };
   } catch (e: any) {
     console.error('[sendMessage] Unhandled error:', e);
@@ -671,7 +750,7 @@ export async function markMessagesRead(
         .neq('sender_id', currentUserId)
         .is('read_at', null)
         .is('deleted_by', null)
-        .select('id'); // نطلب معرفات الرسائل التي تم تحديثها
+        .select('id');
 
       if (error) {
         lastError = error;
@@ -682,7 +761,6 @@ export async function markMessagesRead(
         continue;
       }
 
-      // إذا نجحت، نعيد clear للكاش
       await clearConversationsCache();
       return { error: null };
     } catch (err) {
@@ -702,9 +780,7 @@ export async function markConversationAsRead(
   conversationId: string,
   userId: string
 ): Promise<{ error: string | null }> {
-  // هذه الدالة تستدعي markMessagesRead مع محاولات إضافية وتحديث الكاش
   const result = await markMessagesRead(conversationId, userId, 3);
-  // بعد التحديث، نقوم بمسح كاش المحادثات لجلب العداد الجديد
   await clearConversationsCache();
   return result;
 }
