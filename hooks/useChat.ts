@@ -250,6 +250,8 @@ export function useChat(conversationId: string) {
 // useConversations - لجلب قائمة المحادثات مع عدد الرسائل غير المقروءة
 // ──────────────────────────────────────────────────────────────────────────────
 export function useConversations(options?: { enabled?: boolean }) {
+  console.log('✅ [useConversations] تم استدعاء الدالة!');
+
   const { enabled = true } = options || {};
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -267,7 +269,10 @@ export function useConversations(options?: { enabled?: boolean }) {
 
   // ─── تحميل المحادثات ──────────────────────────────────────────────────────
   const reload = useCallback(async () => {
+    console.log('🔄 [useConversations] جاري تحميل المحادثات...');
+
     if (!enabled || !user) {
+      console.log('⛔ [useConversations] غير مفعل أو لا يوجد مستخدم');
       setConversations([]);
       setUnreadCount(0);
       setLoading(false);
@@ -296,10 +301,15 @@ export function useConversations(options?: { enabled?: boolean }) {
         .is('archived_at', null)
         .order('last_message_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ [useConversations] خطأ في جلب المحادثات:', error);
+        throw error;
+      }
+
+      console.log(`📊 [useConversations] تم جلب ${data?.length || 0} محادثة`);
 
       // جلب عدد الرسائل غير المقروءة لكل محادثة
-      const convIds = data.map(c => c.id);
+      const convIds = data?.map(c => c.id) || [];
       let unreadMap: Record<string, number> = {};
       if (convIds.length > 0) {
         const { data: unread } = await supabase
@@ -314,7 +324,7 @@ export function useConversations(options?: { enabled?: boolean }) {
       }
 
       // تنقية البيانات وإضافة الأسماء
-      const enriched = data.map(conv => {
+      const enriched = (data || []).map(conv => {
         const buyer = conv.buyer || {};
         const seller = conv.seller || {};
         return {
@@ -330,6 +340,7 @@ export function useConversations(options?: { enabled?: boolean }) {
       setConversations(enriched);
       const totalUnread = enriched.reduce((sum, c) => sum + (c.unread_count || 0), 0);
       setUnreadCount(totalUnread);
+      console.log(`🔔 [useConversations] عدد الرسائل غير المقروءة: ${totalUnread}`);
     } catch (err) {
       console.warn('[useConversations] Error:', err);
     } finally {
@@ -389,7 +400,7 @@ export function useConversations(options?: { enabled?: boolean }) {
   // ─── التحميل الأولي ──────────────────────────────────────────────────────
   useEffect(() => {
     reload();
-  }, [enabled]);
+  }, [enabled, user]);
 
   return {
     conversations,
