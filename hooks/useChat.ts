@@ -27,7 +27,7 @@ import {
   forwardMessage as forwardMessageService,
   sendTypingIndicator,
   trackChatEvent,
-  markConversationAsRead,   // ✅ جديد
+  markConversationAsRead,
 } from '@/services/chatService';
 import {
   mergeWithLocalReadState,
@@ -143,7 +143,7 @@ export function useMessages(
   const [refreshing, setRefreshing] = useState(false);
   const [otherTyping, setOtherTyping] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
-  const [isMarkingRead, setIsMarkingRead] = useState(false); // ✅ لمنع التكرار
+  const [isMarkingRead, setIsMarkingRead] = useState(false);
 
   const lastCreatedAtRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -153,35 +153,9 @@ export function useMessages(
   const isAppActiveRef = useRef(true);
   const isScreenFocusedRef = useRef(true);
   const isMountedRef = useRef(true);
-  const hasMarkedReadRef = useRef(false); // ✅ علامة لتجنب تكرار علامة القراءة
+  const hasMarkedReadRef = useRef(false);
 
-  // ─── دالة جديدة لتعليم الرسائل كمقروءة في الخادم ──────────────────────────
-  const markConversationRead = useCallback(async () => {
-    if (!conversationId || !currentUserId || isMarkingRead) return;
-    setIsMarkingRead(true);
-    try {
-      const result = await markConversationAsRead(conversationId, currentUserId);
-      if (!result.error) {
-        // تحديث الحالة المحلية (للتأكد من أن القراءة تظهر فوراً)
-        markReadLocally(currentUserId);
-        // مسح كاش المحادثات ليجلب العداد الجديد
-        await clearConversationsCache();
-        // إطلاق تحديث عام للعداد (إذا كانت الدالة موجودة)
-        if (typeof triggerUnreadRefresh === 'function') {
-          triggerUnreadRefresh();
-        }
-        hasMarkedReadRef.current = true;
-      } else {
-        console.warn('[useMessages] markConversationAsRead error:', result.error);
-      }
-    } catch (err) {
-      console.warn('[useMessages] markConversationRead exception:', err);
-    } finally {
-      setIsMarkingRead(false);
-    }
-  }, [conversationId, currentUserId, isMarkingRead]);
-
-  // ─── دوال أساسية ────────────────────────────────────────────────────────────
+  // ─── تعريف الدوال الأساسية (قبل استخدامها في markConversationRead) ──────────
 
   const appendMessage = useCallback((msg: Message) => {
     setMessages(prev => {
@@ -242,7 +216,36 @@ export function useMessages(
     });
   }, [conversationId]);
 
-  // ─── مراقبة الاتصال ─────────────────────────────────────────────────────────
+  // ─── الآن تعريف markConversationRead بعد تعريف الدوال التي تستخدمها ──────
+
+  const markConversationRead = useCallback(async () => {
+    if (!conversationId || !currentUserId || isMarkingRead) return;
+    setIsMarkingRead(true);
+    try {
+      const result = await markConversationAsRead(conversationId, currentUserId);
+      if (!result.error) {
+        // تحديث الحالة المحلية (للتأكد من أن القراءة تظهر فوراً)
+        markReadLocally(currentUserId);
+        // مسح كاش المحادثات ليجلب العداد الجديد
+        await clearConversationsCache();
+        // إطلاق تحديث عام للعداد (الدالة معرفة في نهاية الملف)
+        if (typeof triggerUnreadRefresh === 'function') {
+          triggerUnreadRefresh();
+        }
+        hasMarkedReadRef.current = true;
+      } else {
+        console.warn('[useMessages] markConversationAsRead error:', result.error);
+      }
+    } catch (err) {
+      console.warn('[useMessages] markConversationRead exception:', err);
+    } finally {
+      setIsMarkingRead(false);
+    }
+  }, [conversationId, currentUserId, isMarkingRead, markReadLocally]);
+
+  // ─── باقي الكود كما هو (بدون تغيير) ──────────────────────────────────────────
+
+  // مراقبة الاتصال
   useEffect(() => {
     const unsub = NetInfo.addEventListener(state => {
       setIsOnline(state.isConnected !== false);
@@ -250,7 +253,7 @@ export function useMessages(
     return unsub;
   }, []);
 
-  // ─── Realtime disabled ──────────────────────────────────────────────────────
+  // Realtime disabled
   const setupRealtimeSubscription = useCallback(() => {
     return () => {};
   }, []);
@@ -313,10 +316,8 @@ export function useMessages(
           lastCreatedAtRef.current = merged[merged.length - 1].created_at;
           cacheMessages(conversationId, merged).catch(() => {});
 
-          // ✅ إذا كانت هناك رسائل جديدة من الطرف الآخر، نطلب تعليمها كمقروءة
           const hasNewFromOther = trulyNew.some(m => m.sender_id !== currentUserId);
           if (hasNewFromOther && !hasMarkedReadRef.current) {
-            // نستدعي markConversationRead بعد تأخير بسيط لتجنب التكرار
             setTimeout(() => markConversationRead(), 300);
           }
 
@@ -353,7 +354,6 @@ export function useMessages(
             markMessagesDelivered(conversationId, currentUserId).catch(() => {});
           }
           cacheMessages(conversationId, data).catch(() => {});
-          // ✅ بعد تحميل الرسائل لأول مرة، نطلب تعليمها كمقروءة
           if (!hasMarkedReadRef.current) {
             setTimeout(() => markConversationRead(), 500);
           }
@@ -378,7 +378,6 @@ export function useMessages(
     if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
     cacheMessages(conversationId, data).catch(() => {});
     setRefreshing(false);
-    // ✅ بعد التحديث اليدوي، نطلب تعليمها كمقروءة
     if (!hasMarkedReadRef.current) {
       setTimeout(() => markConversationRead(), 500);
     }
@@ -388,14 +387,12 @@ export function useMessages(
   const loadInitial = useCallback(async () => {
     if (!conversationId) return;
     setLoading(true);
-    // عرض الكاش أولاً
     const cached = await getCachedMessages(conversationId);
     if (cached && cached.length > 0 && isMountedRef.current) {
       setMessages(cached);
       lastCreatedAtRef.current = cached[cached.length - 1]?.created_at ?? null;
       setLoading(false);
     }
-    // جلب من الخادم
     const { data, error } = await fetchMessages(conversationId);
     if (error) {
       console.warn('fetchMessages error:', error);
@@ -409,7 +406,6 @@ export function useMessages(
       if (currentUserId) {
         markMessagesDelivered(conversationId, currentUserId).catch(() => {});
       }
-      // ✅ تعليم الرسائل كمقروءة فوراً
       if (!hasMarkedReadRef.current) {
         setTimeout(() => markConversationRead(), 400);
       }
@@ -454,12 +450,11 @@ export function useMessages(
     return null;
   }, [conversationId]);
 
-  // ─── تأثير للتحقق من الرسائل غير المقروءة عند تغير القائمة ──────────────────
+  // ─── تأثير للتحقق من الرسائل غير المقروءة ──────────────────
   useEffect(() => {
     if (!conversationId || !currentUserId || isMarkingRead || hasMarkedReadRef.current) return;
     const hasUnread = messages.some(m => m.sender_id !== currentUserId && !m.read_at);
     if (hasUnread) {
-      // ننتظر قليلاً ثم نطلب تعليمها كمقروءة
       const timer = setTimeout(() => markConversationRead(), 600);
       return () => clearTimeout(timer);
     }
@@ -468,7 +463,7 @@ export function useMessages(
   // ─── Main effect ─────────────────────────────────────────────────────────────
   useEffect(() => {
     isMountedRef.current = true;
-    hasMarkedReadRef.current = false; // إعادة تعيين عند تغيير المحادثة
+    hasMarkedReadRef.current = false;
     if (!conversationId) {
       setLoading(false);
       return;
@@ -492,7 +487,6 @@ export function useMessages(
         if (intervalRef.current) clearInterval(intervalRef.current);
         intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
         pollSilentRef.current();
-        // عند عودة التطبيق إلى المقدمة، نطلب تعليم القراءة
         if (!hasMarkedReadRef.current) {
           setTimeout(() => markConversationRead(), 500);
         }
