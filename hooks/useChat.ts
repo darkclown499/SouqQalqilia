@@ -120,38 +120,74 @@ export function useChat(conversationId: string) {
     setSending(true);
     setError(null);
 
-    try {
-      // إضافة رسالة مؤقتة
-      const tempId = `temp_${Date.now()}`;
-      const tempMsg: Message = {
-        id: tempId,
-        conversation_id: conversationId,
-        sender_id: user.id,
-        content: content || (imageUrl ? '📷 صورة' : ''),
-        image_url: imageUrl || null,
-        message_type: imageUrl ? 'image' : 'text',
-        read_at: null,
-        created_at: new Date().toISOString(),
-        _pending: true,
-      };
-      setMessages(prev => [...prev, tempMsg]);
+    // إضافة رسالة مؤقتة
+    const tempId = `temp_${Date.now()}`;
+    const tempMsg: Message = {
+      id: tempId,
+      conversation_id: conversationId,
+      sender_id: user.id,
+      content: content || (imageUrl ? '📷 صورة' : ''),
+      image_url: imageUrl || null,
+      message_type: imageUrl ? 'image' : 'text',
+      read_at: null,
+      created_at: new Date().toISOString(),
+      _pending: true,
+    };
+    setMessages(prev => [...prev, tempMsg]);
 
+    try {
       // إرسال للخادم
       const result = await sendMessage(conversationId, content, imageUrl);
 
-      if (!result.success) {
-        throw new Error(result.error || 'فشل الإرسال');
+      // ✅ التحقق من تنسيق النتيجة – ندعم عدة تنسيقات شائعة
+      let sentMessage: Message | null = null;
+      let errorMessage: string | null = null;
+
+      // التنسيق 1: { data, error } (نمط Supabase / الخدمات)
+      if (result && typeof result === 'object') {
+        if ('error' in result && result.error) {
+          errorMessage = result.error;
+        } else if ('data' in result && result.data) {
+          sentMessage = result.data;
+        }
+        // التنسيق 2: { success, message, error }
+        else if ('success' in result) {
+          if (result.success === false) {
+            errorMessage = result.error || 'فشل الإرسال';
+          } else if (result.message) {
+            sentMessage = result.message;
+          }
+        }
+        // التنسيق 3: النتيجة هي الكائن الرسالة نفسه
+        else if ('id' in result && 'content' in result) {
+          sentMessage = result as Message;
+        }
+      }
+
+      // إذا لم نجد رسالة ولا خطأ، نعتبر أن هناك خطأ
+      if (!sentMessage && !errorMessage) {
+        errorMessage = 'استجابة غير متوقعة من الخادم';
+      }
+
+      if (errorMessage) {
+        throw new Error(errorMessage);
       }
 
       // تحديث الرسالة المؤقتة بالرسالة الحقيقية
-      if (result.message) {
-        setMessages(prev =>
-          prev.map(m => m.id === tempId ? { ...result.message!, _pending: false } : m)
-        );
-        lastCreatedAtRef.current = result.message.created_at;
-        // تحديث الكاش
-        const updated = messages.map(m => m.id === tempId ? { ...result.message!, _pending: false } : m);
-        cacheMessages(conversationId, updated);
+      if (sentMessage) {
+        setMessages(prev => {
+          const updated = prev.map(m =>
+            m.id === tempId ? { ...sentMessage!, _pending: false } : m
+          );
+          // تحديث الكاش باستخدام القائمة المحدثة
+          cacheMessages(conversationId, updated);
+          // تحديث lastCreatedAtRef
+          const lastMsg = updated[updated.length - 1];
+          if (lastMsg) {
+            lastCreatedAtRef.current = lastMsg.created_at;
+          }
+          return updated;
+        });
       }
 
       setSending(false);
@@ -159,14 +195,14 @@ export function useChat(conversationId: string) {
     } catch (e: any) {
       console.error('[useChat] sendMessage error:', e);
       setError(e.message || 'فشل الإرسال');
-      // إعادة تعيين حالة الرسالة المؤقتة
+      // تعليم الرسالة المؤقتة كفاشلة
       setMessages(prev =>
-        prev.map(m => m._pending ? { ...m, _failed: true } : m)
+        prev.map(m => m.id === tempId ? { ...m, _failed: true } : m)
       );
       setSending(false);
       return false;
     }
-  }, [conversationId, user?.id, messages]);
+  }, [conversationId, user?.id, sending]);
 
   // ─── رفع صورة ──────────────────────────────────────────────────────────────
   const uploadImageHandler = useCallback(async (fileUri: string, fileName: string) => {
