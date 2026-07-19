@@ -7,14 +7,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import { v4 as uuidv4 } from 'uuid';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
-import { useMessages } from '@/hooks/useChat';
+import { useChat } from '@/hooks/useChat'; // ✅ استيراد useChat الجديد
 import {
-  fetchConversationById, sendMessage, updateTypingIndicator,
-  notifyRecipient, deleteConversation, uploadChatImage,
-  addToOfflineQueue, removeFromOfflineQueue, getOfflineQueue,
-  Conversation, Message,
+  fetchConversationById,
+  updateTypingIndicator,
+  notifyRecipient,
+  deleteConversation,
+  uploadChatImage,
+  Conversation,
+  Message,
 } from '@/services/chatService';
 import { blockUser, isUserBlocked, unblockUser } from '@/services/blockService';
 import { updateAdStatus } from '@/services/adsService';
@@ -89,7 +91,6 @@ export default function ChatScreen() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [text, setText] = useState('');
   const [showQuickReplies, setShowQuickReplies] = useState(false);
-  const [sending, setSending] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
@@ -97,8 +98,6 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList<MsgItem>>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollToMatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const markReadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const markReadCooldownRef = useRef<number>(0);
 
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -113,17 +112,22 @@ export default function ChatScreen() {
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
+
+  // ✅ استخدام useChat الجديد بدلاً من useMessages
   const {
     messages,
     loading,
-    refreshing,
+    sending,
     otherTyping,
     isOnline,
-    reload,
-    appendMessage,
-    updateMessage,
-    markReadLocally,
-  } = useMessages(id, isBuyer, user?.id);
+    error,
+    sendMessage,
+    uploadImage,
+    sendTyping,
+    refresh,
+    markRead,
+    retryMessage,
+  } = useChat(id);
 
   const [imageUploading, setImageUploading] = useState(false);
 
@@ -161,39 +165,11 @@ export default function ChatScreen() {
     setRecordingDuration(0);
   }, []);
 
-  // ----- Improved mark as read function -----
+  // ----- Mark read using the new markRead from useChat -----
   const doMark = useCallback(async () => {
     if (!id || !user) return;
-    const now = Date.now();
-    if (now - markReadCooldownRef.current < 800) return; // منع التكرار السريع
-    markReadCooldownRef.current = now;
-
-    try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase
-        .from('messages')
-        .update({ read_at: new Date().toISOString() })
-        .eq('conversation_id', id)
-        .neq('sender_id', user.id)
-        .is('read_at', null)
-        .is('deleted_by', null);
-
-      if (!error) {
-        // تحديث الحالة المحلية فوراً
-        markReadLocally(user.id);
-        // إعادة المحاولة بعد 300 مللي للتأكد من التحديث في الـ UI
-        setTimeout(() => markReadLocally(user.id), 300);
-      } else {
-        console.warn('⚠️ doMark error:', error);
-        // محاولة مرة أخرى بعد تأخير
-        setTimeout(() => {
-          if (id && user) doMark();
-        }, 2000);
-      }
-    } catch (e) {
-      console.warn('⚠️ doMark exception:', e);
-    }
-  }, [id, user?.id, markReadLocally]);
+    markRead(); // استدعاء markRead من useChat
+  }, [id, user, markRead]);
 
   // ----- Force mark read on focus and whenever messages change -----
   useFocusEffect(
@@ -211,153 +187,32 @@ export default function ChatScreen() {
   useEffect(() => {
     const hasUnread = messages.some(m => m.sender_id !== user?.id && !m.read_at);
     if (hasUnread) {
-      if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current);
-      markReadTimeoutRef.current = setTimeout(doMark, 400);
+      doMark();
     }
   }, [messages, user?.id, doMark]);
 
-  // ----- Send message handler (improved error handling and retry) -----
+  // ----- Send message handler (using new sendMessage from useChat) -----
   const handleSendMessage = useCallback(async (content: string, imageUrl?: string): Promise<boolean> => {
     if (!id || !user) {
-      console.warn('❌ Cannot send: missing id or user');
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'المستخدم أو المحادثة غير موجودة' : 'User or conversation missing');
       return false;
     }
 
-    const clientId = uuidv4();
-    const tempMsg: Message = {
-      id: clientId,
-      conversation_id: id,
-      sender_id: user.id,
-      content: imageUrl ? (content || '📷 صورة') : content,
-      image_url: imageUrl ?? null,
-      message_type: imageUrl ? 'image' : 'text',
-      read_at: null,
-      created_at: new Date().toISOString(),
-      _pending: true,
-    };
-
-    // إضافة الرسالة مؤقتاً
-    try {
-      appendMessage(tempMsg);
-    } catch (appendErr) {
-      console.error('❌ appendMessage error:', appendErr);
-      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل عرض الرسالة مؤقتاً' : 'Failed to display message');
-      return false;
+    // استخدام دالة sendMessage من useChat
+    const success = await sendMessage(content, imageUrl);
+    if (success) {
+      // بعد الإرسال، نضع علامة قراءة للرسائل السابقة
+      doMark();
+      // إشعار للمستلم (يمكن إضافته لاحقاً)
+      return true;
     }
+    return false;
+  }, [id, user, sendMessage, doMark, isAr, showAlert]);
 
-    try {
-      const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
-
-      if (error) {
-        console.warn('⚠️ sendMessage error:', error);
-        // عرض الرسالة الفعلية للخطأ إن وجدت
-        const errorMsg = typeof error === 'string' ? error : error?.message || (isAr ? 'فشل الإرسال' : 'Send failed');
-        showAlert(
-          isAr ? 'فشل الإرسال' : 'Send Failed',
-          isAr ? `${errorMsg} - سيتم حفظها وإعادة المحاولة` : `${errorMsg} - will be saved and retried`
-        );
-        // تحديث الرسالة بحالة فشل
-        updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
-        // حفظ في قائمة الانتظار لإعادة المحاولة
-        try {
-          await addToOfflineQueue({
-            tempId: clientId,
-            conversationId: id,
-            content: imageUrl ? (content || '📷 صورة') : content,
-            image_url: imageUrl,
-            message_type: imageUrl ? 'image' : 'text',
-            created_at: tempMsg.created_at,
-          });
-        } catch (queueErr) {
-          console.error('❌ addToOfflineQueue error:', queueErr);
-        }
-        // محاولة إعادة الإرسال تلقائياً بعد 3 ثوانٍ (مرة واحدة)
-        setTimeout(async () => {
-          try {
-            const { data: retrySent, error: retryErr } = await sendMessage(id, content, imageUrl, clientId);
-            if (!retryErr && retrySent) {
-              updateMessage(clientId, retrySent);
-              await removeFromOfflineQueue(clientId);
-              showAlert(isAr ? 'تم الإرسال' : 'Sent', isAr ? 'تم إرسال الرسالة بعد المحاولة التلقائية' : 'Message sent after auto-retry');
-            }
-          } catch (_) {}
-        }, 3000);
-        return false;
-      } else {
-        if (sent) {
-          updateMessage(clientId, sent);
-          // بعد الإرسال، نضع علامة قراءة للرسائل السابقة
-          doMark();
-          if (recipientId && recipientId !== user.id) {
-            const senderName = user.username || user.email?.split('@')[0] || 'مستخدم';
-            try {
-              notifyRecipient(recipientId, senderName, content || '📷 صورة', id, !isBuyerSending);
-            } catch (notifyErr) {
-              console.warn('⚠️ notifyRecipient error:', notifyErr);
-            }
-          }
-          return true;
-        }
-        return false;
-      }
-    } catch (sendErr) {
-      console.error('❌ Unhandled send error:', sendErr);
-      const errorMsg = sendErr instanceof Error ? sendErr.message : (isAr ? 'حدث خطأ غير متوقع' : 'Unexpected error');
-      showAlert(
-        isAr ? 'فشل الإرسال' : 'Send Failed',
-        isAr ? `${errorMsg} - سيتم حفظ الرسالة وإعادة المحاولة` : `${errorMsg} - will be saved and retried`
-      );
-      updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
-      try {
-        await addToOfflineQueue({
-          tempId: clientId,
-          conversationId: id,
-          content: imageUrl ? (content || '📷 صورة') : content,
-          image_url: imageUrl,
-          message_type: imageUrl ? 'image' : 'text',
-          created_at: tempMsg.created_at,
-        });
-      } catch (queueErr) {
-        console.error('❌ addToOfflineQueue error:', queueErr);
-      }
-      return false;
-    }
-  }, [id, user, appendMessage, updateMessage, showAlert, isAr, doMark]);
-
-  // ── Retry failed message (improved) ──
+  // ── Retry failed message (using retryMessage from useChat) ──
   const handleRetryMessage = useCallback(async (failedMsg: Message) => {
-    try {
-      // إزالة من قائمة الانتظار أولاً
-      await removeFromOfflineQueue(failedMsg.id).catch(() => {});
-      const { data: sent, error } = await sendMessage(
-        id,
-        failedMsg.content,
-        failedMsg.image_url || undefined,
-        failedMsg.id
-      );
-      if (!error && sent) {
-        updateMessage(failedMsg.id, sent);
-        doMark();
-        showAlert(isAr ? 'تم الإرسال' : 'Sent', isAr ? 'تم إرسال الرسالة بنجاح' : 'Message sent successfully');
-      } else {
-        const errMsg = typeof error === 'string' ? error : error?.message || (isAr ? 'فشل إعادة الإرسال' : 'Resend failed');
-        showAlert(isAr ? 'فشل الإرسال' : 'Send Failed', errMsg);
-        // إعادة إضافة الرسالة لقائمة الانتظار
-        await addToOfflineQueue({
-          tempId: failedMsg.id,
-          conversationId: id,
-          content: failedMsg.content,
-          image_url: failedMsg.image_url || undefined,
-          message_type: failedMsg.message_type || 'text',
-          created_at: failedMsg.created_at,
-        });
-      }
-    } catch (err) {
-      console.error('❌ Retry error:', err);
-      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'حدث خطأ أثناء إعادة المحاولة' : 'Error while retrying');
-    }
-  }, [id, updateMessage, showAlert, isAr, doMark]);
+    await retryMessage(failedMsg.id);
+  }, [retryMessage]);
 
   // ----- Audio Recording Handlers (unchanged) -----
   const handleStartRecording = useCallback(async () => {
@@ -491,7 +346,6 @@ export default function ChatScreen() {
       cleanupAudioResources();
       if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
       if (scrollToMatchTimeoutRef.current) clearTimeout(scrollToMatchTimeoutRef.current);
-      if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current);
     };
   }, [cleanupAudioResources]);
 
@@ -582,47 +436,17 @@ export default function ChatScreen() {
       });
   }, [id, user?.id, isAr, showAlert]);
 
-  // ----- Offline queue retry -----
-  useEffect(() => {
-    if (!isOnline || !id || !user || isBuyer === null) return;
-    (async () => {
-      const queue = await getOfflineQueue();
-      const forThisConv = queue.filter(q => q.conversationId === id);
-      if (forThisConv.length === 0) return;
-      for (const qMsg of forThisConv) {
-        const { data: sent, error } = await sendMessage(id, qMsg.content, qMsg.image_url);
-        if (!error && sent) {
-          updateMessage(qMsg.tempId, sent);
-          await removeFromOfflineQueue(qMsg.tempId);
-        }
-      }
-    })();
-  }, [isOnline, id, user?.id, isBuyer]);
-
   // ----- Quick replies -----
   const QUICK_REPLIES_AR = ['هل السعر قابل للتفاوض؟', 'هل المنتج لا يزال متاحاً؟', 'ما هو موقعك؟', 'هل يمكن التوصيل؟'];
   const QUICK_REPLIES_EN = ['Is the price negotiable?', 'Is this still available?', 'Where is your location?', 'Can you deliver?'];
   const quickReplies = isAr ? QUICK_REPLIES_AR : QUICK_REPLIES_EN;
 
-  // ----- Typing indicator -----
+  // ----- Typing indicator using sendTyping from useChat -----
   const handleTyping = useCallback((val: string) => {
     setText(val);
-    if (!id || !user || isBuyer === null) return;
-    updateTypingIndicator(id, isBuyer, true).catch(() => {});
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingTimerRef.current = setTimeout(() => {
-      updateTypingIndicator(id, isBuyer, false).catch(() => {});
-    }, 3000);
-  }, [id, user, isBuyer]);
-
-  useEffect(() => {
-    return () => {
-      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-      if (id && user && isBuyer !== null) {
-        updateTypingIndicator(id, isBuyer, false).catch(() => {});
-      }
-    };
-  }, [id, user?.id, isBuyer]);
+    if (!id || !user) return;
+    sendTyping(val.length > 0);
+  }, [id, user, sendTyping]);
 
   // ----- Scroll to bottom -----
   const scrollToBottom = useCallback(() => {
@@ -677,28 +501,11 @@ export default function ChatScreen() {
       setReplyTo(null);
     }
 
-    setSending(true);
-
-    try {
-      const success = await handleSendMessage(finalContent);
-      if (success) {
-        setText('');
-        setShowQuickReplies(false);
-        // تحديث القراءة بعد الإرسال
-        doMark();
-      }
-    } catch (err) {
-      console.error('❌ Unhandled error in handleSend:', err);
-      showAlert(
-        isAr ? 'خطأ' : 'Error',
-        isAr ? `حدث خطأ غير متوقع: ${err instanceof Error ? err.message : ''}` : `Unexpected error: ${err instanceof Error ? err.message : ''}`
-      );
-    } finally {
-      setSending(false);
-      if (isBuyer !== null) {
-        updateTypingIndicator(id!, isBuyer, false).catch(() => {});
-        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-      }
+    const success = await handleSendMessage(finalContent);
+    if (success) {
+      setText('');
+      setShowQuickReplies(false);
+      doMark();
     }
   }, [text, id, sending, handleSendMessage, isBuyer, isOnline, showAlert, isAr, replyTo, doMark]);
 
@@ -711,9 +518,6 @@ export default function ChatScreen() {
   // ── Reply to message ──
   const handleReplyToMessage = useCallback((msg: Message) => {
     setReplyTo(msg);
-    setTimeout(() => {
-      // يمكنك استخدام ref للتركيز على TextInput
-    }, 100);
   }, []);
 
   const handleCameraCapture = useCallback(async () => {
@@ -733,17 +537,17 @@ export default function ChatScreen() {
       });
       if (result.canceled || !result.assets?.[0]) return;
       setImageUploading(true);
-      const { url } = await uploadChatImage(
-        result.assets[0].uri,
-        result.assets[0].fileName ?? `cam_${Date.now()}.jpg`
-      );
+      // استخدام uploadImage من useChat
+      const url = await uploadImage(result.assets[0].uri, result.assets[0].fileName ?? `cam_${Date.now()}.jpg`);
       setImageUploading(false);
-      if (url) await handleSendMessage('', url);
+      if (url) {
+        await handleSendMessage('', url);
+      }
     } catch (e) {
       console.warn('Camera error:', e);
       setImageUploading(false);
     }
-  }, [id, imageUploading, handleSendMessage, isAr, showAlert]);
+  }, [id, imageUploading, uploadImage, handleSendMessage, isAr, showAlert]);
 
   const handleImagePick = useCallback(async () => {
     if (!id || imageUploading) return;
@@ -762,17 +566,17 @@ export default function ChatScreen() {
       });
       if (result.canceled || !result.assets?.[0]) return;
       setImageUploading(true);
-      const { url } = await uploadChatImage(
-        result.assets[0].uri,
-        result.assets[0].fileName ?? `chat_${Date.now()}.jpg`
-      );
+      // استخدام uploadImage من useChat
+      const url = await uploadImage(result.assets[0].uri, result.assets[0].fileName ?? `chat_${Date.now()}.jpg`);
       setImageUploading(false);
-      if (url) await handleSendMessage('', url);
+      if (url) {
+        await handleSendMessage('', url);
+      }
     } catch (e) {
       console.warn('Image pick error:', e);
       setImageUploading(false);
     }
-  }, [id, imageUploading, handleSendMessage, isAr, showAlert]);
+  }, [id, imageUploading, uploadImage, handleSendMessage, isAr, showAlert]);
 
   // ----- Conversation actions (unchanged) -----
   const isSeller = conversation?.seller_id === user?.id;
@@ -1140,7 +944,7 @@ export default function ChatScreen() {
             <Text style={[styles.offlineBannerText, { color: '#fff' }]}>
               {isAr ? 'غير متصل بالإنترنت' : 'No Internet Connection'}
             </Text>
-            <Pressable onPress={() => reload()} hitSlop={8}>
+            <Pressable onPress={() => refresh()} hitSlop={8}>
               <MaterialIcons name="refresh" size={16} color="#fff" />
             </Pressable>
           </View>
@@ -1357,8 +1161,8 @@ export default function ChatScreen() {
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
-              onRefresh={reload}
+              refreshing={loading}
+              onRefresh={refresh}
               colors={[colors.primary]}
               tintColor={colors.primary}
             />
