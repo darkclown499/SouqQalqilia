@@ -99,11 +99,12 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Offer Item Component – فخم وكبير
+// Offer Item Component – فخم وكبير مع زر "عرض المزيد"
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
-  const size = offer.card_size || 'medium';
+const OfferItem = memo(({ offer, isAr, forceFull = false }: { offer: Offer; isAr: boolean; forceFull?: boolean }) => {
+  // إذا كان forceFull=true، نعرضه بحجم full بغض النظر عن القيمة المخزنة
+  const size = forceFull ? 'full' : (offer.card_size || 'medium');
 
   let width = SCREEN_W;
   let height = 300;
@@ -245,7 +246,7 @@ const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
           {isLarge && (
             <View style={styles.ctaButton}>
               <Text style={styles.ctaButtonText}>
-                {isAr ? 'اكتشف العرض الآن' : 'Discover Now'}
+                {isAr ? 'عرض المزيد من الألعاب' : 'Show More Games'}
               </Text>
               <MaterialIcons name="arrow-forward" size={20} color="#1A1A1A" />
             </View>
@@ -360,7 +361,7 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
 
 function SkeletonLoader() {
   const items = 2;
-  const heights = [SCREEN_H * 0.5, 280];
+  const heights = [SCREEN_H * 0.55, 280];
 
   return (
     <View style={{ paddingHorizontal: 0, gap: 12 }}>
@@ -497,19 +498,36 @@ export default function OffersScreen() {
   const displayItems = useMemo(() => {
     const items: JSX.Element[] = [];
 
+    // أولاً: نعرض البانرات من جدول banners (إذا وجدت)
     if (banners.length > 0) {
-      banners.forEach((banner, index) => {
+      // نضع البانرات الكبيرة أولاً، ثم الباقي
+      const sortedBanners = [...banners].sort((a, b) => {
+        const order = { full: 0, large: 1, medium: 2, small: 3 };
+        const sizeA = a.size || 'medium';
+        const sizeB = b.size || 'medium';
+        return (order[sizeA as keyof typeof order] ?? 2) - (order[sizeB as keyof typeof order] ?? 2);
+      });
+      sortedBanners.forEach((banner, index) => {
         items.push(
           <BannerItem key={`banner-${banner.id || index}`} banner={banner} isAr={isAr} />
         );
       });
+    } else {
+      // إذا لم توجد بانرات، نعرض أول عرض بحجم full (إذا كان موجوداً)
+      if (sortedOffers.length > 0) {
+        // أول عرض نجعله full إجبارياً
+        const firstOffer = sortedOffers[0];
+        items.push(
+          <OfferItem key={`offer-${firstOffer.id}`} offer={firstOffer} isAr={isAr} forceFull={true} />
+        );
+        // باقي العروض تعرض بحجمها الطبيعي
+        sortedOffers.slice(1).forEach((offer) => {
+          items.push(
+            <OfferItem key={`offer-${offer.id}`} offer={offer} isAr={isAr} />
+          );
+        });
+      }
     }
-
-    sortedOffers.forEach((offer) => {
-      items.push(
-        <OfferItem key={`offer-${offer.id}`} offer={offer} isAr={isAr} />
-      );
-    });
 
     return items;
   }, [banners, sortedOffers, isAr]);
