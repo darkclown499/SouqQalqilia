@@ -49,6 +49,7 @@ export interface Message {
   read_at?: string | null;
   delivered_at?: string | null;
   created_at: string;
+  reactions?: any; // ✅ نضيفه اختياريًا لتجنب المشاكل
   _pending?: boolean;
   _failed?: boolean;
   deleted_by?: string | null;
@@ -146,7 +147,6 @@ export async function clearConversationCache(conversationId: string): Promise<vo
 
 // ─── دالة مساعدة لتنقية البيانات من أي خصائص غريبة ──────────────────────────
 function sanitizeConversation(conv: any): Conversation {
-  // القائمة المسموح بها فقط
   const allowedKeys = [
     'id', 'ad_id', 'buyer_id', 'seller_id', 'last_message',
     'last_message_at', 'created_at', 'archived_at', 'unread_count',
@@ -164,15 +164,27 @@ function sanitizeConversation(conv: any): Conversation {
   return sanitized as Conversation;
 }
 
+function sanitizeMessage(msg: any): Message {
+  // نحتفظ فقط بالخصائص المطلوبة
+  const allowedKeys = [
+    'id', 'conversation_id', 'sender_id', 'content',
+    'image_url', 'message_type', 'read_at', 'delivered_at',
+    'created_at', 'deleted_by', 'reactions'
+  ];
+  const sanitized: any = {};
+  for (const key of allowedKeys) {
+    if (key in msg) {
+      sanitized[key] = msg[key];
+    }
+  }
+  return sanitized as Message;
+}
+
 // ── Helper to enrich conversation with names (مع تنقية) ─────────────────────
 function enrichConversation(conv: any): Conversation {
-  // أولاً ننقي البيانات من أي خصائص غير مرغوب فيها
   const clean = sanitizeConversation(conv);
-  
-  // نستخرج معلومات البائع والمشتري من العلاقات (إذا وجدت)
   const buyer = (conv as any).buyer || {};
   const seller = (conv as any).seller || {};
-  
   return {
     ...clean,
     buyer_name: buyer?.username || buyer?.email?.split('@')[0] || 'مستخدم',
@@ -192,7 +204,6 @@ export async function fetchMyConversations(options?: {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { data: [], error: 'Not authenticated' };
 
-    // ✅ تحديد الأعمدة المطلوبة بدقة (بدون استخدام *)
     let query = supabase
       .from('conversations')
       .select(`
@@ -233,7 +244,6 @@ export async function fetchMyConversations(options?: {
 
     if (error) return { data: [], error: error.message };
 
-    // جلب عدد الرسائل غير المقروءة
     const convIds = (data as any[]).map((c) => c.id);
     let unreadMap: Record<string, number> = {};
     if (convIds.length > 0) {
@@ -249,7 +259,6 @@ export async function fetchMyConversations(options?: {
       });
     }
 
-    // تنقية كل محادثة وإضافة unread_count والأسماء
     const enriched = (data as any[]).map((conv) => {
       const clean = sanitizeConversation(conv);
       const buyer = conv.buyer || {};
@@ -261,7 +270,6 @@ export async function fetchMyConversations(options?: {
         seller_name: seller?.username || seller?.email?.split('@')[0] || 'مستخدم',
         buyer_avatar: buyer?.avatar_url || null,
         seller_avatar: seller?.avatar_url || null,
-        // تأكد من وجود ads حتى لو كان null
         ads: conv.ads || null,
       };
     });
@@ -371,7 +379,6 @@ export async function fetchOrCreateConversation(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { data: null, error: 'Not authenticated' };
 
-    // ✅ تحديد الأعمدة المطلوبة بدقة
     const { data: existing } = await supabase
       .from('conversations')
       .select('id, ad_id, buyer_id, seller_id, last_message, last_message_at, created_at, archived_at')
@@ -403,8 +410,7 @@ export async function fetchOrCreateConversation(
 export async function fetchConversationById(id: string): Promise<{ data: Conversation | null; error: string | null }> {
   try {
     const supabase = getSupabaseClient();
-    
-    // ✅ تحديد الأعمدة المطلوبة بدقة
+
     const { data, error } = await supabase
       .from('conversations')
       .select(`
@@ -438,8 +444,7 @@ export async function fetchConversationById(id: string): Promise<{ data: Convers
       .single();
 
     if (error) return { data: null, error: error.message };
-    
-    // تنقية البيانات من أي خصائص غريبة
+
     const clean = enrichConversation(data);
     return { data: clean as Conversation, error: null };
   } catch (e: any) {
@@ -454,13 +459,14 @@ export async function getLastMessage(conversationId: string): Promise<{ data: Me
     const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from('messages')
-      .select('*')
+      .select('id, conversation_id, sender_id, content, image_url, message_type, read_at, delivered_at, created_at, deleted_by, reactions')
       .eq('conversation_id', conversationId)
       .is('deleted_by', null)
       .order('created_at', { ascending: false })
       .limit(1);
     if (error) throw error;
-    return { data: data?.[0] ?? null, error: null };
+    const clean = data?.[0] ? sanitizeMessage(data[0]) : null;
+    return { data: clean, error: null };
   } catch (e: any) {
     console.error('[getLastMessage] Error:', e);
     return { data: null, error: e?.message ?? 'Failed to get last message' };
@@ -490,15 +496,16 @@ export async function fetchMessages(conversationId: string): Promise<{ data: Mes
     const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from('messages')
-      .select('*')
+      .select('id, conversation_id, sender_id, content, image_url, message_type, read_at, delivered_at, created_at, deleted_by, reactions')
       .eq('conversation_id', conversationId)
       .is('deleted_by', null)
       .order('created_at', { ascending: true });
 
     if (error) return { data: [], error: error.message };
 
-    await cacheMessages(conversationId, data as Message[]);
-    return { data: data as Message[], error: null };
+    const sanitized = data.map((m: any) => sanitizeMessage(m));
+    await cacheMessages(conversationId, sanitized);
+    return { data: sanitized, error: null };
   } catch (e: any) {
     console.error('[fetchMessages] Error:', e);
     return { data: [], error: e?.message ?? 'Network error' };
@@ -518,7 +525,7 @@ export async function fetchMessagesSince(
     const [msgsResult, convResult] = await Promise.all([
       supabase
         .from('messages')
-        .select('*')
+        .select('id, conversation_id, sender_id, content, image_url, message_type, read_at, delivered_at, created_at, deleted_by, reactions')
         .eq('conversation_id', conversationId)
         .gt('created_at', since)
         .is('deleted_by', null)
@@ -534,8 +541,10 @@ export async function fetchMessagesSince(
 
     if (msgsResult.error) return { data: [], typing: null, error: msgsResult.error.message };
 
-    if (currentUserId && msgsResult.data && msgsResult.data.length > 0) {
-      const undelivered = msgsResult.data.filter(
+    const sanitized = msgsResult.data ? msgsResult.data.map((m: any) => sanitizeMessage(m)) : [];
+
+    if (currentUserId && sanitized.length > 0) {
+      const undelivered = sanitized.filter(
         (m: any) => m.sender_id !== currentUserId && !m.delivered_at
       );
       if (undelivered.length > 0) {
@@ -550,7 +559,7 @@ export async function fetchMessagesSince(
         : (convResult.data as any).buyer_typing_at ?? null;
     }
 
-    return { data: msgsResult.data as Message[], typing, error: null };
+    return { data: sanitized, typing, error: null };
   } catch (e: any) {
     console.error('[fetchMessagesSince] Error:', e);
     return { data: [], typing: null, error: e?.message ?? 'Network error' };
@@ -666,7 +675,7 @@ export async function sendMessage(
             image_url: imageUrl ?? null,
             message_type: messageType,
           }, { onConflict: 'id', ignoreDuplicates: false })
-          .select()
+          .select('id, conversation_id, sender_id, content, image_url, message_type, read_at, delivered_at, created_at, deleted_by, reactions')
           .single();
 
         if (error) {
@@ -711,7 +720,8 @@ export async function sendMessage(
       : null;
     const isBuyerSending = conv?.buyer_id === user.id;
 
-    return { data: result as Message, recipientId, isBuyerSending, error: null };
+    const clean = sanitizeMessage(result);
+    return { data: clean, recipientId, isBuyerSending, error: null };
   } catch (e: any) {
     console.error('[sendMessage] Unhandled error:', e);
     return { data: null, recipientId: null, isBuyerSending: false, error: e?.message ?? 'Unexpected error' };
@@ -922,7 +932,7 @@ export async function forwardMessage(
 
     const { data: original, error: fetchError } = await supabase
       .from('messages')
-      .select('*')
+      .select('id, conversation_id, sender_id, content, image_url, message_type, read_at, delivered_at, created_at, deleted_by, reactions')
       .eq('id', messageId)
       .single();
 
@@ -941,7 +951,7 @@ export async function forwardMessage(
         image_url: original.image_url,
         message_type: original.message_type,
       })
-      .select()
+      .select('id, conversation_id, sender_id, content, image_url, message_type, read_at, delivered_at, created_at, deleted_by, reactions')
       .single();
 
     if (insertError) return { data: null, error: insertError.message };
@@ -954,7 +964,8 @@ export async function forwardMessage(
       })
       .eq('id', targetConversationId);
 
-    return { data: newMessage as Message, error: null };
+    const clean = sanitizeMessage(newMessage);
+    return { data: clean, error: null };
   } catch (e: any) {
     console.error('[forwardMessage] Error:', e);
     return { data: null, error: e?.message ?? 'Failed to forward message' };
