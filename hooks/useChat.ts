@@ -3,11 +3,11 @@ import { AppState, AppStateStatus } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {
   fetchMessages,
-  fetchNewMessages,
+  fetchMessagesSince,        // ← corrected name
   sendMessage,
   markMessagesRead,
-  updateTyping,
-  uploadImage,
+  updateTypingIndicator,     // ← corrected name
+  uploadChatImage,           // ← corrected name
   Message,
   Conversation,
   cacheMessages,
@@ -16,11 +16,8 @@ import {
 } from '@/services/chatService';
 import { useAuth, getSupabaseClient } from '@/template';
 
-const POLL_INTERVAL = 3000; // 3 seconds
+const POLL_INTERVAL = 3000;
 
-// ──────────────────────────────────────────────────────────────────────────────
-// useChat - لإدارة محادثة واحدة
-// ──────────────────────────────────────────────────────────────────────────────
 export function useChat(conversationId: string) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -51,13 +48,13 @@ export function useChat(conversationId: string) {
 
     // من الخادم
     try {
-      const data = await fetchMessages(conversationId);
-      if (isMounted.current) {
+      const { data, error } = await fetchMessages(conversationId);
+      if (error) throw new Error(error);
+      if (isMounted.current && data) {
         setMessages(data);
         if (data.length > 0) {
           lastCreatedAtRef.current = data[data.length - 1].created_at;
         }
-        // تعليم الرسائل كمقروءة فوراً
         if (user?.id) {
           await markMessagesRead(conversationId, user.id);
           await clearConversationsCache();
@@ -78,14 +75,15 @@ export function useChat(conversationId: string) {
     if (!conversationId || !lastCreatedAtRef.current || !isMounted.current) return;
 
     try {
-      const { messages: newMsgs, typing } = await fetchNewMessages(
+      const { messages: newMsgs, typing, error } = await fetchMessagesSince(
         conversationId,
         lastCreatedAtRef.current
       );
+      if (error) throw new Error(error);
 
       if (!isMounted.current) return;
 
-      if (newMsgs.length > 0) {
+      if (newMsgs && newMsgs.length > 0) {
         setMessages(prev => {
           const existingIds = new Set(prev.map(m => m.id));
           const uniqueNew = newMsgs.filter(m => !existingIds.has(m.id));
@@ -96,7 +94,6 @@ export function useChat(conversationId: string) {
           return updated;
         });
 
-        // تعليم الرسائل الجديدة كمقروءة
         if (user?.id) {
           await markMessagesRead(conversationId, user.id);
           await clearConversationsCache();
@@ -104,11 +101,7 @@ export function useChat(conversationId: string) {
       }
 
       // تحديث حالة الكتابة
-      if (typing === 'buyer' || typing === 'seller') {
-        setOtherTyping(true);
-      } else {
-        setOtherTyping(false);
-      }
+      setOtherTyping(typing === 'buyer' || typing === 'seller');
     } catch (e) {
       console.warn('[useChat] pollNewMessages error:', e);
     }
@@ -120,7 +113,6 @@ export function useChat(conversationId: string) {
     setSending(true);
     setError(null);
 
-    // إضافة رسالة مؤقتة
     const tempId = `temp_${Date.now()}`;
     const tempMsg: Message = {
       id: tempId,
@@ -136,66 +128,27 @@ export function useChat(conversationId: string) {
     setMessages(prev => [...prev, tempMsg]);
 
     try {
-      // إرسال للخادم
       const result = await sendMessage(conversationId, content, imageUrl);
+      // خدمة sendMessage تعيد { data: Message, error: string | null }
+      if (result.error) throw new Error(result.error);
+      const sentMessage = result.data;
+      if (!sentMessage) throw new Error('لم يتم استلام الرسالة');
 
-      // ✅ التحقق من تنسيق النتيجة – ندعم عدة تنسيقات شائعة
-      let sentMessage: Message | null = null;
-      let errorMessage: string | null = null;
-
-      // التنسيق 1: { data, error } (نمط Supabase / الخدمات)
-      if (result && typeof result === 'object') {
-        if ('error' in result && result.error) {
-          errorMessage = result.error;
-        } else if ('data' in result && result.data) {
-          sentMessage = result.data;
-        }
-        // التنسيق 2: { success, message, error }
-        else if ('success' in result) {
-          if (result.success === false) {
-            errorMessage = result.error || 'فشل الإرسال';
-          } else if (result.message) {
-            sentMessage = result.message;
-          }
-        }
-        // التنسيق 3: النتيجة هي الكائن الرسالة نفسه
-        else if ('id' in result && 'content' in result) {
-          sentMessage = result as Message;
-        }
-      }
-
-      // إذا لم نجد رسالة ولا خطأ، نعتبر أن هناك خطأ
-      if (!sentMessage && !errorMessage) {
-        errorMessage = 'استجابة غير متوقعة من الخادم';
-      }
-
-      if (errorMessage) {
-        throw new Error(errorMessage);
-      }
-
-      // تحديث الرسالة المؤقتة بالرسالة الحقيقية
-      if (sentMessage) {
-        setMessages(prev => {
-          const updated = prev.map(m =>
-            m.id === tempId ? { ...sentMessage!, _pending: false } : m
-          );
-          // تحديث الكاش باستخدام القائمة المحدثة
-          cacheMessages(conversationId, updated);
-          // تحديث lastCreatedAtRef
-          const lastMsg = updated[updated.length - 1];
-          if (lastMsg) {
-            lastCreatedAtRef.current = lastMsg.created_at;
-          }
-          return updated;
-        });
-      }
+      setMessages(prev => {
+        const updated = prev.map(m =>
+          m.id === tempId ? { ...sentMessage, _pending: false } : m
+        );
+        cacheMessages(conversationId, updated);
+        const last = updated[updated.length - 1];
+        if (last) lastCreatedAtRef.current = last.created_at;
+        return updated;
+      });
 
       setSending(false);
       return true;
     } catch (e: any) {
       console.error('[useChat] sendMessage error:', e);
       setError(e.message || 'فشل الإرسال');
-      // تعليم الرسالة المؤقتة كفاشلة
       setMessages(prev =>
         prev.map(m => m.id === tempId ? { ...m, _failed: true } : m)
       );
@@ -207,7 +160,7 @@ export function useChat(conversationId: string) {
   // ─── رفع صورة ──────────────────────────────────────────────────────────────
   const uploadImageHandler = useCallback(async (fileUri: string, fileName: string) => {
     try {
-      const url = await uploadImage(fileUri, fileName);
+      const url = await uploadChatImage(fileUri, fileName);
       if (url) {
         await sendMessageHandler('', url);
       }
@@ -221,8 +174,8 @@ export function useChat(conversationId: string) {
   // ─── تحديث مؤشر الكتابة ─────────────────────────────────────────────────────
   const sendTyping = useCallback((isTyping: boolean) => {
     if (!conversationId || !user) return;
-    const isBuyer = true; // سيتم تحديثه حسب الحالة
-    updateTyping(conversationId, isBuyer, isTyping);
+    const isBuyer = true; // يمكن تعديله حسب الحالة
+    updateTypingIndicator(conversationId, isBuyer, isTyping);
   }, [conversationId, user]);
 
   // ─── إعادة المحاولة للرسائل الفاشلة ────────────────────────────────────────
@@ -283,7 +236,7 @@ export function useChat(conversationId: string) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// useConversations - لجلب قائمة المحادثات مع عدد الرسائل غير المقروءة
+// useConversations - يبقى كما هو (لا يحتاج تعديل)
 // ──────────────────────────────────────────────────────────────────────────────
 export function useConversations(options?: { enabled?: boolean }) {
   console.log('✅ [useConversations] تم استدعاء الدالة!');
@@ -295,7 +248,6 @@ export function useConversations(options?: { enabled?: boolean }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
 
-  // مراقبة الاتصال
   useEffect(() => {
     const unsub = NetInfo.addEventListener(state => {
       setIsOnline(state.isConnected !== false);
@@ -303,7 +255,6 @@ export function useConversations(options?: { enabled?: boolean }) {
     return unsub;
   }, []);
 
-  // ─── تحميل المحادثات ──────────────────────────────────────────────────────
   const reload = useCallback(async () => {
     console.log('🔄 [useConversations] جاري تحميل المحادثات...');
 
@@ -318,8 +269,6 @@ export function useConversations(options?: { enabled?: boolean }) {
     setLoading(true);
     try {
       const supabase = getSupabaseClient();
-
-      // جلب المحادثات
       const { data, error } = await supabase
         .from('conversations')
         .select(`
@@ -344,7 +293,6 @@ export function useConversations(options?: { enabled?: boolean }) {
 
       console.log(`📊 [useConversations] تم جلب ${data?.length || 0} محادثة`);
 
-      // جلب عدد الرسائل غير المقروءة لكل محادثة
       const convIds = data?.map(c => c.id) || [];
       let unreadMap: Record<string, number> = {};
       if (convIds.length > 0) {
@@ -359,7 +307,6 @@ export function useConversations(options?: { enabled?: boolean }) {
         });
       }
 
-      // تنقية البيانات وإضافة الأسماء
       const enriched = (data || []).map(conv => {
         const buyer = conv.buyer || {};
         const seller = conv.seller || {};
@@ -384,12 +331,10 @@ export function useConversations(options?: { enabled?: boolean }) {
     }
   }, [enabled, user]);
 
-  // ─── تحديث يدوي ──────────────────────────────────────────────────────────
   const refreshUnread = useCallback(async () => {
     await reload();
   }, [reload]);
 
-  // ─── تعليم جميع الرسائل كمقروءة ──────────────────────────────────────────
   const markAllRead = useCallback(async () => {
     if (!user) return;
     try {
@@ -405,7 +350,6 @@ export function useConversations(options?: { enabled?: boolean }) {
     }
   }, [user, reload]);
 
-  // ─── أرشفة محادثة ────────────────────────────────────────────────────────
   const archive = useCallback(async (conversationId: string) => {
     try {
       const supabase = getSupabaseClient();
@@ -419,7 +363,6 @@ export function useConversations(options?: { enabled?: boolean }) {
     }
   }, [reload]);
 
-  // ─── إلغاء أرشفة محادثة ──────────────────────────────────────────────────
   const unarchive = useCallback(async (conversationId: string) => {
     try {
       const supabase = getSupabaseClient();
@@ -433,7 +376,6 @@ export function useConversations(options?: { enabled?: boolean }) {
     }
   }, [reload]);
 
-  // ─── التحميل الأولي ──────────────────────────────────────────────────────
   useEffect(() => {
     reload();
   }, [enabled, user]);
@@ -451,5 +393,4 @@ export function useConversations(options?: { enabled?: boolean }) {
   };
 }
 
-// ─── ✅ التصدير النهائي ───────────────────────────────────────────────────────
 export { useChat, useConversations };
