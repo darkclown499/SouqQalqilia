@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, memo, useRef } from '
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Dimensions,
   ActivityIndicator, Linking, RefreshControl, Platform, FlatList,
+  TextInput,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -42,6 +43,23 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const H_PAD = 16;
 const COL_GAP = 12;
 const DEFAULT_PHONE = '972599234230';
+
+// أيقونات التصنيفات
+const CATEGORY_ICONS: Record<string, string> = {
+  'الكل': 'apps',
+  'مطاعم': 'restaurant',
+  'سوبرماركت': 'local-grocery-store',
+  'إلكترونيات': 'devices',
+  'خضروات وفواكه': 'local-grocery-store',
+  'زينة وهدايا': 'card-giftcard',
+  'مستحضرات تجميل': 'spa',
+  'وظائف': 'work',
+  'رياضة': 'sports-soccer',
+  'عقارات': 'real-estate-agent',
+  'حيوانات': 'pets',
+  'سيارات ومركبات': 'car-repair',
+  'أثاث': 'table-rows',
+};
 
 const STATIC_CATEGORIES = [
   'الكل',
@@ -99,23 +117,141 @@ async function openWhatsApp(phone: string | null, title: string | null, storeNam
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Offer Item Component – فخم وكبير مع زر "عرض المزيد"
+// Banner Carousel Component (عروض متعددة مع نقاط تنقل)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OfferItem = memo(({ offer, isAr, forceFull = false }: { offer: Offer; isAr: boolean; forceFull?: boolean }) => {
-  // إذا كان forceFull=true، نعرضه بحجم full بغض النظر عن القيمة المخزنة
-  const size = forceFull ? 'full' : (offer.card_size || 'medium');
+const BannerCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }) => {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const scrollRef = useRef<FlatList>(null);
+  const autoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const userScrolling = useRef(false);
 
-  let width = SCREEN_W;
-  let height = 300;
-  let borderRadius = 0;
-  let titleFontSize = 32;
-  let descFontSize = 18;
+  // بدء التمرير التلقائي
+  useEffect(() => {
+    if (offers.length <= 1) return;
+
+    const startAutoScroll = () => {
+      if (autoTimer.current) clearInterval(autoTimer.current);
+      autoTimer.current = setInterval(() => {
+        if (userScrolling.current) return;
+        const nextIndex = (activeIndex + 1) % offers.length;
+        setActiveIndex(nextIndex);
+        scrollRef.current?.scrollToIndex({ index: nextIndex, animated: true });
+      }, 4000);
+    };
+    startAutoScroll();
+
+    return () => {
+      if (autoTimer.current) clearInterval(autoTimer.current);
+    };
+  }, [offers.length, activeIndex]);
+
+  const onScrollBeginDrag = () => { userScrolling.current = true; };
+  const onScrollEndDrag = () => { userScrolling.current = false; };
+  const onMomentumScrollEnd = (e: any) => {
+    const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+    setActiveIndex(Math.min(index, offers.length - 1));
+  };
+
+  const renderItem = ({ item }: { item: Offer }) => (
+    <View style={{ width: SCREEN_W, height: SCREEN_H * 0.6 }}>
+      <Image
+        source={{ uri: item.image_url || BANNER_FALLBACK }}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        transition={500}
+        cachePolicy="disk"
+      />
+      <LinearGradient
+        colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
+        locations={[0, 0.3, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[styles.bannerTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
+        {item.store_name && (
+          <Text style={[styles.offerStore, { textAlign: isAr ? 'right' : 'left' }]}>
+            {item.store_name}
+          </Text>
+        )}
+        <Text style={[styles.offerTitle, { textAlign: isAr ? 'right' : 'left', fontSize: 36 }]}>
+          {item.title}
+        </Text>
+        {item.description && (
+          <Text style={[styles.offerDesc, { textAlign: isAr ? 'right' : 'left', fontSize: 20 }]}>
+            {item.description}
+          </Text>
+        )}
+        {item.is_vip && (
+          <LinearGradient
+            colors={['#FFD700', '#F59E0B']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.vipChipGradient}
+          >
+            <Text style={styles.vipChipText}>👑 VIP</Text>
+          </LinearGradient>
+        )}
+        <View style={styles.ctaButton}>
+          <Text style={styles.ctaButtonText}>
+            {isAr ? 'اكتشف العرض الآن' : 'Discover Now'}
+          </Text>
+          <MaterialIcons name="arrow-forward" size={20} color="#1A1A1A" />
+        </View>
+      </View>
+    </View>
+  );
+
+  if (offers.length === 0) return null;
+
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <FlatList
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        data={offers}
+        renderItem={renderItem}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
+        showsHorizontalScrollIndicator={false}
+        onScrollBeginDrag={onScrollBeginDrag}
+        onScrollEndDrag={onScrollEndDrag}
+        onMomentumScrollEnd={onMomentumScrollEnd}
+        getItemLayout={(_, index) => ({ length: SCREEN_W, offset: SCREEN_W * index, index })}
+      />
+      {offers.length > 1 && (
+        <View style={[styles.paginationDots, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
+          {offers.map((_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.dot,
+                activeIndex === index && styles.activeDot,
+              ]}
+            />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Offer Item Component (لباقي العروض)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OfferItem = memo(({ offer, isAr }: { offer: Offer; isAr: boolean }) => {
+  const size = offer.card_size || 'medium';
+
+  let width = SCREEN_W - H_PAD * 2;
+  let height = 240;
+  let borderRadius = 14;
+  let titleFontSize = 24;
+  let descFontSize = 16;
 
   switch (size) {
     case 'full':
       width = SCREEN_W;
-      height = SCREEN_H * 0.6; // زيادة إلى 60% لجعله أكبر
+      height = SCREEN_H * 0.6;
       borderRadius = 0;
       titleFontSize = 36;
       descFontSize = 20;
@@ -143,7 +279,7 @@ const OfferItem = memo(({ offer, isAr, forceFull = false }: { offer: Offer; isAr
       break;
     default:
       width = SCREEN_W - H_PAD * 2;
-      height = 280;
+      height = 240;
       borderRadius = 14;
       titleFontSize = 24;
       descFontSize = 16;
@@ -184,21 +320,14 @@ const OfferItem = memo(({ offer, isAr, forceFull = false }: { offer: Offer; isAr
         source={{ uri: offer.image_url || BANNER_FALLBACK }}
         style={StyleSheet.absoluteFill}
         contentFit="cover"
-        transition={500}
+        transition={400}
         cachePolicy="disk"
       />
-
       <LinearGradient
-        colors={[
-          'rgba(0,0,0,0.1)',
-          'rgba(0,0,0,0.4)',
-          'rgba(0,0,0,0.8)',
-          'rgba(0,0,0,0.95)',
-        ]}
-        locations={[0, 0.3, 0.6, 1]}
+        colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
+        locations={[0, 0.3, 1]}
         style={StyleSheet.absoluteFill}
       />
-
       {isLarge && (
         <View style={styles.goldFrame}>
           <LinearGradient
@@ -215,7 +344,6 @@ const OfferItem = memo(({ offer, isAr, forceFull = false }: { offer: Offer; isAr
           />
         </View>
       )}
-
       {offer.title && (
         <View style={[styles.offerTextContainer, { alignItems: isAr ? 'flex-end' : 'flex-start' }]}>
           {offer.store_name && (
@@ -244,7 +372,7 @@ const OfferItem = memo(({ offer, isAr, forceFull = false }: { offer: Offer; isAr
           {isLarge && (
             <View style={styles.ctaButton}>
               <Text style={styles.ctaButtonText}>
-                {isAr ? 'عرض المزيد من الألعاب' : 'Show More Games'}
+                {isAr ? 'عرض المزيد' : 'Show More'}
               </Text>
               <MaterialIcons name="arrow-forward" size={20} color="#1A1A1A" />
             </View>
@@ -358,17 +486,11 @@ const BannerItem = memo(({ banner, isAr }: { banner: Banner; isAr: boolean }) =>
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SkeletonLoader() {
-  const items = 2;
-  const heights = [SCREEN_H * 0.6, 280];
-
   return (
     <View style={{ paddingHorizontal: 0, gap: 12 }}>
-      {Array(items).fill(0).map((_, i) => (
-        <View
-          key={i}
-          style={[styles.skeletonItem, { width: SCREEN_W, height: heights[i % heights.length] }]}
-        />
-      ))}
+      <View style={[styles.skeletonItem, { width: SCREEN_W, height: SCREEN_H * 0.6 }]} />
+      <View style={[styles.skeletonItem, { width: SCREEN_W - H_PAD * 2, height: 240, alignSelf: 'center', borderRadius: 14 }]} />
+      <View style={[styles.skeletonItem, { width: SCREEN_W - H_PAD * 2, height: 200, alignSelf: 'center', borderRadius: 14 }]} />
     </View>
   );
 }
@@ -383,7 +505,7 @@ export default function OffersScreen() {
   const { colors, isDark } = useTheme();
   const { language } = useLanguage();
   const isAr = language === 'ar';
-  const isRTL = language === 'ar'; // افتراض أن اللغة العربية هي RTL
+  const isRTL = language === 'ar';
 
   const [allOffers, setAllOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -391,6 +513,8 @@ export default function OffersScreen() {
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('الكل');
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -460,28 +584,43 @@ export default function OffersScreen() {
     fetchOffers(false);
   }, [fetchOffers]);
 
-  // ── Categories ──
-  const categories = useMemo(() => {
-    const fromOffers = new Set<string>();
-    allOffers.forEach(o => { if (o.category) fromOffers.add(o.category); });
+  // ── البحث والتصفية ──
+  const filteredBySearch = useMemo(() => {
+    if (!searchQuery.trim()) return allOffers;
+    const q = searchQuery.trim().toLowerCase();
+    return allOffers.filter(o =>
+      (o.title?.toLowerCase().includes(q) ||
+       o.description?.toLowerCase().includes(q) ||
+       o.store_name?.toLowerCase().includes(q) ||
+       o.category?.toLowerCase().includes(q))
+    );
+  }, [allOffers, searchQuery]);
 
-    const combined = new Set(STATIC_CATEGORIES);
-    fromOffers.forEach(cat => combined.add(cat));
-
-    const result = Array.from(combined);
-    const indexAll = result.indexOf('الكل');
-    if (indexAll > 0) {
-      result.splice(indexAll, 1);
-      result.unshift('الكل');
+  // ── Categories مع عدد العروض ──
+  const categoriesWithCount = useMemo(() => {
+    const map = new Map<string, number>();
+    filteredBySearch.forEach(o => {
+      const cat = o.category || 'أخرى';
+      map.set(cat, (map.get(cat) || 0) + 1);
+    });
+    const result = STATIC_CATEGORIES.map(cat => ({
+      name: cat,
+      count: map.get(cat) || 0,
+    }));
+    // إضافة تصنيفات من العروض غير الموجودة في القائمة الثابتة
+    for (const [cat, count] of map.entries()) {
+      if (!STATIC_CATEGORIES.includes(cat)) {
+        result.push({ name: cat, count });
+      }
     }
     return result;
-  }, [allOffers]);
+  }, [filteredBySearch]);
 
-  // ── Filtered offers ──
+  // ── Filtered offers حسب التصنيف والبحث ──
   const filteredOffers = useMemo(() => {
-    if (activeCategory === 'الكل') return allOffers;
-    return allOffers.filter(o => o.category === activeCategory);
-  }, [allOffers, activeCategory]);
+    if (activeCategory === 'الكل') return filteredBySearch;
+    return filteredBySearch.filter(o => o.category === activeCategory);
+  }, [filteredBySearch, activeCategory]);
 
   // ── ترتيب العروض حسب الحجم ──
   const sortedOffers = useMemo(() => {
@@ -493,7 +632,20 @@ export default function OffersScreen() {
     });
   }, [filteredOffers]);
 
-  // ── دمج العناصر ──
+  // ── Carousel offers (أول 5 عروض كبيرة) ──
+  const carouselOffers = useMemo(() => {
+    const fullOffers = sortedOffers.filter(o => o.card_size === 'full' || o.card_size === 'large');
+    if (fullOffers.length > 0) return fullOffers.slice(0, 5);
+    return sortedOffers.slice(0, 5);
+  }, [sortedOffers]);
+
+  // ── باقي العروض (بعد الكاروسيل) ──
+  const remainingOffers = useMemo(() => {
+    const carouselIds = new Set(carouselOffers.map(o => o.id));
+    return sortedOffers.filter(o => !carouselIds.has(o.id));
+  }, [sortedOffers, carouselOffers]);
+
+  // ── دمج البانرات مع العروض ──
   const displayItems = useMemo(() => {
     const items: JSX.Element[] = [];
 
@@ -510,44 +662,31 @@ export default function OffersScreen() {
           <BannerItem key={`banner-${banner.id || index}`} banner={banner} isAr={isAr} />
         );
       });
-    } else if (sortedOffers.length > 0) {
-      // إذا لم توجد بانرات، نعرض أول عرض بحجم full إجبارياً
-      const firstOffer = sortedOffers[0];
+    } else if (carouselOffers.length > 0) {
+      // كاروسيل العروض
       items.push(
-        <OfferItem key={`offer-${firstOffer.id}`} offer={firstOffer} isAr={isAr} forceFull={true} />
-      );
-      sortedOffers.slice(1).forEach((offer) => {
-        items.push(
-          <OfferItem key={`offer-${offer.id}`} offer={offer} isAr={isAr} />
-        );
-      });
-    } else {
-      // لا يوجد عروض ولا بانرات -> نعرض بنر وهمي كبير جداً لعرض الصفحة بشكل جميل
-      const dummyOffer: Offer = {
-        id: 'dummy',
-        title: isAr ? 'مرحباً في سوق قلقيلية' : 'Welcome to Souq Qalqilya',
-        description: isAr ? 'اكتشف العروض المميزة' : 'Discover amazing offers',
-        image_url: 'https://images.unsplash.com/photo-1556742111-a301076d9d18?auto=format&fit=crop&w=800&q=80',
-        category: null,
-        phone: null,
-        store_name: isAr ? 'سوق قلقيلية' : 'Souq Qalqilya',
-        is_active: true,
-        position: 0,
-        created_at: new Date().toISOString(),
-        card_size: 'full',
-        is_vip: true,
-      };
-      items.push(
-        <OfferItem key="dummy-offer" offer={dummyOffer} isAr={isAr} forceFull={true} />
+        <BannerCarousel key="carousel" offers={carouselOffers} isAr={isAr} />
       );
     }
 
+    // باقي العروض
+    remainingOffers.forEach((offer) => {
+      items.push(
+        <OfferItem key={`offer-${offer.id}`} offer={offer} isAr={isAr} />
+      );
+    });
+
     return items;
-  }, [banners, sortedOffers, isAr]);
+  }, [banners, carouselOffers, remainingOffers, isAr]);
 
   const handleAddOffer = useCallback(() => {
     router.push('/admin/offers');
   }, [router]);
+
+  const toggleSearch = useCallback(() => {
+    setIsSearchVisible(prev => !prev);
+    if (isSearchVisible) setSearchQuery('');
+  }, [isSearchVisible]);
 
   const bgColor = isDark ? '#0F172A' : '#F8FAFC';
   const headerBg = isDark ? '#1E293B' : '#FFFFFF';
@@ -572,6 +711,13 @@ export default function OffersScreen() {
             )}
           </Pressable>
           <Pressable
+            onPress={toggleSearch}
+            hitSlop={12}
+            style={({ pressed }) => [styles.headerIconBtn, pressed && { opacity: 0.6 }]}
+          >
+            <MaterialIcons name={isSearchVisible ? 'close' : 'search'} size={24} color={headerTitle} />
+          </Pressable>
+          <Pressable
             onPress={handleAddOffer}
             hitSlop={12}
             style={({ pressed }) => [styles.headerIconBtn, pressed && { opacity: 0.6 }]}
@@ -593,49 +739,77 @@ export default function OffersScreen() {
         </Pressable>
       </View>
 
-      {/* ── Category Filter Bar ── */}
-      {categories.length > 0 && (
-        <View style={[styles.filterBar, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
-          <FlatList
-            horizontal
-            data={categories}
-            keyExtractor={(item) => item}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.filterScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-            renderItem={({ item: cat }) => {
-              const isActive = activeCategory === cat;
-              return (
-                <Pressable
-                  onPress={() => setActiveCategory(cat)}
-                  style={[
-                    styles.chip,
-                    isActive
-                      ? {
-                          backgroundColor: '#FFFFFF',
-                          borderColor: '#EF4444',
-                          borderWidth: 1.5,
-                        }
-                      : {
-                          backgroundColor: '#F3F4F6',
-                          borderColor: 'transparent',
-                          borderWidth: 0,
-                        },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      { color: isActive ? '#EF4444' : '#4B5563' },
-                    ]}
-                  >
-                    {cat}
-                  </Text>
-                </Pressable>
-              );
-            }}
+      {/* ── شريط البحث ── */}
+      {isSearchVisible && (
+        <View style={[styles.searchBar, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
+          <MaterialIcons name="search" size={20} color={colors.textMuted} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
+            placeholder={isAr ? 'ابحث عن عرض...' : 'Search offers...'}
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoFocus
           />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+              <MaterialIcons name="close" size={18} color={colors.textMuted} />
+            </Pressable>
+          )}
         </View>
       )}
+
+      {/* ── Category Filter Bar ── */}
+      <View style={[styles.filterBar, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
+        <FlatList
+          horizontal
+          data={categoriesWithCount}
+          keyExtractor={(item) => item.name}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[styles.filterScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+          renderItem={({ item: { name, count } }) => {
+            const isActive = activeCategory === name;
+            const iconName = CATEGORY_ICONS[name] || 'category';
+            return (
+              <Pressable
+                onPress={() => setActiveCategory(name)}
+                style={[
+                  styles.chip,
+                  isActive
+                    ? { backgroundColor: '#FFFFFF', borderColor: '#EF4444', borderWidth: 1.5 }
+                    : { backgroundColor: '#F3F4F6', borderColor: 'transparent', borderWidth: 0 },
+                ]}
+              >
+                <MaterialIcons name={iconName as any} size={14} color={isActive ? '#EF4444' : '#4B5563'} />
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: isActive ? '#EF4444' : '#4B5563' },
+                  ]}
+                >
+                  {name}
+                </Text>
+                {count > 0 && (
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>{count}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          }}
+        />
+      </View>
+
+      {/* ── عدد العروض المعروضة ── */}
+      <View style={[styles.statsRow, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: H_PAD }]}>
+        <Text style={[styles.statsText, { color: colors.textMuted }]}>
+          {filteredOffers.length} {isAr ? 'عرض' : 'offers'}
+          {searchQuery.trim() ? ` • "${searchQuery}"` : ''}
+        </Text>
+        <Text style={[styles.statsText, { color: colors.textMuted }]}>
+          {isAr ? 'تم تحديثه' : 'Updated'} {new Date().toLocaleDateString()}
+        </Text>
+      </View>
 
       {/* ── Body ── */}
       <ScrollView
@@ -669,9 +843,14 @@ export default function OffersScreen() {
           </View>
         ) : displayItems.length === 0 ? (
           <View style={[styles.centerBox, { paddingTop: 40 }]}>
-            <Text style={styles.emptyEmoji}>🏷️</Text>
-            <Text style={[styles.centerTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+            <View style={styles.emptyIllustration}>
+              <MaterialIcons name="local-offer" size={64} color="#CBD5E1" />
+            </View>
+            <Text style={[styles.centerTitle, { color: isDark ? '#F1F5F9' : '#1F2937' }]}>
               {isAr ? 'لا توجد عروض حالياً' : 'No offers available'}
+            </Text>
+            <Text style={[styles.centerSub, { color: isDark ? '#94A3B8' : '#6B7280' }]}>
+              {isAr ? 'كن أول من يضيف عرضاً واستفد من الخصومات' : 'Be the first to add an offer and enjoy discounts'}
             </Text>
             <Pressable
               onPress={handleAddOffer}
@@ -721,17 +900,34 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
 
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: 6,
+  },
+
   filterBar: {
     borderBottomWidth: 1,
     paddingVertical: 10,
   },
   filterScroll: {
     paddingHorizontal: H_PAD,
-    gap: 10,
+    gap: 8,
   },
   chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
   },
@@ -739,9 +935,61 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  countBadge: {
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    minWidth: 18,
+    alignItems: 'center',
+  },
+  countBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  statsText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
 
   body: {
     paddingTop: 0,
+  },
+
+  // ── Banner Carousel ──
+  bannerTextContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 24,
+  },
+  paginationDots: {
+    position: 'absolute',
+    bottom: 12,
+    alignSelf: 'center',
+    gap: 8,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+  },
+  activeDot: {
+    backgroundColor: '#FFFFFF',
+    width: 12,
+    height: 8,
+    borderRadius: 4,
   },
 
   // ── Offer Item ──
@@ -859,23 +1107,32 @@ const styles = StyleSheet.create({
   centerBox: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 80,
-    gap: 10,
+    paddingTop: 60,
+    gap: 12,
     paddingHorizontal: 24,
+  },
+  emptyIllustration: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   emptyEmoji: {
     fontSize: 52,
     marginBottom: 4,
   },
   centerTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
   },
   centerSub: {
-    fontSize: 13,
+    fontSize: 14,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
   },
   retryBtn: {
     flexDirection: 'row',
@@ -895,7 +1152,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 12,
+    marginTop: 8,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 10,
