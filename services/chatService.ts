@@ -144,9 +144,9 @@ export async function clearConversationCache(conversationId: string): Promise<vo
   } catch {}
 }
 
-// ── Helper to sanitize conversation data (remove unexpected props) ──────────
+// ─── دالة مساعدة لتنقية البيانات من أي خصائص غريبة ──────────────────────────
 function sanitizeConversation(conv: any): Conversation {
-  // قائمة بالخصائص المسموح بها فقط
+  // القائمة المسموح بها فقط
   const allowedKeys = [
     'id', 'ad_id', 'buyer_id', 'seller_id', 'last_message',
     'last_message_at', 'created_at', 'archived_at', 'unread_count',
@@ -164,12 +164,17 @@ function sanitizeConversation(conv: any): Conversation {
   return sanitized as Conversation;
 }
 
-// ── Helper to enrich conversation with names ─────────────────────────────────
+// ── Helper to enrich conversation with names (مع تنقية) ─────────────────────
 function enrichConversation(conv: any): Conversation {
-  const buyer = conv.buyer;
-  const seller = conv.seller;
+  // أولاً ننقي البيانات من أي خصائص غير مرغوب فيها
+  const clean = sanitizeConversation(conv);
+  
+  // نستخرج معلومات البائع والمشتري من العلاقات (إذا وجدت)
+  const buyer = (conv as any).buyer || {};
+  const seller = (conv as any).seller || {};
+  
   return {
-    ...conv,
+    ...clean,
     buyer_name: buyer?.username || buyer?.email?.split('@')[0] || 'مستخدم',
     seller_name: seller?.username || seller?.email?.split('@')[0] || 'مستخدم',
     buyer_avatar: buyer?.avatar_url || null,
@@ -187,7 +192,7 @@ export async function fetchMyConversations(options?: {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { data: [], error: 'Not authenticated' };
 
-    // استعلام محدد الأعمدة لتجنب جلب أعمدة غير موجودة
+    // ✅ تحديد الأعمدة المطلوبة بدقة (بدون استخدام *)
     let query = supabase
       .from('conversations')
       .select(`
@@ -201,19 +206,17 @@ export async function fetchMyConversations(options?: {
         archived_at,
         buyer_typing_at,
         seller_typing_at,
-        ads(
+        ads:ad_id(
           title,
           status,
           user_id
         ),
-        buyer:user_profiles!conversations_buyer_id_fkey(
-          id,
+        buyer:buyer_id(
           username,
           email,
           avatar_url
         ),
-        seller:user_profiles!conversations_seller_id_fkey(
-          id,
+        seller:seller_id(
           username,
           email,
           avatar_url
@@ -246,16 +249,20 @@ export async function fetchMyConversations(options?: {
       });
     }
 
-    // تنقية البيانات وإضافة unread_count والأسماء
+    // تنقية كل محادثة وإضافة unread_count والأسماء
     const enriched = (data as any[]).map((conv) => {
       const clean = sanitizeConversation(conv);
+      const buyer = conv.buyer || {};
+      const seller = conv.seller || {};
       return {
         ...clean,
         unread_count: unreadMap[conv.id] ?? 0,
-        buyer_name: (conv as any).buyer?.username || (conv as any).buyer?.email?.split('@')[0] || 'مستخدم',
-        seller_name: (conv as any).seller?.username || (conv as any).seller?.email?.split('@')[0] || 'مستخدم',
-        buyer_avatar: (conv as any).buyer?.avatar_url || null,
-        seller_avatar: (conv as any).seller?.avatar_url || null,
+        buyer_name: buyer?.username || buyer?.email?.split('@')[0] || 'مستخدم',
+        seller_name: seller?.username || seller?.email?.split('@')[0] || 'مستخدم',
+        buyer_avatar: buyer?.avatar_url || null,
+        seller_avatar: seller?.avatar_url || null,
+        // تأكد من وجود ads حتى لو كان null
+        ads: conv.ads || null,
       };
     });
 
@@ -364,7 +371,7 @@ export async function fetchOrCreateConversation(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { data: null, error: 'Not authenticated' };
 
-    // استعلام محدد الأعمدة
+    // ✅ تحديد الأعمدة المطلوبة بدقة
     const { data: existing } = await supabase
       .from('conversations')
       .select('id, ad_id, buyer_id, seller_id, last_message, last_message_at, created_at, archived_at')
@@ -396,6 +403,8 @@ export async function fetchOrCreateConversation(
 export async function fetchConversationById(id: string): Promise<{ data: Conversation | null; error: string | null }> {
   try {
     const supabase = getSupabaseClient();
+    
+    // ✅ تحديد الأعمدة المطلوبة بدقة
     const { data, error } = await supabase
       .from('conversations')
       .select(`
@@ -409,19 +418,17 @@ export async function fetchConversationById(id: string): Promise<{ data: Convers
         archived_at,
         buyer_typing_at,
         seller_typing_at,
-        ads(
+        ads:ad_id(
           title,
           status,
           user_id
         ),
-        buyer:user_profiles!conversations_buyer_id_fkey(
-          id,
+        buyer:buyer_id(
           username,
           email,
           avatar_url
         ),
-        seller:user_profiles!conversations_seller_id_fkey(
-          id,
+        seller:seller_id(
           username,
           email,
           avatar_url
@@ -431,8 +438,10 @@ export async function fetchConversationById(id: string): Promise<{ data: Convers
       .single();
 
     if (error) return { data: null, error: error.message };
-    const clean = sanitizeConversation(data);
-    return { data: enrichConversation(clean) as Conversation, error: null };
+    
+    // تنقية البيانات من أي خصائص غريبة
+    const clean = enrichConversation(data);
+    return { data: clean as Conversation, error: null };
   } catch (e: any) {
     console.error('[fetchConversationById] Error:', e);
     return { data: null, error: e?.message ?? 'Failed to fetch conversation' };
@@ -623,7 +632,7 @@ function generateUUID(): string {
   });
 }
 
-// ── Send message (IMPROVED error handling) ──────────────────────────────────
+// ── Send message ─────────────────────────────────────────────────────────────
 export async function sendMessage(
   conversationId: string,
   content: string,
@@ -641,7 +650,6 @@ export async function sendMessage(
     const messageContent = imageUrl ? (content || '📷 صورة') : content;
     const messageId = clientMessageId ?? generateUUID();
 
-    // محاولة إرسال الرسالة مع إعادة محاولة تلقائية إذا فشل (مرة واحدة)
     let attempts = 0;
     let lastError: any = null;
     let result: any = null;
@@ -665,7 +673,7 @@ export async function sendMessage(
           lastError = error;
           attempts++;
           if (attempts < 2) {
-            await new Promise(resolve => setTimeout(resolve, 500)); // تأخير قصير قبل إعادة المحاولة
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
           continue;
         }
@@ -685,7 +693,6 @@ export async function sendMessage(
       return { data: null, recipientId: null, isBuyerSending: false, error: errorMsg };
     }
 
-    // تحديث المحادثة بآخر رسالة
     const [, convResult] = await Promise.all([
       supabase
         .from('conversations')
@@ -733,7 +740,7 @@ export async function notifyRecipient(
   } catch (_) {}
 }
 
-// ── Mark messages as read (IMPROVED with retry and verification) ────────────
+// ── Mark messages as read ───────────────────────────────────────────────────
 export async function markMessagesRead(
   conversationId: string,
   currentUserId: string,
@@ -775,7 +782,7 @@ export async function markMessagesRead(
   return { error: finalError };
 }
 
-// ── NEW: Force mark conversation as read (for single conversation) ──────────
+// ── Force mark conversation as read ──────────────────────────────────────────
 export async function markConversationAsRead(
   conversationId: string,
   userId: string
