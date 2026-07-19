@@ -162,8 +162,15 @@ export default function ChatScreen() {
   }, []);
 
   // ----- Handlers (memoized) ----
-  const handleSendMessage = useCallback(async (content: string, imageUrl?: string) => {
-    if (!id || !user) return;
+  // ✅ إصلاح جذري لدالة الإرسال: ضمان عدم رمي استثناءات وعدم التصرف بشكل غير متوقع
+  const handleSendMessage = useCallback(async (content: string, imageUrl?: string): Promise<boolean> => {
+    // التحقق من البيانات الأساسية
+    if (!id || !user) {
+      console.warn('❌ Cannot send: missing id or user');
+      return false;
+    }
+
+    // إنشاء معرف مؤقت للرسالة
     const clientId = uuidv4();
     const tempMsg: Message = {
       id: clientId,
@@ -177,52 +184,107 @@ export default function ChatScreen() {
       _pending: true,
     };
 
-    // ✅ إضافة الرسالة مؤقتاً
-    appendMessage(tempMsg);
+    // ✅ إضافة الرسالة مؤقتاً (مع التعامل مع أي خطأ في appendMessage)
+    try {
+      appendMessage(tempMsg);
+    } catch (appendErr) {
+      console.error('❌ appendMessage error:', appendErr);
+      // حتى لو فشلت الإضافة، نستمر في محاولة الإرسال الفعلي
+      // لكننا نعرض خطأ للمستخدم
+      showAlert(
+        isAr ? 'خطأ داخلي' : 'Internal Error',
+        isAr ? 'تعذر إضافة الرسالة مؤقتاً، لكن سيتم محاولة الإرسال' : 'Could not add message locally, but will try to send'
+      );
+    }
 
-    const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
+    try {
+      // محاولة الإرسال الفعلي
+      const { data: sent, recipientId, isBuyerSending, error } = await sendMessage(id, content, imageUrl, clientId);
 
-    if (error) {
+      if (error) {
+        console.warn('⚠️ sendMessage error:', error);
+        // عرض خطأ للمستخدم
+        showAlert(
+          isAr ? 'فشل الإرسال' : 'Send Failed',
+          isAr ? 'سيتم إعادة المحاولة تلقائياً' : 'Will retry automatically'
+        );
+        // تحديث الرسالة بحالة فشل
+        updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
+        // إضافة إلى قائمة الانتظار لإعادة المحاولة لاحقاً
+        try {
+          await addToOfflineQueue({
+            tempId: clientId,
+            conversationId: id,
+            content: imageUrl ? (content || '📷 صورة') : content,
+            image_url: imageUrl,
+            message_type: imageUrl ? 'image' : 'text',
+            created_at: tempMsg.created_at,
+          });
+        } catch (queueErr) {
+          console.error('❌ addToOfflineQueue error:', queueErr);
+        }
+        return false;
+      } else {
+        // نجاح الإرسال
+        if (sent) {
+          // استبدال الرسالة المؤقتة بالرسالة النهائية
+          updateMessage(clientId, sent);
+          // إرسال إشعار للمتلقي (إن لم يكن هو المرسل)
+          if (recipientId && recipientId !== user.id) {
+            const senderName = user.username || user.email?.split('@')[0] || 'مستخدم';
+            try {
+              notifyRecipient(recipientId, senderName, content || '📷 صورة', id, !isBuyerSending);
+            } catch (notifyErr) {
+              console.warn('⚠️ notifyRecipient error:', notifyErr);
+            }
+          }
+        }
+        return true;
+      }
+    } catch (sendErr) {
+      // ❌ خطأ غير متوقع في sendMessage (مثل مشكلة في الشبكة أو استثناء)
+      console.error('❌ Unhandled send error:', sendErr);
       showAlert(
         isAr ? 'فشل الإرسال' : 'Send Failed',
-        isAr ? 'سيتم إعادة المحاولة تلقائياً' : 'Will retry automatically'
+        isAr ? 'حدث خطأ غير متوقع، سيتم حفظ الرسالة وإعادة المحاولة' : 'Unexpected error, message will be saved and retried'
       );
-      // ✅ تحديث الرسالة بحالة فشل
+      // تحديث الرسالة بحالة فشل
       updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
-      await addToOfflineQueue({
-        tempId: clientId,
-        conversationId: id,
-        content: imageUrl ? (content || '📷 صورة') : content,
-        image_url: imageUrl,
-        message_type: imageUrl ? 'image' : 'text',
-        created_at: tempMsg.created_at,
-      });
-      return false;
-    } else {
-      if (sent) {
-        // ✅ استبدال الرسالة المؤقتة بالرسالة النهائية
-        updateMessage(clientId, sent);
-        if (recipientId && recipientId !== user.id) {
-          const senderName = user.username || user.email?.split('@')[0] || 'مستخدم';
-          notifyRecipient(recipientId, senderName, content || '📷 صورة', id, !isBuyerSending);
-        }
+      // إضافة إلى قائمة الانتظار
+      try {
+        await addToOfflineQueue({
+          tempId: clientId,
+          conversationId: id,
+          content: imageUrl ? (content || '📷 صورة') : content,
+          image_url: imageUrl,
+          message_type: imageUrl ? 'image' : 'text',
+          created_at: tempMsg.created_at,
+        });
+      } catch (queueErr) {
+        console.error('❌ addToOfflineQueue error:', queueErr);
       }
-      return true;
+      return false;
     }
   }, [id, user, appendMessage, updateMessage, showAlert, isAr]);
 
   // ── Retry failed message ──
   const handleRetryMessage = useCallback(async (failedMsg: Message) => {
-    const { data: sent, error } = await sendMessage(
-      id,
-      failedMsg.content,
-      failedMsg.image_url || undefined,
-      failedMsg.id
-    );
-    if (!error && sent) {
-      updateMessage(failedMsg.id, sent);
-    } else {
-      showAlert(isAr ? 'فشل الإرسال' : 'Send Failed', isAr ? 'لم نتمكن من إعادة الإرسال' : 'Could not resend');
+    try {
+      const { data: sent, error } = await sendMessage(
+        id,
+        failedMsg.content,
+        failedMsg.image_url || undefined,
+        failedMsg.id
+      );
+      if (!error && sent) {
+        updateMessage(failedMsg.id, sent);
+        showAlert(isAr ? 'تم الإرسال' : 'Sent', isAr ? 'تم إرسال الرسالة بنجاح' : 'Message sent successfully');
+      } else {
+        showAlert(isAr ? 'فشل الإرسال' : 'Send Failed', isAr ? 'لم نتمكن من إعادة الإرسال' : 'Could not resend');
+      }
+    } catch (err) {
+      console.error('❌ Retry error:', err);
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'حدث خطأ أثناء إعادة المحاولة' : 'Error while retrying');
     }
   }, [id, updateMessage, showAlert, isAr]);
 
@@ -579,10 +641,13 @@ export default function ChatScreen() {
     setShowQuickReplies(false);
   }, []);
 
-  // ✅ إصلاح مشكلة اختفاء الرسالة - تم تعديل handleSend
+  // ✅ إصلاح جذري لمشكلة عدم استجابة زر الإرسال
   const handleSend = useCallback(async () => {
     const content = text.trim();
-    if (!content || !id || sending) return;
+    if (!content || !id || sending) {
+      console.log('⏳ Cannot send: no content, no id, or already sending');
+      return;
+    }
 
     if (!isOnline) {
       showAlert(
@@ -599,23 +664,32 @@ export default function ChatScreen() {
       setReplyTo(null);
     }
 
+    // تعيين حالة الإرسال
     setSending(true);
-    // ✅ لا نمسح النص قبل الإرسال، بل نمسحه بعد نجاح الإرسال
-    // ✅ نمرر النص إلى handleSendMessage ونمسحه هناك بعد النجاح
+    console.log('📤 Sending message...');
 
     try {
       const success = await handleSendMessage(finalContent);
-      if (success) {
-        // ✅ نمسح النص فقط بعد نجاح الإرسال
+      console.log('📤 Send result:', success);
+      if (success === true) {
+        // ✅ مسح النص فقط عند النجاح
         setText('');
-        // ✅ إخفاء الردود السريعة بعد الإرسال
         setShowQuickReplies(false);
+      } else {
+        // في حالة الفشل، نترك النص في الحقل ليتمكن المستخدم من إعادة المحاولة
+        console.log('⚠️ Send failed, keeping text');
       }
     } catch (err) {
-      console.warn('Send error:', err);
-      // ✅ في حالة الخطأ، يبقى النص في حقل الإدخال ليتمكن المستخدم من إعادة المحاولة
+      // أي خطأ غير متوقع
+      console.error('❌ Unhandled error in handleSend:', err);
+      showAlert(
+        isAr ? 'خطأ' : 'Error',
+        isAr ? 'حدث خطأ غير متوقع، حاول مرة أخرى' : 'Unexpected error, please try again'
+      );
     } finally {
+      // دائمًا ننهي حالة الإرسال
       setSending(false);
+      // إيقاف مؤشر الكتابة
       if (isBuyer !== null) {
         updateTypingIndicator(id!, isBuyer, false).catch(() => {});
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
