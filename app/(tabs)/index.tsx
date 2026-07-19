@@ -449,11 +449,11 @@ export default function HomeScreen() {
   const { hPad, cardGap, cardWidth, cardWidthLg, numColumns, bannerHeight, isTablet, isDesktop } = useResponsive();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
   
-  // ✅ FIX: استخدام useConversations مع قيم افتراضية آمنة
+  // ✅ تأمين استخدام useConversations بإضافة قيم افتراضية للدوال
   const { 
     conversations = [], 
     loading: convLoading = false, 
-    reload, 
+    reload = () => {}, 
     unreadCount = 0 
   } = useConversations({
     enabled: !!user,
@@ -491,7 +491,6 @@ export default function HomeScreen() {
   const appStartTime = useRef(Date.now());
   const interstitialShown = useRef(false);
 
-  // ✅ استخدام القيم الافتراضية مع ?? 0
   const activeFilterCount = [appliedArea, appliedMaxPrice !== undefined ? '1' : null, appliedCondition].filter(Boolean).length;
   const isAr = language === 'ar';
   const appTitle = useMemo(() => isAr ? 'سوق قلقيلية' : 'Souq Qalqilya', [isAr]);
@@ -541,21 +540,26 @@ export default function HomeScreen() {
   useEffect(() => {
     const currentRequestId = ++requestIdRef.current;
     setError(null);
-    load({
-      categoryId: selectedCategory ?? undefined,
-      location: appliedArea ?? undefined,
-      maxPrice: appliedMaxPrice,
-      condition: appliedCondition ?? undefined,
-      sortBy,
-    }).then(() => {
-      if (currentRequestId === requestIdRef.current) {
-        setError(null);
-      }
-    }).catch((err) => {
-      if (currentRequestId === requestIdRef.current) {
-        setError(err.message || 'Failed to load listings');
-      }
-    });
+    // ✅ التأكد من أن load دالة قبل استدعائها
+    if (typeof load === 'function') {
+      load({
+        categoryId: selectedCategory ?? undefined,
+        location: appliedArea ?? undefined,
+        maxPrice: appliedMaxPrice,
+        condition: appliedCondition ?? undefined,
+        sortBy,
+      }).then(() => {
+        if (currentRequestId === requestIdRef.current) {
+          setError(null);
+        }
+      }).catch((err) => {
+        if (currentRequestId === requestIdRef.current) {
+          setError(err.message || 'Failed to load listings');
+        }
+      });
+    } else {
+      setError('تعذر تحميل الإعلانات');
+    }
   }, [selectedCategory, sortBy, appliedArea, appliedMaxPrice, appliedCondition, load]);
 
   // Banners with fallback
@@ -628,13 +632,13 @@ export default function HomeScreen() {
 
   const displayName = user?.username || user?.email?.split('@')[0] || '';
 
-  // ✅ FIX: التأكد من أن ads مصفوفة قبل التصفية
+  // ✅ التأكد من أن ads مصفوفة قبل التصفية
   const adsArray = Array.isArray(ads) ? ads : [];
   const filteredAds = useMemo(() => adsArray.filter(ad => !blockedIds.has(ad.user_id)), [adsArray, blockedIds]);
   const feedRows = useMemo(() => buildFeedRows(filteredAds, numColumns), [filteredAds, numColumns]);
 
   const handleLoadMore = useCallback(() => {
-    if (!loadingMore && hasMore) {
+    if (!loadingMore && hasMore && typeof loadMore === 'function') {
       loadMore({
         categoryId: selectedCategory ?? undefined,
         location: appliedArea ?? undefined,
@@ -647,13 +651,15 @@ export default function HomeScreen() {
 
   const handleRefresh = useCallback(() => {
     setError(null);
-    load({
-      categoryId: selectedCategory ?? undefined,
-      location: appliedArea ?? undefined,
-      maxPrice: appliedMaxPrice,
-      condition: appliedCondition ?? undefined,
-      sortBy,
-    }).catch((err) => setError(err.message || 'Failed to refresh'));
+    if (typeof load === 'function') {
+      load({
+        categoryId: selectedCategory ?? undefined,
+        location: appliedArea ?? undefined,
+        maxPrice: appliedMaxPrice,
+        condition: appliedCondition ?? undefined,
+        sortBy,
+      }).catch((err) => setError(err.message || 'Failed to refresh'));
+    }
   }, [load, selectedCategory, appliedArea, appliedMaxPrice, appliedCondition, sortBy]);
 
   const handleCategoryPress = useCallback((id: string | null) => {
@@ -739,8 +745,11 @@ export default function HomeScreen() {
   const activeCardWidth = (isTablet || isDesktop) ? cardWidthLg : cardWidth;
 
   const renderRow = useCallback(({ item }: { item: FeedRow }) => {
-    // ✅ FIX: التأكد من وجود ads
-    const adsInRow = Array.isArray(item?.ads) ? item.ads : [];
+    // ✅ تأكد من وجود item و item.ads
+    if (!item || !item.ads || !Array.isArray(item.ads)) {
+      return null;
+    }
+    const adsInRow = item.ads;
     const cols = adsInRow.length;
     return (
       <View style={[styles.pairRow, { flexDirection: isRTL ? 'row-reverse' : 'row', gap: cardGap, marginBottom: cardGap, paddingHorizontal: hPad }]}>
@@ -1029,7 +1038,6 @@ export default function HomeScreen() {
               {user ? (
                 <>
                   <MaterialCommunityIcons name="chat" size={20} color="#fff" />
-                  {/* ✅ استخدام unreadCount بأمان مع التحقق من القيمة */}
                   {Number(unreadCount) > 0 && (
                     <View style={styles.filterDot}>
                       <Text style={styles.filterDotText}>
