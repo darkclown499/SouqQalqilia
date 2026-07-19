@@ -32,8 +32,7 @@ if (Platform.OS !== 'web') {
   } catch (_) {}
 }
 
-// ---- ✅ Removed unused EmojiPicker and REACTION_EMOJIS ----
-
+// ---- TypingDots component (unchanged) ----
 function TypingDots({ color }: { color: string }) {
   const dot1 = useRef(new Animated.Value(0)).current;
   const dot2 = useRef(new Animated.Value(0)).current;
@@ -99,6 +98,7 @@ export default function ChatScreen() {
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollToMatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const markReadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const markReadCooldownRef = useRef<number>(0);
 
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -161,10 +161,66 @@ export default function ChatScreen() {
     setRecordingDuration(0);
   }, []);
 
-  // ----- Handlers (memoized) ----
+  // ----- Improved mark as read function -----
+  const doMark = useCallback(async () => {
+    if (!id || !user) return;
+    const now = Date.now();
+    if (now - markReadCooldownRef.current < 800) return; // منع التكرار السريع
+    markReadCooldownRef.current = now;
+
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase
+        .from('messages')
+        .update({ read_at: new Date().toISOString() })
+        .eq('conversation_id', id)
+        .neq('sender_id', user.id)
+        .is('read_at', null)
+        .is('deleted_by', null);
+
+      if (!error) {
+        // تحديث الحالة المحلية فوراً
+        markReadLocally(user.id);
+        // إعادة المحاولة بعد 300 مللي للتأكد من التحديث في الـ UI
+        setTimeout(() => markReadLocally(user.id), 300);
+      } else {
+        console.warn('⚠️ doMark error:', error);
+        // محاولة مرة أخرى بعد تأخير
+        setTimeout(() => {
+          if (id && user) doMark();
+        }, 2000);
+      }
+    } catch (e) {
+      console.warn('⚠️ doMark exception:', e);
+    }
+  }, [id, user?.id, markReadLocally]);
+
+  // ----- Force mark read on focus and whenever messages change -----
+  useFocusEffect(
+    useCallback(() => {
+      doMark();
+      if (Platform.OS !== 'web' && Notifications) {
+        Notifications.dismissAllNotificationsAsync().catch(() => {});
+        Notifications.setBadgeCountAsync(0).catch(() => {});
+      }
+      return () => {};
+    }, [doMark])
+  );
+
+  // استدعاء doMark عند تغير قائمة الرسائل (إذا ظهرت رسائل جديدة غير مقروءة)
+  useEffect(() => {
+    const hasUnread = messages.some(m => m.sender_id !== user?.id && !m.read_at);
+    if (hasUnread) {
+      if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current);
+      markReadTimeoutRef.current = setTimeout(doMark, 400);
+    }
+  }, [messages, user?.id, doMark]);
+
+  // ----- Send message handler (improved error handling and retry) -----
   const handleSendMessage = useCallback(async (content: string, imageUrl?: string): Promise<boolean> => {
     if (!id || !user) {
       console.warn('❌ Cannot send: missing id or user');
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'المستخدم أو المحادثة غير موجودة' : 'User or conversation missing');
       return false;
     }
 
@@ -181,10 +237,13 @@ export default function ChatScreen() {
       _pending: true,
     };
 
+    // إضافة الرسالة مؤقتاً
     try {
       appendMessage(tempMsg);
     } catch (appendErr) {
       console.error('❌ appendMessage error:', appendErr);
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل عرض الرسالة مؤقتاً' : 'Failed to display message');
+      return false;
     }
 
     try {
@@ -192,11 +251,15 @@ export default function ChatScreen() {
 
       if (error) {
         console.warn('⚠️ sendMessage error:', error);
+        // عرض الرسالة الفعلية للخطأ إن وجدت
+        const errorMsg = typeof error === 'string' ? error : error?.message || (isAr ? 'فشل الإرسال' : 'Send failed');
         showAlert(
           isAr ? 'فشل الإرسال' : 'Send Failed',
-          isAr ? 'سيتم إعادة المحاولة تلقائياً' : 'Will retry automatically'
+          isAr ? `${errorMsg} - سيتم حفظها وإعادة المحاولة` : `${errorMsg} - will be saved and retried`
         );
+        // تحديث الرسالة بحالة فشل
         updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
+        // حفظ في قائمة الانتظار لإعادة المحاولة
         try {
           await addToOfflineQueue({
             tempId: clientId,
@@ -209,10 +272,23 @@ export default function ChatScreen() {
         } catch (queueErr) {
           console.error('❌ addToOfflineQueue error:', queueErr);
         }
+        // محاولة إعادة الإرسال تلقائياً بعد 3 ثوانٍ (مرة واحدة)
+        setTimeout(async () => {
+          try {
+            const { data: retrySent, error: retryErr } = await sendMessage(id, content, imageUrl, clientId);
+            if (!retryErr && retrySent) {
+              updateMessage(clientId, retrySent);
+              await removeFromOfflineQueue(clientId);
+              showAlert(isAr ? 'تم الإرسال' : 'Sent', isAr ? 'تم إرسال الرسالة بعد المحاولة التلقائية' : 'Message sent after auto-retry');
+            }
+          } catch (_) {}
+        }, 3000);
         return false;
       } else {
         if (sent) {
           updateMessage(clientId, sent);
+          // بعد الإرسال، نضع علامة قراءة للرسائل السابقة
+          doMark();
           if (recipientId && recipientId !== user.id) {
             const senderName = user.username || user.email?.split('@')[0] || 'مستخدم';
             try {
@@ -221,14 +297,16 @@ export default function ChatScreen() {
               console.warn('⚠️ notifyRecipient error:', notifyErr);
             }
           }
+          return true;
         }
-        return true;
+        return false;
       }
     } catch (sendErr) {
       console.error('❌ Unhandled send error:', sendErr);
+      const errorMsg = sendErr instanceof Error ? sendErr.message : (isAr ? 'حدث خطأ غير متوقع' : 'Unexpected error');
       showAlert(
         isAr ? 'فشل الإرسال' : 'Send Failed',
-        isAr ? 'حدث خطأ في الاتصال، سيتم حفظ الرسالة وإعادة المحاولة' : 'Connection error, message will be saved and retried'
+        isAr ? `${errorMsg} - سيتم حفظ الرسالة وإعادة المحاولة` : `${errorMsg} - will be saved and retried`
       );
       updateMessage(clientId, { ...tempMsg, _pending: false, _failed: true });
       try {
@@ -245,11 +323,13 @@ export default function ChatScreen() {
       }
       return false;
     }
-  }, [id, user, appendMessage, updateMessage, showAlert, isAr]);
+  }, [id, user, appendMessage, updateMessage, showAlert, isAr, doMark]);
 
-  // ── Retry failed message ──
+  // ── Retry failed message (improved) ──
   const handleRetryMessage = useCallback(async (failedMsg: Message) => {
     try {
+      // إزالة من قائمة الانتظار أولاً
+      await removeFromOfflineQueue(failedMsg.id).catch(() => {});
       const { data: sent, error } = await sendMessage(
         id,
         failedMsg.content,
@@ -258,17 +338,28 @@ export default function ChatScreen() {
       );
       if (!error && sent) {
         updateMessage(failedMsg.id, sent);
+        doMark();
         showAlert(isAr ? 'تم الإرسال' : 'Sent', isAr ? 'تم إرسال الرسالة بنجاح' : 'Message sent successfully');
       } else {
-        showAlert(isAr ? 'فشل الإرسال' : 'Send Failed', isAr ? 'لم نتمكن من إعادة الإرسال' : 'Could not resend');
+        const errMsg = typeof error === 'string' ? error : error?.message || (isAr ? 'فشل إعادة الإرسال' : 'Resend failed');
+        showAlert(isAr ? 'فشل الإرسال' : 'Send Failed', errMsg);
+        // إعادة إضافة الرسالة لقائمة الانتظار
+        await addToOfflineQueue({
+          tempId: failedMsg.id,
+          conversationId: id,
+          content: failedMsg.content,
+          image_url: failedMsg.image_url || undefined,
+          message_type: failedMsg.message_type || 'text',
+          created_at: failedMsg.created_at,
+        });
       }
     } catch (err) {
       console.error('❌ Retry error:', err);
       showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'حدث خطأ أثناء إعادة المحاولة' : 'Error while retrying');
     }
-  }, [id, updateMessage, showAlert, isAr]);
+  }, [id, updateMessage, showAlert, isAr, doMark]);
 
-  // ----- Audio Recording Handlers -----
+  // ----- Audio Recording Handlers (unchanged) -----
   const handleStartRecording = useCallback(async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
@@ -404,7 +495,7 @@ export default function ChatScreen() {
     };
   }, [cleanupAudioResources]);
 
-  // ----- Search functionality -----
+  // ----- Search functionality (unchanged) -----
   const searchMatchIds = useMemo<string[]>(() => {
     if (!searchQuery.trim()) return [];
     return messages
@@ -533,61 +624,6 @@ export default function ChatScreen() {
     };
   }, [id, user?.id, isBuyer]);
 
-  // ----- Mark messages as read -----
-  const markedOnMount = useRef(false);
-  const lastMarkTimeRef = useRef(0);
-
-  const doMark = useCallback(async () => {
-    if (!id || !user) return;
-    const now = Date.now();
-    if (now - lastMarkTimeRef.current < 1000) return;
-    lastMarkTimeRef.current = now;
-
-    try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase
-        .from('messages')
-        .update({ read_at: new Date().toISOString() })
-        .eq('conversation_id', id)
-        .neq('sender_id', user.id)
-        .is('read_at', null)
-        .is('deleted_by', null);
-      if (!error) {
-        markReadLocally(user.id);
-      }
-    } catch (e) {
-      // Silently fail
-    }
-  }, [id, user?.id, markReadLocally]);
-
-  useEffect(() => {
-    if (!markedOnMount.current) {
-      markedOnMount.current = true;
-      doMark();
-      return;
-    }
-    const hasUnread = messages.some(m => m.sender_id !== user?.id && !m.read_at);
-    if (hasUnread) {
-      if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current);
-      markReadTimeoutRef.current = setTimeout(doMark, 500);
-    }
-    return () => {
-      if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current);
-    };
-  }, [messages.length, user?.id, doMark]);
-
-  // ----- useFocusEffect: mark read and dismiss notifications -----
-  useFocusEffect(
-    useCallback(() => {
-      doMark();
-      if (Platform.OS !== 'web' && Notifications) {
-        Notifications.dismissAllNotificationsAsync().catch(() => {});
-        Notifications.setBadgeCountAsync(0).catch(() => {});
-      }
-      return () => {};
-    }, [doMark])
-  );
-
   // ----- Scroll to bottom -----
   const scrollToBottom = useCallback(() => {
     if (isSearchActive) return;
@@ -648,12 +684,14 @@ export default function ChatScreen() {
       if (success) {
         setText('');
         setShowQuickReplies(false);
+        // تحديث القراءة بعد الإرسال
+        doMark();
       }
     } catch (err) {
       console.error('❌ Unhandled error in handleSend:', err);
       showAlert(
         isAr ? 'خطأ' : 'Error',
-        isAr ? 'حدث خطأ غير متوقع، حاول مرة أخرى' : 'Unexpected error, please try again'
+        isAr ? `حدث خطأ غير متوقع: ${err instanceof Error ? err.message : ''}` : `Unexpected error: ${err instanceof Error ? err.message : ''}`
       );
     } finally {
       setSending(false);
@@ -662,7 +700,7 @@ export default function ChatScreen() {
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       }
     }
-  }, [text, id, sending, handleSendMessage, isBuyer, isOnline, showAlert, isAr, replyTo]);
+  }, [text, id, sending, handleSendMessage, isBuyer, isOnline, showAlert, isAr, replyTo, doMark]);
 
   // ── Copy message text ──
   const handleCopyMessage = useCallback((content: string) => {
@@ -736,7 +774,7 @@ export default function ChatScreen() {
     }
   }, [id, imageUploading, handleSendMessage, isAr, showAlert]);
 
-  // ----- Conversation actions -----
+  // ----- Conversation actions (unchanged) -----
   const isSeller = conversation?.seller_id === user?.id;
   const adStatus = (conversation as any)?.ads?.status as string | undefined;
   const adId = conversation?.ad_id;
@@ -923,7 +961,7 @@ export default function ChatScreen() {
     return items;
   }, [pagedMessages]);
 
-  // ----- Render functions -----
+  // ----- Render functions (unchanged) -----
   const renderItem = useCallback(({ item }: { item: MsgItem }) => {
     if (item._type === 'date') {
       return (

@@ -27,6 +27,7 @@ import {
   forwardMessage as forwardMessageService,
   sendTypingIndicator,
   trackChatEvent,
+  markConversationAsRead,   // ✅ جديد
 } from '@/services/chatService';
 import {
   mergeWithLocalReadState,
@@ -142,6 +143,7 @@ export function useMessages(
   const [refreshing, setRefreshing] = useState(false);
   const [otherTyping, setOtherTyping] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [isMarkingRead, setIsMarkingRead] = useState(false); // ✅ لمنع التكرار
 
   const lastCreatedAtRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -151,27 +153,50 @@ export function useMessages(
   const isAppActiveRef = useRef(true);
   const isScreenFocusedRef = useRef(true);
   const isMountedRef = useRef(true);
+  const hasMarkedReadRef = useRef(false); // ✅ علامة لتجنب تكرار علامة القراءة
 
-  // ─── دوال جديدة (مضافة) ──────────────────────────────────────────────────────
+  // ─── دالة جديدة لتعليم الرسائل كمقروءة في الخادم ──────────────────────────
+  const markConversationRead = useCallback(async () => {
+    if (!conversationId || !currentUserId || isMarkingRead) return;
+    setIsMarkingRead(true);
+    try {
+      const result = await markConversationAsRead(conversationId, currentUserId);
+      if (!result.error) {
+        // تحديث الحالة المحلية (للتأكد من أن القراءة تظهر فوراً)
+        markReadLocally(currentUserId);
+        // مسح كاش المحادثات ليجلب العداد الجديد
+        await clearConversationsCache();
+        // إطلاق تحديث عام للعداد (إذا كانت الدالة موجودة)
+        if (typeof triggerUnreadRefresh === 'function') {
+          triggerUnreadRefresh();
+        }
+        hasMarkedReadRef.current = true;
+      } else {
+        console.warn('[useMessages] markConversationAsRead error:', result.error);
+      }
+    } catch (err) {
+      console.warn('[useMessages] markConversationRead exception:', err);
+    } finally {
+      setIsMarkingRead(false);
+    }
+  }, [conversationId, currentUserId, isMarkingRead]);
 
-  // إضافة رسالة جديدة إلى القائمة (مثل رسالة مؤقتة)
+  // ─── دوال أساسية ────────────────────────────────────────────────────────────
+
   const appendMessage = useCallback((msg: Message) => {
     setMessages(prev => {
       const exists = prev.some(m => m.id === msg.id);
       if (exists) return prev;
       const updated = [...prev, msg];
-      // تحديث الكاش
       cacheMessages(conversationId, updated).catch(() => {});
       return updated;
     });
   }, [conversationId]);
 
-  // تحديث رسالة مؤقتة (بـ tempId) إلى الرسالة الحقيقية
   const updateMessage = useCallback((tempId: string, real: Message) => {
     setMessages(prev => {
       const index = prev.findIndex(m => m.id === tempId);
       if (index === -1) {
-        // إذا لم توجد، نضيفها
         return [...prev, real];
       }
       const updated = [...prev];
@@ -181,12 +206,10 @@ export function useMessages(
     });
   }, [conversationId]);
 
-  // تحديث قراءة الرسائل محلياً (تعيين read_at للرسائل التي يملكها المستخدم الحالي)
   const markReadLocally = useCallback((userId: string) => {
     setMessages(prev => {
       const now = new Date().toISOString();
       const updated = prev.map(msg => {
-        // إذا كانت الرسالة من الطرف الآخر ولم يتم قراءتها بعد
         if (msg.sender_id !== userId && !msg.read_at) {
           return { ...msg, read_at: now };
         }
@@ -197,12 +220,10 @@ export function useMessages(
     });
   }, [conversationId]);
 
-  // تحديث تسليم الرسائل محلياً (delivered_at)
   const markDeliveredLocally = useCallback((userId: string) => {
     setMessages(prev => {
       const now = new Date().toISOString();
       const updated = prev.map(msg => {
-        // إذا كانت الرسالة من الطرف الآخر ولم يتم تسليمها بعد
         if (msg.sender_id !== userId && !msg.delivered_at) {
           return { ...msg, delivered_at: now };
         }
@@ -213,7 +234,6 @@ export function useMessages(
     });
   }, [conversationId]);
 
-  // حذف رسالة من القائمة المحلية
   const removeMessage = useCallback((id: string) => {
     setMessages(prev => {
       const updated = prev.filter(m => m.id !== id);
@@ -222,9 +242,7 @@ export function useMessages(
     });
   }, [conversationId]);
 
-  // ─── نهاية الدوال الجديدة ──────────────────────────────────────────────────
-
-  // مراقبة الاتصال
+  // ─── مراقبة الاتصال ─────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = NetInfo.addEventListener(state => {
       setIsOnline(state.isConnected !== false);
@@ -232,11 +250,8 @@ export function useMessages(
     return unsub;
   }, []);
 
-  // ─── Realtime subscription for read receipts ──────────────────────────────
-  // ❌ DISABLED because the backend does not support Realtime.
-  // All updates are handled via polling.
+  // ─── Realtime disabled ──────────────────────────────────────────────────────
   const setupRealtimeSubscription = useCallback(() => {
-    // No-op: Realtime is disabled.
     return () => {};
   }, []);
 
@@ -296,8 +311,15 @@ export function useMessages(
           if (trulyNew.length === 0) return updated;
           const merged = [...updated, ...trulyNew];
           lastCreatedAtRef.current = merged[merged.length - 1].created_at;
-          // تخزين مؤقت
           cacheMessages(conversationId, merged).catch(() => {});
+
+          // ✅ إذا كانت هناك رسائل جديدة من الطرف الآخر، نطلب تعليمها كمقروءة
+          const hasNewFromOther = trulyNew.some(m => m.sender_id !== currentUserId);
+          if (hasNewFromOther && !hasMarkedReadRef.current) {
+            // نستدعي markConversationRead بعد تأخير بسيط لتجنب التكرار
+            setTimeout(() => markConversationRead(), 300);
+          }
+
           return merged;
         });
 
@@ -331,6 +353,10 @@ export function useMessages(
             markMessagesDelivered(conversationId, currentUserId).catch(() => {});
           }
           cacheMessages(conversationId, data).catch(() => {});
+          // ✅ بعد تحميل الرسائل لأول مرة، نطلب تعليمها كمقروءة
+          if (!hasMarkedReadRef.current) {
+            setTimeout(() => markConversationRead(), 500);
+          }
         }
       }
 
@@ -340,7 +366,7 @@ export function useMessages(
     } finally {
       pollingRef.current = false;
     }
-  }, [conversationId, isBuyer, currentUserId, scheduleNextPoll]);
+  }, [conversationId, isBuyer, currentUserId, scheduleNextPoll, markConversationRead]);
 
   const pollSilentRef = useRef(pollSilent);
   useEffect(() => { pollSilentRef.current = pollSilent; }, [pollSilent]);
@@ -352,7 +378,11 @@ export function useMessages(
     if (data.length > 0) lastCreatedAtRef.current = data[data.length - 1].created_at;
     cacheMessages(conversationId, data).catch(() => {});
     setRefreshing(false);
-  }, [conversationId]);
+    // ✅ بعد التحديث اليدوي، نطلب تعليمها كمقروءة
+    if (!hasMarkedReadRef.current) {
+      setTimeout(() => markConversationRead(), 500);
+    }
+  }, [conversationId, markConversationRead]);
 
   // ── تحميل أولي مع الكاش ──
   const loadInitial = useCallback(async () => {
@@ -379,11 +409,15 @@ export function useMessages(
       if (currentUserId) {
         markMessagesDelivered(conversationId, currentUserId).catch(() => {});
       }
+      // ✅ تعليم الرسائل كمقروءة فوراً
+      if (!hasMarkedReadRef.current) {
+        setTimeout(() => markConversationRead(), 400);
+      }
     }
     setLoading(false);
-  }, [conversationId, currentUserId]);
+  }, [conversationId, currentUserId, markConversationRead]);
 
-  // ─── إضافة دوال جديدة ──
+  // ── إضافة دوال حذف وإعادة توجيه ──
   const deleteMessage = useCallback(async (messageId: string, forEveryone: boolean = false) => {
     if (!conversationId || !currentUserId) return;
     if (forEveryone) {
@@ -420,9 +454,21 @@ export function useMessages(
     return null;
   }, [conversationId]);
 
+  // ─── تأثير للتحقق من الرسائل غير المقروءة عند تغير القائمة ──────────────────
+  useEffect(() => {
+    if (!conversationId || !currentUserId || isMarkingRead || hasMarkedReadRef.current) return;
+    const hasUnread = messages.some(m => m.sender_id !== currentUserId && !m.read_at);
+    if (hasUnread) {
+      // ننتظر قليلاً ثم نطلب تعليمها كمقروءة
+      const timer = setTimeout(() => markConversationRead(), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [messages, conversationId, currentUserId, isMarkingRead, markConversationRead]);
+
   // ─── Main effect ─────────────────────────────────────────────────────────────
   useEffect(() => {
     isMountedRef.current = true;
+    hasMarkedReadRef.current = false; // إعادة تعيين عند تغيير المحادثة
     if (!conversationId) {
       setLoading(false);
       return;
@@ -446,6 +492,10 @@ export function useMessages(
         if (intervalRef.current) clearInterval(intervalRef.current);
         intervalRef.current = setInterval(() => pollSilentRef.current(), BASE_POLL_MS);
         pollSilentRef.current();
+        // عند عودة التطبيق إلى المقدمة، نطلب تعليم القراءة
+        if (!hasMarkedReadRef.current) {
+          setTimeout(() => markConversationRead(), 500);
+        }
       } else if (state !== 'active') {
         if (intervalRef.current) clearInterval(intervalRef.current);
         intervalRef.current = setInterval(() => pollSilentRef.current(), INACTIVE_POLL_MS);
@@ -460,8 +510,9 @@ export function useMessages(
       cleanupRealtime();
       lastCreatedAtRef.current = null;
       pollingRef.current = false;
+      hasMarkedReadRef.current = false;
     };
-  }, [conversationId, currentUserId, loadInitial, setupRealtimeSubscription]);
+  }, [conversationId, currentUserId, loadInitial, setupRealtimeSubscription, markConversationRead]);
 
   useEffect(() => {
     if (isBuyer === null) return;
@@ -479,11 +530,11 @@ export function useMessages(
     isOnline,
     reload,
     pollSilent,
-    appendMessage,         // ✅
-    updateMessage,         // ✅
-    markReadLocally,       // ✅
-    markDeliveredLocally,  // ✅
-    removeMessage,         // ✅
+    appendMessage,
+    updateMessage,
+    markReadLocally,
+    markDeliveredLocally,
+    removeMessage,
     deleteMessage,
     forwardMessage,
   };
@@ -598,7 +649,6 @@ export function useConversations(options?: { enabled?: boolean }): UseConversati
       } else {
         setUnreadCount(real);
       }
-      // تخزين الكاش
       cacheConversations(merged).catch(() => {});
     } catch (_) {}
   }, [enabled, setBadge]);
@@ -615,7 +665,6 @@ export function useConversations(options?: { enabled?: boolean }): UseConversati
       return;
     }
 
-    // التحقق من المستخدم
     let currentUser: any = null;
     try {
       const supabaseCheck = getSupabaseClient();
@@ -637,7 +686,6 @@ export function useConversations(options?: { enabled?: boolean }): UseConversati
 
     if (showSpinner) setLoading(true);
 
-    // استخدام الكاش أولاً
     const cached = await getCachedConversations();
     if (cached && cached.length > 0 && isMountedRef.current) {
       const mergedCached = mergeWithLocalReadState(cached);
@@ -648,7 +696,6 @@ export function useConversations(options?: { enabled?: boolean }): UseConversati
       await setBadge(cachedUnread);
     }
 
-    // جلب من الخادم
     try {
       const [convResult] = await Promise.all([fetchMyConversations()]);
       if (!isMountedRef.current) return;
@@ -672,7 +719,6 @@ export function useConversations(options?: { enabled?: boolean }): UseConversati
     }
   }, [enabled, setBadge]);
 
-  // ── markAllRead ──
   const markAllRead = useCallback(async () => {
     if (!enabled) return;
     try {
@@ -694,7 +740,6 @@ export function useConversations(options?: { enabled?: boolean }): UseConversati
     }
   }, [enabled, setBadge, conversations]);
 
-  // ── archive ──
   const archive = useCallback(async (conversationId: string) => {
     if (!enabled) return;
     const { error } = await archiveConversation(conversationId);
@@ -709,7 +754,6 @@ export function useConversations(options?: { enabled?: boolean }): UseConversati
     }
   }, [enabled, conversations, unreadCount, setBadge]);
 
-  // ── unarchive ──
   const unarchive = useCallback(async (conversationId: string) => {
     if (!enabled) return;
     await unarchiveConversation(conversationId);
@@ -731,7 +775,6 @@ export function useConversations(options?: { enabled?: boolean }): UseConversati
     };
   }, [refreshUnread]);
 
-  // Polling effect - only run if enabled
   useEffect(() => {
     if (!enabled) {
       if (intervalRef.current) {
@@ -756,7 +799,6 @@ export function useConversations(options?: { enabled?: boolean }): UseConversati
   const conversationsRef = useRef<Conversation[]>([]);
   useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
 
-  // Update unread count when store version changes, but only if enabled
   useEffect(() => {
     if (!enabled) return;
     const current = conversationsRef.current;

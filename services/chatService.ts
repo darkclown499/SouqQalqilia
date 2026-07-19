@@ -36,7 +36,7 @@ export interface Conversation {
   seller_name?: string;
   buyer_avatar?: string | null;
   seller_avatar?: string | null;
-  archived_at?: string | null; // ✅ إضافة دعم الأرشفة
+  archived_at?: string | null;
 }
 
 export interface Message {
@@ -51,7 +51,7 @@ export interface Message {
   created_at: string;
   _pending?: boolean;
   _failed?: boolean;
-  deleted_by?: string | null; // ✅ إضافة دعم الحذف من طرف واحد
+  deleted_by?: string | null;
 }
 
 export interface LocationMessage {
@@ -178,7 +178,6 @@ export async function fetchMyConversations(options?: {
       .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
       .order('last_message_at', { ascending: false });
 
-    // ✅ تصفية المحادثات المؤرشفة
     if (!includeArchived) {
       query = (query as any).is('archived_at', null);
     }
@@ -187,7 +186,6 @@ export async function fetchMyConversations(options?: {
 
     if (error) return { data: [], error: error.message };
 
-    // Batch unread count
     const convIds = (data as any[]).map((c) => c.id);
     let unreadMap: Record<string, number> = {};
     if (convIds.length > 0) {
@@ -197,7 +195,7 @@ export async function fetchMyConversations(options?: {
         .in('conversation_id', convIds)
         .is('read_at', null)
         .neq('sender_id', user.id)
-        .is('deleted_by', null); // ✅ تجاهل الرسائل المحذوفة
+        .is('deleted_by', null);
       (unreadRows ?? []).forEach((row: any) => {
         unreadMap[row.conversation_id] = (unreadMap[row.conversation_id] ?? 0) + 1;
       });
@@ -208,9 +206,7 @@ export async function fetchMyConversations(options?: {
       unread_count: unreadMap[conv.id] ?? 0,
     }));
 
-    // ✅ تخزين مؤقت
     await cacheConversations(enriched);
-
     return { data: enriched as Conversation[], error: null };
   } catch (e: any) {
     console.error('[fetchMyConversations] Error:', e);
@@ -251,25 +247,18 @@ export async function unarchiveConversation(conversationId: string): Promise<{ e
   }
 }
 
-// ── Mark all messages as read ───────────────────────────────────────────────
+// ── Mark all messages as read (for all conversations) ──────────────────────
 export async function markAllMessagesRead(userId: string): Promise<{ error: string | null }> {
   try {
     const supabase = getSupabaseClient();
-    
-    // ✅ الحصول على جميع conversation IDs التي يشارك فيها المستخدم
     const { data: conversations, error: convError } = await supabase
       .from('conversations')
       .select('id')
       .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
-    
     if (convError) throw convError;
-    if (!conversations || conversations.length === 0) {
-      return { error: null }; // لا توجد محادثات
-    }
-    
+    if (!conversations || conversations.length === 0) return { error: null };
+
     const conversationIds = conversations.map(c => c.id);
-    
-    // ✅ تحديث جميع الرسائل غير المقروءة في تلك المحادثات
     const { error } = await supabase
       .from('messages')
       .update({ read_at: new Date().toISOString() })
@@ -277,7 +266,6 @@ export async function markAllMessagesRead(userId: string): Promise<{ error: stri
       .neq('sender_id', userId)
       .is('read_at', null)
       .is('deleted_by', null);
-    
     if (error) throw error;
     return { error: null };
   } catch (e: any) {
@@ -290,20 +278,14 @@ export async function markAllMessagesRead(userId: string): Promise<{ error: stri
 export async function getUnreadCount(userId: string): Promise<{ count: number; error: string | null }> {
   try {
     const supabase = getSupabaseClient();
-    
-    // ✅ الحصول على جميع conversation IDs
     const { data: conversations, error: convError } = await supabase
       .from('conversations')
       .select('id')
       .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
-    
     if (convError) throw convError;
-    if (!conversations || conversations.length === 0) {
-      return { count: 0, error: null };
-    }
-    
+    if (!conversations || conversations.length === 0) return { count: 0, error: null };
+
     const conversationIds = conversations.map(c => c.id);
-    
     const { count, error } = await supabase
       .from('messages')
       .select('*', { count: 'exact', head: true })
@@ -311,7 +293,6 @@ export async function getUnreadCount(userId: string): Promise<{ count: number; e
       .neq('sender_id', userId)
       .is('read_at', null)
       .is('deleted_by', null);
-    
     if (error) throw error;
     return { count: count ?? 0, error: null };
   } catch (e: any) {
@@ -425,7 +406,6 @@ export async function fetchMessages(conversationId: string): Promise<{ data: Mes
 
     if (error) return { data: [], error: error.message };
 
-    // ✅ تخزين مؤقت
     await cacheMessages(conversationId, data as Message[]);
     return { data: data as Message[], error: null };
   } catch (e: any) {
@@ -561,7 +541,7 @@ function generateUUID(): string {
   });
 }
 
-// ── Send message ─────────────────────────────────────────────────────────────
+// ── Send message (IMPROVED error handling) ──────────────────────────────────
 export async function sendMessage(
   conversationId: string,
   content: string,
@@ -571,32 +551,63 @@ export async function sendMessage(
   try {
     const supabase = getSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { data: null, recipientId: null, isBuyerSending: false, error: 'Not authenticated' };
+    if (!user) {
+      return { data: null, recipientId: null, isBuyerSending: false, error: 'Not authenticated' };
+    }
 
     const messageType = imageUrl ? 'image' : 'text';
     const messageContent = imageUrl ? (content || '📷 صورة') : content;
     const messageId = clientMessageId ?? generateUUID();
 
-    const { data, error } = await supabase
-      .from('messages')
-      .upsert({
-        id: messageId,
-        conversation_id: conversationId,
-        sender_id: user.id,
-        content: messageContent,
-        image_url: imageUrl ?? null,
-        message_type: messageType,
-      }, { onConflict: 'id', ignoreDuplicates: false })
-      .select()
-      .single();
+    // محاولة إرسال الرسالة مع إعادة محاولة تلقائية إذا فشل (مرة واحدة)
+    let attempts = 0;
+    let lastError: any = null;
+    let result: any = null;
 
-    if (error) return { data: null, recipientId: null, isBuyerSending: false, error: error.message };
+    while (attempts < 2) {
+      try {
+        const { data, error } = await supabase
+          .from('messages')
+          .upsert({
+            id: messageId,
+            conversation_id: conversationId,
+            sender_id: user.id,
+            content: messageContent,
+            image_url: imageUrl ?? null,
+            message_type: messageType,
+          }, { onConflict: 'id', ignoreDuplicates: false })
+          .select()
+          .single();
 
-    const lastMsgContent = imageUrl ? (content || '📷 صورة') : content;
+        if (error) {
+          lastError = error;
+          attempts++;
+          if (attempts < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500)); // تأخير قصير قبل إعادة المحاولة
+          }
+          continue;
+        }
+        result = data;
+        break;
+      } catch (err) {
+        lastError = err;
+        attempts++;
+        if (attempts < 2) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    }
+
+    if (!result) {
+      const errorMsg = lastError?.message ?? 'Failed to send message after retries';
+      return { data: null, recipientId: null, isBuyerSending: false, error: errorMsg };
+    }
+
+    // تحديث المحادثة بآخر رسالة
     const [, convResult] = await Promise.all([
       supabase
         .from('conversations')
-        .update({ last_message: lastMsgContent, last_message_at: new Date().toISOString() })
+        .update({ last_message: messageContent, last_message_at: new Date().toISOString() })
         .eq('id', conversationId),
       supabase
         .from('conversations')
@@ -611,10 +622,13 @@ export async function sendMessage(
       : null;
     const isBuyerSending = conv?.buyer_id === user.id;
 
-    return { data: data as Message, recipientId, isBuyerSending, error: null };
+    // إعادة تعيين حالة القراءة في قاعدة البيانات (للمستخدم الآخر) - نقوم بذلك فوراً
+    // لكن سيتم التعامل معها في الدالة markMessagesRead عند فتح المحادثة.
+
+    return { data: result as Message, recipientId, isBuyerSending, error: null };
   } catch (e: any) {
-    console.error('[sendMessage] Error:', e);
-    return { data: null, recipientId: null, isBuyerSending: false, error: e?.message ?? 'Failed to send message' };
+    console.error('[sendMessage] Unhandled error:', e);
+    return { data: null, recipientId: null, isBuyerSending: false, error: e?.message ?? 'Unexpected error' };
   }
 }
 
@@ -640,30 +654,59 @@ export async function notifyRecipient(
   } catch (_) {}
 }
 
-// ── Mark messages as read ───────────────────────────────────────────────────
+// ── Mark messages as read (IMPROVED with retry and verification) ────────────
 export async function markMessagesRead(
   conversationId: string,
-  currentUserId: string
+  currentUserId: string,
+  retries = 2
 ): Promise<{ error: string | null }> {
-  try {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from('messages')
-      .update({ read_at: new Date().toISOString() })
-      .eq('conversation_id', conversationId)
-      .neq('sender_id', currentUserId)
-      .is('read_at', null)
-      .is('deleted_by', null); // ✅ التأكد من عدم قراءة الرسائل المحذوفة
+  let lastError: any = null;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase
+        .from('messages')
+        .update({ read_at: new Date().toISOString() })
+        .eq('conversation_id', conversationId)
+        .neq('sender_id', currentUserId)
+        .is('read_at', null)
+        .is('deleted_by', null)
+        .select('id'); // نطلب معرفات الرسائل التي تم تحديثها
 
-    if (error) {
-      console.warn('[markMessagesRead] DB error:', error.message);
-      throw new Error(error.message);
+      if (error) {
+        lastError = error;
+        console.warn(`[markMessagesRead] Attempt ${attempt + 1} failed:`, error.message);
+        if (attempt < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+        }
+        continue;
+      }
+
+      // إذا نجحت، نعيد clear للكاش
+      await clearConversationsCache();
+      return { error: null };
+    } catch (err) {
+      lastError = err;
+      console.warn(`[markMessagesRead] Attempt ${attempt + 1} exception:`, err);
+      if (attempt < retries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+      }
     }
-    return { error: null };
-  } catch (e: any) {
-    console.error('[markMessagesRead] Error:', e);
-    return { error: e?.message ?? 'Failed to mark messages as read' };
   }
+  const finalError = lastError?.message ?? 'Failed to mark messages as read after retries';
+  return { error: finalError };
+}
+
+// ── NEW: Force mark conversation as read (for single conversation) ──────────
+export async function markConversationAsRead(
+  conversationId: string,
+  userId: string
+): Promise<{ error: string | null }> {
+  // هذه الدالة تستدعي markMessagesRead مع محاولات إضافية وتحديث الكاش
+  const result = await markMessagesRead(conversationId, userId, 3);
+  // بعد التحديث، نقوم بمسح كاش المحادثات لجلب العداد الجديد
+  await clearConversationsCache();
+  return result;
 }
 
 // ── Update typing indicator ─────────────────────────────────────────────────
@@ -737,14 +780,12 @@ export async function deleteMessageForEveryone(
 ): Promise<{ error: string | null }> {
   try {
     const supabase = getSupabaseClient();
-    // ✅ حذف نهائي للرسالة (من جميع الأطراف)
     const { error } = await supabase
       .from('messages')
       .delete()
       .eq('id', messageId)
       .eq('conversation_id', conversationId);
     if (error) throw error;
-    // ✅ تحديث last_message في المحادثة
     const lastMsg = await getLastMessage(conversationId);
     if (lastMsg.data) {
       await supabase
@@ -796,7 +837,6 @@ export async function forwardMessage(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { data: null, error: 'Not authenticated' };
 
-    // جلب الرسالة الأصلية
     const { data: original, error: fetchError } = await supabase
       .from('messages')
       .select('*')
@@ -807,7 +847,6 @@ export async function forwardMessage(
       return { data: null, error: fetchError?.message ?? 'Message not found' };
     }
 
-    // إنشاء رسالة جديدة في المحادثة المستهدفة
     const newId = generateUUID();
     const { data: newMessage, error: insertError } = await supabase
       .from('messages')
@@ -824,7 +863,6 @@ export async function forwardMessage(
 
     if (insertError) return { data: null, error: insertError.message };
 
-    // تحديث last_message في المحادثة المستهدفة
     await supabase
       .from('conversations')
       .update({
@@ -842,7 +880,6 @@ export async function forwardMessage(
 
 // ── Track chat event ────────────────────────────────────────────────────────
 export async function trackChatEvent(event: string, data?: any): Promise<void> {
-  // No-op: analytics_events table does not exist. Events are tracked via app_statistics.
   try {
     const supabase = getSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -945,9 +982,7 @@ export async function sendTypingIndicator(
   }
 
   if (isTyping) {
-    // إرسال إشارة "يكتب" فوراً
     await updateTypingIndicator(conversationId, isBuyer, true);
-    // تعيين مؤقت لإرسال إشارة "توقف الكتابة" بعد 3 ثوانٍ من عدم النشاط
     typingTimeout = setTimeout(async () => {
       await updateTypingIndicator(conversationId, isBuyer, false);
       typingTimeout = null;
@@ -964,8 +999,8 @@ export async function shouldSendNotification(
   senderId: string
 ): Promise<boolean> {
   try {
-    // التحقق من وجود المستخدم في المحادثة
-    const { data: conv } = await getSupabaseClient()
+    const supabase = getSupabaseClient();
+    const { data: conv } = await supabase
       .from('conversations')
       .select('buyer_last_polled_at, seller_last_polled_at')
       .eq('id', conversationId)
@@ -973,15 +1008,12 @@ export async function shouldSendNotification(
 
     if (!conv) return true;
 
-    // التحقق من آخر مرة قام فيها المستخدم بفتح المحادثة
     const lastPolled = conv.buyer_last_polled_at || conv.seller_last_polled_at;
     if (lastPolled) {
       const timeSincePoll = Date.now() - new Date(lastPolled).getTime();
-      // إذا كان المستخدم قد فتح المحادثة خلال الـ 10 ثواني الأخيرة، لا نرسل إشعاراً
       if (timeSincePoll < 10000) return false;
     }
 
-    // التحقق من حالة الاتصال للمستخدم
     const { isOnline } = await checkUserOnline(recipientId);
     if (isOnline) return false;
 
