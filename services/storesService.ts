@@ -83,18 +83,14 @@ export async function adminFetchAllStores(
 ): Promise<{ data: Store[]; error: string | null }> {
   const supabase = getSupabaseClient();
   
-  // أنشئ الاستعلام مع جلب بيانات المالك (user_profiles) عبر owner_id
+  // أنشئ الاستعلام الأساسي
   let query = supabase
     .from('stores')
-    .select(`
-      *,
-      store_categories(id, name, name_ar, icon, color, slug),
-      owner:user_profiles!owner_id(id, username, email, phone, avatar_url)
-    `)
+    .select('*, store_categories(id, name, name_ar, icon, color, slug)')
     .order('store_category_id', { ascending: true })
     .order('position', { ascending: true });
   
-  // دعم إلغاء الطلب (AbortSignal)
+  // أضف دعم إلغاء الطلب (AbortSignal) بنفس طريقة fetchFeaturedStores
   if (options?.signal) {
     query = query.abortSignal(options.signal);
   }
@@ -102,13 +98,13 @@ export async function adminFetchAllStores(
   const { data, error } = await query;
   
   if (error) {
+    // إذا كان الإلغاء هو السبب، نرجع رسالة مناسبة
     if (error.message?.includes('AbortError') || error.code === 'ABORTED') {
       return { data: [], error: 'Request cancelled' };
     }
     return { data: [], error: error.message };
   }
   
-  // تحويل البيانات إلى النوع Store مع إضافة حقل owner
   return { data: data as Store[], error: null };
 }
 
