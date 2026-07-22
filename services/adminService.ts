@@ -28,10 +28,20 @@ export async function checkIsAdmin(): Promise<boolean> {
 /**
  * Admin fetch all ads with AbortSignal support
  */
-export async function adminFetchAllAds(opts?: { signal?: AbortSignal }): Promise<{ data: Ad[]; error: string | null }> {
+/**
+ * Admin fetch all ads with AbortSignal support + pagination
+ */
+export async function adminFetchAllAds(opts?: {
+  signal?: AbortSignal;
+  limit?: number;
+  offset?: number;
+}): Promise<{ data: Ad[]; error: string | null }> {
   const supabase = getSupabaseClient();
+  const limit = opts?.limit ?? 50;   // قيمة افتراضية
+  const offset = opts?.offset ?? 0;
+
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('ads')
       .select(`
         *,
@@ -41,7 +51,13 @@ export async function adminFetchAllAds(opts?: { signal?: AbortSignal }): Promise
       `)
       .neq('status', 'deleted')
       .order('serial_number', { ascending: false })
-      .abortSignal(opts?.signal);
+      .range(offset, offset + limit - 1);   // ← إضافة pagination
+
+    if (opts?.signal) {
+      query = query.abortSignal(opts.signal);
+    }
+
+    const { data, error } = await query;
     if (error) return { data: [], error: error.message };
     return { data: data as Ad[], error: null };
   } catch (err: any) {
@@ -101,14 +117,27 @@ export async function adminBoostAd(adId: string, boost: boolean, days = 7): Prom
 /**
  * Admin fetch all users with AbortSignal support
  */
-export async function adminFetchAllUsers(opts?: { signal?: AbortSignal }): Promise<{ data: UserProfile[]; error: string | null }> {
+export async function adminFetchAllUsers(opts?: {
+  signal?: AbortSignal;
+  limit?: number;
+  offset?: number;
+}): Promise<{ data: UserProfile[]; error: string | null }> {
   const supabase = getSupabaseClient();
+  const limit = opts?.limit ?? 50;
+  const offset = opts?.offset ?? 0;
+
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('user_profiles')
       .select('*')
       .order('email', { ascending: true })
-      .abortSignal(opts?.signal);
+      .range(offset, offset + limit - 1);   // ← pagination
+
+    if (opts?.signal) {
+      query = query.abortSignal(opts.signal);
+    }
+
+    const { data, error } = await query;
     if (error) return { data: [], error: error.message };
     return { data: data as UserProfile[], error: null };
   } catch (err: any) {
