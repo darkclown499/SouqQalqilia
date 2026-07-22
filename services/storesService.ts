@@ -77,14 +77,34 @@ export async function fetchStoresByCategory(categoryId: string): Promise<{ data:
   return { data: data as Store[], error: null };
 }
 
-export async function adminFetchAllStores(): Promise<{ data: Store[]; error: string | null }> {
+// ── Admin: Fetch all stores (with AbortSignal support) ──────────────────────
+export async function adminFetchAllStores(
+  options?: { signal?: AbortSignal }
+): Promise<{ data: Store[]; error: string | null }> {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  
+  // أنشئ الاستعلام الأساسي
+  let query = supabase
     .from('stores')
     .select('*, store_categories(id, name, name_ar, icon, color, slug)')
     .order('store_category_id', { ascending: true })
     .order('position', { ascending: true });
-  if (error) return { data: [], error: error.message };
+  
+  // أضف دعم إلغاء الطلب (AbortSignal) بنفس طريقة fetchFeaturedStores
+  if (options?.signal) {
+    query = query.abortSignal(options.signal);
+  }
+
+  const { data, error } = await query;
+  
+  if (error) {
+    // إذا كان الإلغاء هو السبب، نرجع رسالة مناسبة
+    if (error.message?.includes('AbortError') || error.code === 'ABORTED') {
+      return { data: [], error: 'Request cancelled' };
+    }
+    return { data: [], error: error.message };
+  }
+  
   return { data: data as Store[], error: null };
 }
 
