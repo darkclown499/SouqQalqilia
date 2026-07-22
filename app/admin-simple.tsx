@@ -357,6 +357,7 @@ const InterstitialItem = memo(({ item, colors, isAr }: any) => (
 function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [stats, setStats] = useState<any>(null);
   const [pageStats, setPageStats] = useState<any[]>([]);
+  const [deviceStats, setDeviceStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -424,6 +425,34 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
     return results.filter(r => r !== null) as any[];
   }, []);
 
+  // دالة لجلب توزيع الأجهزة
+  const fetchDeviceStats = useCallback(async (signal: AbortSignal) => {
+    const supabase = getSupabaseClient();
+    // محاولة جلب بيانات الجهاز من جدول app_visits (إذا كان هناك عمود platform)
+    // أو من أي جدول آخر
+    try {
+      const { data, error } = await supabase
+        .from('app_visits')
+        .select('platform')
+        .not('platform', 'is', null);
+      if (error || signal.aborted || !data) return [];
+
+      const counts: Record<string, number> = {};
+      data.forEach((row: any) => {
+        const platform = row.platform || 'Unknown';
+        counts[platform] = (counts[platform] || 0) + 1;
+      });
+      // تحويل إلى مصفوفة
+      const result = Object.entries(counts).map(([name, value]) => ({ name, value }));
+      // ترتيب تنازلي
+      result.sort((a, b) => b.value - a.value);
+      return result;
+    } catch {
+      // إذا لم يوجد عمود platform، نرجع بيانات وهمية صغيرة أو فارغة
+      return [];
+    }
+  }, []);
+
   const fetchStats = useCallback(async () => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
     const controller = new AbortController();
@@ -437,7 +466,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      const [dauRes, wauRes, mauRes, totalVisitsRes, usersRes, activeAdsRes, activeStoresRes, pageStatsMulti] = await Promise.all([
+      const [dauRes, wauRes, mauRes, totalVisitsRes, usersRes, activeAdsRes, activeStoresRes, pageStatsMulti, deviceStatsData] = await Promise.all([
         supabase.from('app_visits').select('device_id').gte('visited_at', todayStart),
         supabase.from('app_visits').select('device_id, visited_at').gte('visited_at', weekAgo),
         supabase.from('app_visits').select('device_id').gte('visited_at', monthAgo),
@@ -446,6 +475,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         supabase.from('ads').select('id', { count: 'exact', head: true }).eq('status', 'active'),
         supabase.from('stores').select('id', { count: 'exact', head: true }).eq('is_active', true),
         fetchPageStatsMulti(controller.signal),
+        fetchDeviceStats(controller.signal),
       ]);
 
       if (controller.signal.aborted) return;
@@ -459,6 +489,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       const activeAds = activeAdsRes.count ?? 0;
       const activeStores = activeStoresRes.count ?? 0;
 
+      // بناء الاتجاه اليومي
       const trendMap: Record<string, Set<string>> = {};
       for (let i = 6; i >= 0; i--) {
         const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
@@ -470,13 +501,37 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         if (day && trendMap[day]) trendMap[day].add(row.device_id);
       });
       const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
-
+      // حساب التغير لكل مقياس بناءً على trend (آخر يوم مقابل أول يوم)
       const trendValues = trend.map(t => t.count);
-      const change = trendValues.length >= 2 ? ((trendValues[trendValues.length - 1] - trendValues[0]) / (trendValues[0] || 1)) * 100 : 0;
+      const calcChange = (index: number) => {
+        if (trendValues.length < 2) return 0;
+        const first = trendValues[0] || 1;
+        const last = trendValues[trendValues.length - 1] || 1;
+        return ((last - first) / first) * 100;
+      };
+      const changeDau = calcChange(0);
+      // للتغير الأسبوعي: نقارن متوسط آخر 3 أيام بأول 3 أيام
+      const avgLast3 = trendValues.slice(-3).reduce((a, b) => a + b, 0) / 3;
+      const avgFirst3 = trendValues.slice(0, 3).reduce((a, b) => a + b, 0) / 3;
+      const changeWau = avgFirst3 !== 0 ? ((avgLast3 - avgFirst3) / avgFirst3) * 100 : 0;
+      const changeMau = trendValues.length >= 7 ? ((trendValues[6] - trendValues[0]) / (trendValues[0] || 1)) * 100 : 0;
 
       if (controller.signal.aborted) return;
-      setStats({ dau, wau, mau, trend, totalVisits, totalUsers, activeAds, activeStores, change });
+      setStats({
+        dau,
+        wau,
+        mau,
+        trend,
+        totalVisits,
+        totalUsers,
+        activeAds,
+        activeStores,
+        changeDau,
+        changeWau,
+        changeMau,
+      });
       setPageStats(pageStatsMulti || []);
+      setDeviceStats(deviceStatsData || []);
       setLastUpdated(new Date());
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
@@ -487,7 +542,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       setRefreshing(false);
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
     }
-  }, [fetchPageStatsMulti]);
+  }, [fetchPageStatsMulti, fetchDeviceStats]);
 
   useEffect(() => {
     setLoading(true);
@@ -606,12 +661,12 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         ))}
       </View>
 
-      {/* KPI بطاقات */}
+      {/* KPI بطاقات - مع حساب تغير خاص لكل بطاقة */}
       <View style={styles.statsGrid3}>
         {[
-          { label: isAr ? 'مستخدمين اليوم' : 'Today', value: stats?.dau ?? 0, icon: 'today', color: '#3B82F6', change: stats?.change || 0 },
-          { label: isAr ? 'مستخدمين الأسبوع' : 'This Week', value: stats?.wau ?? 0, icon: 'date-range', color: '#8B5CF6', change: stats?.change || 0 },
-          { label: isAr ? 'مستخدمين الشهر' : 'This Month', value: stats?.mau ?? 0, icon: 'calendar-month', color: '#10B981', change: stats?.change || 0 },
+          { label: isAr ? 'مستخدمين اليوم' : 'Today', value: stats?.dau ?? 0, icon: 'today', color: '#3B82F6', change: stats?.changeDau ?? 0 },
+          { label: isAr ? 'مستخدمين الأسبوع' : 'This Week', value: stats?.wau ?? 0, icon: 'date-range', color: '#8B5CF6', change: stats?.changeWau ?? 0 },
+          { label: isAr ? 'مستخدمين الشهر' : 'This Month', value: stats?.mau ?? 0, icon: 'calendar-month', color: '#10B981', change: stats?.changeMau ?? 0 },
         ].map((item, i) => {
           const isPositive = item.change >= 0;
           return (
@@ -698,41 +753,44 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         </View>
       )}
 
-      {/* توزيع الأجهزة */}
+      {/* توزيع الأجهزة - بيانات حقيقية إن وجدت */}
       <View style={[styles.deviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
           {isAr ? '📱 توزيع المستخدمين حسب الجهاز' : 'Device Distribution'}
         </Text>
-        {[
-          { name: 'iOS', value: 120, color: '#3B82F6' },
-          { name: 'Android', value: 280, color: '#22C55E' },
-          { name: 'Other', value: 15, color: '#F59E0B' },
-        ].map((device, idx) => {
-          const maxDevice = Math.max(120, 280, 15, 1);
-          const percent = (device.value / maxDevice) * 100;
-          return (
-            <View key={idx} style={{ marginBottom: 12 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Text style={[styles.deviceName, { color: colors.textPrimary }]}>{device.name}</Text>
-                <Text style={[styles.devicePercent, { color: colors.textSecondary }]}>
-                  {device.value} ({Math.round((device.value / (120 + 280 + 15)) * 100)}%)
-                </Text>
+        {deviceStats.length === 0 ? (
+          <Text style={{ color: colors.textMuted, textAlign: 'center', padding: 8 }}>
+            {isAr ? 'لا توجد بيانات عن الأجهزة' : 'No device data available'}
+          </Text>
+        ) : (
+          deviceStats.map((device, idx) => {
+            const total = deviceStats.reduce((sum, d) => sum + d.value, 0);
+            const maxDevice = Math.max(...deviceStats.map(d => d.value), 1);
+            const percent = (device.value / maxDevice) * 100;
+            return (
+              <View key={idx} style={{ marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={[styles.deviceName, { color: colors.textPrimary }]}>{device.name}</Text>
+                  <Text style={[styles.devicePercent, { color: colors.textSecondary }]}>
+                    {device.value} ({Math.round((device.value / total) * 100)}%)
+                  </Text>
+                </View>
+                <View style={[styles.progressBarBg, { backgroundColor: colors.borderLight }]}>
+                  <View
+                    style={[
+                      styles.progressBarFill,
+                      {
+                        width: `${percent}%`,
+                        backgroundColor: ['#3B82F6', '#22C55E', '#F59E0B', '#8B5CF6'][idx % 4],
+                        borderRadius: 8,
+                      },
+                    ]}
+                  />
+                </View>
               </View>
-              <View style={[styles.progressBarBg, { backgroundColor: colors.borderLight }]}>
-                <View
-                  style={[
-                    styles.progressBarFill,
-                    {
-                      width: `${percent}%`,
-                      backgroundColor: device.color,
-                      borderRadius: 8,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-          );
-        })}
+            );
+          })
+        )}
       </View>
 
       {/* ⭐ إحصائيات الصفحات المتقدمة */}
@@ -862,8 +920,8 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         <View style={styles.advancedStatsRow}>
           <View style={styles.advancedStatsCol}>
             <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? 'معدل نمو الأسبوعي' : 'Weekly Growth'}</Text>
-            <Text style={[styles.advancedStatsValue, { color: stats?.change >= 0 ? '#22C55E' : '#EF4444' }]}>
-              {stats?.change ? stats.change.toFixed(1) : 0}%
+            <Text style={[styles.advancedStatsValue, { color: stats?.changeWau >= 0 ? '#22C55E' : '#EF4444' }]}>
+              {stats?.changeWau ? stats.changeWau.toFixed(1) : 0}%
             </Text>
           </View>
           <View style={styles.advancedStatsCol}>
