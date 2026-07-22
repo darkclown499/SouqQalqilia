@@ -617,30 +617,16 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
     );
   }
 
-  // قائمة الأسماء المعروفة (للترجمة)
-const knownPageNames: Record<string, string> = {
-  home: isAr ? 'الرئيسية' : 'Home',
-  stores: isAr ? 'المتاجر' : 'Stores',
-  ad: isAr ? 'الإعلان' : 'Ad',
-  store: isAr ? 'المتجر' : 'Store',
-  profile: isAr ? 'الملف الشخصي' : 'Profile',
-  offers: isAr ? 'العروض' : 'Offers',
-  search: isAr ? 'البحث' : 'Search',
-  categories: isAr ? 'التصنيفات' : 'Categories',
-};
-
-// إنشاء خريطة أسماء ديناميكية تحتوي على جميع الصفحات الموجودة في pageStats
-const pageNames = useMemo(() => {
-  const allPages = new Set(pageStats.map(p => p.page));
-  const map: Record<string, string> = { ...knownPageNames };
-  allPages.forEach(page => {
-    if (!map[page]) {
-      // إذا كانت الصفحة غير معروفة، نستخدم اسمها كما هو
-      map[page] = page;
-    }
-  });
-  return map;
-}, [pageStats, isAr]);
+  const pageNames: Record<string, string> = {
+    home: isAr ? 'الرئيسية' : 'Home',
+    stores: isAr ? 'المتاجر' : 'Stores',
+    ad: isAr ? 'الإعلان' : 'Ad',
+    store: isAr ? 'المتجر' : 'Store',
+    profile: isAr ? 'الملف الشخصي' : 'Profile',
+    offers: isAr ? 'العروض' : 'Offers',
+    search: isAr ? 'البحث' : 'Search',
+    categories: isAr ? 'التصنيفات' : 'Categories',
+  };
 
   const selectedPeriod = period === 'week' ? 'week' : period === 'month' ? 'month' : 'quarter';
   const typeKey = visitType === 'unique' ? 'Unique' : 'Total'; // used to access fields like dayUnique, weekTotal, etc.
@@ -850,7 +836,7 @@ const pageNames = useMemo(() => {
       </View>
 
       {/* ⭐ إحصائيات الصفحات المتقدمة */}
-      <View key={visitType} style={[styles.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={[styles.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {/* رأس جديد: أزرار تبديل + ملخص الأرقام */}
         <View style={[styles.pageStatsHeader, { borderBottomColor: colors.borderLight, flexWrap: 'wrap' }]}>
           <MaterialIcons name="analytics" size={20} color={colors.primary} />
@@ -968,9 +954,9 @@ const pageNames = useMemo(() => {
               const monthVal = stat[`month${typeKey}`] ?? 0;
               return (
                 <View
-  key={`${stat.page}-${visitType}`}
-  style={[
-    styles.pageStatRow,
+                  key={stat.page}
+                  style={[
+                    styles.pageStatRow,
                     {
                       backgroundColor: isEven ? colors.background : 'transparent',
                       borderBottomColor: colors.borderLight,

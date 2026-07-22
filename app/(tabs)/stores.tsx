@@ -25,7 +25,6 @@ import {
 } from '@/services/storeCategoriesService';
 import { Banner, fetchActiveBanners } from '@/services/bannersService';
 import NetInfo from '@react-native-community/netinfo';
-import { trackPageView } from '@/services/analyticsService';
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
 function shuffleArray<T>(array: T[]): T[] {
@@ -803,13 +802,10 @@ export default function StoresScreen() {
   // ── useFocusEffect for owner store and analytics ──
   useFocusEffect(
     useCallback(() => {
-      // ✅ Track page view - تم تفعيلها
+      // Track page view
       try {
-        trackPageView('stores');
-      } catch (error) {
-        // تجاهل أخطاء التتبع
-        console.warn('⚠️ trackPageView error:', error);
-      }
+        // trackPageView('stores'); // Uncomment if available
+      } catch { /* ignore */ }
 
       if (!user) {
         setOwnerStoreLoading(false);
