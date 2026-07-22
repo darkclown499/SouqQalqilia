@@ -364,9 +364,10 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [searchPage, setSearchPage] = useState('');
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter'>('week');
   const [refreshing, setRefreshing] = useState(false);
+  const [visitType, setVisitType] = useState<'unique' | 'total'>('unique'); // ✅ جديد: نوع الزيارة
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // دالة لجلب إحصائيات الصفحات لفترات متعددة
+  // دالة لجلب إحصائيات الصفحات لفترات متعددة (فردي + إجمالي)
   const fetchPageStatsMulti = useCallback(async (signal: AbortSignal) => {
     const supabase = getSupabaseClient();
     const now = new Date();
@@ -389,7 +390,8 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
     const results = await Promise.all(
       pages.map(async (page: string) => {
         if (signal.aborted) return null;
-        const [day, week, month, quarter] = await Promise.all([
+        // Unique counts (distinct device_id)
+        const [dayUnique, weekUnique, monthUnique, quarterUnique] = await Promise.all([
           supabase
             .from('app_visits')
             .select('device_id', { count: 'exact', head: true })
@@ -411,13 +413,41 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
             .eq('page', page)
             .gte('visited_at', quarterAgo),
         ]);
+        // Total counts (all rows)
+        const [dayTotal, weekTotal, monthTotal, quarterTotal] = await Promise.all([
+          supabase
+            .from('app_visits')
+            .select('*', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', dayAgo),
+          supabase
+            .from('app_visits')
+            .select('*', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', weekAgo),
+          supabase
+            .from('app_visits')
+            .select('*', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', monthAgo),
+          supabase
+            .from('app_visits')
+            .select('*', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', quarterAgo),
+        ]);
+
         if (signal.aborted) return null;
         return {
           page,
-          day: day.count ?? 0,
-          week: week.count ?? 0,
-          month: month.count ?? 0,
-          quarter: quarter.count ?? 0,
+          dayUnique: dayUnique.count ?? 0,
+          weekUnique: weekUnique.count ?? 0,
+          monthUnique: monthUnique.count ?? 0,
+          quarterUnique: quarterUnique.count ?? 0,
+          dayTotal: dayTotal.count ?? 0,
+          weekTotal: weekTotal.count ?? 0,
+          monthTotal: monthTotal.count ?? 0,
+          quarterTotal: quarterTotal.count ?? 0,
         };
       })
     );
@@ -428,8 +458,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   // دالة لجلب توزيع الأجهزة
   const fetchDeviceStats = useCallback(async (signal: AbortSignal) => {
     const supabase = getSupabaseClient();
-    // محاولة جلب بيانات الجهاز من جدول app_visits (إذا كان هناك عمود platform)
-    // أو من أي جدول آخر
     try {
       const { data, error } = await supabase
         .from('app_visits')
@@ -442,13 +470,10 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         const platform = row.platform || 'Unknown';
         counts[platform] = (counts[platform] || 0) + 1;
       });
-      // تحويل إلى مصفوفة
       const result = Object.entries(counts).map(([name, value]) => ({ name, value }));
-      // ترتيب تنازلي
       result.sort((a, b) => b.value - a.value);
       return result;
     } catch {
-      // إذا لم يوجد عمود platform، نرجع بيانات وهمية صغيرة أو فارغة
       return [];
     }
   }, []);
@@ -501,7 +526,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         if (day && trendMap[day]) trendMap[day].add(row.device_id);
       });
       const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
-      // حساب التغير لكل مقياس بناءً على trend (آخر يوم مقابل أول يوم)
       const trendValues = trend.map(t => t.count);
       const calcChange = (index: number) => {
         if (trendValues.length < 2) return 0;
@@ -510,7 +534,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         return ((last - first) / first) * 100;
       };
       const changeDau = calcChange(0);
-      // للتغير الأسبوعي: نقارن متوسط آخر 3 أيام بأول 3 أيام
       const avgLast3 = trendValues.slice(-3).reduce((a, b) => a + b, 0) / 3;
       const avgFirst3 = trendValues.slice(0, 3).reduce((a, b) => a + b, 0) / 3;
       const changeWau = avgFirst3 !== 0 ? ((avgLast3 - avgFirst3) / avgFirst3) * 100 : 0;
@@ -562,7 +585,8 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
     const periodLabel = period === 'week' ? (isAr ? 'الأسبوع' : 'Week') : period === 'month' ? (isAr ? 'الشهر' : 'Month') : (isAr ? 'الربع' : 'Quarter');
     const headers = [isAr ? 'الصفحة' : 'Page', isAr ? 'اليوم' : 'Day', periodLabel, isAr ? 'الشهر' : 'Month'];
     const selected = period === 'week' ? 'week' : period === 'month' ? 'month' : 'quarter';
-    const rows = pageStats.map(p => [p.page, p.day, p[selected], p.month]);
+    const typeKey = visitType === 'unique' ? 'Unique' : 'Total';
+    const rows = pageStats.map(p => [p.page, p[`day${typeKey}`], p[`${selected}${typeKey}`], p[`month${typeKey}`]]);
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     try { Share.share({ message: csv, title: 'page_stats.csv' }); } catch {}
   };
@@ -605,10 +629,25 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   };
 
   const selectedPeriod = period === 'week' ? 'week' : period === 'month' ? 'month' : 'quarter';
-  const totalDay = pageStats.reduce((sum, p) => sum + p.day, 0);
-  const totalPeriod = pageStats.reduce((sum, p) => sum + (p[selectedPeriod] || 0), 0);
-  const totalMonth = pageStats.reduce((sum, p) => sum + p.month, 0);
-  const topPage = pageStats.length ? pageStats.reduce((a, b) => (a[selectedPeriod] || 0) > (b[selectedPeriod] || 0) ? a : b) : null;
+  const typeKey = visitType === 'unique' ? 'Unique' : 'Total'; // used to access fields like dayUnique, weekTotal, etc.
+
+  const totalDay = pageStats.reduce((sum, p) => sum + (p[`day${typeKey}`] || 0), 0);
+  const totalPeriod = pageStats.reduce((sum, p) => sum + (p[`${selectedPeriod}${typeKey}`] || 0), 0);
+  const totalMonth = pageStats.reduce((sum, p) => sum + (p[`month${typeKey}`] || 0), 0);
+  const topPage = pageStats.length ? pageStats.reduce((a, b) => (a[`${selectedPeriod}${typeKey}`] || 0) > (b[`${selectedPeriod}${typeKey}`] || 0) ? a : b) : null;
+
+  // لتحديد النص المناسب لعنوان الإجمالي
+  const getPeriodLabel = (periodType: 'day' | 'week' | 'month') => {
+    if (visitType === 'unique') {
+      return periodType === 'day' ? (isAr ? 'اليوم (فردي)' : 'Day (Unique)') :
+             periodType === 'week' ? (isAr ? 'الأسبوع (فردي)' : 'Week (Unique)') :
+             (isAr ? 'الشهر (فردي)' : 'Month (Unique)');
+    } else {
+      return periodType === 'day' ? (isAr ? 'اليوم (إجمالي)' : 'Day (Total)') :
+             periodType === 'week' ? (isAr ? 'الأسبوع (إجمالي)' : 'Week (Total)') :
+             (isAr ? 'الشهر (إجمالي)' : 'Month (Total)');
+    }
+  };
 
   return (
     <ScrollView
@@ -743,7 +782,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
                       },
                     ]}
                   />
-                  <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 9, marginTop: 4 }]}>
+                  <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 12, marginTop: 4 }]}>
                     {new Date(t.date).toLocaleDateString(isAr ? 'ar' : 'en', { weekday: 'short' })}
                   </Text>
                 </View>
@@ -759,9 +798,12 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
           {isAr ? '📱 توزيع المستخدمين حسب الجهاز' : 'Device Distribution'}
         </Text>
         {deviceStats.length === 0 ? (
-          <Text style={{ color: colors.textMuted, textAlign: 'center', padding: 8 }}>
-            {isAr ? 'لا توجد بيانات عن الأجهزة' : 'No device data available'}
-          </Text>
+          <View style={{ alignItems: 'center', padding: 20 }}>
+            <MaterialIcons name="devices" size={48} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 8 }}>
+              {isAr ? 'لا توجد بيانات عن الأجهزة' : 'No device data available'}
+            </Text>
+          </View>
         ) : (
           deviceStats.map((device, idx) => {
             const total = deviceStats.reduce((sum, d) => sum + d.value, 0);
@@ -795,19 +837,72 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
 
       {/* ⭐ إحصائيات الصفحات المتقدمة */}
       <View style={[styles.pageStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={[styles.pageStatsHeader, { borderBottomColor: colors.borderLight }]}>
+        {/* رأس جديد: أزرار تبديل + ملخص الأرقام */}
+        <View style={[styles.pageStatsHeader, { borderBottomColor: colors.borderLight, flexWrap: 'wrap' }]}>
           <MaterialIcons name="analytics" size={20} color={colors.primary} />
           <Text style={[styles.pageStatsTitle, { color: colors.textPrimary }]}>
             {isAr ? '📈 إحصائيات الصفحات' : '📈 Page Statistics'}
           </Text>
-          <Text style={{ fontSize: 10, color: colors.textMuted }}>
-            {isAr ? `اليوم: ${totalDay}  |  ${period === 'week' ? 'الأسبوع' : period === 'month' ? 'الشهر' : 'الربع'}: ${totalPeriod}  |  الشهر: ${totalMonth}` :
-              `Day: ${totalDay} | ${period === 'week' ? 'Week' : period === 'month' ? 'Month' : 'Quarter'}: ${totalPeriod} | Month: ${totalMonth}`}
-          </Text>
-          {topPage && (
-            <Text style={{ fontSize: 10, color: colors.primary, fontWeight: '700' }}>
-              🏆 {pageNames[topPage.page] || topPage.page} ({topPage[selectedPeriod]})
+          {/* أزرار التبديل بين فردي وإجمالي */}
+          <View style={{ flexDirection: 'row', gap: 6, marginLeft: 'auto' }}>
+            <Pressable
+              style={[
+                styles.visitTypeTab,
+                {
+                  backgroundColor: visitType === 'unique' ? colors.primary : colors.border,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: Radius.full,
+                }
+              ]}
+              onPress={() => setVisitType('unique')}
+            >
+              <Text style={{ color: visitType === 'unique' ? '#fff' : colors.textSecondary, fontWeight: '600', fontSize: 11 }}>
+                {isAr ? 'فردي' : 'Unique'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.visitTypeTab,
+                {
+                  backgroundColor: visitType === 'total' ? colors.primary : colors.border,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: Radius.full,
+                }
+              ]}
+              onPress={() => setVisitType('total')}
+            >
+              <Text style={{ color: visitType === 'total' ? '#fff' : colors.textSecondary, fontWeight: '600', fontSize: 11 }}>
+                {isAr ? 'إجمالي' : 'Total'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* صف إحصائي سريع: إجماليات اليوم، الأسبوع، الشهر (حسب النوع المختار) */}
+        <View style={{ flexDirection: 'row', gap: Spacing.sm, padding: Spacing.sm, flexWrap: 'wrap' }}>
+          <View style={[styles.summaryStatCard, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
+            <Text style={[styles.summaryStatLabel, { color: colors.textMuted }]}>{isAr ? 'اليوم' : 'Day'}</Text>
+            <Text style={[styles.summaryStatValue, { color: colors.textPrimary }]}>{formatNumber(totalDay)}</Text>
+          </View>
+          <View style={[styles.summaryStatCard, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
+            <Text style={[styles.summaryStatLabel, { color: colors.textMuted }]}>
+              {period === 'week' ? (isAr ? 'الأسبوع' : 'Week') : period === 'month' ? (isAr ? 'الشهر' : 'Month') : (isAr ? 'الربع' : 'Quarter')}
             </Text>
+            <Text style={[styles.summaryStatValue, { color: colors.textPrimary }]}>{formatNumber(totalPeriod)}</Text>
+          </View>
+          <View style={[styles.summaryStatCard, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
+            <Text style={[styles.summaryStatLabel, { color: colors.textMuted }]}>{isAr ? 'الشهر' : 'Month'}</Text>
+            <Text style={[styles.summaryStatValue, { color: colors.textPrimary }]}>{formatNumber(totalMonth)}</Text>
+          </View>
+          {topPage && (
+            <View style={[styles.summaryStatCard, { backgroundColor: colors.primary + '15', borderColor: colors.border }]}>
+              <Text style={[styles.summaryStatLabel, { color: colors.textMuted }]}>🏆 {isAr ? 'الأكثر' : 'Top'}</Text>
+              <Text style={[styles.summaryStatValue, { color: colors.primary }]}>
+                {pageNames[topPage.page] || topPage.page} ({topPage[`${selectedPeriod}${typeKey}`]})
+              </Text>
+            </View>
           )}
         </View>
 
@@ -837,16 +932,16 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
           <>
             {/* رأس الجدول */}
             <View style={[styles.pageStatRow, { backgroundColor: colors.primary + '15', borderBottomWidth: 0, paddingVertical: 8 }]}>
-              <Text style={[styles.pageStatName, { color: colors.textPrimary, fontWeight: '800' }]}>
+              <Text style={[styles.pageStatName, { color: colors.textPrimary, fontWeight: '800', flex: 1 }]}>
                 {isAr ? 'الصفحة' : 'Page'}
               </Text>
-              <Text style={[styles.pageStatUnique, { fontWeight: '800', minWidth: 40, textAlign: 'center' }]}>
+              <Text style={[styles.pageStatUnique, { fontWeight: '800', width: '22%', textAlign: 'center' }]}>
                 {isAr ? 'اليوم' : 'Day'}
               </Text>
-              <Text style={[styles.pageStatUnique, { fontWeight: '800', minWidth: 40, textAlign: 'center' }]}>
+              <Text style={[styles.pageStatUnique, { fontWeight: '800', width: '22%', textAlign: 'center' }]}>
                 {period === 'week' ? (isAr ? 'الأسبوع' : 'Week') : period === 'month' ? (isAr ? 'الشهر' : 'Month') : (isAr ? 'الربع' : 'Quarter')}
               </Text>
-              <Text style={[styles.pageStatUnique, { fontWeight: '800', minWidth: 40, textAlign: 'center' }]}>
+              <Text style={[styles.pageStatUnique, { fontWeight: '800', width: '22%', textAlign: 'center' }]}>
                 {isAr ? 'الشهر' : 'Month'}
               </Text>
             </View>
@@ -854,6 +949,9 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
             {filteredPageStats.map((stat, index) => {
               const isEven = index % 2 === 0;
               const name = pageNames[stat.page] || stat.page;
+              const dayVal = stat[`day${typeKey}`] ?? 0;
+              const periodVal = stat[`${selectedPeriod}${typeKey}`] ?? 0;
+              const monthVal = stat[`month${typeKey}`] ?? 0;
               return (
                 <View
                   key={stat.page}
@@ -866,10 +964,10 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
                     },
                   ]}
                 >
-                  <Text style={[styles.pageStatName, { color: colors.textPrimary }]}>{name}</Text>
-                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', minWidth: 40 }]}>{stat.day}</Text>
-                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', minWidth: 40 }]}>{stat[selectedPeriod] || 0}</Text>
-                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', minWidth: 40 }]}>{stat.month}</Text>
+                  <Text style={[styles.pageStatName, { color: colors.textPrimary, flex: 1 }]}>{name}</Text>
+                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', width: '22%' }]}>{dayVal}</Text>
+                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', width: '22%' }]}>{periodVal}</Text>
+                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', width: '22%' }]}>{monthVal}</Text>
                 </View>
               );
             })}
@@ -887,12 +985,12 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
                 },
               ]}
             >
-              <Text style={[styles.pageStatName, { color: colors.textPrimary, fontWeight: '800' }]}>
+              <Text style={[styles.pageStatName, { color: colors.textPrimary, fontWeight: '800', flex: 1 }]}>
                 {isAr ? 'الإجمالي' : 'Total'}
               </Text>
-              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center' }]}>{totalDay}</Text>
-              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center' }]}>{totalPeriod}</Text>
-              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center' }]}>{totalMonth}</Text>
+              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center', width: '22%' }]}>{totalDay}</Text>
+              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center', width: '22%' }]}>{totalPeriod}</Text>
+              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center', width: '22%' }]}>{totalMonth}</Text>
             </View>
           </>
         )}
@@ -907,7 +1005,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
           <View style={styles.advancedStatsCol}>
             <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? 'أكثر صفحة زيارة' : 'Top Page'}</Text>
             <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>
-              {topPage ? `${pageNames[topPage.page] || topPage.page} (${topPage[selectedPeriod]})` : '-'}
+              {topPage ? `${pageNames[topPage.page] || topPage.page} (${topPage[`${selectedPeriod}${typeKey}`]})` : '-'}
             </Text>
           </View>
           <View style={styles.advancedStatsCol}>
@@ -3313,5 +3411,29 @@ const styles = StyleSheet.create({
   periodFilterText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+    // أنماط جديدة للبطاقات الموجزة في إحصائيات الصفحات
+  summaryStatCard: {
+    flex: 1,
+    minWidth: '22%',
+    padding: Spacing.xs,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  summaryStatLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+  },
+  summaryStatValue: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  visitTypeTab: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
 });
