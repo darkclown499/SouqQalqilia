@@ -433,13 +433,14 @@ export default function RootLayout() {
     return () => { cancelled = true; };
   }, []);
 
-  // ── Force update check ──
+  // ── Force update check (iOS + Android) ──
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
+    if (Platform.OS === 'web') return;
+    const configKey = Platform.OS === 'ios' ? 'min_ios_version' : 'min_android_version';
     getSupabaseClient()
       .from('app_config')
       .select('value')
-      .eq('key', 'min_android_version')
+      .eq('key', configKey)
       .maybeSingle()
       .then(({ data }) => {
         const minVersion = data?.value ?? '1.0.0';
