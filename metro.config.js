@@ -33,11 +33,4 @@ config.resolver = {
   },
 };
 
-// ── منع Babel من معالجة ملفات expo-router المترجمة مسبقاً ──
-config.transformer = {
-  ...config.transformer,
-  // تجاهل ملفات expo-router من التحويل
-  // ملاحظة: هذا قد لا يعمل مع جميع إصدارات Metro
-};
-
 module.exports = config;
