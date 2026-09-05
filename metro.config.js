@@ -1,4 +1,4 @@
-// cache-bust: 1
+// cache-bust: 2
 const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
