@@ -14,6 +14,7 @@ import { blockUser, isUserBlocked, unblockUser } from '@/services/blockService';
 import { fetchOrCreateConversation } from '@/services/chatService';
 import { getSupabaseClient } from '@/template';
 import { getCategoryName } from '@/services/categoriesService';
+import { trackPageView } from '@/services/analyticsService';
 import { PromotionModal } from '@/components/feature/PromotionModal';
 import { ImageZoomGallery } from '@/components/feature/ImageZoomGallery';
 import { useFavoriteIds } from '@/hooks/useFavorites';
@@ -66,6 +67,7 @@ export default function AdDetailScreen() {
 
   useEffect(() => {
     if (!id) return;
+    trackPageView('ad').catch(() => {});
     fetchAdById(id).then(({ data }) => {
       setAd(data);
       setLoading(false);
@@ -75,19 +77,22 @@ export default function AdDetailScreen() {
           .select('is_verified')
           .eq('id', data.user_id)
           .single()
-          .then(({ data: p }) => setSellerVerified(!!p?.is_verified));
-        isUserBlocked(data.user_id).then(setIsSellerBlocked);
+          .then(({ data: p }) => setSellerVerified(!!p?.is_verified))
+          .catch(() => {});
+        isUserBlocked(data.user_id).then(setIsSellerBlocked).catch(() => {});
       }
       if (data?.category_id) {
         fetchAds({ categoryId: data.category_id, limit: 7 }).then(({ data: related }) => {
           setRelatedAds((related ?? []).filter(a => a.id !== id).slice(0, 6));
-        });
+        }).catch(() => {});
       }
       if (data?.user_id) {
         fetchAds({ userId: data.user_id, limit: 7 }).then(({ data: sAds }) => {
           setSellerAds((sAds ?? []).filter(a => a.id !== id).slice(0, 5));
-        });
+        }).catch(() => {});
       }
+    }).catch(() => {
+      setLoading(false);
     });
   }, [id]);
 
@@ -154,7 +159,7 @@ export default function AdDetailScreen() {
   const handleShare = async () => {
     if (!ad) return;
     const deepLink = buildDeepLink(ad.id);
-    const shortLink = await shortenUrl(deepLink); // <--- استخدام الدالة هنا
+    const shortLink = await shortenUrl(deepLink).catch(() => deepLink);
     const priceText = ad.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${ad.price.toLocaleString()}`;
     try {
       await Share.share({
@@ -170,7 +175,7 @@ export default function AdDetailScreen() {
   const handleShareWhatsApp = async () => { // <--- أضفنا async هنا
     if (!ad) return;
     const deepLink = buildDeepLink(ad.id);
-    const shortLink = await shortenUrl(deepLink); // <--- استخدام الدالة هنا
+    const shortLink = await shortenUrl(deepLink).catch(() => deepLink);
     const priceText = ad.price === 0 ? (isAr ? 'مجاني' : 'Free') : `₪${ad.price.toLocaleString()}`;
     const desc = ad.description ? ad.description.slice(0, 100) + (ad.description.length > 100 ? '...' : '') : '';
     const msg = isAr

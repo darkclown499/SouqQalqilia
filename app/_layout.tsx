@@ -20,6 +20,7 @@ import { ForceUpdateScreen } from '@/components/feature/ForceUpdateScreen';
 import { APP_VERSION } from '@/constants/config';
 import { trackEvent } from '@/services/analyticsService';
 import { markMessagesRead } from '@/services/chatService';
+import { checkIsAdmin } from '@/services/adminService';
 
 // ✅ استيراد QueryClient و Provider
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -391,13 +392,23 @@ function AdminGuard() {
   const router = useRouter();
 
   useEffect(() => {
-    const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
+    const isAdminRoute =
+      pathname === '/admin' ||
+      pathname.startsWith('/admin/') ||
+      pathname === '/admin-simple';
     if (!isAdminRoute) return;
-    if (Platform.OS === 'web') return;
     if (authLoading) return;
-    if (!user || !user.is_admin) {
+    if (!user) {
       router.replace('/');
+      return;
     }
+    let cancelled = false;
+    checkIsAdmin().then((admin) => {
+      if (!cancelled && !admin) router.replace('/');
+    }).catch(() => {
+      if (!cancelled) router.replace('/');
+    });
+    return () => { cancelled = true; };
   }, [pathname, user, authLoading]);
 
   return null;
@@ -615,13 +626,13 @@ export default function RootLayout() {
                     <Stack.Screen name="index" options={{ headerShown: false }} />
                     <Stack.Screen name="login" options={{ headerShown: false }} />
                     <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                    <Stack.Screen name="messages" options={{ headerShown: false }} />
+                    <Stack.Screen name="messages/index" options={{ headerShown: false }} />
                     <Stack.Screen name="ad/[id]" options={{ headerShown: false }} />
                     <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
-                    <Stack.Screen name="search" options={{ headerShown: false }} />
+                    <Stack.Screen name="search" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
                     <Stack.Screen name="category/[slug]" options={{ headerShown: false }} />
                     <Stack.Screen name="admin/index" options={{ headerShown: false }} />
-                    <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth/callback" options={{ headerShown: false, animation: 'none' }} />
                     <Stack.Screen name="favorites" options={{ headerShown: false }} />
                     <Stack.Screen name="privacy" options={{ headerShown: false }} />
                     <Stack.Screen name="faq" options={{ headerShown: false }} />

@@ -31,7 +31,10 @@ export default function AuthCallbackScreen() {
     I18nManager.isRTL ||
     (typeof navigator !== 'undefined' && navigator.language?.startsWith('ar'));
 
-  const goToTabs = () => router.replace('/(tabs)');
+  // Route back through the root AuthGate (app/index.tsx) instead of '/(tabs)'
+  // directly — it decides between '/complete-profile' (no username yet) and
+  // '/(tabs)', so a fresh Google sign-up doesn't skip that onboarding step.
+  const goToTabs = () => router.replace('/');
 
   const showError = (msg?: string) => {
     const fallback = isAr
@@ -60,9 +63,13 @@ export default function AuthCallbackScreen() {
         if (params.code) {
           const { error } = await supabase.auth.exchangeCodeForSession(params.code as string);
           if (error) {
-            // Try checking if session already exists (Linking listener in login.tsx may have handled it)
+            // قد يكون login.tsx استبدل نفس الكود بنجاح للتو (سباق تنفيذ) —
+            // نتحقق من الجلسة مرة، ثم ننتظر قليلاً ونعيد المحاولة قبل الحكم بالفشل
             const { data: { session } } = await supabase.auth.getSession();
             if (session) { goToTabs(); return; }
+            await new Promise(r => setTimeout(r, 1000));
+            const { data: { session: retrySession } } = await supabase.auth.getSession();
+            if (retrySession) { goToTabs(); return; }
             showError(error.message);
             return;
           }
@@ -164,8 +171,11 @@ export default function AuthCallbackScreen() {
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) {
-            // Exchange failed — fall through to onAuthStateChange timeout
-            // Don't call resolve(false) yet — session might already be set
+            // قد يكون الكود انستبدل بنجاح من مكان آخر بنفس اللحظة — نتحقق
+            // من الجلسة مرة أخيرة قبل ما نعرض الخطأ، بدل انتظار الـ 6 ثواني كاملة
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) { resolve(true); return; }
+            resolve(false, error.message);
           }
           // onAuthStateChange fires SIGNED_IN if exchange succeeded
           return;

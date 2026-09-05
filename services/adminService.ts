@@ -10,6 +10,7 @@ export interface UserProfile {
   is_blocked: boolean;
   is_verified: boolean;
   avatar_url?: string | null;
+  created_at?: string;
 }
 
 /** Check if current user is admin */
@@ -35,6 +36,12 @@ export async function adminFetchAllAds(opts?: {
   signal?: AbortSignal;
   limit?: number;
   offset?: number;
+  includeDeleted?: boolean;
+  search?: string;
+  sortBy?: 'newest' | 'price_desc' | 'price_asc' | 'views_desc';
+  status?: 'active' | 'featured' | 'sold';
+  categoryId?: string;
+  noViewsOnly?: boolean;
 }): Promise<{ data: Ad[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const limit = opts?.limit ?? 50;   // قيمة افتراضية
@@ -48,10 +55,30 @@ export async function adminFetchAllAds(opts?: {
         categories(id, name, name_ar, icon, color),
         ad_images(id, url, position),
         user_profiles(username, email, phone)
-      `)
-      .neq('status', 'deleted')
-      .order('serial_number', { ascending: false })
-      .range(offset, offset + limit - 1);   // ← إضافة pagination
+      `);
+
+    // ✅ مُصلَّح: "عرض المحذوفات" كان زر ميت لأن هاد الفلتر كان يستثنيها دايماً بلا شرط
+    if (!opts?.includeDeleted) {
+      query = query.neq('status', 'deleted');
+    }
+
+    // ✅ جديد: بحث حقيقي بقاعدة البيانات (العنوان + الوصف) بدل الاقتصار على الصفحة المحمّلة فقط
+    if (opts?.search?.trim()) {
+      const term = opts.search.trim();
+      query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%`);
+    }
+
+    if (opts?.status) query = query.eq('status', opts.status);
+    if (opts?.categoryId) query = query.eq('category_id', opts.categoryId);
+    if (opts?.noViewsOnly) query = query.or('views.is.null,views.eq.0');
+
+    switch (opts?.sortBy) {
+      case 'price_desc': query = query.order('price', { ascending: false }); break;
+      case 'price_asc': query = query.order('price', { ascending: true }); break;
+      case 'views_desc': query = query.order('views', { ascending: false }); break;
+      default: query = query.order('serial_number', { ascending: false });
+    }
+    query = query.range(offset, offset + limit - 1);
 
     if (opts?.signal) {
       query = query.abortSignal(opts.signal);
@@ -66,6 +93,33 @@ export async function adminFetchAllAds(opts?: {
     }
     return { data: [], error: err?.message || 'Failed to fetch ads' };
   }
+}
+
+/** إحصائيات سريعة لتبويب الإعلانات (إجمالي / نشط / مميز / معزز) */
+export async function adminFetchAdsQuickStats(): Promise<{
+  total: number; active: number; featured: number; boosted: number;
+}> {
+  const supabase = getSupabaseClient();
+  const nowIso = new Date().toISOString();
+  const [totalRes, activeRes, featuredRes, boostedRes] = await Promise.all([
+    supabase.from('ads').select('id', { count: 'exact', head: true }).neq('status', 'deleted'),
+    supabase.from('ads').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+    supabase.from('ads').select('id', { count: 'exact', head: true }).eq('status', 'featured'),
+    supabase.from('ads').select('id', { count: 'exact', head: true }).gt('boosted_until', nowIso),
+  ]);
+  return {
+    total: totalRes.count ?? 0,
+    active: activeRes.count ?? 0,
+    featured: featuredRes.count ?? 0,
+    boosted: boostedRes.count ?? 0,
+  };
+}
+
+/** أرقام الإعلانات (ad_id) اللي عليها بلاغات معلّقة — لربط تبويب الإعلانات بتبويب البلاغات */
+export async function adminFetchReportedAdIds(): Promise<Set<string>> {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase.from('reports').select('ad_id').eq('status', 'pending');
+  return new Set((data ?? []).map((r: any) => r.ad_id).filter(Boolean));
 }
 
 /** Admin delete any ad */
@@ -121,17 +175,34 @@ export async function adminFetchAllUsers(opts?: {
   signal?: AbortSignal;
   limit?: number;
   offset?: number;
+  search?: string;
+  role?: 'admin' | 'verified' | 'blocked';
+  sortBy?: 'email' | 'newest' | 'oldest';
 }): Promise<{ data: UserProfile[]; error: string | null }> {
   const supabase = getSupabaseClient();
   const limit = opts?.limit ?? 50;
   const offset = opts?.offset ?? 0;
 
   try {
-    let query = supabase
-      .from('user_profiles')
-      .select('*')
-      .order('email', { ascending: true })
-      .range(offset, offset + limit - 1);   // ← pagination
+    let query = supabase.from('user_profiles').select('*');
+
+    // ✅ جديد: بحث حقيقي بقاعدة البيانات (اسم المستخدم + الإيميل + الهاتف) بدل الاقتصار على الصفحة المحمّلة
+    if (opts?.search?.trim()) {
+      const term = opts.search.trim();
+      query = query.or(`username.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%`);
+    }
+
+    if (opts?.role === 'admin') query = query.eq('is_admin', true);
+    if (opts?.role === 'verified') query = query.eq('is_verified', true);
+    if (opts?.role === 'blocked') query = query.eq('is_blocked', true);
+
+    switch (opts?.sortBy) {
+      case 'newest': query = query.order('created_at', { ascending: false }); break;
+      case 'oldest': query = query.order('created_at', { ascending: true }); break;
+      default: query = query.order('email', { ascending: true });
+    }
+
+    query = query.range(offset, offset + limit - 1);   // ← pagination
 
     if (opts?.signal) {
       query = query.abortSignal(opts.signal);
@@ -146,6 +217,59 @@ export async function adminFetchAllUsers(opts?: {
     }
     return { data: [], error: err?.message || 'Failed to fetch users' };
   }
+}
+
+/** إحصائيات سريعة لتبويب المستخدمين */
+export async function adminFetchUsersQuickStats(): Promise<{ total: number; verified: number; blocked: number; admins: number }> {
+  const supabase = getSupabaseClient();
+  const [totalRes, verifiedRes, blockedRes, adminsRes] = await Promise.all([
+    supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
+    supabase.from('user_profiles').select('id', { count: 'exact', head: true }).eq('is_verified', true),
+    supabase.from('user_profiles').select('id', { count: 'exact', head: true }).eq('is_blocked', true),
+    supabase.from('user_profiles').select('id', { count: 'exact', head: true }).eq('is_admin', true),
+  ]);
+  return {
+    total: totalRes.count ?? 0,
+    verified: verifiedRes.count ?? 0,
+    blocked: blockedRes.count ?? 0,
+    admins: adminsRes.count ?? 0,
+  };
+}
+
+/** آخر زيارة لكل مستخدم من مجموعة IDs محدّدة (من app_visits.user_id) */
+export async function adminFetchLastSeen(userIds: string[]): Promise<Record<string, string>> {
+  if (userIds.length === 0) return {};
+  const supabase = getSupabaseClient();
+  const { data } = await supabase
+    .from('app_visits')
+    .select('user_id, visited_at')
+    .in('user_id', userIds)
+    .order('visited_at', { ascending: false });
+  const result: Record<string, string> = {};
+  (data ?? []).forEach((r: any) => {
+    if (r.user_id && !result[r.user_id]) result[r.user_id] = r.visited_at;
+  });
+  return result;
+}
+
+/** عدد المفضلات لكل مستخدم من مجموعة IDs محدّدة */
+export async function adminFetchUserFavoriteCounts(userIds: string[]): Promise<Record<string, number>> {
+  if (userIds.length === 0) return {};
+  const supabase = getSupabaseClient();
+  const { data } = await supabase.from('favorites').select('user_id').in('user_id', userIds);
+  const counts: Record<string, number> = {};
+  (data ?? []).forEach((r: any) => { counts[r.user_id] = (counts[r.user_id] || 0) + 1; });
+  return counts;
+}
+
+/** عدد إعلانات كل مستخدم (لمجموعة IDs محدّدة — تُستخدم لعرض مستوى النشاط بجانب كل مستخدم) */
+export async function adminFetchUserAdCounts(userIds: string[]): Promise<Record<string, number>> {
+  if (userIds.length === 0) return {};
+  const supabase = getSupabaseClient();
+  const { data } = await supabase.from('ads').select('user_id').in('user_id', userIds).neq('status', 'deleted');
+  const counts: Record<string, number> = {};
+  (data ?? []).forEach((r: any) => { counts[r.user_id] = (counts[r.user_id] || 0) + 1; });
+  return counts;
 }
 
 /** Admin block/unblock user */

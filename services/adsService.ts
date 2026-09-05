@@ -126,6 +126,40 @@ export async function preloadAds(): Promise<void> {
 }
 
 // ─── دالة جلب الإعلانات الرئيسية ─────────────────────────────────────────────
+// Total matching count for a filter set — independent of pagination, so a
+// results badge built from this never grows as more pages load (unlike
+// reading `.length` off the loaded/paginated array).
+export async function fetchAdsCount(params?: {
+  categoryId?: string;
+  userId?: string;
+  search?: string;
+  maxPrice?: number;
+  minPrice?: number;
+  condition?: 'new' | 'used' | null;
+  location?: string;
+}): Promise<number> {
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from('ads')
+    .select('id', { count: 'exact', head: true })
+    .in('status', ['active', 'featured']);
+
+  if (params?.categoryId) query = query.eq('category_id', params.categoryId);
+  if (params?.userId)     query = query.eq('user_id', params.userId);
+  if (params?.search)     query = query.ilike('title', `%${params.search}%`);
+  if (params?.maxPrice !== undefined && params.maxPrice >= 0) query = query.lte('price', params.maxPrice);
+  if (params?.minPrice !== undefined && params.minPrice > 0)  query = query.gte('price', params.minPrice);
+  if (params?.condition)  query = query.eq('condition', params.condition);
+  if (params?.location) {
+    const prefix = params.location === 'قلقيلية المدينة' ? 'قلقيلية' : params.location;
+    query = query.ilike('location', `${prefix}%`);
+  }
+
+  const { count, error } = await query;
+  if (error) return 0;
+  return count ?? 0;
+}
+
 export async function fetchAds(params?: {
   categoryId?: string;
   userId?: string;

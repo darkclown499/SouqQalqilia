@@ -166,6 +166,7 @@ export default function RegisterStoreScreen() {
   const [selectedLocation, setSelectedLocation] = useState('');
   const [locationDetail, setLocationDetail] = useState('');
   const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [wazeUrl, setWazeUrl] = useState('');
 
   const [openingTime, setOpeningTime] = useState('08:00');
   const [closingTime, setClosingTime] = useState('22:00');
@@ -359,6 +360,7 @@ export default function RegisterStoreScreen() {
           description: '',
           description_ar: '',
           address: finalAddress,
+          waze_url: wazeUrl.trim() || null,
           whatsapp: fullWhatsApp,
           owner_whatsapp: fullWhatsApp,
           phone: fullWhatsApp,
@@ -389,7 +391,7 @@ export default function RegisterStoreScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user, nameAr, storeCategoryId, selectedLocation, finalAddress, whatsappPrefix, whatsappNumber, openingTime, closingTime, logoBase64, logoUri, bannerBase64, bannerUri, isAr, showAlert, isTimeValid, isValidTime]);
+  }, [user, nameAr, storeCategoryId, selectedLocation, finalAddress, wazeUrl, whatsappPrefix, whatsappNumber, openingTime, closingTime, logoBase64, logoUri, bannerBase64, bannerUri, isAr, showAlert, isTimeValid, isValidTime]);
 
   const handleSuccessWhatsApp = useCallback(() => {
     if (!submittedStore || !user) return;
@@ -578,6 +580,23 @@ export default function RegisterStoreScreen() {
               multiline
               numberOfLines={2}
             />
+
+            <Text style={[s.fieldLabel, { color: colors.textSecondary, textAlign: 'right', marginTop: 12 }]}>
+              {'رابط موقع المتجر على Waze (اختياري)'}
+            </Text>
+            <TextInput
+              style={[s.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, textAlign: 'left' }]}
+              placeholder={'https://waze.com/ul/...'}
+              placeholderTextColor={colors.textMuted}
+              value={wazeUrl}
+              onChangeText={setWazeUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+            <Text style={[s.timeHint, { color: colors.textMuted, textAlign: 'right', marginTop: 4 }]}>
+              {'افتح تطبيق Waze، حدد موقع متجرك، ثم اضغط "مشاركة" وانسخ الرابط والصقه هنا — بهيك زبائنك بيوصلوا مباشرة عبر Waze'}
+            </Text>
           </View>
 
           {/* ── Working Hours ── */}
