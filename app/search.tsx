@@ -11,8 +11,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { AdCard, EmptyState } from '@/components';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { useAds } from '@/hooks/useAds';
+import { fetchAdsCount } from '@/services/adsService';
 import { useCategories } from '@/hooks/useCategories';
 import { getCategoryName } from '@/services/categoriesService';
+import { trackPageView } from '@/services/analyticsService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useTheme } from '@/hooks/useTheme';
@@ -70,11 +72,22 @@ export default function SearchScreen() {
   const [filterVisible, setFilterVisible] = useState(false);
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
   const [areaPickerVisible, setAreaPickerVisible] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countRequestId = useRef(0);
+
+  const refreshTotalCount = useCallback((filters: {
+    search?: string; categoryId?: string; maxPrice?: number; condition?: Condition; location?: string;
+  }) => {
+    const requestId = ++countRequestId.current;
+    fetchAdsCount(filters).then(count => {
+      if (requestId === countRequestId.current) setTotalCount(count);
+    });
+  }, []);
 
   const hasActiveFilters = !!(selectedCategory || maxPrice || condition || selectedArea);
 
-  useEffect(() => { loadHistory().then(setHistory); }, []);
+  useEffect(() => { loadHistory().then(setHistory); trackPageView('search').catch(() => {}); }, []);
   useEffect(() => {
     setShowHistory(!hasSearched && query.length === 0 && history.length > 0);
   }, [query, hasSearched, history]);
@@ -87,14 +100,16 @@ export default function SearchScreen() {
       const updated = await saveToHistory(searchQ, history);
       setHistory(updated);
     }
-    load({
+    const filters = {
       search: searchQ || undefined,
       categoryId: selectedCategory ?? undefined,
       maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
       condition: condition ?? undefined,
       location: selectedArea ?? undefined,
-    });
-  }, [query, selectedCategory, maxPrice, condition, selectedArea, history, load]);
+    };
+    load(filters);
+    refreshTotalCount(filters);
+  }, [query, selectedCategory, maxPrice, condition, selectedArea, history, load, refreshTotalCount]);
 
   const handleQueryChange = useCallback((v: string) => {
     setQuery(v);
@@ -104,16 +119,18 @@ export default function SearchScreen() {
       debounceRef.current = setTimeout(() => {
         setHasSearched(true);
         setShowHistory(false);
-        load({
+        const filters = {
           search: v.trim(),
           categoryId: selectedCategory ?? undefined,
           maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
           condition: condition ?? undefined,
           location: selectedArea ?? undefined,
-        });
+        };
+        load(filters);
+        refreshTotalCount(filters);
       }, 300);
     }
-  }, [selectedCategory, maxPrice, condition, selectedArea, load]);
+  }, [selectedCategory, maxPrice, condition, selectedArea, load, refreshTotalCount]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
@@ -251,7 +268,7 @@ export default function SearchScreen() {
             <View style={[styles.resultsHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
               <MaterialIcons name={loading ? 'sync' : 'format-list-bulleted'} size={14} color={colors.textMuted} />
               <Text style={[styles.resultsText, { color: colors.textMuted }]}>
-                {loading ? t.searching : `${ads.length} ${ads.length !== 1 ? t.results : t.result}`}
+                {loading ? t.searching : `${totalCount} ${totalCount !== 1 ? t.results : t.result}`}
               </Text>
               {selectedArea ? (
                 <View style={[styles.activeFiltersBadge, { backgroundColor: colors.primaryGhost }]}>

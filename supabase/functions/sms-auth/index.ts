@@ -6,15 +6,34 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
 // خدمة إرسال الرسائل القصيرة (بدلاً من Twilio)
+// ✅ يفضّل ضبط هذه القيم كـ Secrets بلوحة Onspace (SMS_USER / SMS_PASS) بدل تركها بالكود مباشرة
 const SMS_API_URL = 'http://hotsms.ps/sendbulksms.php';
-const SMS_USER = 'SoqQalqilya';
-const SMS_PASS = '4878338';
-const SMS_SENDER = 'SoqQalqilya';
+const SMS_USER = Deno.env.get('SMS_USER') ?? 'SoqQalqilya';
+const SMS_PASS = Deno.env.get('SMS_PASS') ?? '4878338';
+const SMS_SENDER = Deno.env.get('SMS_SENDER') ?? 'SoqQalqilya';
 
 // عميل Supabase بصلاحيات كاملة
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
+
+// ── حماية من الإساءة: تحديد إعادة إرسال OTP ومحاولات التحقق ─────────────────
+const RESEND_COOLDOWN_MS = 60_000;    // ثانية واحدة لكل رقم قبل إعادة الإرسال
+const MAX_VERIFY_ATTEMPTS = 5;         // أقصى عدد محاولات خاطئة لكل رقم
+const VERIFY_WINDOW_MS = 10 * 60_000;  // خلال 10 دقائق
+const verifyAttempts = new Map<string, number[]>();
+
+function tooManyVerifyAttempts(phone: string): boolean {
+  const now = Date.now();
+  const attempts = (verifyAttempts.get(phone) ?? []).filter(t => now - t < VERIFY_WINDOW_MS);
+  if (attempts.length >= MAX_VERIFY_ATTEMPTS) return true;
+  attempts.push(now);
+  verifyAttempts.set(phone, attempts);
+  return false;
+}
+function clearVerifyAttempts(phone: string): void {
+  verifyAttempts.delete(phone);
+}
 
 // ─── دوال مساعدة ──────────────────────────────────────────────────────────────
 
@@ -176,6 +195,22 @@ serve(async (req) => {
         });
       }
 
+      // ── منع إعادة الإرسال المتكرر (استنزاف رصيد SMS) ──────────────────────
+      const { data: existingOtp } = await supabaseAdmin
+        .from('otp_verifications')
+        .select('created_at')
+        .eq('phone', phone)
+        .maybeSingle();
+      if (existingOtp?.created_at) {
+        const elapsed = Date.now() - new Date(existingOtp.created_at).getTime();
+        if (elapsed < RESEND_COOLDOWN_MS) {
+          const waitSec = Math.ceil((RESEND_COOLDOWN_MS - elapsed) / 1000);
+          return new Response(JSON.stringify({ error: `يرجى الانتظار ${waitSec} ثانية قبل طلب رمز جديد.` }), {
+            status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
       // توليد OTP
       const otp = generateOtp();
       // صلاحية 10 دقائق
@@ -230,6 +265,13 @@ serve(async (req) => {
         });
       }
 
+      // ── حماية من محاولة تخمين الرمز (Brute-force) ──────────────────────────
+      if (tooManyVerifyAttempts(phone)) {
+        return new Response(JSON.stringify({ error: 'محاولات كثيرة جداً. يرجى طلب رمز جديد لاحقاً.' }), {
+          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       // التحقق من OTP من قاعدة البيانات
       const { data: record, error: findError } = await supabaseAdmin
         .from('otp_verifications')
@@ -257,6 +299,8 @@ serve(async (req) => {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+
+      clearVerifyAttempts(phone);
 
       // حذف السجل بعد الاستخدام (مرة واحدة)
       await supabaseAdmin.from('otp_verifications').delete().eq('phone', phone);

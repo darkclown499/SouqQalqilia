@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Pressable, Animated, StatusBar, ScrollView,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -34,6 +35,7 @@ export default function CompleteProfileScreen() {
   }, []);
 
   const handleStart = () => {
+    AsyncStorage.setItem('onboarding_complete', '1').catch(() => {});
     router.replace('/(tabs)');
   };
 

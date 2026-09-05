@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { Spacing, FontSize, Radius } from '@/constants/theme';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
+import { trackPageView } from '@/services/analyticsService';
 
 export default function CategoriesScreen() {
   const insets = useSafeAreaInsets();
@@ -35,6 +36,10 @@ export default function CategoriesScreen() {
 
   // منع النقر المتكرر
   const isNavigating = useRef(false);
+
+  useEffect(() => {
+    trackPageView('categories').catch(() => {});
+  }, []);
 
   // ✅ تصفية التصنيفات بناءً على البحث
   const filteredCategories = useMemo(() => {
@@ -170,7 +175,7 @@ export default function CategoriesScreen() {
               paddingHorizontal: hPad,
               paddingVertical: Spacing.md,
               gap: Spacing.md,
-              paddingBottom: insets.bottom + 20,
+              paddingBottom: insets.bottom + 20 + 68 + 10,
             },
           ]}
           showsVerticalScrollIndicator={false}

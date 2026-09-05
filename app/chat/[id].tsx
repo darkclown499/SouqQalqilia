@@ -90,6 +90,7 @@ export default function ChatScreen() {
 
   // ========== 1️⃣ جميع الخطافات في الأعلى (بدون عودة شرطية) ==========
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
   const [text, setText] = useState('');
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -705,13 +706,18 @@ export default function ChatScreen() {
           text: isAr ? 'إبلاغ' : 'Report',
           style: 'destructive',
           onPress: async () => {
-            const supabase = getSupabaseClient();
-            await supabase.from('reports').upsert({
-              ad_id: conversation?.ad_id ?? '',
-              reporter_id: user.id,
-              reason: 'abusive_user',
-            }, { onConflict: 'ad_id,reporter_id', ignoreDuplicates: true });
-            showAlert(isAr ? 'تم الإبلاغ' : 'Reported', '');
+            try {
+              const supabase = getSupabaseClient();
+              const { error } = await supabase.from('reports').upsert({
+                ad_id: conversation?.ad_id ?? '',
+                reporter_id: user.id,
+                reason: 'abusive_user',
+              }, { onConflict: 'ad_id,reporter_id', ignoreDuplicates: true });
+              if (error) throw error;
+              showAlert(isAr ? 'تم الإبلاغ' : 'Reported', '');
+            } catch (error: any) {
+              showAlert(isAr ? 'خطأ' : 'Error', error?.message || (isAr ? 'فشل الإبلاغ' : 'Report failed'));
+            }
           },
         },
       ]
@@ -744,7 +750,6 @@ export default function ChatScreen() {
   }, [id, isAr, showAlert, router]);
 
   // ---- مشتقات ----
-  const isBuyer = conversation ? conversation.buyer_id === user?.id : null;
   const otherUser = isBuyer ? conversation?.seller : conversation?.buyer;
   const otherName = otherUser?.username || otherUser?.email?.split('@')[0] || 'User';
   const otherInitial = otherName.charAt(0).toUpperCase();

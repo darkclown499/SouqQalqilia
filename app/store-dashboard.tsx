@@ -6,7 +6,7 @@ import {
 import { shortenUrl } from '@/utils/shortenUrl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useAuth, useAlert, getSupabaseClient } from '@/template';
 import { useTheme } from '@/hooks/useTheme';
@@ -488,6 +488,11 @@ export default function StoreDashboardScreen() {
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [savingWhatsApp, setSavingWhatsApp] = useState(false);
 
+  // ── Waze link edit modal state ──
+  const [showWazeModal, setShowWazeModal] = useState(false);
+  const [wazeInput, setWazeInput] = useState('');
+  const [savingWaze, setSavingWaze] = useState(false);
+
   // ── Refs ──
   const isMountedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -712,7 +717,7 @@ export default function StoreDashboardScreen() {
     } else if (errorCount > 0) {
       showAlert(isAr ? 'معلومة' : 'Info', isAr ? 'جميع التصنيفات موجودة مسبقاً' : 'All categories already exist');
     }
-  }, [store?.id, addSubcategory, isAr, showAlert]);
+  }, [store?.id, addSubcategory, getAvailableSubcategories, isAr, showAlert]);
 
   // ── Get available subcategories based on store category ──
   const getAvailableSubcategories = useCallback(() => {
@@ -772,7 +777,7 @@ export default function StoreDashboardScreen() {
     setShareLoading(true);
     try {
       const name = isAr ? (store.name_ar || store.name) : store.name;
-      const longUrl = `https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/store/${store.id}`;
+      const longUrl = `https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/functions/v1/store-redirect?id=${store.id}`;
       const shortLink = await shortenUrl(longUrl);
       await Share.share({
         message: isAr
@@ -859,6 +864,45 @@ export default function StoreDashboardScreen() {
       setSavingWhatsApp(false);
     }
   }, [store?.id, whatsappPrefix, whatsappNumber, isAr, showAlert]);
+
+  // ── Open Waze link edit modal ──
+  const openWazeModal = useCallback(() => {
+    if (!store) {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'المتجر غير متاح' : 'Store not available');
+      return;
+    }
+    setWazeInput(store.waze_url || '');
+    setShowWazeModal(true);
+  }, [store, isAr, showAlert]);
+
+  // ── Save Waze link ──
+  const handleSaveWaze = useCallback(async () => {
+    if (!store?.id) {
+      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'لم يتم تحميل المتجر' : 'Store not loaded');
+      return;
+    }
+    const trimmed = wazeInput.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      showAlert(isAr ? 'رابط غير صحيح' : 'Invalid link', isAr ? 'يجب أن يبدأ الرابط بـ https://' : 'Link must start with https://');
+      return;
+    }
+    setSavingWaze(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error: updateError } = await supabase
+        .from('stores')
+        .update({ waze_url: trimmed || null })
+        .eq('id', store.id);
+      if (updateError) throw updateError;
+      setStore((prev: any) => ({ ...prev, waze_url: trimmed || null }));
+      setShowWazeModal(false);
+      showAlert(isAr ? 'تم' : 'Done', isAr ? 'تم تحديث رابط Waze' : 'Waze link updated');
+    } catch (e: any) {
+      showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'تعذر تحديث الرابط' : 'Could not update link'));
+    } finally {
+      setSavingWaze(false);
+    }
+  }, [store?.id, wazeInput, isAr, showAlert]);
 
   // ── Memoized values ──
   const storeName = useMemo(() => isAr ? (store?.name_ar || store?.name) : store?.name, [store, isAr]);
@@ -1133,6 +1177,17 @@ export default function StoreDashboardScreen() {
                 <MaterialIcons name="edit" size={18} color={colors.primary} />
               </Pressable>
             </View>
+            <View style={[s.infoRow, { flexDirection: rtl, justifyContent: 'space-between' }]}>
+              <View style={{ flexDirection: rtl, alignItems: 'center', gap: 10, flex: 1 }}>
+                <MaterialCommunityIcons name="waze" size={16} color="#33CCFF" />
+                <Text style={[s.infoText, { color: colors.textPrimary, textAlign }]} numberOfLines={1}>
+                  {store.waze_url ? (isAr ? 'رابط Waze مضاف ✓' : 'Waze link added ✓') : (isAr ? 'لم يُضَف رابط Waze' : 'No Waze link added')}
+                </Text>
+              </View>
+              <Pressable onPress={openWazeModal} hitSlop={8} style={{ padding: 6 }}>
+                <MaterialIcons name="edit" size={18} color={colors.primary} />
+              </Pressable>
+            </View>
           </View>
 
           {/* ── Share My Store button ── */}
@@ -1378,6 +1433,66 @@ export default function StoreDashboardScreen() {
                 {savingWhatsApp ? <ActivityIndicator color="#fff" size="small" /> : <MaterialIcons name="check" size={20} color="#fff" />}
                 <Text style={pm.saveBtnText}>
                   {savingWhatsApp ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'حفظ الرقم' : 'Save Number')}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Waze Link Edit Modal ── */}
+      <Modal visible={showWazeModal} transparent animationType="slide" onRequestClose={() => setShowWazeModal(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={pm.overlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowWazeModal(false)} />
+            <View style={[pm.sheet, { backgroundColor: colors.surface, paddingBottom: 40 }]}>
+              <View style={[pm.handle, { backgroundColor: colors.border }]} />
+              <View style={[pm.titleRow, { flexDirection: rtl, borderBottomColor: colors.borderLight }]}>
+                <MaterialCommunityIcons name="waze" size={22} color="#33CCFF" />
+                <Text style={[pm.titleText, { color: colors.textPrimary, flex: 1, textAlign: textAlign }]}>
+                  {isAr ? 'تعديل رابط Waze' : 'Edit Waze Link'}
+                </Text>
+                <Pressable onPress={() => setShowWazeModal(false)} hitSlop={10}>
+                  <MaterialIcons name="close" size={22} color={colors.textMuted} />
+                </Pressable>
+              </View>
+
+              <View style={[pm.content, { gap: 16 }]}>
+                <View>
+                  <Text style={[pm.fieldLabel, { color: colors.textSecondary, textAlign: textAlign }]}>
+                    {isAr ? 'رابط موقع متجرك على Waze' : 'Your store location link on Waze'}
+                  </Text>
+                  <TextInput
+                    style={[pm.input, {
+                      borderColor: colors.border,
+                      backgroundColor: colors.background,
+                      color: colors.textPrimary,
+                      textAlign: 'left',
+                    }]}
+                    placeholder="https://waze.com/ul/..."
+                    placeholderTextColor={colors.textMuted}
+                    value={wazeInput}
+                    onChangeText={setWazeInput}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                  />
+                  <Text style={{ fontSize: FontSize.xs, color: colors.textMuted, marginTop: 4, textAlign }}>
+                    {isAr
+                      ? '📌 افتح تطبيق Waze، حدد موقع متجرك، اضغط "مشاركة"، وانسخ الرابط والصقه هنا'
+                      : '📌 Open Waze, pin your store location, tap "Share", copy the link and paste it here'}
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable
+                style={[pm.saveBtn, { backgroundColor: colors.primary, opacity: savingWaze ? 0.7 : 1, marginTop: 8 }]}
+                onPress={handleSaveWaze}
+                disabled={savingWaze}
+              >
+                {savingWaze ? <ActivityIndicator color="#fff" size="small" /> : <MaterialIcons name="check" size={20} color="#fff" />}
+                <Text style={pm.saveBtnText}>
+                  {savingWaze ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'حفظ الرابط' : 'Save Link')}
                 </Text>
               </Pressable>
             </View>

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
   ActivityIndicator, Modal, Linking, Platform, Share, TextInput,
-  Alert,
+  Alert, KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,14 +12,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useAuth, getSupabaseClient } from '@/template';
-import Animated, { useSharedValue, useAnimatedStyle, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSequence, withSpring, withTiming, withRepeat, Easing } from 'react-native-reanimated';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { fetchStoreProducts, fetchStoreRating, StoreProduct } from '@/services/productsService';
 import { checkStoreIsOpen } from '@/services/storesService';
 import { Spacing, FontSize, Radius } from '@/constants/theme';
+import { SkeletonBox } from '@/components/feature/SkeletonCard';
+import { trackPageView } from '@/services/analyticsService';
 import { Dimensions } from 'react-native';
 import { shortenUrl } from '@/utils/shortenUrl';
 import { getLocalCategories, LocalCategory } from '@/services/localCategoriesService';
+import { setStoreCart, clearStoreCart, getStoreCart } from '@/stores/cartStore';
+import { saveOrder } from '@/stores/orderHistoryStore';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -34,6 +38,64 @@ const ORDER_LABELS: Record<OrderType, { ar: string; en: string; icon: string }> 
   delivery: { ar: 'توصيل للمنزل', en: 'Delivery', icon: 'delivery-dining' },
   pickup:   { ar: 'استلام من المتجر', en: 'Pickup', icon: 'shopping-bag' },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WAZE BADGE (local component) - شارة Waze الرسمية + نبضة موقع حي (radar ping)
+// ─────────────────────────────────────────────────────────────────────────────
+const WAZE_BLUE = '#05C8F8';
+
+function PingRing({ delay }: { delay: number }) {
+  const t = useSharedValue(0);
+
+  useEffect(() => {
+    t.value = withRepeat(
+      withSequence(
+        withTiming(0, { duration: delay }),
+        withTiming(1, { duration: 1800, easing: Easing.out(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+  }, []);
+
+  const ringStyle = useAnimatedStyle(() => ({
+    opacity: 0.5 * (1 - t.value),
+    transform: [{ scale: 1 + t.value * 0.7 }],
+  }));
+
+  return <Animated.View style={[wz.ring, ringStyle]} />;
+}
+
+function WazeBadge({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [wz.wrap, { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.94 : 1 }] }]}
+      onPress={onPress}
+    >
+      <PingRing delay={0} />
+      <PingRing delay={900} />
+      <View style={wz.badge}>
+        <MaterialCommunityIcons name="waze" size={19} color="#fff" />
+      </View>
+    </Pressable>
+  );
+}
+
+const wz = StyleSheet.create({
+  wrap: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  ring: {
+    position: 'absolute',
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: WAZE_BLUE,
+  },
+  badge: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: WAZE_BLUE,
+    borderWidth: 2, borderColor: '#fff',
+    shadowColor: WAZE_BLUE, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.4, shadowRadius: 6, elevation: 4,
+  },
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRODUCT CARD (local component) - مع زر + تحت السعر
@@ -51,34 +113,17 @@ function ProductCard({
 
   return (
     <View style={[pc.card, { opacity: unavailable ? 0.6 : 1 }]}>
-      <View style={pc.imgWrap}>
-        {product.image_url ? (
-          <Image
-            source={{ uri: product.image_url }}
-            style={pc.img}
-            contentFit="cover"
-            transition={200}
-          />
-        ) : (
-          <View style={[pc.imgFallback, { backgroundColor: '#F3F4F6' }]}>
-            <MaterialIcons name="fastfood" size={32} color="#D1D5DB" />
-          </View>
-        )}
-        {/* ✅ تم إزالة زر + من هنا - أصبح في الأسفل */}
-      </View>
-
-      <View style={[pc.body, { alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+      <View style={[pc.body, { alignItems: isRTL ? 'flex-end' : 'flex-start', justifyContent: 'center' }]}>
         <Text style={[pc.name, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
           {name}
         </Text>
         {desc ? (
-          <Text style={[pc.desc, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
-            {desc}
+          <Text style={[pc.desc, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2} ellipsizeMode="tail">
+            {desc.trim()}
           </Text>
         ) : null}
-        
+
         <View style={[pc.priceRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          <Text style={pc.priceLabel}>{isAr ? 'السعر:' : 'Price:'}</Text>
           <Text style={[pc.price, { color: colors.primary }]}>
             {product.price > 0
               ? `${product.price} ₪`
@@ -86,40 +131,53 @@ function ProductCard({
           </Text>
         </View>
 
-        {/* ✅ زر + في الأسفل على اليسار تحت السعر */}
+        {unavailable ? (
+          <View style={[pc.unavailableBadge, { backgroundColor: colors.borderLight, marginTop: 6 }]}>
+            <Text style={[pc.unavailableText, { color: colors.textMuted }]}>
+              {isAr ? 'غير متوفر' : 'Unavailable'}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View>
+        <View style={pc.imgWrap}>
+          {product.image_url ? (
+            <Image
+              source={{ uri: product.image_url }}
+              style={pc.img}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={[pc.imgFallback, { backgroundColor: '#F3F4F6' }]}>
+              <MaterialIcons name="fastfood" size={26} color="#D1D5DB" />
+            </View>
+          )}
+        </View>
+
         {!unavailable ? (
-          <View style={[pc.actionRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          qty > 0 ? (
+            <View style={[pc.stepper, { backgroundColor: colors.primary }]}>
+              <Pressable style={pc.stepperBtn} onPress={onRemove} hitSlop={8}>
+                <MaterialIcons name="remove" size={18} color="#fff" />
+              </Pressable>
+              <Text style={pc.stepperQty}>{qty}</Text>
+              <Pressable style={pc.stepperBtn} onPress={onAdd} hitSlop={8}>
+                <MaterialIcons name="add" size={18} color="#fff" />
+              </Pressable>
+            </View>
+          ) : (
             <Pressable
               style={[pc.addBtn, { backgroundColor: colors.primary }]}
               onPress={onAdd}
               hitSlop={8}
             >
-              <MaterialIcons name="add" size={18} color="#fff" />
+              <MaterialIcons name="add" size={16} color="#fff" />
+              <Text style={pc.addBtnText}>{isAr ? 'أضف' : 'Add'}</Text>
             </Pressable>
-            {qty > 0 && (
-              <View style={pc.qtyBadge}>
-                <Text style={pc.qtyBadgeText}>{qty}</Text>
-              </View>
-            )}
-            {qty > 0 && (
-              <Pressable
-                style={[pc.removeBtn, { borderColor: colors.border }]}
-                onPress={onRemove}
-                hitSlop={8}
-              >
-                <MaterialIcons name="remove" size={14} color={colors.textMuted} />
-              </Pressable>
-            )}
-          </View>
-        ) : (
-          <View style={[pc.actionRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <View style={[pc.unavailableBadge, { backgroundColor: colors.borderLight }]}>
-              <Text style={[pc.unavailableText, { color: colors.textMuted }]}>
-                {isAr ? 'غير متوفر' : 'Unavailable'}
-              </Text>
-            </View>
-          </View>
-        )}
+          )
+        ) : null}
       </View>
     </View>
   );
@@ -127,112 +185,96 @@ function ProductCard({
 
 const pc = StyleSheet.create({
   card: {
-    width: '48%',
-    borderRadius: 16,
+    width: '100%',
+    flexDirection: 'row',
     backgroundColor: '#fff',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    overflow: 'hidden',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F1F3',
+    paddingVertical: 14,
+    gap: 12,
   },
   imgWrap: {
-    width: '100%',
-    height: 120,
-    position: 'relative',
-    backgroundColor: '#F9FAFB',
+    width: 104,
+    height: 104,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    overflow: 'hidden',
   },
   img: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
   },
   imgFallback: {
     width: '100%',
     height: '100%',
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   body: {
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 12,
-    gap: 4,
+    flex: 1,
+    paddingVertical: 2,
+    gap: 6,
   },
   name: {
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '800',
-    lineHeight: 18,
+    lineHeight: 22,
     color: '#111827',
   },
   desc: {
-    fontSize: 10,
-    lineHeight: 14,
-    minHeight: 28,
-    color: '#6B7280',
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#9CA3AF',
   },
   priceRow: {
     alignItems: 'center',
     gap: 4,
-    marginTop: 2,
-  },
-  priceLabel: {
-    fontSize: 11,
-    color: '#9CA3AF',
+    marginTop: 6,
   },
   price: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#BE123C',
-  },
-  // ✅ أنماط زر + الجديد في الأسفل
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
   },
   addBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    marginTop: 8,
+    width: 104,
+    height: 36,
+    borderRadius: 12,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    gap: 5,
   },
-  removeBtn: {
+  addBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  stepper: {
+    marginTop: 8,
+    width: 104,
+    height: 36,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+  },
+  stepperBtn: {
     width: 26,
     height: 26,
-    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    backgroundColor: '#fff',
   },
-  qtyBadge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 5,
-  },
-  qtyBadgeText: {
+  stepperQty: {
+    fontSize: 14,
+    fontWeight: '800',
+    minWidth: 18,
+    textAlign: 'center',
     color: '#fff',
-    fontSize: 11,
-    fontWeight: 'bold',
   },
   unavailableBadge: {
     paddingHorizontal: 10,
@@ -241,7 +283,7 @@ const pc = StyleSheet.create({
   },
   unavailableText: {
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '800',
   },
 });
 
@@ -250,7 +292,7 @@ const ps = StyleSheet.create({
   wrap: { marginBottom: 20 },
   header: { paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
   title: { fontSize: 18, fontWeight: '900', color: '#111827' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
+  grid: { flexDirection: 'column', paddingHorizontal: 16 },
   moreBtn: { 
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     marginHorizontal: 16, marginTop: 4, paddingVertical: 10,
@@ -282,11 +324,11 @@ function ProductSection({
         </Text>
       </View>
 
-      <View style={[ps.grid, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      <View style={ps.grid}>
         {visibleProducts.map(item => (
-          <ProductCard 
-            key={item.id} 
-            product={item} 
+          <ProductCard
+            key={item.id}
+            product={item}
             qty={cart[item.id]?.qty ?? 0}
             onAdd={() => onAdd(item)}
             onRemove={() => onRemove(item)}
@@ -296,7 +338,6 @@ function ProductSection({
             disabled={!isOpen}
           />
         ))}
-        {visibleProducts.length % 2 !== 0 ? <View style={{ width: '48%' }} /> : null}
       </View>
 
       {hasMore && (
@@ -345,9 +386,18 @@ export default function StoreDetailScreen() {
   const [customCategories, setCustomCategories] = useState<LocalCategory[]>([]);
   const [activeCatId, setActiveCatId] = useState<string | null>(null);
   const catScrollRef = useRef<any>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // ── Cart state ──────────────────────────────────────────────────────────────
-  const [cart, setCart] = useState<Record<string, CartItem>>({});
+  // Hydrate from the global cart store so navigating here from "سلتي" (or
+  // returning to this store later) resumes the existing cart instead of
+  // wiping it via the write-through effect below.
+  const [cart, setCart] = useState<Record<string, CartItem>>(() => {
+    if (!id) return {};
+    const existing = getStoreCart(id);
+    return existing ? existing.items as Record<string, CartItem> : {};
+  });
   const [cartVisible, setCartVisible] = useState(false);
   const [orderNote, setOrderNote] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -358,6 +408,17 @@ export default function StoreDetailScreen() {
   const cartItems = useMemo(() => Object.values(cart), [cart]);
   const cartTotal = useMemo(() => cartItems.reduce((s, i) => s + i.product.price * i.qty, 0), [cartItems]);
   const cartCount = useMemo(() => cartItems.reduce((s, i) => s + i.qty, 0), [cartItems]);
+
+  // Write-through: mirror this store's cart into the global cart store so the
+  // "سلتي" tab can show a live cross-store summary.
+  useEffect(() => {
+    if (!id || !store) return;
+    setStoreCart(
+      id,
+      { storeName: isAr ? (store.name_ar || store.name) : store.name, storeLogo: store.logo_url },
+      cart
+    );
+  }, [id, store, cart, isAr]);
 
   // ── Group products by category ──────────────────────────────────────────────
   const allGroupedProducts = useMemo(() => {
@@ -395,9 +456,21 @@ export default function StoreDetailScreen() {
   }, [products, customCategories, isAr]);
 
   const groupedProducts = useMemo(() => {
-    if (!activeCatId) return allGroupedProducts;
-    return allGroupedProducts.filter(g => g.id === activeCatId);
-  }, [allGroupedProducts, activeCatId]);
+    let base = !activeCatId ? allGroupedProducts : allGroupedProducts.filter(g => g.id === activeCatId);
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      base = base
+        .map(g => ({
+          ...g,
+          items: g.items.filter(p => {
+            const name = isAr ? (p.name_ar || p.name) : p.name;
+            return (name || '').toLowerCase().includes(q);
+          }),
+        }))
+        .filter(g => g.items.length > 0);
+    }
+    return base;
+  }, [allGroupedProducts, activeCatId, searchQuery, isAr]);
 
   const cfStyles = useMemo(() => getCfStyles(colors), [colors]);
 
@@ -410,6 +483,7 @@ export default function StoreDetailScreen() {
     }
 
     let isCancelled = false;
+    trackPageView('store').catch(() => {});
 
     (async () => {
       try {
@@ -503,7 +577,7 @@ export default function StoreDetailScreen() {
     setShareLoading(true);
     try {
       const storeName = isAr ? (store.name_ar || store.name) : store.name;
-      const longUrl = `https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/store/${store.id}`;
+      const longUrl = `https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/functions/v1/store-redirect?id=${store.id}`;
       const shortLink = await shortenUrl(longUrl);
       await Share.share({
         message: isAr
@@ -574,11 +648,26 @@ export default function StoreDetailScreen() {
     const message = encodeURIComponent(lines.join('\n'));
     const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
     Linking.openURL(`https://wa.me/${phone}?text=${message}`).catch(() => {});
+
+    saveOrder({
+      storeId: store.id,
+      storeName,
+      storeLogo: store.logo_url,
+      items: cartItems.map(({ product, qty }) => ({
+        name: isAr ? (product.name_ar || product.name) : product.name,
+        qty,
+        price: product.price,
+      })),
+      total: cartTotal,
+      orderType,
+    });
+    clearStoreCart(store.id);
+
     setCartVisible(false);
     setCart({});
     setCheckoutStep('cart');
     setOrderNote('');
-    setCustomerPhone(''); 
+    setCustomerPhone('');
   }, [store, user, orderType, cartItems, cartTotal, isAr, isOpen, orderNote, customerPhone]);
 
   const cartBtnAnimStyle = useAnimatedStyle(() => ({
@@ -621,9 +710,21 @@ export default function StoreDetailScreen() {
   }
 
   if (loading) {
+    const baseColor = colors.surfaceTint;
+    const shimmerColor = colors.border;
     return (
-      <View style={[s.loadingScreen, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.primary} size="large" />
+      <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+        <SkeletonBox height={140} borderRadius={0} baseColor={baseColor} shimmerColor={shimmerColor} />
+        <View style={{ paddingHorizontal: Spacing.lg, marginTop: -32 }}>
+          <SkeletonBox width={72} height={72} borderRadius={36} baseColor={colors.surface} shimmerColor={shimmerColor} style={{ borderWidth: 3, borderColor: colors.background }} />
+          <SkeletonBox width="55%" height={18} borderRadius={6} baseColor={baseColor} shimmerColor={shimmerColor} style={{ marginTop: 14 }} />
+          <SkeletonBox width="35%" height={13} borderRadius={6} baseColor={baseColor} shimmerColor={shimmerColor} style={{ marginTop: 8 }} />
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+            {[1, 2, 3].map((i) => (
+              <SkeletonBox key={i} width={90} height={80} borderRadius={12} baseColor={baseColor} shimmerColor={shimmerColor} />
+            ))}
+          </View>
+        </View>
       </View>
     );
   }
@@ -656,38 +757,37 @@ export default function StoreDetailScreen() {
           {/* Banner */}
           <View style={[s.bannerWrap, { height: 240, backgroundColor: colors.surface }]}>
             {store.banner_url ? (
-              <Image source={{ uri: store.banner_url }} style={StyleSheet.absoluteFill} contentFit="contain" />
+              <Image source={{ uri: store.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
             ) : (
               <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surface }]} />
             )}
             <LinearGradient colors={['rgba(0,0,0,0.4)', 'transparent', 'transparent']} style={StyleSheet.absoluteFill} />
             
             {/* Header buttons */}
-            <View style={[s.headerOverlay, { paddingTop: insets.top + 10, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View style={[s.headerOverlay, { paddingTop: Math.max(insets.top, 24) + 10, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
               <Pressable style={s.headerBtn} onPress={() => router.back()}>
                 <MaterialIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={24} color="#111827" />
               </Pressable>
               
               <View style={[s.headerActionsRight, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <Pressable 
-                  style={s.headerBtn} 
+                <Pressable
+                  style={s.headerBtn}
                   onPress={() => {
-                    const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
-                    const msg = isAr 
-                      ? `مرحباً، أنا ${userName} من تطبيق سوق قلقيلية، أود الاستفسار عن...`
-                      : `Hello, I'm ${userName} from Souq Qalqilya app, I would like to ask about...`;
-                    const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
-                    if (phone) {
-                      Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-                    } else {
-                      Alert.alert(isAr ? 'رقم غير متوفر' : 'Number not available', isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store');
-                    }
+                    Alert.alert(
+                      storeName,
+                      [
+                        storeDesc,
+                        store.address ? `📍 ${store.address}` : '',
+                        hoursLabel ? `🕐 ${hoursLabel}` : '',
+                        store.phone ? `☎ ${store.phone}` : '',
+                      ].filter(Boolean).join('\n\n')
+                    );
                   }}
                 >
-                  <MaterialIcons name="chat" size={18} color="#25D366" />
+                  <MaterialIcons name="info-outline" size={20} color="#111827" />
                 </Pressable>
-                <Pressable style={s.headerBtn} onPress={() => id && toggleFav(id)}>
-                  <MaterialIcons name={isFavorited ? 'favorite' : 'favorite-border'} size={20} color={isFavorited ? colors.primary : '#111827'} />
+                <Pressable style={s.headerBtn} onPress={() => setSearchOpen(v => !v)}>
+                  <MaterialIcons name="search" size={20} color="#111827" />
                 </Pressable>
                 <Pressable style={s.headerBtn} onPress={handleShare}>
                   <MaterialIcons name="share" size={18} color="#111827" />
@@ -696,83 +796,124 @@ export default function StoreDetailScreen() {
             </View>
           </View>
 
-          {/* Overlap: logo + status badge (left) */}
-          <View style={s.overlapWrapper}>
-            {/* Status badge (left) - only one instance */}
-            <View style={[s.sideBadge, { left: 16, top: 25 }]}>
-              <View style={[s.modernPill, { borderColor: isOpen ? '#16A34A' : colors.textMuted }]}>
-                <View style={[s.statusDot, { backgroundColor: isOpen ? '#16A34A' : colors.textMuted }]} />
-                <Text style={[s.modernPillText, { color: isOpen ? '#16A34A' : colors.textMuted, marginLeft: 4 }]}>
-                  {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
-                </Text>
-              </View>
-            </View>
-
-            {/* Logo */}
+          {/* Logo - centered, overlapping banner + card boundary (HAAT style) */}
+          <View style={s.logoWrapOuter}>
             <View style={s.logoWrap}>
               {store.logo_url ? (
                 <Image source={{ uri: store.logo_url }} style={s.mainLogo} contentFit="cover" />
               ) : (
-                <MaterialIcons name="storefront" size={40} color={colors.primary} />
+                <MaterialIcons name="storefront" size={34} color={colors.primary} />
               )}
             </View>
           </View>
 
-          {/* Store details (name, WhatsApp button, location, hours) */}
-          <View style={s.storeDetails}>
-            <Text style={s.storeNameTxt}>{storeName}</Text>
-            
-            {/* WhatsApp button - improved */}
-            <Pressable
-              style={({ pressed }) => [
-                s.whatsappBtn,
-                {
-                  opacity: pressed ? 0.85 : 1,
-                  transform: [{ scale: pressed ? 0.97 : 1 }],
-                }
-              ]}
-              onPress={() => {
-                const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
-                const storeName = isAr ? (store.name_ar || store.name) : store.name;
-                const msg = isAr 
-                  ? `مرحباً! 👋\nأنا ${userName} من تطبيق سوق قلقيلية.\nأود الاستفسار عن منتجاتكم في متجر "${storeName}".\n\nهل يمكنكم مساعدتي؟`
-                  : `Hello! 👋\nI'm ${userName} from Souq Qalqilya app.\nI would like to inquire about your products at "${storeName}".\n\nCan you help me?`;
-                const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
-                if (phone) {
-                  Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-                } else {
-                  Alert.alert(
-                    isAr ? 'رقم غير متوفر' : 'Number not available',
-                    isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store'
-                  );
-                }
-              }}
-            >
-              <MaterialCommunityIcons name="whatsapp" size={22} color="#fff" style={s.whatsappIcon} />
-              <Text style={s.whatsappBtnText}>
-                {isAr ? 'تواصل واتساب' : 'WhatsApp'}
-              </Text>
-            </Pressable>
-
-            {/* Location */}
-            <View style={s.locationRow}>
-              <MaterialIcons name="place" size={16} color={colors.primary} />
-              <Text style={s.locationTxt}>{store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}</Text>
+          {/* Floating white card (HAAT-style) */}
+          <View style={[s.infoCard, { backgroundColor: colors.surface || '#fff' }]}>
+            <View style={[s.nameWithWaze, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              <Text style={s.storeNameTxt}>{storeName}</Text>
+              <WazeBadge
+                onPress={() => {
+                  if (store.waze_url) {
+                    Linking.openURL(store.waze_url);
+                  } else {
+                    Alert.alert(
+                      isAr ? 'رابط غير متوفر' : 'Link not available',
+                      isAr ? 'لم يضف هذا المتجر رابط Waze بعد' : 'This store has not added a Waze link yet'
+                    );
+                  }
+                }}
+              />
             </View>
 
-            {/* Hours - moved from top banner */}
-            {hoursLabel ? (
-              <View style={s.hoursRow}>
-                <MaterialIcons name="access-time" size={14} color={colors.textMuted} />
-                <Text style={s.hoursText}>{hoursLabel}</Text>
+            <View style={[s.locationRow, { justifyContent: 'center' }]}>
+              <MaterialIcons name="place" size={14} color={colors.textMuted} />
+              <Text style={[s.locationTxt, { flexShrink: 1 }]} numberOfLines={1}>
+                {store.address || (isAr ? 'قلقيلية - شارع نابلس' : 'Qalqilya')}
+              </Text>
+            </View>
+
+            <View style={[s.locationRow, { justifyContent: 'center' }]}>
+              <View style={[s.statusDot, { backgroundColor: isOpen ? '#16A34A' : '#EF4444' }]} />
+              <Text style={[s.modernPillText, { color: isOpen ? '#16A34A' : '#EF4444' }]}>
+                {isOpen ? (isAr ? 'مفتوح' : 'Open') : (isAr ? 'مغلق' : 'Closed')}
+              </Text>
+              {hoursLabel ? (
+                <>
+                  <Text style={s.dotSep}>•</Text>
+                  <Text style={s.hoursText}>{hoursLabel}</Text>
+                </>
+              ) : null}
+            </View>
+
+            {/* Stats row: rating / hours / whatsapp (HAAT-style 3-column stats) */}
+            <View style={s.statsRow}>
+              <View style={s.statCol}>
+                <MaterialIcons name="star" size={18} color="#F59E0B" />
+                <Text style={s.statValue}>{rating.count > 0 ? rating.avg.toFixed(1) : (isAr ? 'جديد' : 'New')}</Text>
+                <Text style={s.statLabel}>
+                  {rating.count > 0 ? `(${rating.count})` : (isAr ? 'لا تقييمات' : 'No ratings')}
+                </Text>
               </View>
+
+              <View style={s.statDivider} />
+
+              <View style={s.statCol}>
+                <MaterialIcons name="access-time" size={18} color={colors.textMuted} />
+                <Text style={s.statValue} numberOfLines={1}>{store.closing_time || '—'}</Text>
+                <Text style={s.statLabel}>{isAr ? 'يغلق' : 'Closes'}</Text>
+              </View>
+
+              <View style={s.statDivider} />
+
+              <Pressable
+                style={s.statCol}
+                onPress={() => {
+                  const userName = user?.username || user?.email?.split('@')[0] || (isAr ? 'عميل' : 'Customer');
+                  const msg = isAr
+                    ? `مرحباً! 👋\nأنا ${userName} من تطبيق سوق قلقيلية.\nأود الاستفسار عن منتجاتكم في متجر "${storeName}".\n\nهل يمكنكم مساعدتي؟`
+                    : `Hello! 👋\nI'm ${userName} from Souq Qalqilya app.\nI would like to inquire about your products at "${storeName}".\n\nCan you help me?`;
+                  const phone = (store.whatsapp || store.phone || '').replace(/\D/g, '');
+                  if (phone) {
+                    Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+                  } else {
+                    Alert.alert(
+                      isAr ? 'رقم غير متوفر' : 'Number not available',
+                      isAr ? 'لا يوجد رقم واتساب لهذا المتجر' : 'No WhatsApp number for this store'
+                    );
+                  }
+                }}
+              >
+                <MaterialCommunityIcons name="whatsapp" size={18} color="#25D366" />
+                <Text style={[s.statValue, { color: '#25D366' }]}>{isAr ? 'تواصل' : 'Chat'}</Text>
+                <Text style={s.statLabel}>{isAr ? 'واتساب' : 'WhatsApp'}</Text>
+              </Pressable>
+            </View>
+
+            {storeDesc ? (
+              <Text style={[s.storeDescTxt, { textAlign: 'center' }]} numberOfLines={2}>{storeDesc}</Text>
             ) : null}
           </View>
-
-          {storeDesc ? (
-            <Text style={s.storeDescTxt} numberOfLines={2}>{storeDesc}</Text>
-          ) : null}
         </View>
+
+        {/* ── Search Bar (toggled from header search icon) ── */}
+        {searchOpen ? (
+          <View style={s.searchBarWrap}>
+            <MaterialIcons name="search" size={18} color={colors.textMuted} />
+            <TextInput
+              autoFocus
+              style={[s.searchInput, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}
+              placeholder={isAr ? 'ابحث عن منتج بهذا المتجر...' : 'Search products in this store...'}
+              placeholderTextColor={colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 ? (
+              <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+                <MaterialIcons name="close" size={18} color={colors.textMuted} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* ── Category Filter Bar ── */}
         {allGroupedProducts.length > 1 ? (
@@ -781,31 +922,31 @@ export default function StoreDetailScreen() {
               horizontal
               showsHorizontalScrollIndicator={false}
               ref={catScrollRef}
-              contentContainerStyle={[cfStyles.scroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+              contentContainerStyle={cfStyles.scroll}
             >
               {/* All tab */}
               <Pressable
-                style={[cfStyles.chip, !activeCatId && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                style={[cfStyles.tab, isRTL && { transform: [{ scaleX: -1 }] }]}
                 onPress={() => setActiveCatId(null)}
               >
-                <Text style={[cfStyles.chipText, { color: !activeCatId ? '#fff' : colors.textSecondary }]}>
+                <Text style={[cfStyles.tabText, { color: !activeCatId ? colors.primary : colors.textSecondary, fontWeight: !activeCatId ? '800' : '600' }]}>
                   {isAr ? 'الكل' : 'All'}
                 </Text>
+                {!activeCatId ? <View style={[cfStyles.tabUnderline, { backgroundColor: colors.primary }]} /> : null}
               </Pressable>
               {allGroupedProducts.map(g => {
                 const isActive = activeCatId === g.id;
                 return (
                   <Pressable
                     key={g.id ?? g.label}
-                    style={[cfStyles.chip, isActive && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    style={[cfStyles.tab, isRTL && { transform: [{ scaleX: -1 }] }]}
                     onPress={() => setActiveCatId(g.id)}
                   >
-                    <Text style={[cfStyles.chipText, { color: isActive ? '#fff' : colors.textSecondary }]} numberOfLines={1}>
+                    <Text style={[cfStyles.tabText, { color: isActive ? colors.primary : colors.textSecondary, fontWeight: isActive ? '800' : '600' }]} numberOfLines={1}>
                       {g.label}
                     </Text>
-                    <View style={[cfStyles.countBadge, { backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.primaryGhost }]}>
-                      <Text style={[cfStyles.countText, { color: isActive ? '#fff' : colors.primary }]}>{g.items.length}</Text>
-                    </View>
+                    {isActive ? <View style={[cfStyles.tabUnderline, { backgroundColor: colors.primary }]} /> : null}
                   </Pressable>
                 );
               })}
@@ -827,7 +968,7 @@ export default function StoreDetailScreen() {
             </Text>
           </View>
         ) : (
-          <View style={[s.menuWrap, { marginTop: 24 }]}>
+          <View style={[s.menuWrap, { marginTop: allGroupedProducts.length > 1 ? 12 : 4 }]}>
             {/* Header - removed closed pill */}
             <View style={[s.menuHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
               <MaterialIcons name="restaurant-menu" size={20} color={colors.primary} />
@@ -855,7 +996,7 @@ export default function StoreDetailScreen() {
       </ScrollView>
 
       {cartCount > 0 && isOpen ? (
-        <Animated.View style={[s.cartFab, cartBtnAnimStyle]}>
+        <Animated.View style={[s.cartFab, { bottom: 16 + insets.bottom }, cartBtnAnimStyle]}>
           <Pressable
             style={[s.cartFabInner, { backgroundColor: colors.primary }]}
             onPress={() => { setCartVisible(true); setCheckoutStep('cart'); }}
@@ -873,9 +1014,12 @@ export default function StoreDetailScreen() {
 
       {/* ── Cart Modal ── */}
       <Modal visible={cartVisible} animationType="slide" transparent onRequestClose={() => setCartVisible(false)}>
-        <View style={m.overlay}>
+        <KeyboardAvoidingView
+          style={m.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setCartVisible(false)} />
-          <View style={[m.sheet, { backgroundColor: colors.surface }]}>
+          <View style={[m.sheet, { backgroundColor: colors.surface, paddingBottom: 16 + insets.bottom }]}>
             <View style={[m.handle, { backgroundColor: colors.border }]} />
 
             {checkoutStep === 'cart' ? (
@@ -890,45 +1034,47 @@ export default function StoreDetailScreen() {
                   </Pressable>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={m.cartItems}>
+                <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={m.cartItems}>
                   {cartItems.map(({ product, qty }) => {
                     const pName = isAr ? (product.name_ar || product.name) : product.name;
                     return (
-                      <View key={product.id} style={[m.cartItem, { flexDirection: isRTL ? 'row-reverse' : 'row', borderBottomColor: colors.borderLight }]}>
+                      <View key={product.id} style={[m.cartItem, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: colors.background }]}>
                         {product.image_url ? (
                           <Image source={{ uri: product.image_url }} style={m.cartThumb} contentFit="cover" transition={200} />
                         ) : (
                           <View style={[m.cartThumb, { backgroundColor: colors.surfaceTint, alignItems: 'center', justifyContent: 'center' }]}>
-                            <MaterialIcons name="fastfood" size={16} color={colors.textMuted} />
+                            <MaterialIcons name="fastfood" size={20} color={colors.textMuted} />
                           </View>
                         )}
-                        <Text style={[m.cartItemName, { color: colors.textPrimary, flex: 1, textAlign: isRTL ? 'right' : 'left', marginHorizontal: 8 }]}>
-                          {pName}
-                        </Text>
-                        
-                        <View style={[m.cartItemQty, { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' }]}>
-                          <Pressable 
-                            onPress={() => removeFromCart(product)} 
-                            hitSlop={8} 
-                            style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center' }}
+
+                        <View style={{ flex: 1, gap: 4, marginHorizontal: 4 }}>
+                          <Text style={[m.cartItemName, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={2}>
+                            {pName}
+                          </Text>
+                          <Text style={[m.cartItemPrice, { color: colors.primary, textAlign: isRTL ? 'right' : 'left' }]}>
+                            {(product.price * qty).toFixed(2)}₪
+                          </Text>
+                        </View>
+
+                        <View style={[m.stepper, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                          <Pressable
+                            onPress={() => removeFromCart(product)}
+                            hitSlop={8}
+                            style={m.stepperBtn}
                           >
-                            <MaterialIcons name="remove" size={16} color="#EF4444" />
+                            <MaterialIcons name="remove" size={16} color={colors.primary} />
                           </Pressable>
-                          
-                          <Text style={[m.qtyNum, { color: colors.textPrimary, fontSize: 15, fontWeight: '800', marginHorizontal: 8 }]}>{qty}</Text>
-                          
-                          <Pressable 
-                            onPress={() => addToCart(product)} 
-                            hitSlop={8} 
-                            style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#DCFCE7', borderWidth: 1, borderColor: '#22c55e', alignItems: 'center', justifyContent: 'center' }}
+
+                          <Text style={[m.qtyNum, { color: colors.textPrimary }]}>{qty}</Text>
+
+                          <Pressable
+                            onPress={() => addToCart(product)}
+                            hitSlop={8}
+                            style={m.stepperBtn}
                           >
-                            <MaterialIcons name="add" size={16} color="#22c55e" />
+                            <MaterialIcons name="add" size={16} color={colors.primary} />
                           </Pressable>
                         </View>
-                        
-                        <Text style={[m.cartItemPrice, { color: colors.primary, minWidth: 60, textAlign: isRTL ? 'left' : 'right' }]}>
-                          {(product.price * qty).toFixed(2)}₪
-                        </Text>
                       </View>
                     );
                   })}
@@ -1054,7 +1200,7 @@ export default function StoreDetailScreen() {
               </>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1070,37 +1216,27 @@ function getCfStyles(colors: any) {
     },
     scroll: {
       flexDirection: 'row',
-      gap: 8,
+      gap: 26,
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingTop: 16,
+      paddingBottom: 12,
     },
-    chip: {
-      flexDirection: 'row',
+    tab: {
       alignItems: 'center',
-      gap: 5,
-      borderRadius: 20,
-      borderWidth: 1.5,
-      borderColor: colors.border || '#E5E7EB',
-      paddingHorizontal: 14,
-      paddingVertical: 7,
       flexShrink: 0,
-      backgroundColor: colors.surface,
+      paddingBottom: 10,
     },
-    chipText: {
-      fontSize: 13,
-      fontWeight: '700',
+    tabText: {
+      fontSize: 14.5,
+      letterSpacing: 0.1,
     },
-    countBadge: {
-      minWidth: 20,
-      height: 20,
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 5,
-    },
-    countText: {
-      fontSize: 11,
-      fontWeight: '800',
+    tabUnderline: {
+      position: 'absolute',
+      bottom: 0,
+      height: 3,
+      borderRadius: 3,
+      width: '70%',
+      alignSelf: 'center',
     },
   });
 }
@@ -1110,56 +1246,69 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 6,
     backgroundColor: '#25D366',
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 30,
-    marginTop: 12,
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    marginBottom: 6,
     shadowColor: '#25D366',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   whatsappBtnText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  whatsappIcon: {
-    marginRight: 4,
+    letterSpacing: 0.2,
   },
   container: { flex: 1 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
 
-  heroContainer: { paddingBottom: 24 },
+  heroContainer: { paddingBottom: 20 },
   bannerWrap: { width: '100%', position: 'relative' },
   fabBtn: { position: 'absolute', zIndex: 10, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  
-  overlapWrapper: { width: '100%', alignItems: 'center', marginTop: -50, zIndex: 10 },
-  sideBadge: { position: 'absolute', top: 25, alignItems: 'center' },
-  modernPill: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff',
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2
-  },
+
   modernPillText: { fontSize: 12, fontWeight: '800' },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  
-  logoWrap: { width: 130, height: 130, borderRadius: 65, borderWidth: 4, borderColor: '#fff', backgroundColor: '#fff', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+
+  logoWrapOuter: { width: '100%', alignItems: 'center', marginTop: -40, zIndex: 15 },
+  logoWrap: { width: 80, height: 80, borderRadius: 20, borderWidth: 4, borderColor: '#fff', backgroundColor: '#fff', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5 },
   mainLogo: { width: '100%', height: '100%' },
 
-  storeDetails: { marginTop: 12, alignItems: 'center', gap: 6 },
-  storeNameTxt: { fontSize: 24, fontWeight: '900', color: '#111827', marginBottom: 4 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  locationTxt: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
-  hoursRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  infoCard: {
+    marginTop: -20, marginHorizontal: 16, borderRadius: 20,
+    paddingTop: 28, paddingBottom: 16, paddingHorizontal: 16,
+    gap: 4, zIndex: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
+  },
+  storeNameTxt: { fontSize: 19, fontWeight: '900', color: '#111827' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, flexWrap: 'wrap' },
+  locationTxt: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
+  dotSep: { fontSize: 12, color: '#D1D5DB', marginHorizontal: 2 },
   hoursText: { fontSize: 12, color: '#6B7280' },
+  nameWithWaze: { alignItems: 'center', justifyContent: 'center', gap: 14 },
+
+  statsRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6',
+  },
+  statCol: { flex: 1, alignItems: 'center', gap: 2 },
+  statDivider: { width: 1, height: 32, backgroundColor: '#F3F4F6' },
+  statValue: { fontSize: 13, fontWeight: '800', color: '#111827', marginTop: 2 },
+  statLabel: { fontSize: 10, color: '#9CA3AF', fontWeight: '600' },
+
+  searchBarWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 16, marginTop: 12, marginBottom: -4,
+    backgroundColor: '#F3F4F6', borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
+  searchInput: { flex: 1, fontSize: 14, padding: 0 },
 
   headerOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0,
@@ -1229,7 +1378,7 @@ const m = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.52)', justifyContent: 'flex-end' },
   sheet: {
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingTop: 12, paddingBottom: 48, maxHeight: '82%',
+    paddingTop: 12, paddingBottom: 48, maxHeight: '82%', overflow: 'hidden',
     shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15, shadowRadius: 20, elevation: 24,
   },
@@ -1240,20 +1389,28 @@ const m = StyleSheet.create({
     borderBottomWidth: 1, marginBottom: 4,
   },
   titleText: { fontSize: FontSize.lg, fontWeight: '700' },
-  cartItems: { paddingHorizontal: Spacing.lg, paddingBottom: 8 },
+  cartItems: { paddingHorizontal: Spacing.lg, paddingBottom: 8, gap: 10 },
   cartItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: Spacing.md, borderBottomWidth: 1,
+    alignItems: 'center', gap: 10,
+    borderRadius: 16, padding: 10,
   },
-  cartThumb: { width: 40, height: 40, borderRadius: 8, flexShrink: 0 },
-  cartItemName: { fontSize: FontSize.sm, fontWeight: '600', lineHeight: 18 },
+  cartThumb: { width: 54, height: 54, borderRadius: 14, flexShrink: 0 },
+  cartItemName: { fontSize: FontSize.sm, fontWeight: '700', lineHeight: 18 },
   cartItemQty: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   qtyBtnSm: {
     width: 26, height: 26, borderRadius: 13,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1,
   },
-  qtyNum: { fontSize: FontSize.sm, fontWeight: '700', minWidth: 20, textAlign: 'center' },
-  cartItemPrice: { fontSize: FontSize.sm, fontWeight: '800', minWidth: 55, textAlign: 'right' },
+  stepper: {
+    alignItems: 'center', gap: 2,
+    backgroundColor: '#fff', borderRadius: 20, padding: 3,
+  },
+  stepperBtn: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  qtyNum: { fontSize: FontSize.sm, fontWeight: '800', minWidth: 22, textAlign: 'center' },
+  cartItemPrice: { fontSize: FontSize.sm, fontWeight: '800' },
   totalRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderTopWidth: 1,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {
   fetchMessages,
@@ -17,6 +17,68 @@ import {
 import { useAuth, getSupabaseClient } from '@/template';
 
 const POLL_INTERVAL = 3000;
+const PUSH_TOKEN_CACHE_KEY = 'cached_expo_push_token';
+
+// ── Notification permissions ────────────────────────────────────────────────
+// Asks the OS for notification permission (no-op if already granted/denied).
+// Must run before registerPushToken() can obtain a token on iOS.
+export async function requestNotificationPermissions(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+  try {
+    const Notifications = require('expo-notifications');
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    return finalStatus === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+// ── Push token registration ─────────────────────────────────────────────────
+// Obtains this device's Expo push token and saves it to user_profiles so the
+// `push-notify` edge function has somewhere to send new-message notifications.
+// Safe to call repeatedly (on every SIGNED_IN / app-foreground) — it skips the
+// DB write when the token hasn't changed since the last successful save.
+export async function registerPushToken(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    const supabase = getSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const granted = await requestNotificationPermissions();
+    if (!granted) return;
+
+    const Notifications = require('expo-notifications');
+    const Constants = require('expo-constants').default;
+    const projectId =
+      Constants?.expoConfig?.extra?.eas?.projectId ??
+      Constants?.easConfig?.projectId;
+    if (!projectId) return;
+
+    const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
+    const token: string | undefined = data;
+    if (!token) return;
+
+    const AsyncStorage = (require('@react-native-async-storage/async-storage') as any).default;
+    const cached = await AsyncStorage.getItem(PUSH_TOKEN_CACHE_KEY).catch(() => null);
+    if (cached === token) return;
+
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ push_token: token })
+      .eq('id', user.id);
+    if (error) return;
+
+    await AsyncStorage.setItem(PUSH_TOKEN_CACHE_KEY, token).catch(() => {});
+  } catch {
+    /* non-critical — next foreground/sign-in retries */
+  }
+}
 
 export function useChat(conversationId: string) {
   const { user } = useAuth();
@@ -239,8 +301,6 @@ export function useChat(conversationId: string) {
 // useConversations - يبقى كما هو (لا يحتاج تعديل)
 // ──────────────────────────────────────────────────────────────────────────────
 export function useConversations(options?: { enabled?: boolean }) {
-  console.log('✅ [useConversations] تم استدعاء الدالة!');
-
   const { enabled = true } = options || {};
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -392,5 +452,3 @@ export function useConversations(options?: { enabled?: boolean }) {
     unarchive,
   };
 }
-
-export { useChat, useConversations };

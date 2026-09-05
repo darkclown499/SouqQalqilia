@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { AdCard, EmptyState, ProductCard } from '@/components';
+import { SkeletonCategoriesGrid } from '@/components/feature/SkeletonCard';
 import { useAds } from '@/hooks/useAds';
 import { useFavoriteIds } from '@/hooks/useFavorites';
 import { useTheme } from '@/hooks/useTheme';
@@ -43,7 +44,6 @@ export default function CategoryDetailScreen() {
   const { user } = useAuth();
   const { ids: favIds, toggle: toggleFav } = useFavoriteIds();
   const { numColumns, hPad, cardWidth: CARD_WIDTH } = useResponsive();
-  const { ads, load: loadAds } = useAds();
 
   const isStoreCategory = useMemo(() => type === 'store', [type]);
 
@@ -71,6 +71,33 @@ export default function CategoryDetailScreen() {
       }
     },
     enabled: !!slug,
+  });
+
+  // Every ad in the app tagged with this category — this is the primary
+  // content of the page (store "products" below are a much smaller, separate
+  // set and are shown as a secondary strip so the two don't look contradictory).
+  const {
+    ads,
+    loading: adsLoading,
+    loadingMore: adsLoadingMore,
+    hasMore: adsHasMore,
+    loadMore: loadMoreAds,
+  } = useAds(!isStoreCategory && category?.id ? { categoryId: category.id } : undefined);
+
+  // Fixed total count for the header badge — independent of pagination, so it
+  // doesn't visibly grow (e.g. 20 → 40) as more pages load while scrolling.
+  const { data: adsTotalCount } = useQuery({
+    queryKey: ['category-ads-count', category?.id],
+    queryFn: async () => {
+      const supabase = getSupabaseClient();
+      const { count } = await supabase
+        .from('ads')
+        .select('id', { count: 'exact', head: true })
+        .eq('category_id', category!.id)
+        .in('status', ['active', 'featured']);
+      return count ?? 0;
+    },
+    enabled: !isStoreCategory && !!category?.id,
   });
 
   // ── 2. التحميل اللانهائي للبيانات (منتجات أو متاجر) ──────────────────────
@@ -103,15 +130,6 @@ export default function CategoryDetailScreen() {
   const items = useMemo(() => {
     return itemsData?.pages.flatMap((page) => page) ?? [];
   }, [itemsData]);
-
-  // ── 3. تحميل الإعلانات (للمنتجات فقط) ────────────────────────────────────
-  useEffect(() => {
-    if (!isStoreCategory && category?.id) {
-      loadAds({ categoryId: category.id });
-    } else {
-      loadAds({ categoryId: undefined });
-    }
-  }, [category?.id, loadAds, isStoreCategory]);
 
   // ── 4. التحديث (Pull-to-Refresh) ──────────────────────────────────────────
   const handleRefresh = useCallback(async () => {
@@ -197,32 +215,35 @@ export default function CategoryDetailScreen() {
     );
   };
 
-  // ── 7. عرض عنصر المنتج ────────────────────────────────────────────────────
-  const renderProduct = ({ item }: { item: Product }) => (
+  // ── 7. عرض عنصر الإعلان (المحتوى الأساسي لصفحات التصنيفات غير المتاجر) ─────
+  const renderAd = ({ item }: { item: any }) => (
     <View style={styles.productWrapper}>
-      <ProductCard
-        product={item}
-        onPress={() => handleProductPress(item.id)}
+      <AdCard
+        ad={item}
+        width={CARD_WIDTH}
         isFavorited={favIds.has(item.id)}
         onFavoritePress={user ? () => toggleFav(item.id) : undefined}
       />
     </View>
   );
 
-  // ── 8. عرض شريط الإعلانات ──────────────────────────────────────────────────
-  const renderAdStrip = useCallback(() => {
-    if (isStoreCategory || ads.length === 0) return null;
+  // ── 8. عرض شريط منتجات المتاجر (قسم ثانوي منفصل عن الإعلانات) ──────────────
+  const renderStoreProductsStrip = useCallback(() => {
+    if (isStoreCategory || items.length === 0) return null;
     return (
       <View style={styles.adStrip}>
+        <Text style={[styles.adStripLabel, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+          {isAr ? 'منتجات من متاجر بهذا التصنيف' : 'Store products in this category'}
+        </Text>
         <FlatList
           horizontal
-          data={ads}
-          keyExtractor={(item) => item.id}
+          data={items}
+          keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => (
             <View style={[styles.adWrapper, { width: CARD_WIDTH }]}>
-              <AdCard
-                ad={item}
-                width={CARD_WIDTH}
+              <ProductCard
+                product={item}
+                onPress={() => handleProductPress(item.id)}
                 isFavorited={favIds.has(item.id)}
                 onFavoritePress={user ? () => toggleFav(item.id) : undefined}
               />
@@ -238,16 +259,16 @@ export default function CategoryDetailScreen() {
         />
       </View>
     );
-  }, [ads, favIds, user, toggleFav, CARD_WIDTH, isRTL, isStoreCategory]);
+  }, [items, favIds, user, toggleFav, CARD_WIDTH, isRTL, isStoreCategory, isAr, colors.textMuted]);
 
   // ── 9. حالات التحميل والخطأ ────────────────────────────────────────────────
   if (categoryLoading) {
     return (
-      <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <ActivityIndicator color={colors.primary} size="large" />
-        <Text style={[styles.loadingText, { color: colors.textMuted }]}>
-          {isAr ? 'جارٍ تحميل التصنيف...' : 'Loading category...'}
-        </Text>
+      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <View style={[styles.header, { backgroundColor: colors.primary }]}>
+          <View style={{ width: 40 }} />
+        </View>
+        <SkeletonCategoriesGrid count={8} />
       </View>
     );
   }
@@ -291,49 +312,51 @@ export default function CategoryDetailScreen() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {categoryName}
         </Text>
-        <Text style={styles.storeCount}>{items.length}</Text>
+        <Text style={styles.storeCount}>{isStoreCategory ? items.length : (adsTotalCount ?? ads.length)}</Text>
       </View>
 
-      {/* القائمة الرئيسية */}
+      {/* القائمة الرئيسية — لغير المتاجر: كل الإعلانات الحاملة لهذا التصنيف */}
       <FlatList
-        data={items}
+        data={isStoreCategory ? items : ads}
         keyExtractor={(item) => String(item.id)}
         numColumns={isStoreCategory ? 2 : numColumns}
         key={isStoreCategory ? 'stores-grid' : `products-grid-${numColumns}`}
-        renderItem={isStoreCategory ? renderStore : renderProduct}
+        renderItem={isStoreCategory ? renderStore : renderAd}
         contentContainerStyle={[styles.listContent, { paddingHorizontal: hPad }]}
         columnWrapperStyle={(isStoreCategory || numColumns > 1) ? styles.columnWrapper : undefined}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing}
+            refreshing={isRefreshing || (!isStoreCategory && adsLoading)}
             onRefresh={handleRefresh}
             colors={[colors.primary]}
             tintColor={colors.primary}
           />
         }
-        ListHeaderComponent={renderAdStrip}
+        ListHeaderComponent={renderStoreProductsStrip}
         ListEmptyComponent={
-          <EmptyState
-            icon={isStoreCategory ? 'storefront' : 'search'}
-            title={
-              isStoreCategory
-                ? (isAr ? 'لا توجد متاجر' : 'No stores')
-                : (isAr ? 'لا توجد منتجات' : 'No products')
-            }
-            subtitle={
-              isStoreCategory
-                ? (isAr ? 'لا توجد متاجر في هذا التصنيف حالياً' : 'No stores in this category at the moment')
-                : (isAr ? 'لا توجد منتجات في هذا التصنيف' : 'No products in this category')
-            }
-          />
+          !isStoreCategory && adsLoading ? null : (
+            <EmptyState
+              icon={isStoreCategory ? 'storefront' : 'search'}
+              title={isStoreCategory ? (isAr ? 'لا توجد متاجر' : 'No stores') : (isAr ? 'لا توجد إعلانات' : 'No listings')}
+              subtitle={
+                isStoreCategory
+                  ? (isAr ? 'لا توجد متاجر في هذا التصنيف حالياً' : 'No stores in this category at the moment')
+                  : (isAr ? 'لا توجد إعلانات في هذا التصنيف حالياً' : 'No listings in this category at the moment')
+              }
+            />
+          )
         }
         onEndReached={() => {
-          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+          if (isStoreCategory) {
+            if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+          } else if (adsHasMore && !adsLoadingMore) {
+            loadMoreAds();
+          }
         }}
         onEndReachedThreshold={0.5}
         ListFooterComponent={
-          isFetchingNextPage ? (
+          (isStoreCategory ? isFetchingNextPage : adsLoadingMore) ? (
             <View style={styles.footerLoader}>
               <ActivityIndicator size="small" color={colors.primary} />
             </View>
@@ -405,6 +428,12 @@ const styles = StyleSheet.create({
   adStrip: {
     marginBottom: Spacing.md,
     paddingVertical: 8,
+  },
+  adStripLabel: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    paddingHorizontal: 16,
+    marginBottom: 8,
   },
   adScrollContent: {
     paddingHorizontal: 16,

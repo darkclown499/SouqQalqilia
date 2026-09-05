@@ -235,7 +235,7 @@ function FeaturedStoresStrip({ isAr, isRTL, colors, onPress }: {
       </View>
 
       {loading ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}>
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}>
           {[1, 2, 3].map((key) => (
             <Animated.View key={key} style={{ width: 150, height: 200, backgroundColor: colors.surfaceTint, borderRadius: 18, opacity: shimmer }} />
           ))}
@@ -267,6 +267,8 @@ const BannerCarousel = React.memo(({
   isRTL,
   colors,
   router,
+  onPressIn,
+  onPressOut,
 }: {
   banners: Banner[];
   featuredIndex: number;
@@ -275,6 +277,8 @@ const BannerCarousel = React.memo(({
   isRTL: boolean;
   colors: any;
   router: any;
+  onPressIn?: () => void;
+  onPressOut?: () => void;
 }) => {
   const currentBanner = banners[featuredIndex] ?? banners[0];
   if (!currentBanner) return null;
@@ -294,6 +298,8 @@ const BannerCarousel = React.memo(({
     <Pressable
       style={[styles.bannerWrap, { height: bannerHeight, marginHorizontal: hPad, marginTop: Spacing.md }]}
       onPress={handlePress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
     >
       <Image
         source={{ uri: currentBanner.image_url }}
@@ -394,6 +400,7 @@ const RECENTLY_VIEWED_KEY = 'recently_viewed_ads_v1';
 const MAX_RECENTLY_VIEWED = 6;
 const SEARCH_HISTORY_KEY = 'search_history_v1';
 const MAX_SEARCH_HISTORY = 8;
+const INTERSTITIAL_LAST_SHOWN_KEY = 'interstitial_last_shown_v1';
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'boosted';
 type Condition = 'new' | 'used' | null;
@@ -498,6 +505,7 @@ export default function HomeScreen() {
 
   const appStartTime = useRef(Date.now());
   const interstitialShown = useRef(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const activeFilterCount = [appliedArea, appliedMaxPrice !== undefined ? '1' : null, appliedCondition].filter(Boolean).length;
   const isAr = language === 'ar';
@@ -603,10 +611,23 @@ export default function HomeScreen() {
     return () => controller.abort();
   }, []);
 
-  // Auto-rotate banners
+  // ✅ تحميل صور كل البانرات مسبقاً لتفادي وميض الخلفية الخضراء أثناء التدوير التلقائي
+  useEffect(() => {
+    banners.forEach(b => {
+      if (b.image_url) Image.prefetch(b.image_url).catch(() => {});
+    });
+  }, [banners]);
+
+  // Auto-rotate banners — paused while the user is touching the banner
+  const bannerPaused = useRef(false);
+  const handleBannerPressIn = useCallback(() => { bannerPaused.current = true; }, []);
+  const handleBannerPressOut = useCallback(() => { bannerPaused.current = false; }, []);
   useEffect(() => {
     if (banners.length <= 1) return;
-    const timer = setInterval(() => setFeaturedIndex(i => (i + 1) % banners.length), 3500);
+    const timer = setInterval(() => {
+      if (bannerPaused.current) return;
+      setFeaturedIndex(i => (i + 1) % banners.length);
+    }, 5000);
     return () => clearInterval(timer);
   }, [banners.length]);
 
@@ -624,21 +645,35 @@ export default function HomeScreen() {
     return () => controller.abort();
   }, []);
 
-  // Interstitial timer
+  // Interstitial timer — capped to once per calendar day so it doesn't nag on every visit
   useEffect(() => {
     if (interstitials.length === 0 || interstitialShown.current) return;
-    const check = setInterval(() => {
-      if (interstitialShown.current) { clearInterval(check); return; }
-      const elapsed = (Date.now() - appStartTime.current) / 1000;
-      const ad = interstitials[0];
-      if (elapsed >= ad.show_after_seconds) {
-        clearInterval(check);
+    let cancelled = false;
+    AsyncStorage.getItem(INTERSTITIAL_LAST_SHOWN_KEY).then(lastShown => {
+      if (cancelled) return;
+      const today = new Date().toDateString();
+      if (lastShown === today) {
         interstitialShown.current = true;
-        setActiveInterstitial(ad);
-        setInterstitialVisible(true);
+        return;
       }
-    }, 5000);
-    return () => clearInterval(check);
+      const check = setInterval(() => {
+        if (interstitialShown.current) { clearInterval(check); return; }
+        const elapsed = (Date.now() - appStartTime.current) / 1000;
+        const ad = interstitials[0];
+        if (elapsed >= ad.show_after_seconds) {
+          clearInterval(check);
+          interstitialShown.current = true;
+          setActiveInterstitial(ad);
+          setInterstitialVisible(true);
+          AsyncStorage.setItem(INTERSTITIAL_LAST_SHOWN_KEY, today).catch(() => {});
+        }
+      }, 5000);
+      intervalRef.current = check;
+    });
+    return () => {
+      cancelled = true;
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, [interstitials]);
 
   const displayName = user?.username || user?.email?.split('@')[0] || '';
@@ -842,6 +877,8 @@ export default function HomeScreen() {
         isRTL={isRTL}
         colors={colors}
         router={router}
+        onPressIn={handleBannerPressIn}
+        onPressOut={handleBannerPressOut}
       />
 
       {featuredStoresNode}
@@ -864,7 +901,7 @@ export default function HomeScreen() {
               </Text>
             </Pressable>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.recentList, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
+          <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.recentList, { flexDirection: isRTL ? 'row-reverse' : 'row', paddingHorizontal: hPad }]}>
             {recentlyViewed.map(ad => {
               const thumb = (ad.ad_images ?? []).sort((a: any, b: any) => a.position - b.position)[0]?.url;
               return (
@@ -910,6 +947,7 @@ export default function HomeScreen() {
       <View style={[styles.catOuter, { marginHorizontal: -hPad }]}>
         <ScrollView
           horizontal
+          nestedScrollEnabled
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={[
             styles.catContent,
@@ -949,33 +987,6 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
-      {searchHistory.length > 0 ? (
-        <View style={[styles.historySection, { paddingHorizontal: hPad }]}>
-          <View style={[styles.historyHeaderRow, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
-            <View style={[styles.sectionAccent, { backgroundColor: colors.primary }]} />
-            <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }]}>
-              {isAr ? 'عمليات البحث السابقة' : 'Recent Searches'}
-            </Text>
-            <Pressable onPress={handleClearSearchHistory} hitSlop={8} style={[styles.clearHistoryBtn, { backgroundColor: colors.surfaceTint }]}>
-              <MaterialIcons name="delete-sweep" size={13} color={colors.textMuted} />
-              <Text style={[styles.clearHistoryText, { color: colors.textMuted }]}>{isAr ? 'مسح الكل' : 'Clear all'}</Text>
-            </Pressable>
-          </View>
-          <View style={styles.historyChips}>
-            {searchHistory.map((q, i) => (
-              <Pressable
-                key={i}
-                style={({ pressed }) => [styles.historyChip, { backgroundColor: pressed ? colors.primary : colors.surface, borderColor: pressed ? colors.primary : colors.border }]}
-                onPress={() => handleSearchHistoryChipPress(q)}
-              >
-                <MaterialIcons name="search" size={12} color={colors.textMuted} />
-                <Text style={[styles.historyChipText, { color: colors.textSecondary }]} numberOfLines={1}>{q}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ) : null}
-
       <View style={[styles.listingsHeader, { flexDirection: isAr ? 'row-reverse' : 'row', borderTopColor: colors.borderLight, paddingHorizontal: hPad }]}>
         <View style={[styles.sectionAccent, { backgroundColor: colors.accent }]} />
         <Text style={[styles.sectionHeaderTitle, { color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }]}>{isAr ? 'جميع الإعلانات' : 'All Listings'}</Text>
@@ -1005,50 +1016,42 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </>
-  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, error, hPad, isAr, setSortBy, bannerHeight]);
+  ), [currentBanner, banners, featuredIndex, isRTL, colors, t, categories, selectedCategory, language, sortBy, totalAdsCount, recentlyViewed, searchHistory, activeFilterCount, handleCategoryPress, handleRecentAdPress, handleRemoveRecent, handleClearAllRecent, handleSearchHistoryChipPress, handleClearSearchHistory, handleOpenFilter, handleClearFilters, featuredStoresNode, router, error, hPad, isAr, setSortBy, bannerHeight, handleBannerPressIn, handleBannerPressOut]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      <View style={[styles.header, { backgroundColor: colors.primary, overflow: 'hidden' }]}>
-        <View style={styles.headerDeco1} pointerEvents="none" />
-        <View style={styles.headerDeco2} pointerEvents="none" />
-
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
         <View style={[styles.headerTop, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <View style={styles.headerLeft}>
-            <View style={[styles.appBrand, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <View style={styles.appBrandDot} />
-              <Text style={styles.appBrandLabel}>{isAr ? 'السوق الرسمي' : 'Official Marketplace'}</Text>
-            </View>
-            <Text style={[styles.appName, { textAlign: isRTL ? 'right' : 'left' }]}>{appTitle}</Text>
-            {displayName ? (
-              <Text style={[styles.greeting, { textAlign: isRTL ? 'right' : 'left' }]}>
-                {isAr ? `أهلاً، ${displayName} 👋` : `Hi, ${displayName} 👋`}
-              </Text>
-            ) : (
-              <Text style={[styles.greeting, { textAlign: isRTL ? 'right' : 'left' }]}>
-                {isAr ? 'اكتشف أفضل العروض 🛍️' : 'Discover great deals 🛍️'}
-              </Text>
-            )}
+            <Text style={[styles.greeting, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+              {displayName
+                ? (isAr ? `أهلاً، ${displayName} 👋` : `Hi, ${displayName} 👋`)
+                : (isAr ? 'اكتشف أفضل العروض 🛍️' : 'Discover great deals 🛍️')}
+            </Text>
+            <Text
+              style={[
+                styles.appName,
+                {
+                  color: colors.textPrimary,
+                  textAlign: isRTL ? 'right' : 'left',
+                  fontWeight: isAr ? '700' : '800',
+                  letterSpacing: isAr ? 0 : -0.8,
+                },
+              ]}
+            >
+              {appTitle}
+            </Text>
           </View>
 
           <View style={[styles.headerActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <Pressable
-              style={[styles.headerIconBtn, activeFilterCount > 0 && { backgroundColor: 'rgba(255,255,255,0.28)' }]}
-              onPress={handleOpenFilter}
-              hitSlop={6}
-            >
-              <MaterialCommunityIcons name="filter-variant" size={20} color="#fff" />
-              {activeFilterCount > 0 ? (
-                <View style={styles.filterDot}>
-                  <Text style={styles.filterDotText}>{activeFilterCount}</Text>
-                </View>
-              ) : null}
+            <Pressable style={styles.headerIconBtn} onPress={() => router.push('/ai-support')} hitSlop={8}>
+              <MaterialCommunityIcons name="robot-outline" size={22} color={colors.textPrimary} />
             </Pressable>
 
-            <Pressable style={styles.headerIconBtn} onPress={handleChatPress} hitSlop={6}>
+            <Pressable style={styles.headerIconBtn} onPress={handleChatPress} hitSlop={8}>
               {user ? (
                 <>
-                  <MaterialCommunityIcons name="chat" size={20} color="#fff" />
+                  <MaterialCommunityIcons name="chat-outline" size={22} color={colors.textPrimary} />
                   {Number(unreadCount) > 0 && (
                     <View style={styles.filterDot}>
                       <Text style={styles.filterDotText}>
@@ -1058,23 +1061,24 @@ export default function HomeScreen() {
                   )}
                 </>
               ) : (
-                <MaterialCommunityIcons name="lock" size={20} color="#fff" />
+                <MaterialCommunityIcons name="lock-outline" size={22} color={colors.textPrimary} />
               )}
             </Pressable>
 
-            <Pressable
-              style={[styles.headerIconBtn, { backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' }]}
-              onPress={() => router.push('/ai-support')}
-              hitSlop={6}
-            >
-              <MaterialCommunityIcons name="robot" size={24} color="#fff" />
+            <Pressable style={styles.headerIconBtn} onPress={handleOpenFilter} hitSlop={8}>
+              <MaterialCommunityIcons name="tune-variant" size={22} color={colors.textPrimary} />
+              {activeFilterCount > 0 ? (
+                <View style={styles.filterDot}>
+                  <Text style={styles.filterDotText}>{activeFilterCount}</Text>
+                </View>
+              ) : null}
             </Pressable>
           </View>
         </View>
 
         <Animated.View style={{ height: searchHeight, opacity: searchOpacity, overflow: 'hidden' }}>
           <Pressable
-            style={[styles.searchBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.96)', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+            style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
             onPress={() => {
               router.push({
                 pathname: '/search',
@@ -1088,24 +1092,20 @@ export default function HomeScreen() {
               } as any);
             }}
           >
-            <View style={[styles.searchIconWrap, { backgroundColor: colors.primary + '22' }]}>
+            <View style={[styles.searchIconWrap, { backgroundColor: colors.primary + '1c' }]}>
               <MaterialIcons name="search" size={16} color={isDark ? 'rgba(255,255,255,0.7)' : colors.primary} />
             </View>
-            <Text style={[styles.searchPlaceholder, { color: isDark ? 'rgba(255,255,255,0.5)' : colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
+            <Text style={[styles.searchPlaceholder, { color: isDark ? 'rgba(255,255,255,0.55)' : colors.textMuted, textAlign: isRTL ? 'right' : 'left' }]}>
               {t.searchPlaceholder}
             </Text>
-            <View style={[styles.filterChipInner, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : colors.primaryGhost }]}>
-              <MaterialIcons name="filter-list" size={13} color={isDark ? 'rgba(255,255,255,0.7)' : colors.primary} />
-              <Text style={[styles.filterChipText, { color: isDark ? 'rgba(255,255,255,0.7)' : colors.primary }]}>{isAr ? 'فلتر' : 'Filter'}</Text>
-            </View>
           </Pressable>
         </Animated.View>
       </View>
 
       {!isOnline ? (
-        <View style={styles.offlineBanner}>
-          <MaterialIcons name="wifi-off" size={15} color="#92400E" />
-          <Text style={styles.offlineBannerText}>
+        <View style={[styles.offlineBanner, { backgroundColor: colors.warningLight, borderBottomColor: colors.warning }]}>
+          <MaterialIcons name="wifi-off" size={15} color={colors.warning} />
+          <Text style={[styles.offlineBannerText, { color: colors.warning }]}>
             {isAr ? 'أنت غير متصل — يتم عرض البيانات المحفوظة' : 'You are offline — showing cached data'}
           </Text>
         </View>
@@ -1118,7 +1118,7 @@ export default function HomeScreen() {
           data={feedRows}
           keyExtractor={item => item.id}
           renderItem={renderRow}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 36 }]}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 36 + 68 + 10 + insets.bottom }]}
           showsVerticalScrollIndicator={false}
           windowSize={11}
           maxToRenderPerBatch={4}
@@ -1136,6 +1136,11 @@ export default function HomeScreen() {
             />
           }
           ListHeaderComponent={ListHeader}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+          )}
+          scrollEventThrottle={16}
           ListFooterComponent={
             hasMore ? (
               <Pressable
@@ -1341,29 +1346,23 @@ const styles = StyleSheet.create({
   },
   headerTop: {
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     marginBottom: Spacing.md,
   },
   headerLeft: { flex: 1, gap: 2 },
   greeting: {
-    fontSize: FontSize.xs,
-    color: 'rgba(255,255,255,0.72)',
+    fontSize: FontSize.sm,
     fontWeight: '500',
-    marginTop: 2,
   },
   appName: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
-    color: '#fff',
     letterSpacing: -0.8,
-    lineHeight: 33,
   },
-  headerActions: { gap: 8 },
+  headerActions: { gap: 6, paddingBottom: 6 },
   headerIconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1372,32 +1371,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: Radius.xl,
-    height: 48,
-    paddingHorizontal: Spacing.sm,
-    gap: 8,
+    height: 46,
+    borderWidth: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+    paddingHorizontal: Spacing.md,
+    gap: 10,
   },
   searchIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
   searchPlaceholder: { flex: 1, fontSize: FontSize.sm },
-  filterChipInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: Radius.md,
-  },
-  filterChipText: { fontSize: FontSize.xs, fontWeight: '700' },
 
   sortBar: { marginTop: Spacing.sm },
   sortBarContent: { gap: Spacing.sm, paddingBottom: 2, paddingTop: 2 },
@@ -1593,17 +1584,6 @@ const styles = StyleSheet.create({
   },
   historyChipText: { fontSize: FontSize.xs, fontWeight: '600', maxWidth: 130 },
 
-  headerDeco1: {
-    position: 'absolute', width: 220, height: 220, borderRadius: 110,
-    backgroundColor: 'rgba(255,255,255,0.07)', top: -85, right: -55,
-  },
-  headerDeco2: {
-    position: 'absolute', width: 130, height: 130, borderRadius: 65,
-    backgroundColor: 'rgba(255,255,255,0.04)', bottom: 12, left: -28,
-  },
-  appBrand: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  appBrandDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#F59E0B' },
-  appBrandLabel: { fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: '600', letterSpacing: 0.5 },
   headerStatsRow: { flexDirection: 'row', gap: 7, marginBottom: Spacing.md, flexWrap: 'wrap' },
   headerStatChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,

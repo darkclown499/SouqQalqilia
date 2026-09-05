@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, useWindowDimensions, LayoutChangeEvent } from 'react-native';
-import { PanGestureHandler } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  useAnimatedGestureHandler,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -57,11 +56,25 @@ export default function FloatingOffersButton() {
 
   const x = useSharedValue(MIN_X); // سيتم تحديثه بعد قياس العرض
   const y = useSharedValue(MAX_Y - 50);
+  const hasDraggedRef = useRef(false);
 
   const [currentMessage, setCurrentMessage] = useState(OFFERS_MESSAGES[0]);
   const [isSnappedLeft, setIsSnappedLeft] = useState(true); // افتراضياً يسار
   const [contentWidth, setContentWidth] = useState(0);
   const [isLayoutReady, setIsLayoutReady] = useState(false);
+
+  // ✅ تصحيح الموضع الرأسي بعد ما تتوفر أبعاد الشاشة الحقيقية —
+  // useWindowDimensions ممكن يرجع قيمة غير نهائية بأول رندر، وuseSharedValue
+  // ما بيتحدث تلقائياً بعدها، فلازم نزامنه يدوياً طالما المستخدم ما سحب الزر بعد
+  useEffect(() => {
+    if (!hasDraggedRef.current) {
+      y.value = MAX_Y - 50;
+    }
+  }, [MAX_Y]);
+
+  const markDragged = useCallback(() => {
+    hasDraggedRef.current = true;
+  }, []);
 
   const pickRandomMessage = useCallback(() => {
     const randomIndex = Math.floor(Math.random() * OFFERS_MESSAGES.length);
@@ -97,22 +110,26 @@ export default function FloatingOffersButton() {
     }
   }, [isLayoutReady]);
 
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, context: any) => {
-      context.startX = x.value;
-      context.startY = y.value;
-    },
-    onActive: (event, context) => {
-      let nextX = context.startX + event.translationX;
-      let nextY = context.startY + event.translationY;
+  const startX = useSharedValue(0);
+  const startY = useSharedValue(0);
+
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      runOnJS(markDragged)();
+      startX.value = x.value;
+      startY.value = y.value;
+    })
+    .onUpdate((event) => {
+      let nextX = startX.value + event.translationX;
+      let nextY = startY.value + event.translationY;
 
       if (nextY < MIN_Y) nextY = MIN_Y;
       if (nextY > MAX_Y) nextY = MAX_Y;
 
       x.value = nextX;
       y.value = nextY;
-    },
-    onEnd: (event) => {
+    })
+    .onEnd((event) => {
       const finalX = x.value + event.velocityX * 0.1;
       const midpoint = SCREEN_WIDTH / 2;
 
@@ -142,8 +159,7 @@ export default function FloatingOffersButton() {
       y.value = withSpring(targetY, { damping: 15, stiffness: 120 });
 
       runOnJS(pickRandomMessage)();
-    },
-  });
+    });
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }, { translateY: y.value }],
@@ -154,7 +170,7 @@ export default function FloatingOffersButton() {
 
   return (
     <Animated.View style={[styles.absoluteWrapper, animatedStyle]}>
-      <PanGestureHandler onGestureEvent={gestureHandler}>
+      <GestureDetector gesture={panGesture}>
         <Animated.View style={styles.panWrapper}>
           <Pressable
             onPress={() => router.push('/offers')}
@@ -254,7 +270,7 @@ export default function FloatingOffersButton() {
             )}
           </Pressable>
         </Animated.View>
-      </PanGestureHandler>
+      </GestureDetector>
     </Animated.View>
   );
 }
