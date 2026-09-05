@@ -1,27 +1,21 @@
-// cache-bust: 2
+// cache-reset: 3
 const { getDefaultConfig } = require('expo/metro-config');
 
+/** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-// ── حل مشكلة الوحدات الأصلية ──
 config.resolver = {
   ...config.resolver,
   resolveRequest: (context, moduleName, platform) => {
-    // Only shim native-only modules during web bundling.
-    // On android/ios these modules must resolve to their real implementations.
     if (platform === 'web') {
-      const shimModules = [
-        'expo-constants',
-        'expo-notifications',
-      ];
-
+      const shimModules = ['expo-constants', 'expo-notifications'];
       if (shimModules.includes(moduleName)) {
         try {
           return {
-            filePath: require.resolve(`./shims/${moduleName}.js`),
+            filePath: require.resolve('./shims/' + moduleName + '.js'),
             type: 'sourceFile',
           };
-        } catch (e) {
+        } catch {
           return {
             filePath: require.resolve('./shims/empty.js'),
             type: 'sourceFile',
@@ -29,7 +23,6 @@ config.resolver = {
         }
       }
     }
-
     return context.resolveRequest(context, moduleName, platform);
   },
 };
