@@ -8,13 +8,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useAlert, useAuth } from '@/template';
+import { useAlert } from '@/template';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { uploadImage } from '@/services/imageService';
 
-const SUPPORT_EMAIL = 'support@souqqalqilya.ps';
+const SUPPORT_EMAIL = 'support@plankton.fit';
 const MAX_DESCRIPTION = 500;
 
 export default function SupportFormScreen() {
@@ -23,7 +22,6 @@ export default function SupportFormScreen() {
   const { colors } = useTheme();
   const { language } = useLanguage();
   const { showAlert } = useAlert();
-  const { user } = useAuth();
   const isRTL = language === 'ar';
 
   const [description, setDescription] = useState('');
@@ -69,29 +67,11 @@ export default function SupportFormScreen() {
 
     setLoading(true);
     try {
-      // رفع لقطة الشاشة فعلياً (mailto ما بيقدر يرفق ملفات) — نحط رابطها بالرسالة
-      let screenshotLine = isRTL ? '(لا توجد لقطة شاشة)' : '(No screenshot)';
-      if (screenshot?.base64) {
-        const { url, error: uploadError } = await uploadImage(
-          screenshot.base64,
-          user?.id || 'guest',
-          'support-screenshot',
-          screenshot.uri
-        );
-        if (url) {
-          screenshotLine = isRTL ? `رابط لقطة الشاشة:\n${url}` : `Screenshot link:\n${url}`;
-        } else {
-          screenshotLine = isRTL
-            ? `(فشل رفع لقطة الشاشة: ${uploadError ?? ''})`
-            : `(Failed to upload screenshot: ${uploadError ?? ''})`;
-        }
-      }
-
       // Build email content
       const subject = isRTL ? 'بلاغ خطأ - سوق قلقيلية' : 'Bug Report - Souq Qalqilya';
       const body = encodeURIComponent(
         `${isRTL ? 'وصف المشكلة' : 'Issue Description'}:\n${description.trim()}\n\n`
-        + screenshotLine
+        + (screenshot ? (isRTL ? '(تم إرفاق لقطة الشاشة)' : '(Screenshot attached)') : (isRTL ? '(لا توجد لقطة شاشة)' : '(No screenshot)'))
         + `\n\n---\nSouq Qalqilya App v1.0.9\n${Platform.OS} ${Platform.Version}`
       );
       const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${body}`;

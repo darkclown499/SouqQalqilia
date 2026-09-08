@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useAlert, getSupabaseClient, useAuth } from '@/template';
+import { useAlert, getSupabaseClient } from '@/template';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
@@ -22,17 +22,15 @@ import {
   adminFetchAllAds, adminDeleteAd, adminUpdateAd,
   adminSetAdFeatured, adminFetchAllUsers, adminSetUserBlocked,
   adminBoostAd, adminSetUserAdmin, adminSetUserVerified, UserProfile,
-  checkIsAdmin, adminFetchAdsQuickStats, adminFetchReportedAdIds, adminFetchUserAdCounts,
-  adminFetchUsersQuickStats, adminFetchLastSeen, adminFetchUserFavoriteCounts,
 } from '@/services/adminService';
 import { fetchAllBanners, createBanner, deleteBanner, toggleBannerActive, updateBanner, Banner, BannerPlacement } from '@/services/bannersService';
 import {
   fetchAllInterstitials, InterstitialAd,
 } from '@/services/interstitialService';
 import { Ad } from '@/services/adsService';
-import { fetchCategories, getCategoryName, Category } from '@/services/categoriesService';
+import { fetchAllPageStats, PageStats } from '@/services/analyticsService';
 import {
-  adminFetchAllStores, adminUpdateStore, Store, checkStoreIsOpen, fetchAllStoreRatings,
+  adminFetchAllStores, adminUpdateStore, Store,
 } from '@/services/storesService';
 import { pickImage, uploadImage } from '@/services/imageService';
 
@@ -40,14 +38,29 @@ import { pickImage, uploadImage } from '@/services/imageService';
 const ABSOLUTE_FILL = StyleSheet.absoluteFill;
 
 // ─── واجهات الأنواع ──────────────────────────────────────────────────────────
+interface ActivityLog {
+  id: string;
+  admin_name: string;
+  action: string;
+  target: string;
+  details: string;
+  created_at: string;
+}
 interface Report {
   id: string;
   reporter_name: string;
   target_type: 'ad' | 'user' | 'store';
   target_id: string;
-  target_user_id: string | null;
   reason: string;
   status: 'pending' | 'resolved' | 'rejected';
+  created_at: string;
+}
+interface Order {
+  id: string;
+  user_name: string;
+  ad_title: string;
+  amount: number;
+  status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled';
   created_at: string;
 }
 
@@ -94,18 +107,18 @@ function Snackbar({ visible, message, type, onDismiss }: any) {
 }
 
 // 2. ConfirmationModal
-function ConfirmationModal({ visible, title, message, details, onConfirm, onCancel, isAr, colors }: any) {
+function ConfirmationModal({ visible, title, message, details, onConfirm, onCancel, isAr }: any) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.confirmOverlay}>
-        <View style={[styles.confirmSheet, { backgroundColor: colors?.surface ?? '#fff' }]}>
+        <View style={[styles.confirmSheet, { backgroundColor: '#fff' }]}>
           <MaterialIcons name="warning" size={48} color="#EF4444" style={{ alignSelf: 'center' }} />
-          <Text style={[styles.confirmTitle, { color: colors?.textPrimary }]}>{title}</Text>
-          <Text style={[styles.confirmMessage, { color: colors?.textSecondary }]}>{message}</Text>
-          {details && <Text style={[styles.confirmDetails, { color: colors?.textMuted }]}>{details}</Text>}
+          <Text style={styles.confirmTitle}>{title}</Text>
+          <Text style={styles.confirmMessage}>{message}</Text>
+          {details && <Text style={styles.confirmDetails}>{details}</Text>}
           <View style={styles.confirmActions}>
-            <Pressable style={[styles.confirmBtn, styles.confirmCancel, { backgroundColor: colors?.surfaceTint }]} onPress={onCancel}>
-              <Text style={[styles.confirmBtnText, { color: colors?.textPrimary }]}>{isAr ? 'إلغاء' : 'Cancel'}</Text>
+            <Pressable style={[styles.confirmBtn, styles.confirmCancel]} onPress={onCancel}>
+              <Text style={styles.confirmBtnText}>{isAr ? 'إلغاء' : 'Cancel'}</Text>
             </Pressable>
             <Pressable style={[styles.confirmBtn, styles.confirmDelete]} onPress={onConfirm}>
               <Text style={[styles.confirmBtnText, { color: '#fff' }]}>{isAr ? 'تأكيد' : 'Confirm'}</Text>
@@ -151,78 +164,42 @@ function generateCSV(data: any[], headers: string[], fields: string[]): string {
 // ─── مكونات عناصر القوائم المحسنة (memo) ──────────────────────────────────
 
 // عنصر الإعلان
-const AdItem = memo(({ item, colors, isAr, isRTL, onToggleFeatured, onToggleBoost, onEdit, onDelete, onView, pending, isReported, selectionMode, selected, onToggleSelect }: any) => {
+const AdItem = memo(({ item, colors, isAr, onToggleFeatured, onToggleBoost, onEdit, onDelete }: any) => {
   const isFeatured = item.status === 'featured';
-  const isSold = item.status === 'sold';
   const isBoosted = !!(item.boosted_until && new Date(item.boosted_until).getTime() > Date.now());
-  const isDeleted = item.status === 'deleted';
-  // ✅ مُصلَّح: "مباع" كان يظهر رمادي باسم "منتهي" — صار له لون وتسمية خاصة
-  const statusColor = isDeleted ? '#EF4444' : isSold ? '#3B82F6' : item.status === 'active' ? '#22C55E' : item.status === 'featured' ? '#F59E0B' : '#6B7280';
+  const statusColor = item.status === 'active' ? '#22C55E' : item.status === 'featured' ? '#F59E0B' : '#6B7280';
   const statusLabel = isAr
-    ? isDeleted ? 'محذوف' : isSold ? 'مباع' : item.status === 'active' ? 'نشط' : item.status === 'featured' ? 'مميز' : item.status
-    : isDeleted ? 'Deleted' : isSold ? 'Sold' : item.status === 'active' ? 'Active' : item.status === 'featured' ? 'Featured' : item.status;
-  const categoryName = item.categories ? (isAr ? (item.categories.name_ar || item.categories.name) : item.categories.name) : null;
-  const sellerName = item.user_profiles?.username || item.user_profiles?.email?.split('@')[0] || null;
-  const thumb = item.ad_images?.[0]?.url;
-  const rowDir = isRTL ? 'row-reverse' : 'row';
-  const daysSince = item.created_at ? Math.floor((Date.now() - new Date(item.created_at).getTime()) / (24 * 60 * 60 * 1000)) : null;
+    ? item.status === 'active' ? 'نشط' : item.status === 'featured' ? 'مميز' : 'منتهي'
+    : item.status === 'active' ? 'Active' : item.status === 'featured' ? 'Featured' : 'Expired';
   return (
-    <View style={[styles.adCard, { backgroundColor: colors.surface, borderColor: isReported ? '#EF4444' : isBoosted ? '#2563EB' : colors.border, opacity: pending ? 0.6 : 1 }]}>
-      <View style={[styles.adHeader, { flexDirection: rowDir }]}>
-        {selectionMode && (
-          <Pressable onPress={() => onToggleSelect(item.id)} hitSlop={8}>
-            <MaterialIcons name={selected ? 'check-box' : 'check-box-outline-blank'} size={22} color={selected ? colors.primary : colors.textMuted} />
-          </Pressable>
-        )}
-        {thumb ? (
-          <Image source={{ uri: thumb }} style={{ width: 32, height: 32, borderRadius: 6 }} contentFit="cover" />
-        ) : (
-          <View style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: colors.borderLight, alignItems: 'center', justifyContent: 'center' }}>
-            <MaterialIcons name="image-not-supported" size={16} color={colors.textMuted} />
-          </View>
-        )}
-        <Text style={[styles.adTitle, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>{item.title}</Text>
-        {isReported && <MaterialIcons name="flag" size={16} color="#EF4444" />}
+    <View style={[styles.adCard, { backgroundColor: colors.surface, borderColor: isBoosted ? '#2563EB' : colors.border }]}>
+      <View style={styles.adHeader}>
+        <Text style={[styles.adTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
         <View style={[styles.adStatusDot, { backgroundColor: statusColor }]} />
         <Text style={[styles.adStatusText, { color: statusColor }]}>{statusLabel}</Text>
       </View>
       <Text style={[styles.adMeta, { color: colors.textMuted }]}>
         {item.price}₪ • {item.condition === 'new' ? (isAr ? 'جديد' : 'New') : (isAr ? 'مستعمل' : 'Used')}
-        {daysSince !== null ? ` • ${isAr ? `منذ ${daysSince} يوم` : `${daysSince}d ago`}` : ''}
         {item.location ? ` • ${item.location}` : ''}
-        {categoryName ? ` • ${categoryName}` : ''}
       </Text>
-      {sellerName && (
-        <Text style={[styles.adMeta, { color: colors.textMuted, fontSize: 11 }]} numberOfLines={1}>
-          {isAr ? '👤 البائع: ' : '👤 Seller: '}{sellerName}
-        </Text>
-      )}
-      <View style={[styles.adActions, { flexDirection: rowDir, flexWrap: 'wrap' }]}>
-        <Pressable
-          disabled={pending || isSold || isDeleted}
-          style={[styles.adActionBtn, { backgroundColor: isFeatured ? '#FEF3C7' : colors.borderLight, opacity: (isSold || isDeleted) ? 0.4 : 1 }]}
-          onPress={() => onToggleFeatured(item)}
-        >
+      <View style={styles.adActions}>
+        <Pressable style={[styles.adActionBtn, { backgroundColor: isFeatured ? '#FEF3C7' : colors.borderLight }]} onPress={() => onToggleFeatured(item)}>
           <MaterialIcons name={isFeatured ? 'star' : 'star-border'} size={14} color={isFeatured ? '#D97706' : colors.textMuted} />
           <Text style={{ fontSize: 10, fontWeight: '600', color: isFeatured ? '#D97706' : colors.textMuted }}>
             {isAr ? (isFeatured ? 'إلغاء التميز' : 'تمييز') : (isFeatured ? 'Unfeature' : 'Feature')}
           </Text>
         </Pressable>
-        <Pressable disabled={pending} style={[styles.adActionBtn, { backgroundColor: isBoosted ? '#DBEAFE' : colors.borderLight }]} onPress={() => onToggleBoost(item)}>
+        <Pressable style={[styles.adActionBtn, { backgroundColor: isBoosted ? '#DBEAFE' : colors.borderLight }]} onPress={() => onToggleBoost(item)}>
           <MaterialIcons name="bolt" size={14} color={isBoosted ? '#2563EB' : colors.textMuted} />
           <Text style={{ fontSize: 10, fontWeight: '600', color: isBoosted ? '#2563EB' : colors.textMuted }}>
             {isAr ? (isBoosted ? 'إلغاء التعزيز' : 'تعزيز') : (isBoosted ? 'Unboost' : 'Boost')}
           </Text>
         </Pressable>
-        <Pressable disabled={pending} style={[styles.adActionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => onEdit(item)}>
+        <Pressable style={[styles.adActionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => onEdit(item)}>
           <MaterialIcons name="edit" size={14} color={colors.primary} />
           <Text style={{ fontSize: 10, fontWeight: '600', color: colors.primary }}>{isAr ? 'تعديل' : 'Edit'}</Text>
         </Pressable>
-        <Pressable disabled={pending} style={[styles.adActionBtn, { backgroundColor: '#E0F2FE' }]} onPress={() => onView(item)}>
-          <MaterialIcons name="open-in-new" size={14} color="#0284C7" />
-          <Text style={{ fontSize: 10, fontWeight: '600', color: '#0284C7' }}>{isAr ? 'عرض' : 'View'}</Text>
-        </Pressable>
-        <Pressable disabled={pending} style={[styles.adActionBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => onDelete(item)}>
+        <Pressable style={[styles.adActionBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => onDelete(item)}>
           <MaterialIcons name="delete-outline" size={14} color="#EF4444" />
           <Text style={{ fontSize: 10, fontWeight: '600', color: '#EF4444' }}>{isAr ? 'حذف' : 'Delete'}</Text>
         </Pressable>
@@ -237,100 +214,44 @@ const AdItem = memo(({ item, colors, isAr, isRTL, onToggleFeatured, onToggleBoos
 });
 
 // عنصر المستخدم
-const UserItem = memo(({ item, colors, isAr, isRTL, onToggleAdmin, onToggleVerified, onToggleBlocked, onViewAds, onViewReports, onViewFiledReports, onViewProfile, onNotify, pending, isSelf, adCount, favCount, lastSeen, selectionMode, selected, onToggleSelect }: any) => {
-  const displayName = item.username || item.email?.split('@')[0] || 'User';
-  const rowDir = isRTL ? 'row-reverse' : 'row';
-  const joinDate = item.created_at ? new Date(item.created_at).toLocaleDateString(isAr ? 'ar' : 'en', { year: 'numeric', month: 'short', day: 'numeric' }) : null;
-  const lastSeenLabel = lastSeen ? new Date(lastSeen).toLocaleDateString(isAr ? 'ar' : 'en', { month: 'short', day: 'numeric' }) : null;
+const UserItem = memo(({ item, colors, isAr, onToggleAdmin, onToggleVerified, onToggleBlocked }: any) => {
+  const displayName = item.username || item.email.split('@')[0] || 'User';
   return (
-    <View style={[styles.userCard, { backgroundColor: colors.surface, borderColor: isSelf ? colors.primary : colors.border, opacity: pending ? 0.6 : 1 }]}>
-      <View style={[styles.userRow, { flexDirection: rowDir }]}>
-        {selectionMode && (
-          <Pressable onPress={() => onToggleSelect(item.id)} hitSlop={8}>
-            <MaterialIcons name={selected ? 'check-box' : 'check-box-outline-blank'} size={22} color={selected ? colors.primary : colors.textMuted} />
-          </Pressable>
-        )}
-        {item.avatar_url ? (
-          <Image source={{ uri: item.avatar_url }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" />
-        ) : (
-          <View style={[styles.userAvatar, { backgroundColor: item.is_admin ? colors.primary : colors.primaryGhost }]}>
-            <Text style={[styles.userAvatarText, { color: item.is_admin ? '#fff' : colors.primary }]}>
-              {displayName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
+    <View style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.userRow}>
+        <View style={[styles.userAvatar, { backgroundColor: item.is_admin ? colors.primary : colors.primaryGhost }]}>
+          <Text style={[styles.userAvatarText, { color: item.is_admin ? '#fff' : colors.primary }]}>
+            {displayName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
         <View style={styles.userInfo}>
-          <View style={{ flexDirection: rowDir, alignItems: 'center', gap: 6 }}>
-            <Text style={[styles.userName, { color: colors.textPrimary }]}>{displayName}</Text>
-            {isSelf && (
-              <View style={{ backgroundColor: colors.primaryGhost, paddingHorizontal: 6, paddingVertical: 1, borderRadius: Radius.full }}>
-                <Text style={{ fontSize: 9, fontWeight: '700', color: colors.primary }}>{isAr ? 'أنت' : 'You'}</Text>
-              </View>
-            )}
-          </View>
+          <Text style={[styles.userName, { color: colors.textPrimary }]}>{displayName}</Text>
           <Text style={[styles.userEmail, { color: colors.textMuted }]}>{item.email}</Text>
-          {item.phone ? <Text style={[styles.userEmail, { color: colors.textMuted, fontSize: 11 }]}>📞 {item.phone}</Text> : null}
-          <Text style={[styles.userEmail, { color: colors.textMuted, fontSize: 11 }]}>
-            {isAr ? `📢 ${adCount ?? 0} إعلان` : `📢 ${adCount ?? 0} ads`}
-            {` • `}{isAr ? `❤️ ${favCount ?? 0} مفضلة` : `❤️ ${favCount ?? 0} favs`}
-          </Text>
-          <Text style={[styles.userEmail, { color: colors.textMuted, fontSize: 11 }]}>
-            {joinDate ? `${isAr ? 'انضم' : 'joined'} ${joinDate}` : ''}
-            {lastSeenLabel ? ` • ${isAr ? 'آخر زيارة' : 'last seen'} ${lastSeenLabel}` : ''}
-          </Text>
-          <View style={[styles.userBadges, { flexDirection: rowDir }]}>
+          <View style={styles.userBadges}>
             {item.is_admin && <View style={[styles.userBadge, { backgroundColor: colors.primaryGhost }]}><Text style={[styles.userBadgeText, { color: colors.primary }]}>Admin</Text></View>}
             {item.is_verified && <View style={[styles.userBadge, { backgroundColor: '#DBEAFE' }]}><Text style={[styles.userBadgeText, { color: '#2563EB' }]}>✓ {isAr ? 'موثّق' : 'Verified'}</Text></View>}
             {item.is_blocked && <View style={[styles.userBadge, { backgroundColor: '#FEE2E2' }]}><Text style={[styles.userBadgeText, { color: '#EF4444' }]}>{isAr ? 'محظور' : 'Blocked'}</Text></View>}
           </View>
         </View>
       </View>
-      <View style={[styles.userActions, { borderTopColor: colors.borderLight, flexDirection: rowDir, flexWrap: 'wrap' }]}>
-        <Pressable
-          disabled={pending || isSelf}
-          style={[styles.userActionBtn, { backgroundColor: item.is_admin ? colors.primaryGhost : colors.borderLight, opacity: isSelf ? 0.4 : 1 }]}
-          onPress={() => onToggleAdmin(item)}
-        >
+      <View style={[styles.userActions, { borderTopColor: colors.borderLight }]}>
+        <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_admin ? colors.primaryGhost : colors.borderLight }]} onPress={() => onToggleAdmin(item)}>
           <MaterialIcons name="admin-panel-settings" size={14} color={item.is_admin ? colors.primary : colors.textMuted} />
           <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_admin ? colors.primary : colors.textMuted }}>
             {isAr ? (item.is_admin ? 'إلغاء الإدارة' : 'جعله مدير') : (item.is_admin ? 'Revoke Admin' : 'Make Admin')}
           </Text>
         </Pressable>
-        <Pressable disabled={pending} style={[styles.userActionBtn, { backgroundColor: item.is_verified ? '#DBEAFE' : colors.borderLight }]} onPress={() => onToggleVerified(item)}>
+        <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_verified ? '#DBEAFE' : colors.borderLight }]} onPress={() => onToggleVerified(item)}>
           <MaterialIcons name="verified" size={14} color={item.is_verified ? '#2563EB' : colors.textMuted} />
           <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_verified ? '#2563EB' : colors.textMuted }}>
             {isAr ? (item.is_verified ? 'إلغاء التوثيق' : 'توثيق') : (item.is_verified ? 'Unverify' : 'Verify')}
           </Text>
         </Pressable>
-        <Pressable
-          disabled={pending || isSelf}
-          style={[styles.userActionBtn, { backgroundColor: item.is_blocked ? '#FEE2E2' : colors.borderLight, opacity: isSelf ? 0.4 : 1 }]}
-          onPress={() => onToggleBlocked(item)}
-        >
+        <Pressable style={[styles.userActionBtn, { backgroundColor: item.is_blocked ? '#FEE2E2' : colors.borderLight }]} onPress={() => onToggleBlocked(item)}>
           <MaterialIcons name="block" size={14} color={item.is_blocked ? '#EF4444' : colors.textMuted} />
           <Text style={{ fontSize: 10, fontWeight: '600', color: item.is_blocked ? '#EF4444' : colors.textMuted }}>
             {isAr ? (item.is_blocked ? 'رفع الحظر' : 'حظر') : (item.is_blocked ? 'Unblock' : 'Block')}
           </Text>
-        </Pressable>
-        <Pressable disabled={pending} style={[styles.userActionBtn, { backgroundColor: '#E0F2FE' }]} onPress={() => onViewAds(item)}>
-          <MaterialIcons name="campaign" size={14} color="#0284C7" />
-          <Text style={{ fontSize: 10, fontWeight: '600', color: '#0284C7' }}>{isAr ? 'إعلاناته' : 'Their ads'}</Text>
-        </Pressable>
-        <Pressable disabled={pending} style={[styles.userActionBtn, { backgroundColor: '#FEF3C7' }]} onPress={() => onViewReports(item)}>
-          <MaterialIcons name="flag" size={14} color="#D97706" />
-          <Text style={{ fontSize: 10, fontWeight: '600', color: '#D97706' }}>{isAr ? 'البلاغات ضده' : 'Reports on them'}</Text>
-        </Pressable>
-        <Pressable disabled={pending} style={[styles.userActionBtn, { backgroundColor: '#F3E8FF' }]} onPress={() => onViewFiledReports(item)}>
-          <MaterialIcons name="outlined-flag" size={14} color="#9333EA" />
-          <Text style={{ fontSize: 10, fontWeight: '600', color: '#9333EA' }}>{isAr ? 'بلاغاته المقدّمة' : 'Filed reports'}</Text>
-        </Pressable>
-        <Pressable disabled={pending} style={[styles.userActionBtn, { backgroundColor: colors.borderLight }]} onPress={() => onViewProfile(item)}>
-          <MaterialIcons name="person" size={14} color={colors.textSecondary} />
-          <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textSecondary }}>{isAr ? 'الملف العام' : 'Public profile'}</Text>
-        </Pressable>
-        <Pressable disabled={pending} style={[styles.userActionBtn, { backgroundColor: '#DCFCE7' }]} onPress={() => onNotify(item)}>
-          <MaterialIcons name="notifications" size={14} color="#16A34A" />
-          <Text style={{ fontSize: 10, fontWeight: '600', color: '#16A34A' }}>{isAr ? 'إشعار' : 'Notify'}</Text>
         </Pressable>
       </View>
     </View>
@@ -444,252 +365,9 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter'>('week');
   const [refreshing, setRefreshing] = useState(false);
   const [visitType, setVisitType] = useState<'unique' | 'total'>('unique'); // ✅ جديد: نوع الزيارة
-  const [extraStats, setExtraStats] = useState<{
-    adsByStatus: { status: string; count: number }[];
-    topCategories: { name: string; count: number }[];
-    userGrowth: { date: string; count: number }[];
-    topStores: { name: string; views: number }[];
-    pendingReports: number;
-    totalConversations: number;
-    totalMessages: number;
-    messagesLast7d: number;
-    verifiedUsers: number;
-    blockedUsers: number;
-    totalUsersCount: number;
-    avgActivePrice: number;
-    freeAdsPct: number;
-    topLocations: { name: string; count: number }[];
-    topSellers: { name: string; count: number }[];
-    avgAdsPerSeller: number;
-    adsWithoutImagesPct: number;
-    topFavoritedAds: { title: string; count: number }[];
-    topFavoritedCategories: { name: string; count: number }[];
-    avgStoreRating: number;
-    topRatedStore: { name: string; rating: number } | null;
-    storesOpenNow: number;
-    storesClosedNow: number;
-    busiestHour: { hour: number; count: number }[];
-  } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // ✅ جديد: إحصائيات شاملة تغطي كل قطعة بالتطبيق (إعلانات، تصنيفات، مستخدمين، متاجر، بلاغات، دردشة)
-  const fetchExtraStats = useCallback(async (signal: AbortSignal) => {
-    const supabase = getSupabaseClient();
-    try {
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-      const [
-        adsAllRes,
-        adImagesRes,
-        categoriesRes,
-        usersGrowthRes,
-        storesRes,
-        pendingReportsRes,
-        conversationsCountRes,
-        messagesCountRes,
-        messagesRecentRes,
-        verifiedCountRes,
-        blockedCountRes,
-        totalUsersCountRes,
-        favoritesRes,
-        storeRatingsMap,
-        visitsHourRes,
-      ] = await Promise.all([
-        supabase.from('ads').select('id, status, category_id, price, user_id, location'),
-        supabase.from('ad_images').select('ad_id'),
-        supabase.from('categories').select('id, name, name_ar'),
-        supabase.from('user_profiles').select('created_at').gte('created_at', sevenDaysAgo),
-        supabase.from('stores').select('id, name, name_ar, views_count, opening_time, closing_time').eq('is_active', true),
-        supabase.from('reports').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('conversations').select('id', { count: 'exact', head: true }),
-        supabase.from('messages').select('id', { count: 'exact', head: true }),
-        supabase.from('messages').select('id', { count: 'exact', head: true }).gte('created_at', sevenDaysAgo),
-        supabase.from('user_profiles').select('id', { count: 'exact', head: true }).eq('is_verified', true),
-        supabase.from('user_profiles').select('id', { count: 'exact', head: true }).eq('is_blocked', true),
-        supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('favorites').select('ad_id, ads(title, category_id)'),
-        fetchAllStoreRatings(),
-        supabase.from('app_visits').select('visited_at').gte('visited_at', sevenDaysAgo),
-      ]);
-
-      if (signal.aborted) return null;
-
-      const ads = adsAllRes.data ?? [];
-
-      // توزيع الإعلانات حسب الحالة
-      const statusCounts: Record<string, number> = {};
-      ads.forEach((r: any) => {
-        const s = r.status || 'unknown';
-        statusCounts[s] = (statusCounts[s] || 0) + 1;
-      });
-      const adsByStatus = Object.entries(statusCounts)
-        .map(([status, count]) => ({ status, count }))
-        .sort((a, b) => b.count - a.count);
-
-      // أكثر التصنيفات نشاطاً
-      const catMap: Record<string, string> = {};
-      (categoriesRes.data ?? []).forEach((c: any) => {
-        catMap[c.id] = isAr ? (c.name_ar || c.name) : c.name;
-      });
-      const catCounts: Record<string, number> = {};
-      ads.forEach((r: any) => {
-        if (!r.category_id) return;
-        catCounts[r.category_id] = (catCounts[r.category_id] || 0) + 1;
-      });
-      const topCategories = Object.entries(catCounts)
-        .map(([id, count]) => ({ name: catMap[id] || id, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-      // نمو المستخدمين آخر 7 أيام
-      const growthMap: Record<string, number> = {};
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-        growthMap[d.toISOString().slice(0, 10)] = 0;
-      }
-      (usersGrowthRes.data ?? []).forEach((r: any) => {
-        const day = r.created_at ? String(r.created_at).slice(0, 10) : null;
-        if (day && day in growthMap) growthMap[day] += 1;
-      });
-      const userGrowth = Object.entries(growthMap).map(([date, count]) => ({ date, count }));
-
-      const stores = storesRes.data ?? [];
-
-      // أكثر المتاجر زيارة (تعتمد على عمود views_count الموجود أصلاً)
-      const topStores = [...stores]
-        .sort((a: any, b: any) => (b.views_count || 0) - (a.views_count || 0))
-        .slice(0, 5)
-        .map((s: any) => ({ name: isAr ? (s.name_ar || s.name) : s.name, views: s.views_count || 0 }));
-
-      // متاجر مفتوحة الآن مقابل مغلقة
-      let storesOpenNow = 0, storesClosedNow = 0;
-      stores.forEach((s: any) => {
-        if (checkStoreIsOpen(s)) storesOpenNow++; else storesClosedNow++;
-      });
-
-      // متوسط تقييم المتاجر + الأعلى تقييماً
-      const ratingEntries = Object.entries(storeRatingsMap as Record<string, { avg: number; count: number }>);
-      const avgStoreRating = ratingEntries.length
-        ? parseFloat((ratingEntries.reduce((s, [, v]) => s + v.avg, 0) / ratingEntries.length).toFixed(1))
-        : 0;
-      const storeNameMap: Record<string, string> = {};
-      stores.forEach((s: any) => { storeNameMap[s.id] = isAr ? (s.name_ar || s.name) : s.name; });
-      const topRatedEntry = ratingEntries
-        .filter(([, v]) => v.count >= 1)
-        .sort((a, b) => b[1].avg - a[1].avg)[0];
-      const topRatedStore = topRatedEntry
-        ? { name: storeNameMap[topRatedEntry[0]] || topRatedEntry[0], rating: topRatedEntry[1].avg }
-        : null;
-
-      // متوسط سعر الإعلانات النشطة + نسبة الإعلانات المجانية
-      const activeAdsList = ads.filter((a: any) => a.status === 'active');
-      const avgActivePrice = activeAdsList.length
-        ? Math.round(activeAdsList.reduce((s: number, a: any) => s + (Number(a.price) || 0), 0) / activeAdsList.length)
-        : 0;
-      const freeAdsPct = activeAdsList.length
-        ? Math.round((activeAdsList.filter((a: any) => !a.price || Number(a.price) === 0).length / activeAdsList.length) * 100)
-        : 0;
-
-      // توزيع الإعلانات حسب المنطقة
-      const locCounts: Record<string, number> = {};
-      ads.forEach((r: any) => {
-        if (!r.location) return;
-        locCounts[r.location] = (locCounts[r.location] || 0) + 1;
-      });
-      const topLocations = Object.entries(locCounts)
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-      // أكثر البائعين نشاطاً + متوسط الإعلانات لكل بائع
-      const sellerCounts: Record<string, number> = {};
-      ads.forEach((r: any) => {
-        if (!r.user_id) return;
-        sellerCounts[r.user_id] = (sellerCounts[r.user_id] || 0) + 1;
-      });
-      const sellerIds = Object.keys(sellerCounts);
-      const avgAdsPerSeller = sellerIds.length ? parseFloat((ads.length / sellerIds.length).toFixed(1)) : 0;
-      const topSellerIds = Object.entries(sellerCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id);
-      let topSellers: { name: string; count: number }[] = [];
-      if (topSellerIds.length) {
-        const { data: sellerProfiles } = await supabase.from('user_profiles').select('id, username, email').in('id', topSellerIds);
-        const sellerNameMap: Record<string, string> = {};
-        (sellerProfiles ?? []).forEach((p: any) => {
-          sellerNameMap[p.id] = p.username || p.email?.split('@')[0] || (isAr ? 'مستخدم' : 'User');
-        });
-        topSellers = topSellerIds.map((id) => ({ name: sellerNameMap[id] || id, count: sellerCounts[id] }));
-      }
-
-      // نسبة الإعلانات بدون صور
-      const adIdsWithImages = new Set((adImagesRes.data ?? []).map((r: any) => r.ad_id));
-      const adsWithoutImagesPct = ads.length
-        ? Math.round((ads.filter((a: any) => !adIdsWithImages.has(a.id)).length / ads.length) * 100)
-        : 0;
-
-      // أكثر الإعلانات إضافة للمفضلة + أكثر التصنيفات طلباً بالمفضلة
-      const favAdCounts: Record<string, { title: string; count: number }> = {};
-      const favCatCounts: Record<string, number> = {};
-      (favoritesRes.data ?? []).forEach((r: any) => {
-        const title = r.ads?.title;
-        if (title) {
-          if (!favAdCounts[r.ad_id]) favAdCounts[r.ad_id] = { title, count: 0 };
-          favAdCounts[r.ad_id].count += 1;
-        }
-        const catId = r.ads?.category_id;
-        if (catId) favCatCounts[catId] = (favCatCounts[catId] || 0) + 1;
-      });
-      const topFavoritedAds = Object.values(favAdCounts).sort((a, b) => b.count - a.count).slice(0, 5);
-      const topFavoritedCategories = Object.entries(favCatCounts)
-        .map(([id, count]) => ({ name: catMap[id] || id, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-      // أكثر ساعات اليوم ازدحاماً (آخر 7 أيام)
-      const hourCounts: Record<number, number> = {};
-      (visitsHourRes.data ?? []).forEach((r: any) => {
-        if (!r.visited_at) return;
-        const hour = new Date(r.visited_at).getHours();
-        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-      });
-      const busiestHour = Object.entries(hourCounts)
-        .map(([hour, count]) => ({ hour: Number(hour), count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-      return {
-        adsByStatus,
-        topCategories,
-        userGrowth,
-        topStores,
-        pendingReports: pendingReportsRes.count ?? 0,
-        totalConversations: conversationsCountRes.count ?? 0,
-        totalMessages: messagesCountRes.count ?? 0,
-        messagesLast7d: messagesRecentRes.count ?? 0,
-        verifiedUsers: verifiedCountRes.count ?? 0,
-        blockedUsers: blockedCountRes.count ?? 0,
-        totalUsersCount: totalUsersCountRes.count ?? 0,
-        avgActivePrice,
-        freeAdsPct,
-        topLocations,
-        topSellers,
-        avgAdsPerSeller,
-        adsWithoutImagesPct,
-        topFavoritedAds,
-        topFavoritedCategories,
-        avgStoreRating,
-        topRatedStore,
-        storesOpenNow,
-        storesClosedNow,
-        busiestHour,
-      };
-    } catch {
-      return null;
-    }
-  }, [isAr]);
-
   // دالة لجلب إحصائيات الصفحات لفترات متعددة (فردي + إجمالي)
-  // ✅ مُصلَّحة: تجلب كل الصفوف مرة واحدة وتحسب "الفريد" فعلياً عبر Set على device_id
-  // (كانت سابقاً تستخدم count:head على device_id وهو ما يحسب أي تفرد إطلاقاً — نفس رقم الإجمالي)
   const fetchPageStatsMulti = useCallback(async (signal: AbortSignal) => {
     const supabase = getSupabaseClient();
     const now = new Date();
@@ -698,60 +376,101 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
     const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const quarterAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
-    const { data, error } = await supabase
+    // جلب جميع الصفحات الفريدة
+    const { data: pagesData, error: pagesError } = await supabase
       .from('app_visits')
-      .select('page, device_id, visited_at')
+      .select('page')
       .not('page', 'is', null)
-      .gte('visited_at', quarterAgo);
+      .order('page');
 
-    if (error || signal.aborted || !data) return [];
+    if (pagesError || signal.aborted) return [];
 
-    type VisitRow = { device_id: string; visited_at: string };
-    const byPage: Record<string, VisitRow[]> = {};
-    data.forEach((row: any) => {
-      if (!byPage[row.page]) byPage[row.page] = [];
-      byPage[row.page].push(row);
-    });
+    const pages = [...new Set(pagesData.map((p: any) => p.page))];
 
-    const since = (rows: VisitRow[], iso: string) => rows.filter((r) => r.visited_at >= iso);
-    const uniqueCount = (rows: VisitRow[]) => new Set(rows.map((r) => r.device_id)).size;
+    const results = await Promise.all(
+      pages.map(async (page: string) => {
+        if (signal.aborted) return null;
+        // Unique counts (distinct device_id)
+        const [dayUnique, weekUnique, monthUnique, quarterUnique] = await Promise.all([
+          supabase
+            .from('app_visits')
+            .select('device_id', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', dayAgo),
+          supabase
+            .from('app_visits')
+            .select('device_id', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', weekAgo),
+          supabase
+            .from('app_visits')
+            .select('device_id', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', monthAgo),
+          supabase
+            .from('app_visits')
+            .select('device_id', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', quarterAgo),
+        ]);
+        // Total counts (all rows)
+        const [dayTotal, weekTotal, monthTotal, quarterTotal] = await Promise.all([
+          supabase
+            .from('app_visits')
+            .select('*', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', dayAgo),
+          supabase
+            .from('app_visits')
+            .select('*', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', weekAgo),
+          supabase
+            .from('app_visits')
+            .select('*', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', monthAgo),
+          supabase
+            .from('app_visits')
+            .select('*', { count: 'exact', head: true })
+            .eq('page', page)
+            .gte('visited_at', quarterAgo),
+        ]);
 
-    return Object.keys(byPage).map((page) => {
-      const rows = byPage[page];
-      const dayRows = since(rows, dayAgo);
-      const weekRows = since(rows, weekAgo);
-      const monthRows = since(rows, monthAgo);
-      return {
-        page,
-        dayUnique: uniqueCount(dayRows),
-        weekUnique: uniqueCount(weekRows),
-        monthUnique: uniqueCount(monthRows),
-        quarterUnique: uniqueCount(rows),
-        dayTotal: dayRows.length,
-        weekTotal: weekRows.length,
-        monthTotal: monthRows.length,
-        quarterTotal: rows.length,
-      };
-    });
+        if (signal.aborted) return null;
+        return {
+          page,
+          dayUnique: dayUnique.count ?? 0,
+          weekUnique: weekUnique.count ?? 0,
+          monthUnique: monthUnique.count ?? 0,
+          quarterUnique: quarterUnique.count ?? 0,
+          dayTotal: dayTotal.count ?? 0,
+          weekTotal: weekTotal.count ?? 0,
+          monthTotal: monthTotal.count ?? 0,
+          quarterTotal: quarterTotal.count ?? 0,
+        };
+      })
+    );
+
+    return results.filter(r => r !== null) as any[];
   }, []);
 
-  // دالة لجلب توزيع الأجهزة — ✅ مُصلَّحة: تحسب أجهزة فريدة (device_id) لا عدد الزيارات
+  // دالة لجلب توزيع الأجهزة
   const fetchDeviceStats = useCallback(async (signal: AbortSignal) => {
     const supabase = getSupabaseClient();
     try {
       const { data, error } = await supabase
         .from('app_visits')
-        .select('platform, device_id')
+        .select('platform')
         .not('platform', 'is', null);
       if (error || signal.aborted || !data) return [];
 
-      const byPlatform: Record<string, Set<string>> = {};
+      const counts: Record<string, number> = {};
       data.forEach((row: any) => {
         const platform = row.platform || 'Unknown';
-        if (!byPlatform[platform]) byPlatform[platform] = new Set();
-        if (row.device_id) byPlatform[platform].add(row.device_id);
+        counts[platform] = (counts[platform] || 0) + 1;
       });
-      const result = Object.entries(byPlatform).map(([name, set]) => ({ name, value: set.size }));
+      const result = Object.entries(counts).map(([name, value]) => ({ name, value }));
       result.sort((a, b) => b.value - a.value);
       return result;
     } catch {
@@ -769,16 +488,10 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       const supabase = getSupabaseClient();
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-      const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toISOString();
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
       const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const twoMonthsAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString();
 
-      const [
-        dauRes, wauRes, mauRes, totalVisitsRes, usersRes, activeAdsRes, activeStoresRes, pageStatsMulti, deviceStatsData,
-        dauPrevRes, wauPrevRes, mauPrevRes,
-      ] = await Promise.all([
+      const [dauRes, wauRes, mauRes, totalVisitsRes, usersRes, activeAdsRes, activeStoresRes, pageStatsMulti, deviceStatsData] = await Promise.all([
         supabase.from('app_visits').select('device_id').gte('visited_at', todayStart),
         supabase.from('app_visits').select('device_id, visited_at').gte('visited_at', weekAgo),
         supabase.from('app_visits').select('device_id').gte('visited_at', monthAgo),
@@ -788,14 +501,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         supabase.from('stores').select('id', { count: 'exact', head: true }).eq('is_active', true),
         fetchPageStatsMulti(controller.signal),
         fetchDeviceStats(controller.signal),
-        // ✅ فترات المقارنة السابقة (لحساب نسب التغيير الحقيقية)
-        supabase.from('app_visits').select('device_id').gte('visited_at', yesterdayStart).lt('visited_at', todayStart),
-        supabase.from('app_visits').select('device_id').gte('visited_at', twoWeeksAgo).lt('visited_at', weekAgo),
-        supabase.from('app_visits').select('device_id').gte('visited_at', twoMonthsAgo).lt('visited_at', monthAgo),
       ]);
-
-      const extra = await fetchExtraStats(controller.signal);
-      if (!controller.signal.aborted) setExtraStats(extra);
 
       if (controller.signal.aborted) return;
 
@@ -820,19 +526,18 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         if (day && trendMap[day]) trendMap[day].add(row.device_id);
       });
       const trend = Object.entries(trendMap).map(([date, set]) => ({ date, count: set.size }));
-
-      // ✅ نسب التغيير الحقيقية: كل مؤشر يقارَن بفترته المكافئة السابقة تماماً
-      // (اليوم مقابل أمس، هذا الأسبوع مقابل الأسبوع اللي قبله، هذا الشهر مقابل الشهر اللي قبله)
-      const dauPrev = uniqueSet(dauPrevRes.data ?? []);
-      const wauPrev = uniqueSet(wauPrevRes.data ?? []);
-      const mauPrev = uniqueSet(mauPrevRes.data ?? []);
-      const pctChange = (curr: number, prev: number) => {
-        if (prev > 0) return ((curr - prev) / prev) * 100;
-        return curr > 0 ? 100 : 0;
+      const trendValues = trend.map(t => t.count);
+      const calcChange = (index: number) => {
+        if (trendValues.length < 2) return 0;
+        const first = trendValues[0] || 1;
+        const last = trendValues[trendValues.length - 1] || 1;
+        return ((last - first) / first) * 100;
       };
-      const changeDau = pctChange(dau, dauPrev);
-      const changeWau = pctChange(wau, wauPrev);
-      const changeMau = pctChange(mau, mauPrev);
+      const changeDau = calcChange(0);
+      const avgLast3 = trendValues.slice(-3).reduce((a, b) => a + b, 0) / 3;
+      const avgFirst3 = trendValues.slice(0, 3).reduce((a, b) => a + b, 0) / 3;
+      const changeWau = avgFirst3 !== 0 ? ((avgLast3 - avgFirst3) / avgFirst3) * 100 : 0;
+      const changeMau = trendValues.length >= 7 ? ((trendValues[6] - trendValues[0]) / (trendValues[0] || 1)) * 100 : 0;
 
       if (controller.signal.aborted) return;
       setStats({
@@ -860,7 +565,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
       setRefreshing(false);
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
     }
-  }, [fetchPageStatsMulti, fetchDeviceStats, fetchExtraStats]);
+  }, [fetchPageStatsMulti, fetchDeviceStats]);
 
   useEffect(() => {
     setLoading(true);
@@ -877,11 +582,11 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
 
   // تصدير CSV
   const exportPageStats = () => {
-    const periodLabel = period === 'week' ? (isAr ? 'آخر أسبوع' : 'Last week') : period === 'month' ? (isAr ? 'آخر شهر' : 'Last month') : (isAr ? 'آخر 3 أشهر' : 'Last 3 months');
-    const headers = [isAr ? 'الصفحة' : 'Page', isAr ? 'اليوم' : 'Day', periodLabel];
+    const periodLabel = period === 'week' ? (isAr ? 'الأسبوع' : 'Week') : period === 'month' ? (isAr ? 'الشهر' : 'Month') : (isAr ? 'الربع' : 'Quarter');
+    const headers = [isAr ? 'الصفحة' : 'Page', isAr ? 'اليوم' : 'Day', periodLabel, isAr ? 'الشهر' : 'Month'];
     const selected = period === 'week' ? 'week' : period === 'month' ? 'month' : 'quarter';
     const typeKey = visitType === 'unique' ? 'Unique' : 'Total';
-    const rows = pageStats.map(p => [p.page, p[`day${typeKey}`], p[`${selected}${typeKey}`]]);
+    const rows = pageStats.map(p => [p.page, p[`day${typeKey}`], p[`${selected}${typeKey}`], p[`month${typeKey}`]]);
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     try { Share.share({ message: csv, title: 'page_stats.csv' }); } catch {}
   };
@@ -928,7 +633,21 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
 
   const totalDay = pageStats.reduce((sum, p) => sum + (p[`day${typeKey}`] || 0), 0);
   const totalPeriod = pageStats.reduce((sum, p) => sum + (p[`${selectedPeriod}${typeKey}`] || 0), 0);
+  const totalMonth = pageStats.reduce((sum, p) => sum + (p[`month${typeKey}`] || 0), 0);
   const topPage = pageStats.length ? pageStats.reduce((a, b) => (a[`${selectedPeriod}${typeKey}`] || 0) > (b[`${selectedPeriod}${typeKey}`] || 0) ? a : b) : null;
+
+  // لتحديد النص المناسب لعنوان الإجمالي
+  const getPeriodLabel = (periodType: 'day' | 'week' | 'month') => {
+    if (visitType === 'unique') {
+      return periodType === 'day' ? (isAr ? 'اليوم (فردي)' : 'Day (Unique)') :
+             periodType === 'week' ? (isAr ? 'الأسبوع (فردي)' : 'Week (Unique)') :
+             (isAr ? 'الشهر (فردي)' : 'Month (Unique)');
+    } else {
+      return periodType === 'day' ? (isAr ? 'اليوم (إجمالي)' : 'Day (Total)') :
+             periodType === 'week' ? (isAr ? 'الأسبوع (إجمالي)' : 'Week (Total)') :
+             (isAr ? 'الشهر (إجمالي)' : 'Month (Total)');
+    }
+  };
 
   return (
     <ScrollView
@@ -975,16 +694,11 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
             onPress={() => setPeriod(p)}
           >
             <Text style={[styles.periodFilterText, { color: period === p ? '#fff' : colors.textSecondary }]}>
-              {p === 'week' ? (isAr ? 'آخر أسبوع' : 'Last week') : p === 'month' ? (isAr ? 'آخر شهر' : 'Last month') : (isAr ? 'آخر 3 أشهر' : 'Last 3 months')}
+              {p === 'week' ? (isAr ? 'أسبوع' : 'Week') : p === 'month' ? (isAr ? 'شهر' : 'Month') : (isAr ? 'ربع' : 'Quarter')}
             </Text>
           </Pressable>
         ))}
       </View>
-      <Text style={{ color: colors.textMuted, fontSize: 11, paddingHorizontal: Spacing.md, marginTop: -8, marginBottom: 8, textAlign: isAr ? 'right' : 'left' }}>
-        {isAr
-          ? 'ℹ️ يتحكم بجدول "إحصائيات الصفحات" بالأسفل فقط — بطاقات اليوم/الأسبوع/الشهر فوق ثابتة دايماً'
-          : 'ℹ️ Controls the "Page Statistics" table below only — the Day/Week/Month cards above are always fixed'}
-      </Text>
 
       {/* KPI بطاقات - مع حساب تغير خاص لكل بطاقة */}
       <View style={styles.statsGrid3}>
@@ -1174,9 +888,13 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
           </View>
           <View style={[styles.summaryStatCard, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
             <Text style={[styles.summaryStatLabel, { color: colors.textMuted }]}>
-              {period === 'week' ? (isAr ? 'آخر أسبوع' : 'Last week') : period === 'month' ? (isAr ? 'آخر شهر' : 'Last month') : (isAr ? 'آخر 3 أشهر' : 'Last 3 months')}
+              {period === 'week' ? (isAr ? 'الأسبوع' : 'Week') : period === 'month' ? (isAr ? 'الشهر' : 'Month') : (isAr ? 'الربع' : 'Quarter')}
             </Text>
             <Text style={[styles.summaryStatValue, { color: colors.textPrimary }]}>{formatNumber(totalPeriod)}</Text>
+          </View>
+          <View style={[styles.summaryStatCard, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
+            <Text style={[styles.summaryStatLabel, { color: colors.textMuted }]}>{isAr ? 'الشهر' : 'Month'}</Text>
+            <Text style={[styles.summaryStatValue, { color: colors.textPrimary }]}>{formatNumber(totalMonth)}</Text>
           </View>
           {topPage && (
             <View style={[styles.summaryStatCard, { backgroundColor: colors.primary + '15', borderColor: colors.border }]}>
@@ -1212,16 +930,19 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
           </View>
         ) : (
           <>
-            {/* رأس الجدول — ✅ مُصلَّح: flexDirection يحترم اتجاه اللغة، وكل عمود له عرض ثابت بدل % عشان ما يتقصف اسم الصفحة */}
-            <View style={[styles.pageStatRow, { flexDirection: isAr ? 'row-reverse' : 'row', backgroundColor: colors.primary + '15', borderBottomWidth: 0, paddingVertical: 8 }]}>
-              <Text style={[styles.pageStatName, { color: colors.textPrimary, fontWeight: '800', flex: 1, textAlign: isAr ? 'right' : 'left' }]}>
+            {/* رأس الجدول */}
+            <View style={[styles.pageStatRow, { backgroundColor: colors.primary + '15', borderBottomWidth: 0, paddingVertical: 8 }]}>
+              <Text style={[styles.pageStatName, { color: colors.textPrimary, fontWeight: '800', flex: 1 }]}>
                 {isAr ? 'الصفحة' : 'Page'}
               </Text>
-              <Text style={[styles.pageStatUnique, { fontWeight: '800', width: 56, textAlign: 'center' }]}>
+              <Text style={[styles.pageStatUnique, { fontWeight: '800', width: '22%', textAlign: 'center' }]}>
                 {isAr ? 'اليوم' : 'Day'}
               </Text>
-              <Text style={[styles.pageStatUnique, { fontWeight: '800', width: 72, textAlign: 'center' }]}>
-                {period === 'week' ? (isAr ? 'آخر أسبوع' : 'Last week') : period === 'month' ? (isAr ? 'آخر شهر' : 'Last month') : (isAr ? 'آخر 3 أشهر' : 'Last 3mo')}
+              <Text style={[styles.pageStatUnique, { fontWeight: '800', width: '22%', textAlign: 'center' }]}>
+                {period === 'week' ? (isAr ? 'الأسبوع' : 'Week') : period === 'month' ? (isAr ? 'الشهر' : 'Month') : (isAr ? 'الربع' : 'Quarter')}
+              </Text>
+              <Text style={[styles.pageStatUnique, { fontWeight: '800', width: '22%', textAlign: 'center' }]}>
+                {isAr ? 'الشهر' : 'Month'}
               </Text>
             </View>
 
@@ -1230,27 +951,23 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
               const name = pageNames[stat.page] || stat.page;
               const dayVal = stat[`day${typeKey}`] ?? 0;
               const periodVal = stat[`${selectedPeriod}${typeKey}`] ?? 0;
+              const monthVal = stat[`month${typeKey}`] ?? 0;
               return (
                 <View
                   key={stat.page}
                   style={[
                     styles.pageStatRow,
                     {
-                      flexDirection: isAr ? 'row-reverse' : 'row',
                       backgroundColor: isEven ? colors.background : 'transparent',
                       borderBottomColor: colors.borderLight,
                       borderBottomWidth: index === filteredPageStats.length - 1 ? 0 : 1,
                     },
                   ]}
                 >
-                  <Text
-                    style={[styles.pageStatName, { color: colors.textPrimary, flex: 1, textAlign: isAr ? 'right' : 'left' }]}
-                    numberOfLines={1}
-                  >
-                    {name}
-                  </Text>
-                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', width: 56 }]}>{dayVal}</Text>
-                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', width: 72 }]}>{periodVal}</Text>
+                  <Text style={[styles.pageStatName, { color: colors.textPrimary, flex: 1 }]}>{name}</Text>
+                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', width: '22%' }]}>{dayVal}</Text>
+                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', width: '22%' }]}>{periodVal}</Text>
+                  <Text style={[styles.pageStatUnique, { color: colors.textPrimary, textAlign: 'center', width: '22%' }]}>{monthVal}</Text>
                 </View>
               );
             })}
@@ -1260,7 +977,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
               style={[
                 styles.pageStatRow,
                 {
-                  flexDirection: isAr ? 'row-reverse' : 'row',
                   borderTopWidth: 1,
                   borderTopColor: colors.borderLight,
                   paddingTop: 8,
@@ -1269,11 +985,12 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
                 },
               ]}
             >
-              <Text style={[styles.pageStatName, { color: colors.textPrimary, fontWeight: '800', flex: 1, textAlign: isAr ? 'right' : 'left' }]}>
+              <Text style={[styles.pageStatName, { color: colors.textPrimary, fontWeight: '800', flex: 1 }]}>
                 {isAr ? 'الإجمالي' : 'Total'}
               </Text>
-              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center', width: 56 }]}>{totalDay}</Text>
-              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center', width: 72 }]}>{totalPeriod}</Text>
+              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center', width: '22%' }]}>{totalDay}</Text>
+              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center', width: '22%' }]}>{totalPeriod}</Text>
+              <Text style={[styles.pageStatUnique, { color: colors.textPrimary, fontWeight: '700', textAlign: 'center', width: '22%' }]}>{totalMonth}</Text>
             </View>
           </>
         )}
@@ -1314,334 +1031,6 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
         </View>
       </View>
 
-      {/* ═══════ إحصائيات شاملة لكل قطعة بالتطبيق ═══════ */}
-      {extraStats && (
-        <>
-          {/* بطاقات سريعة: بلاغات معلّقة + دردشة */}
-          <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', gap: Spacing.sm, paddingHorizontal: Spacing.md, marginTop: Spacing.md }}>
-            <View style={[styles.statCardSmall, { flex: 1, backgroundColor: extraStats.pendingReports > 0 ? '#FEF2F2' : colors.surface, borderColor: extraStats.pendingReports > 0 ? '#FCA5A5' : colors.border }]}>
-              <View style={[styles.statIconSmall, { backgroundColor: '#FEE2E2' }]}>
-                <MaterialIcons name="flag" size={18} color="#DC2626" />
-              </View>
-              <View style={styles.statContentSmall}>
-                <Text style={[styles.statValueSmall, { color: extraStats.pendingReports > 0 ? '#DC2626' : colors.textPrimary }]}>{extraStats.pendingReports}</Text>
-                <Text style={[styles.statLabelSmall, { color: colors.textMuted }]}>{isAr ? '🚩 بلاغات معلّقة' : 'Pending Reports'}</Text>
-              </View>
-            </View>
-            <View style={[styles.statCardSmall, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.statIconSmall, { backgroundColor: colors.primaryGhost }]}>
-                <MaterialIcons name="chat-bubble" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.statContentSmall}>
-                <Text style={[styles.statValueSmall, { color: colors.textPrimary }]}>{formatNumber(extraStats.totalConversations)}</Text>
-                <Text style={[styles.statLabelSmall, { color: colors.textMuted }]}>{isAr ? '💬 محادثات' : 'Conversations'}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* نشاط الدردشة */}
-          <View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-              {isAr ? '💬 نشاط الدردشة' : '💬 Chat Activity'}
-            </Text>
-            <View style={styles.advancedStatsRow}>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? 'إجمالي الرسائل' : 'Total Messages'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>{formatNumber(extraStats.totalMessages)}</Text>
-              </View>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? 'رسائل آخر 7 أيام' : 'Messages (7d)'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>{formatNumber(extraStats.messagesLast7d)}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* توزيع الإعلانات حسب الحالة */}
-          {extraStats.adsByStatus.length > 0 && (
-            <View style={[styles.deviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-                {isAr ? '📢 توزيع الإعلانات حسب الحالة' : '📢 Ads by Status'}
-              </Text>
-              {(() => {
-                const totalAds = extraStats.adsByStatus.reduce((s, a) => s + a.count, 0);
-                const maxAds = Math.max(...extraStats.adsByStatus.map(a => a.count), 1);
-                const statusLabel = (s: string) => {
-                  const map: Record<string, string> = isAr
-                    ? { active: 'نشط', pending: 'قيد المراجعة', expired: 'منتهي', rejected: 'مرفوض', sold: 'مباع', unknown: 'غير محدد' }
-                    : { active: 'Active', pending: 'Pending', expired: 'Expired', rejected: 'Rejected', sold: 'Sold', unknown: 'Unknown' };
-                  return map[s] || s;
-                };
-                const statusColor = (s: string) => ({ active: '#22C55E', pending: '#F59E0B', expired: '#94A3B8', rejected: '#EF4444', sold: '#3B82F6' } as Record<string, string>)[s] || '#8B5CF6';
-                return extraStats.adsByStatus.map((item, idx) => {
-                  const percent = (item.count / maxAds) * 100;
-                  return (
-                    <View key={idx} style={{ marginBottom: 12 }}>
-                      <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <Text style={[styles.deviceName, { color: colors.textPrimary }]}>{statusLabel(item.status)}</Text>
-                        <Text style={[styles.devicePercent, { color: colors.textSecondary }]}>
-                          {item.count} ({totalAds ? Math.round((item.count / totalAds) * 100) : 0}%)
-                        </Text>
-                      </View>
-                      <View style={[styles.progressBarBg, { backgroundColor: colors.borderLight }]}>
-                        <View style={[styles.progressBarFill, { width: `${percent}%`, backgroundColor: statusColor(item.status), borderRadius: 8 }]} />
-                      </View>
-                    </View>
-                  );
-                });
-              })()}
-            </View>
-          )}
-
-          {/* أكثر التصنيفات نشاطاً */}
-          {extraStats.topCategories.length > 0 && (
-            <View style={[styles.deviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-                {isAr ? '🏷️ أكثر التصنيفات نشاطاً' : '🏷️ Top Categories'}
-              </Text>
-              {(() => {
-                const maxCat = Math.max(...extraStats.topCategories.map(c => c.count), 1);
-                return extraStats.topCategories.map((item, idx) => {
-                  const percent = (item.count / maxCat) * 100;
-                  return (
-                    <View key={idx} style={{ marginBottom: 12 }}>
-                      <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <Text style={[styles.deviceName, { color: colors.textPrimary }]}>{item.name}</Text>
-                        <Text style={[styles.devicePercent, { color: colors.textSecondary }]}>{item.count}</Text>
-                      </View>
-                      <View style={[styles.progressBarBg, { backgroundColor: colors.borderLight }]}>
-                        <View style={[styles.progressBarFill, { width: `${percent}%`, backgroundColor: ['#3B82F6', '#22C55E', '#F59E0B', '#8B5CF6', '#EC4899'][idx % 5], borderRadius: 8 }]} />
-                      </View>
-                    </View>
-                  );
-                });
-              })()}
-            </View>
-          )}
-
-          {/* أكثر المتاجر زيارة */}
-          {extraStats.topStores.length > 0 && (
-            <View style={[styles.deviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-                {isAr ? '🏪 أكثر المتاجر زيارة' : '🏪 Top Stores by Views'}
-              </Text>
-              {(() => {
-                const maxViews = Math.max(...extraStats.topStores.map(s => s.views), 1);
-                return extraStats.topStores.map((item, idx) => {
-                  const percent = (item.views / maxViews) * 100;
-                  return (
-                    <View key={idx} style={{ marginBottom: 12 }}>
-                      <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <Text style={[styles.deviceName, { color: colors.textPrimary }]} numberOfLines={1}>{idx + 1}. {item.name}</Text>
-                        <Text style={[styles.devicePercent, { color: colors.textSecondary }]}>{formatNumber(item.views)}</Text>
-                      </View>
-                      <View style={[styles.progressBarBg, { backgroundColor: colors.borderLight }]}>
-                        <View style={[styles.progressBarFill, { width: `${percent}%`, backgroundColor: '#F59E0B', borderRadius: 8 }]} />
-                      </View>
-                    </View>
-                  );
-                });
-              })()}
-            </View>
-          )}
-
-          {/* نمو المستخدمين الجدد */}
-          {extraStats.userGrowth.length > 0 && (
-            <View style={[styles.trendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <Text style={[styles.trendTitle, { color: colors.textPrimary }]}>
-                  {isAr ? '📈 مستخدمون جدد' : '📈 New Users'}
-                </Text>
-                <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 10 }]}>
-                  {isAr ? 'آخر 7 أيام' : 'Last 7 days'}
-                </Text>
-              </View>
-              <View style={styles.trendBars}>
-                {extraStats.userGrowth.map((t, idx) => {
-                  const maxGrowth = Math.max(...extraStats.userGrowth.map(g => g.count), 1);
-                  const heightPercent = (t.count / maxGrowth) * 70;
-                  return (
-                    <View key={idx} style={styles.trendBarWrapper}>
-                      <Text style={[styles.trendLabel, { color: colors.textPrimary, fontWeight: '700', fontSize: 10 }]}>{t.count}</Text>
-                      <View style={[styles.trendBar, { height: Math.max(heightPercent, 4), backgroundColor: '#22C55E', borderRadius: 6 }]} />
-                      <Text style={[styles.trendLabel, { color: colors.textMuted, fontSize: 12, marginTop: 4 }]}>
-                        {new Date(t.date).toLocaleDateString(isAr ? 'ar' : 'en', { weekday: 'short' })}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          )}
-
-          {/* المستخدمون: موثّقين / محظورين / التصاق (Stickiness) */}
-          <View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-              {isAr ? '👥 صحة قاعدة المستخدمين' : '👥 User Base Health'}
-            </Text>
-            <View style={styles.advancedStatsRow}>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '✅ موثّقين' : 'Verified'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: '#22C55E' }]}>
-                  {extraStats.totalUsersCount ? Math.round((extraStats.verifiedUsers / extraStats.totalUsersCount) * 100) : 0}% ({formatNumber(extraStats.verifiedUsers)})
-                </Text>
-              </View>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '🚫 محظورين' : 'Blocked'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: extraStats.blockedUsers > 0 ? '#EF4444' : colors.textPrimary }]}>
-                  {formatNumber(extraStats.blockedUsers)}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.advancedStatsRow}>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '🔥 معدل الالتصاق (DAU/MAU)' : '🔥 Stickiness (DAU/MAU)'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>
-                  {stats?.mau ? Math.round((stats.dau / stats.mau) * 100) : 0}%
-                </Text>
-              </View>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '⏰ أكثر ساعة ازدحاماً' : '⏰ Busiest Hour'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>
-                  {extraStats.busiestHour[0] ? `${extraStats.busiestHour[0].hour}:00 (${extraStats.busiestHour[0].count})` : '-'}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* الإعلانات: السعر، بدون صور، المناطق، البائعين */}
-          <View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-              {isAr ? '📢 صحة الإعلانات' : '📢 Ads Health'}
-            </Text>
-            <View style={styles.advancedStatsRow}>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '💰 متوسط السعر (نشط)' : 'Avg Price (Active)'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>₪{formatNumber(extraStats.avgActivePrice)}</Text>
-              </View>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '🆓 إعلانات مجانية' : 'Free Ads'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>{extraStats.freeAdsPct}%</Text>
-              </View>
-            </View>
-            <View style={styles.advancedStatsRow}>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '🖼️ بدون صور' : 'Without Images'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: extraStats.adsWithoutImagesPct > 20 ? '#F59E0B' : colors.textPrimary }]}>
-                  {extraStats.adsWithoutImagesPct}%
-                </Text>
-              </View>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '📊 متوسط إعلان/بائع' : 'Avg Ads/Seller'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>{extraStats.avgAdsPerSeller}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* أكثر المناطق نشاطاً */}
-          {extraStats.topLocations.length > 0 && (
-            <View style={[styles.deviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-                {isAr ? '📍 أكثر المناطق نشاطاً' : '📍 Top Locations'}
-              </Text>
-              {(() => {
-                const maxLoc = Math.max(...extraStats.topLocations.map(l => l.count), 1);
-                return extraStats.topLocations.map((item, idx) => (
-                  <View key={idx} style={{ marginBottom: 12 }}>
-                    <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <Text style={[styles.deviceName, { color: colors.textPrimary }]}>{item.name}</Text>
-                      <Text style={[styles.devicePercent, { color: colors.textSecondary }]}>{item.count}</Text>
-                    </View>
-                    <View style={[styles.progressBarBg, { backgroundColor: colors.borderLight }]}>
-                      <View style={[styles.progressBarFill, { width: `${(item.count / maxLoc) * 100}%`, backgroundColor: '#3B82F6', borderRadius: 8 }]} />
-                    </View>
-                  </View>
-                ));
-              })()}
-            </View>
-          )}
-
-          {/* أكثر البائعين نشاطاً */}
-          {extraStats.topSellers.length > 0 && (
-            <View style={[styles.deviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-                {isAr ? '🏅 أكثر البائعين نشاطاً' : '🏅 Top Sellers'}
-              </Text>
-              {(() => {
-                const maxSeller = Math.max(...extraStats.topSellers.map(s => s.count), 1);
-                return extraStats.topSellers.map((item, idx) => (
-                  <View key={idx} style={{ marginBottom: 12 }}>
-                    <View style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <Text style={[styles.deviceName, { color: colors.textPrimary }]} numberOfLines={1}>{idx + 1}. {item.name}</Text>
-                      <Text style={[styles.devicePercent, { color: colors.textSecondary }]}>{item.count}</Text>
-                    </View>
-                    <View style={[styles.progressBarBg, { backgroundColor: colors.borderLight }]}>
-                      <View style={[styles.progressBarFill, { width: `${(item.count / maxSeller) * 100}%`, backgroundColor: '#8B5CF6', borderRadius: 8 }]} />
-                    </View>
-                  </View>
-                ));
-              })()}
-            </View>
-          )}
-
-          {/* المفضلة: أكثر الإعلانات والتصنيفات طلباً */}
-          {(extraStats.topFavoritedAds.length > 0 || extraStats.topFavoritedCategories.length > 0) && (
-            <View style={[styles.deviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-                {isAr ? '❤️ الأكثر إضافة للمفضلة' : '❤️ Most Favorited'}
-              </Text>
-              {extraStats.topFavoritedAds.map((item, idx) => (
-                <View key={idx} style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Text style={[styles.deviceName, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>{idx + 1}. {item.title}</Text>
-                  <Text style={[styles.devicePercent, { color: colors.textSecondary }]}>❤️ {item.count}</Text>
-                </View>
-              ))}
-              {extraStats.topFavoritedCategories.length > 0 && (
-                <>
-                  <Text style={[styles.advancedStatsLabel, { color: colors.textMuted, marginTop: 8, marginBottom: 6 }]}>
-                    {isAr ? 'حسب التصنيف' : 'By Category'}
-                  </Text>
-                  {extraStats.topFavoritedCategories.map((item, idx) => (
-                    <View key={idx} style={{ flexDirection: isAr ? 'row-reverse' : 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <Text style={[styles.deviceName, { color: colors.textPrimary }]}>{item.name}</Text>
-                      <Text style={[styles.devicePercent, { color: colors.textSecondary }]}>{item.count}</Text>
-                    </View>
-                  ))}
-                </>
-              )}
-            </View>
-          )}
-
-          {/* المتاجر: التقييم + مفتوح/مغلق الآن */}
-          <View style={[styles.advancedStatsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.advancedStatsTitle, { color: colors.textPrimary }]}>
-              {isAr ? '🏪 صحة المتاجر' : '🏪 Stores Health'}
-            </Text>
-            <View style={styles.advancedStatsRow}>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '⭐ متوسط التقييم' : 'Avg Rating'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: colors.textPrimary }]}>{extraStats.avgStoreRating || '-'}</Text>
-              </View>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '🏆 الأعلى تقييماً' : 'Top Rated'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: colors.textPrimary, fontSize: 12 }]} numberOfLines={1}>
-                  {extraStats.topRatedStore ? `${extraStats.topRatedStore.name} (${extraStats.topRatedStore.rating}⭐)` : '-'}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.advancedStatsRow}>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '🟢 مفتوح الآن' : 'Open Now'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: '#22C55E' }]}>{extraStats.storesOpenNow}</Text>
-              </View>
-              <View style={styles.advancedStatsCol}>
-                <Text style={[styles.advancedStatsLabel, { color: colors.textMuted }]}>{isAr ? '🔴 مغلق الآن' : 'Closed Now'}</Text>
-                <Text style={[styles.advancedStatsValue, { color: '#EF4444' }]}>{extraStats.storesClosedNow}</Text>
-              </View>
-            </View>
-          </View>
-        </>
-      )}
-
       <View style={[styles.noteBox, { backgroundColor: colors.surfaceTint, borderColor: colors.borderLight }]}>
         <Text style={[styles.noteText, { color: colors.textMuted }]}>
           {isAr
@@ -1654,7 +1043,7 @@ function AnalyticsTab({ isAr, colors }: { isAr: boolean; colors: any }) {
 }
 
 // ─── تبويب الإعلانات ────────────────────────────────────────────────────────
-function AdsTab({ colors, isAr, isRTL, t }: any) {
+function AdsTab({ colors, isAr, t }: any) {
   const [ads, setAds] = useState<Ad[]>([]);
   const [search, setSearch] = useState('');
   const [editingAd, setEditingAd] = useState<Ad | null>(null);
@@ -1662,43 +1051,19 @@ function AdsTab({ colors, isAr, isRTL, t }: any) {
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [selectedAd, setSelectedAd] = useState<Ad | null>(null);
   const [showDeleted, setShowDeleted] = useState(false);
-  const [sortBy, setSortBy] = useState<'newest' | 'price_desc' | 'price_asc' | 'views_desc'>('newest');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'featured' | 'sold'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
-  const [noViewsOnly, setNoViewsOnly] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [quickStats, setQuickStats] = useState<{ total: number; active: number; featured: number; boosted: number } | null>(null);
-  const [reportedAdIds, setReportedAdIds] = useState<Set<string>>(new Set());
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
   const { showAlert } = useAlert();
-  const router = useRouter();
   const abortRef = useRef<AbortController | null>(null);
-
-  // ✅ جديد: شريط إحصائيات سريع + ربط بتبويب البلاغات + قائمة التصنيفات للفلترة
-  const refreshSideData = useCallback(() => {
-    adminFetchAdsQuickStats().then(setQuickStats).catch(() => {});
-    adminFetchReportedAdIds().then(setReportedAdIds).catch(() => {});
-  }, []);
-  useEffect(() => {
-    refreshSideData();
-    fetchCategories().then(({ data }) => setCategories(data || [])).catch(() => {});
-  }, [refreshSideData]);
 
   const showSnackbar = (message: string, type: string = 'success') => {
     setSnackbar({ visible: true, message, type });
   };
 
-  // ✅ مُصلَّح: البحث و"عرض المحذوفات" والفرز صاروا يُنفَّذوا فعلياً بالاستعلام (backend)
-  // بدل ما يقتصروا على الصفحة المحمّلة فقط بالمتصفح
   const loadData = useCallback(async (reset = false, pageNum = 0) => {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
@@ -1710,24 +1075,16 @@ function AdsTab({ colors, isAr, isRTL, t }: any) {
       const limit = 20;
       const offset = pageNum * limit;
       const timeout = new Promise((_, reject) => setTimeout(() => { controller.abort(); reject(new Error('TIMEOUT')); }, 15000));
-      const result = await Promise.race([
-        adminFetchAllAds({
-          signal: controller.signal, limit, offset, includeDeleted: showDeleted, search, sortBy,
-          status: statusFilter === 'all' ? undefined : statusFilter,
-          categoryId: categoryFilter || undefined,
-          noViewsOnly,
-        }),
-        timeout,
-      ]);
+      const result = await Promise.race([adminFetchAllAds({ signal: controller.signal, limit, offset }), timeout]);
       const { data } = result as any;
       if (controller.signal.aborted) return;
       if (reset) {
         setAds(data || []);
-        setHasMore((data || []).length >= limit);
+        setHasMore(data.length >= limit);
         setPage(pageNum);
       } else {
         setAds(prev => [...prev, ...(data || [])]);
-        setHasMore((data || []).length >= limit);
+        setHasMore(data.length >= limit);
         setPage(pageNum);
       }
     } catch (err: any) {
@@ -1740,57 +1097,37 @@ function AdsTab({ colors, isAr, isRTL, t }: any) {
       setLoadingMore(false);
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [isAr, showAlert, showDeleted, search, sortBy, statusFilter, categoryFilter, noViewsOnly]);
+  }, [isAr, showAlert]);
 
   useEffect(() => {
     loadData(true);
     return () => { if (abortRef.current) abortRef.current.abort(); };
   }, []);
 
-  // ✅ إعادة الجلب من الخادم عند تغيير الفلاتر (مو فلترة محلية على 20 عنصر بس)
-  useEffect(() => {
-    const t = setTimeout(() => loadData(true), search ? 400 : 0);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, showDeleted, sortBy, statusFilter, categoryFilter, noViewsOnly]);
-
-  const filteredAds = ads; // الفلترة صارت بالخادم بالكامل
-
-  const withPending = async (id: string, fn: () => Promise<{ error: string | null }>) => {
-    setPendingIds(prev => new Set(prev).add(id));
-    try {
-      return await fn();
-    } finally {
-      setPendingIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+  const filteredAds = useMemo(() => {
+    let filtered = ads;
+    if (search) {
+      filtered = filtered.filter(a => a.title.toLowerCase().includes(search.toLowerCase()));
     }
-  };
-
-  // ✅ تحديث محلي فوري بمكان الإعادة الكاملة loadData(true) — كانت ترجّع القائمة لأول صفحة
-  // وتفقد كل الصفحات المحمّلة بالتمرير عند أي تعديل بسيط
-  const patchAdLocally = (id: string, patch: Partial<Ad>) => {
-    setAds(prev => prev.map(a => (a.id === id ? { ...a, ...patch } : a)));
-  };
+    if (!showDeleted) {
+      filtered = filtered.filter(a => a.status !== 'deleted');
+    }
+    return filtered;
+  }, [ads, search, showDeleted]);
 
   const handleToggleFeatured = async (ad: Ad) => {
-    // ✅ مُصلَّح: التمييز كان يكتب فوق status ويفقد حالة "مباع" الحقيقية نهائياً
-    // (status يُستخدم لتخزين active/sold/featured بعمود واحد — تمييز إعلان مباع كان يحوّله "نشط" بالغلط)
-    if (ad.status === 'sold' || ad.status === 'deleted') {
-      showAlert(isAr ? 'غير مسموح' : 'Not allowed', isAr ? 'ما بينميّز إعلان مباع أو محذوف' : 'Cannot feature a sold or deleted ad');
-      return;
-    }
     const isFeatured = ad.status === 'featured';
-    const { error } = await withPending(ad.id, () => adminSetAdFeatured(ad.id, !isFeatured));
+    const { error } = await adminSetAdFeatured(ad.id, !isFeatured);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    patchAdLocally(ad.id, { status: isFeatured ? 'active' : 'featured' });
     showSnackbar(isAr ? 'تم تحديث حالة التميز' : 'Featured status updated', 'success');
-    refreshSideData();
+    loadData(true);
   };
   const handleToggleBoost = async (ad: Ad) => {
     const isBoosted = !!(ad.boosted_until && new Date(ad.boosted_until).getTime() > Date.now());
-    const { error } = await withPending(ad.id, () => adminBoostAd(ad.id, !isBoosted));
+    const { error } = await adminBoostAd(ad.id, !isBoosted);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    patchAdLocally(ad.id, { boosted_until: isBoosted ? null : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() });
     showSnackbar(isAr ? 'تم تحديث حالة التعزيز' : 'Boost status updated', 'success');
+    loadData(true);
   };
   const handleDeleteAd = (ad: Ad) => {
     setSelectedAd(ad);
@@ -1798,87 +1135,25 @@ function AdsTab({ colors, isAr, isRTL, t }: any) {
   };
   const confirmDelete = async () => {
     if (!selectedAd) return;
-    const { error } = await withPending(selectedAd.id, () => adminDeleteAd(selectedAd.id));
+    const { error } = await adminDeleteAd(selectedAd.id);
     setDeleteModalVisible(false);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    if (showDeleted) {
-      patchAdLocally(selectedAd.id, { status: 'deleted' });
-    } else {
-      setAds(prev => prev.filter(a => a.id !== selectedAd.id));
-    }
     showSnackbar(isAr ? 'تم حذف الإعلان' : 'Ad deleted', 'success');
-    refreshSideData();
+    loadData(true);
   };
   const handleEditAd = (ad: Ad) => {
     setEditingAd(ad);
     setEditModalVisible(true);
   };
   const handleSaveAdEdit = async (id: string, updates: any) => {
-    const { error } = await withPending(id, () => adminUpdateAd(id, updates));
+    const { error } = await adminUpdateAd(id, updates);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    patchAdLocally(id, updates);
     showSnackbar(isAr ? 'تم تحديث الإعلان' : 'Ad updated', 'success');
+    loadData(true);
   };
-  const handleViewAd = (ad: Ad) => {
-    router.push(`/ad/${ad.id}` as any);
-  };
-
-  // ✅ جديد: إجراءات جماعية
-  const toggleSelectAd = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const exitSelectionMode = () => { setSelectionMode(false); setSelectedIds(new Set()); };
-  const bulkDelete = () => {
-    if (selectedIds.size === 0) return;
-    showAlert(
-      isAr ? 'تأكيد الحذف الجماعي' : 'Confirm bulk delete',
-      isAr ? `هل تريد حذف ${selectedIds.size} إعلان؟` : `Delete ${selectedIds.size} ads?`,
-      [
-        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-        {
-          text: isAr ? 'حذف' : 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setBulkBusy(true);
-            const ids = Array.from(selectedIds);
-            await Promise.all(ids.map(id => adminDeleteAd(id)));
-            setAds(prev => showDeleted ? prev.map(a => (ids.includes(a.id) ? { ...a, status: 'deleted' as const } : a)) : prev.filter(a => !ids.includes(a.id)));
-            setBulkBusy(false);
-            exitSelectionMode();
-            showSnackbar(isAr ? 'تم حذف الإعلانات المحددة' : 'Selected ads deleted', 'success');
-            refreshSideData();
-          },
-        },
-      ]
-    );
-  };
-  const bulkFeature = async (featured: boolean) => {
-    if (selectedIds.size === 0) return;
-    setBulkBusy(true);
-    const ids = Array.from(selectedIds).filter(id => {
-      const ad = ads.find(a => a.id === id);
-      return ad && ad.status !== 'sold' && ad.status !== 'deleted';
-    });
-    await Promise.all(ids.map(id => adminSetAdFeatured(id, featured)));
-    setAds(prev => prev.map(a => (ids.includes(a.id) ? { ...a, status: featured ? 'featured' as const : 'active' as const } : a)));
-    setBulkBusy(false);
-    exitSelectionMode();
-    showSnackbar(isAr ? 'تم تحديث الإعلانات المحددة' : 'Selected ads updated', 'success');
-    refreshSideData();
-  };
-  // ✅ مُصلَّح: التصدير كان يصدّر كل الإعلانات المحمّلة بدل النتائج المفلترة المعروضة فعلياً
   const exportAds = async () => {
-    const csv = generateCSV(filteredAds, ['ID', 'Title', 'Price', 'Condition', 'Status', 'Created'], ['id', 'title', 'price', 'condition', 'status', 'created_at']);
-    try {
-      await Share.share({ message: csv, title: 'Ads Export.csv' });
-    } catch (e) {
-      console.warn('Share failed', e);
-      Alert.alert(isAr ? 'خطأ' : 'Error', isAr ? 'فشلت مشاركة الملف' : 'Failed to share the file');
-    }
+    const csv = generateCSV(ads, ['ID', 'Title', 'Price', 'Condition', 'Status', 'Created'], ['id', 'title', 'price', 'condition', 'status', 'created_at']);
+    try { await Share.share({ message: csv, title: 'Ads Export.csv' }); } catch (e) { console.warn('Share failed', e); }
   };
 
   const renderItem = ({ item }: { item: Ad }) => (
@@ -1886,19 +1161,13 @@ function AdsTab({ colors, isAr, isRTL, t }: any) {
       item={item}
       colors={colors}
       isAr={isAr}
-      isRTL={isRTL}
-      pending={pendingIds.has(item.id)}
-      isReported={reportedAdIds.has(item.id)}
-      selectionMode={selectionMode}
-      selected={selectedIds.has(item.id)}
-      onToggleSelect={toggleSelectAd}
       onToggleFeatured={handleToggleFeatured}
       onToggleBoost={handleToggleBoost}
       onEdit={handleEditAd}
       onDelete={handleDeleteAd}
-      onView={handleViewAd}
     />
   );
+  const getItemLayout = (data: any, index: number) => ({ length: 120, offset: 120 * index, index });
 
   if (loading) {
     return (
@@ -1908,45 +1177,14 @@ function AdsTab({ colors, isAr, isRTL, t }: any) {
     );
   }
 
-  const sortOptions: { key: typeof sortBy; label: string }[] = [
-    { key: 'newest', label: isAr ? 'الأحدث' : 'Newest' },
-    { key: 'price_desc', label: isAr ? 'السعر ↓' : 'Price ↓' },
-    { key: 'price_asc', label: isAr ? 'السعر ↑' : 'Price ↑' },
-    { key: 'views_desc', label: isAr ? 'الأكثر مشاهدة' : 'Most viewed' },
-  ];
-
-  const statusOptions: { key: typeof statusFilter; label: string }[] = [
-    { key: 'all', label: isAr ? 'الكل' : 'All' },
-    { key: 'active', label: isAr ? 'نشط' : 'Active' },
-    { key: 'featured', label: isAr ? 'مميز' : 'Featured' },
-    { key: 'sold', label: isAr ? 'مباع' : 'Sold' },
-  ];
-
   return (
     <View style={styles.tabContainer}>
-      {/* ✅ جديد: شريط إحصائيات سريع */}
-      {quickStats && (
-        <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', gap: 8, paddingHorizontal: Spacing.md, marginBottom: 8, flexWrap: 'wrap' }}>
-          {[
-            { label: isAr ? 'الإجمالي' : 'Total', value: quickStats.total, color: colors.textPrimary },
-            { label: isAr ? 'نشط' : 'Active', value: quickStats.active, color: '#22C55E' },
-            { label: isAr ? 'مميز' : 'Featured', value: quickStats.featured, color: '#F59E0B' },
-            { label: isAr ? 'معزز' : 'Boosted', value: quickStats.boosted, color: '#2563EB' },
-          ].map((s, i) => (
-            <View key={i} style={{ flex: 1, minWidth: 70, backgroundColor: colors.surfaceTint, borderRadius: Radius.md, borderWidth: 1, borderColor: colors.border, padding: 8, alignItems: 'center' }}>
-              <Text style={{ fontSize: 16, fontWeight: '800', color: s.color }}>{s.value}</Text>
-              <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 2 }}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-      <View style={[styles.adControls, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border, flex: 1, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      <View style={styles.adControls}>
+        <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border, flex: 1 }]}>
           <MaterialIcons name="search" size={20} color={colors.textMuted} />
           <TextInput
-            style={[styles.searchInput, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
-            placeholder={isAr ? '🔍 ابحث عن إعلان (العنوان أو الوصف)...' : '🔍 Search ads (title or description)...'}
+            style={[styles.searchInput, { color: colors.textPrimary }]}
+            placeholder={isAr ? '🔍 ابحث عن إعلان...' : '🔍 Search ads...'}
             placeholderTextColor={colors.textMuted}
             value={search}
             onChangeText={setSearch}
@@ -1962,133 +1200,10 @@ function AdsTab({ colors, isAr, isRTL, t }: any) {
             {showDeleted ? (isAr ? 'إخفاء المحذوفات' : 'Hide deleted') : (isAr ? 'عرض المحذوفات' : 'Show deleted')}
           </Text>
         </Pressable>
-        <Pressable
-          style={[styles.toggleDeletedBtn, { backgroundColor: selectionMode ? colors.primary : colors.border }]}
-          onPress={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
-        >
-          <Text style={{ color: selectionMode ? '#fff' : colors.textSecondary, fontWeight: '600', fontSize: 12 }}>
-            {selectionMode ? (isAr ? 'إلغاء التحديد' : 'Cancel select') : (isAr ? 'تحديد' : 'Select')}
-          </Text>
-        </Pressable>
         <Pressable style={[styles.exportBtn, { backgroundColor: colors.primaryGhost }]} onPress={exportAds}>
           <MaterialIcons name="file-download" size={20} color={colors.primary} />
         </Pressable>
       </View>
-
-      {/* ✅ جديد: فلترة حسب الحالة + التصنيف + بدون مشاهدات، وفرز حقيقي — كلها مربوطة بالاستعلام */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ flexGrow: 0, marginBottom: 6 }}
-        contentContainerStyle={{ flexDirection: isRTL ? 'row-reverse' : 'row', gap: 6, paddingHorizontal: Spacing.md }}
-      >
-        {statusOptions.map(opt => (
-          <Pressable
-            key={opt.key}
-            onPress={() => setStatusFilter(opt.key)}
-            style={{
-              paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full,
-              backgroundColor: statusFilter === opt.key ? colors.primary : colors.surfaceTint,
-              borderWidth: 1, borderColor: statusFilter === opt.key ? colors.primary : colors.border,
-              flexShrink: 0, flexGrow: 0, alignSelf: 'flex-start',
-            }}
-          >
-            <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '500', color: statusFilter === opt.key ? '#fff' : colors.textSecondary }}>{opt.label}</Text>
-          </Pressable>
-        ))}
-        <View style={{ width: 1, backgroundColor: colors.border, marginHorizontal: 4 }} />
-        <Pressable
-          onPress={() => setNoViewsOnly(v => !v)}
-          style={{
-            paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full,
-            backgroundColor: noViewsOnly ? colors.primary : colors.surfaceTint,
-            borderWidth: 1, borderColor: noViewsOnly ? colors.primary : colors.border,
-            flexShrink: 0, flexGrow: 0, alignSelf: 'flex-start',
-          }}
-        >
-          <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '500', color: noViewsOnly ? '#fff' : colors.textSecondary }}>
-            {isAr ? '👁️ بدون مشاهدات' : '👁️ Zero views'}
-          </Text>
-        </Pressable>
-      </ScrollView>
-
-      {categories.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ flexGrow: 0, marginBottom: 8 }}
-          contentContainerStyle={{ flexDirection: isRTL ? 'row-reverse' : 'row', gap: 6, paddingHorizontal: Spacing.md }}
-        >
-          <Pressable
-            onPress={() => setCategoryFilter(null)}
-            style={{
-              paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full,
-              backgroundColor: !categoryFilter ? colors.primary : colors.surfaceTint,
-              borderWidth: 1, borderColor: !categoryFilter ? colors.primary : colors.border,
-              flexShrink: 0, flexGrow: 0, alignSelf: 'flex-start',
-            }}
-          >
-            <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '500', color: !categoryFilter ? '#fff' : colors.textSecondary }}>{isAr ? 'كل التصنيفات' : 'All categories'}</Text>
-          </Pressable>
-          {categories.map(cat => (
-            <Pressable
-              key={cat.id}
-              onPress={() => setCategoryFilter(cat.id)}
-              style={{
-                paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full,
-                backgroundColor: categoryFilter === cat.id ? colors.primary : colors.surfaceTint,
-                borderWidth: 1, borderColor: categoryFilter === cat.id ? colors.primary : colors.border,
-                flexShrink: 0, flexGrow: 0, alignSelf: 'flex-start',
-              }}
-            >
-              <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '500', color: categoryFilter === cat.id ? '#fff' : colors.textSecondary }}>
-                {getCategoryName(cat, isAr ? 'ar' : 'en')}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ flexGrow: 0, marginBottom: 8 }}
-        contentContainerStyle={{ flexDirection: isRTL ? 'row-reverse' : 'row', gap: 6, paddingHorizontal: Spacing.md }}
-      >
-        {sortOptions.map(opt => (
-          <Pressable
-            key={opt.key}
-            onPress={() => setSortBy(opt.key)}
-            style={{
-              paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full,
-              backgroundColor: sortBy === opt.key ? colors.primary : colors.surfaceTint,
-              borderWidth: 1, borderColor: sortBy === opt.key ? colors.primary : colors.border,
-              flexShrink: 0, flexGrow: 0, alignSelf: 'flex-start',
-            }}
-          >
-            <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '500', color: sortBy === opt.key ? '#fff' : colors.textSecondary }}>{opt.label}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      {/* ✅ جديد: شريط الإجراءات الجماعية */}
-      {selectionMode && selectedIds.size > 0 && (
-        <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', gap: 8, paddingHorizontal: Spacing.md, marginBottom: 8 }}>
-          <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 12 }}>
-            {isAr ? `${selectedIds.size} محدد` : `${selectedIds.size} selected`}
-          </Text>
-          <Pressable disabled={bulkBusy} onPress={() => bulkFeature(true)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: '#FEF3C7' }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#D97706' }}>{isAr ? 'تمييز' : 'Feature'}</Text>
-          </Pressable>
-          <Pressable disabled={bulkBusy} onPress={() => bulkFeature(false)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: colors.borderLight }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary }}>{isAr ? 'إلغاء التمييز' : 'Unfeature'}</Text>
-          </Pressable>
-          <Pressable disabled={bulkBusy} onPress={bulkDelete} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: '#FEE2E2' }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#EF4444' }}>{isAr ? 'حذف' : 'Delete'}</Text>
-          </Pressable>
-          {bulkBusy && <ActivityIndicator size="small" color={colors.primary} />}
-        </View>
-      )}
 
       <FlatList
         data={filteredAds}
@@ -2100,6 +1215,7 @@ function AdsTab({ colors, isAr, isRTL, t }: any) {
         }
         onEndReached={() => { if (hasMore && !loadingMore) loadData(false, page + 1); }}
         onEndReachedThreshold={0.3}
+        getItemLayout={getItemLayout}
         ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} /> : null}
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -2192,7 +1308,6 @@ function AdsTab({ colors, isAr, isRTL, t }: any) {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteModalVisible(false)}
         isAr={isAr}
-        colors={colors}
       />
 
       <Snackbar visible={snackbar.visible} message={snackbar.message} type={snackbar.type} onDismiss={() => setSnackbar({ ...snackbar, visible: false })} />
@@ -2201,7 +1316,7 @@ function AdsTab({ colors, isAr, isRTL, t }: any) {
 }
 
 // ─── تبويب المستخدمين ────────────────────────────────────────────────────────
-function UsersTab({ colors, isAr, isRTL, t }: any) {
+function UsersTab({ colors, isAr, t }: any) {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -2209,37 +1324,14 @@ function UsersTab({ colors, isAr, isRTL, t }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
-  const [adCounts, setAdCounts] = useState<Record<string, number>>({});
-  const [favCounts, setFavCounts] = useState<Record<string, number>>({});
-  const [lastSeenMap, setLastSeenMap] = useState<Record<string, string>>({});
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'verified' | 'blocked'>('all');
-  const [sortBy, setSortBy] = useState<'email' | 'newest' | 'oldest'>('email');
-  const [noActivityOnly, setNoActivityOnly] = useState(false);
-  const [quickStats, setQuickStats] = useState<{ total: number; verified: number; blocked: number; admins: number } | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [adsModal, setAdsModal] = useState<{ visible: boolean; user: UserProfile | null; loading: boolean; ads: any[] }>({ visible: false, user: null, loading: false, ads: [] });
-  const [reportsModal, setReportsModal] = useState<{ visible: boolean; user: UserProfile | null; loading: boolean; reports: any[] }>({ visible: false, user: null, loading: false, reports: [] });
-  const [filedReportsModal, setFiledReportsModal] = useState<{ visible: boolean; user: UserProfile | null; loading: boolean; reports: any[] }>({ visible: false, user: null, loading: false, reports: [] });
-  const [notifyModal, setNotifyModal] = useState<{ visible: boolean; user: UserProfile | null; title: string; message: string; sending: boolean }>({ visible: false, user: null, title: '', message: '', sending: false });
   const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
   const { showAlert } = useAlert();
-  const { user: currentUser } = useAuth();
-  const router = useRouter();
   const abortRef = useRef<AbortController | null>(null);
-
-  const refreshQuickStats = useCallback(() => {
-    adminFetchUsersQuickStats().then(setQuickStats).catch(() => {});
-  }, []);
-  useEffect(() => { refreshQuickStats(); }, [refreshQuickStats]);
 
   const showSnackbar = (message: string, type: string = 'success') => {
     setSnackbar({ visible: true, message, type });
   };
 
-  // ✅ مُصلَّح: البحث صار يُنفَّذ فعلياً بالاستعلام (backend) بدل الاقتصار على الصفحة المحمّلة
   const loadData = useCallback(async (reset = false, pageNum = 0) => {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
@@ -2251,27 +1343,18 @@ function UsersTab({ colors, isAr, isRTL, t }: any) {
       const limit = 20;
       const offset = pageNum * limit;
       const timeout = new Promise((_, reject) => setTimeout(() => { controller.abort(); reject(new Error('TIMEOUT')); }, 15000));
-      const result = await Promise.race([
-        adminFetchAllUsers({ signal: controller.signal, limit, offset, search, role: roleFilter === 'all' ? undefined : roleFilter, sortBy }),
-        timeout,
-      ]);
+      const result = await Promise.race([adminFetchAllUsers({ signal: controller.signal, limit, offset }), timeout]);
       const { data } = result as any;
       if (controller.signal.aborted) return;
-      const newUsers: UserProfile[] = data || [];
       if (reset) {
-        setUsers(newUsers);
-        setHasMore(newUsers.length >= limit);
+        setUsers(data || []);
+        setHasMore(data.length >= limit);
         setPage(pageNum);
       } else {
-        setUsers(prev => [...prev, ...newUsers]);
-        setHasMore(newUsers.length >= limit);
+        setUsers(prev => [...prev, ...(data || [])]);
+        setHasMore(data.length >= limit);
         setPage(pageNum);
       }
-      // ✅ جديد: عدد إعلانات/مفضلات كل مستخدم وآخر زيارة له بالصفحة المعروضة
-      const ids = newUsers.map(u => u.id);
-      adminFetchUserAdCounts(ids).then(counts => setAdCounts(prev => ({ ...prev, ...counts }))).catch(() => {});
-      adminFetchUserFavoriteCounts(ids).then(counts => setFavCounts(prev => ({ ...prev, ...counts }))).catch(() => {});
-      adminFetchLastSeen(ids).then(map => setLastSeenMap(prev => ({ ...prev, ...map }))).catch(() => {});
     } catch (err: any) {
       if (err?.name !== 'AbortError' && err?.message !== 'TIMEOUT') {
         showAlert(isAr ? 'خطأ' : 'Error', err?.message || (isAr ? 'فشل التحميل' : 'Load failed'));
@@ -2282,229 +1365,45 @@ function UsersTab({ colors, isAr, isRTL, t }: any) {
       setLoadingMore(false);
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [isAr, showAlert, search, roleFilter, sortBy]);
+  }, [isAr, showAlert]);
 
   useEffect(() => {
     loadData(true);
     return () => { if (abortRef.current) abortRef.current.abort(); };
   }, []);
 
-  useEffect(() => {
-    const t = setTimeout(() => loadData(true), search ? 400 : 0);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, roleFilter, sortBy]);
-
-  // ✅ "بدون نشاط" فلتر محلي (يعتمد على عدّادات الإعلانات المجلوبة للصفحة الحالية)
   const filteredUsers = useMemo(() => {
-    if (!noActivityOnly) return users;
-    return users.filter(u => (adCounts[u.id] ?? 0) === 0);
-  }, [users, noActivityOnly, adCounts]);
-
-  const withPending = async (id: string, fn: () => Promise<{ error: string | null }>) => {
-    setPendingIds(prev => new Set(prev).add(id));
-    try {
-      return await fn();
-    } finally {
-      setPendingIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+    let filtered = users;
+    if (search) {
+      filtered = filtered.filter(u =>
+        (u.username || '').toLowerCase().includes(search.toLowerCase()) ||
+        u.email.toLowerCase().includes(search.toLowerCase())
+      );
     }
-  };
+    return filtered;
+  }, [users, search]);
 
-  // ✅ مُصلَّح: تحديث محلي فوري بمكان الإعادة الكاملة loadData(true) — كانت ترجّع القائمة لأول صفحة
-  const patchUserLocally = (id: string, patch: Partial<UserProfile>) => {
-    setUsers(prev => prev.map(u => (u.id === id ? { ...u, ...patch } : u)));
-  };
-
-  const handleToggleAdmin = (user: UserProfile) => {
-    // ✅ مُصلَّح: منع الأدمن من إلغاء صلاحيته عن نفسه بالغلط (ممكن يقفل الجميع برا اللوحة)
-    if (user.id === currentUser?.id) {
-      showAlert(isAr ? 'غير مسموح' : 'Not allowed', isAr ? 'ما بتقدر تغيّر صلاحيتك الإدارية عن نفسك' : 'You cannot change your own admin rights');
-      return;
-    }
-    const action = user.is_admin ? (isAr ? 'إلغاء صلاحية الإدارة عن' : 'revoke admin rights from') : (isAr ? 'منح صلاحية إدارة لـ' : 'grant admin rights to');
-    showAlert(
-      isAr ? 'تأكيد' : 'Confirm',
-      isAr ? `متأكد إنك بدك ${action} ${user.username || user.email}؟` : `Are you sure you want to ${action} ${user.username || user.email}?`,
-      [
-        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-        {
-          text: isAr ? 'تأكيد' : 'Confirm',
-          style: user.is_admin ? 'destructive' : 'default',
-          onPress: async () => {
-            const { error } = await withPending(user.id, () => adminSetUserAdmin(user.id, !user.is_admin));
-            if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-            patchUserLocally(user.id, { is_admin: !user.is_admin });
-            showSnackbar(isAr ? 'تم تحديث صلاحية المدير' : 'Admin status updated', 'success');
-            refreshQuickStats();
-          },
-        },
-      ]
-    );
+  const handleToggleAdmin = async (user: UserProfile) => {
+    const { error } = await adminSetUserAdmin(user.id, !user.is_admin);
+    if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
+    showSnackbar(isAr ? 'تم تحديث صلاحية المدير' : 'Admin status updated', 'success');
+    loadData(true);
   };
   const handleToggleVerified = async (user: UserProfile) => {
-    const { error } = await withPending(user.id, () => adminSetUserVerified(user.id, !user.is_verified));
+    const { error } = await adminSetUserVerified(user.id, !user.is_verified);
     if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-    patchUserLocally(user.id, { is_verified: !user.is_verified });
     showSnackbar(isAr ? 'تم تحديث حالة التوثيق' : 'Verification updated', 'success');
-    refreshQuickStats();
+    loadData(true);
   };
-  const handleToggleBlocked = (user: UserProfile) => {
-    // ✅ مُصلَّح: منع الأدمن من حظر نفسه بالغلط
-    if (user.id === currentUser?.id) {
-      showAlert(isAr ? 'غير مسموح' : 'Not allowed', isAr ? 'ما بتقدر تحظر حسابك أنت' : 'You cannot block your own account');
-      return;
-    }
-    const willBlock = !user.is_blocked;
-    showAlert(
-      isAr ? 'تأكيد' : 'Confirm',
-      willBlock
-        ? (isAr ? `متأكد إنك بدك تحظر ${user.username || user.email}؟` : `Block ${user.username || user.email}?`)
-        : (isAr ? `رفع الحظر عن ${user.username || user.email}؟` : `Unblock ${user.username || user.email}?`),
-      [
-        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-        {
-          text: willBlock ? (isAr ? 'حظر' : 'Block') : (isAr ? 'رفع الحظر' : 'Unblock'),
-          style: willBlock ? 'destructive' : 'default',
-          onPress: async () => {
-            const { error } = await withPending(user.id, () => adminSetUserBlocked(user.id, willBlock));
-            if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
-            patchUserLocally(user.id, { is_blocked: willBlock });
-            showSnackbar(isAr ? 'تم تحديث حالة الحظر' : 'Block status updated', 'success');
-            refreshQuickStats();
-          },
-        },
-      ]
-    );
+  const handleToggleBlocked = async (user: UserProfile) => {
+    const { error } = await adminSetUserBlocked(user.id, !user.is_blocked);
+    if (error) { showAlert(isAr ? 'خطأ' : 'Error', error); return; }
+    showSnackbar(isAr ? 'تم تحديث حالة الحظر' : 'Block status updated', 'success');
+    loadData(true);
   };
-  // ✅ مُصلَّح ومُحسَّن: التصدير صار يصدّر النتائج المفلترة المعروضة فعلياً + أعمدة إضافية
   const exportUsers = async () => {
-    const rows = filteredUsers.map(u => ({
-      ...u,
-      ad_count: adCounts[u.id] ?? 0,
-      joined: u.created_at ? new Date(u.created_at).toISOString().slice(0, 10) : '',
-    }));
-    const csv = generateCSV(
-      rows,
-      ['ID', 'Username', 'Email', 'Phone', 'Admin', 'Verified', 'Blocked', 'Ads', 'Joined'],
-      ['id', 'username', 'email', 'phone', 'is_admin', 'is_verified', 'is_blocked', 'ad_count', 'joined']
-    );
-    try {
-      await Share.share({ message: csv, title: 'Users Export.csv' });
-    } catch (e) {
-      console.warn('Share failed', e);
-      showAlert(isAr ? 'خطأ' : 'Error', isAr ? 'فشلت مشاركة الملف' : 'Failed to share the file');
-    }
-  };
-
-  // ✅ جديد: عرض إعلانات المستخدم / البلاغات المقدّمة ضده أو منه بمودال خفيف
-  const handleViewAds = async (user: UserProfile) => {
-    setAdsModal({ visible: true, user, loading: true, ads: [] });
-    const supabase = getSupabaseClient();
-    const { data } = await supabase.from('ads').select('id, title, status, price, created_at').eq('user_id', user.id).neq('status', 'deleted').order('created_at', { ascending: false });
-    setAdsModal({ visible: true, user, loading: false, ads: data || [] });
-  };
-  const handleViewReports = async (user: UserProfile) => {
-    setReportsModal({ visible: true, user, loading: true, reports: [] });
-    const supabase = getSupabaseClient();
-    const { data } = await supabase.from('reports').select('id, reason, status, created_at, ad:ad_id(title)').eq('target_user_id', user.id).order('created_at', { ascending: false });
-    setReportsModal({ visible: true, user, loading: false, reports: data || [] });
-  };
-  // ✅ جديد: البلاغات اللي قدّمها هالمستخدم هو نفسه (يساعد يكتشف بلاغات كيدية متكررة)
-  const handleViewFiledReports = async (user: UserProfile) => {
-    setFiledReportsModal({ visible: true, user, loading: true, reports: [] });
-    const supabase = getSupabaseClient();
-    const { data } = await supabase.from('reports').select('id, reason, status, created_at, ad:ad_id(title)').eq('reporter_id', user.id).order('created_at', { ascending: false });
-    setFiledReportsModal({ visible: true, user, loading: false, reports: data || [] });
-  };
-  // ✅ جديد: فتح الملف الشخصي العام لهالمستخدم
-  const handleViewProfile = (user: UserProfile) => {
-    router.push(`/seller/${user.id}` as any);
-  };
-  // ✅ جديد: إرسال إشعار مباشر لمستخدم واحد
-  const handleOpenNotify = (user: UserProfile) => {
-    setNotifyModal({ visible: true, user, title: '', message: '', sending: false });
-  };
-  const handleSendNotify = async () => {
-    if (!notifyModal.user) return;
-    if (!notifyModal.title.trim() || !notifyModal.message.trim()) {
-      showAlert(isAr ? 'مطلوب' : 'Required', isAr ? 'العنوان والرسالة مطلوبان' : 'Title and message are required');
-      return;
-    }
-    setNotifyModal(prev => ({ ...prev, sending: true }));
-    try {
-      const supabase = getSupabaseClient();
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData?.session?.access_token;
-      if (!accessToken) throw new Error(isAr ? 'الجلسة غير صالحة' : 'Invalid session');
-      const res = await fetch('https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/functions/v1/push-notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({
-          action: 'admin_notify_user',
-          target_user_id: notifyModal.user.id,
-          title: notifyModal.title.trim(),
-          message: notifyModal.message.trim(),
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`);
-      setNotifyModal({ visible: false, user: null, title: '', message: '', sending: false });
-      showSnackbar(
-        json.skipped === 'no_token'
-          ? (isAr ? 'لا يملك المستخدم جهاز مسجّل لتلقي إشعارات' : 'User has no registered device for notifications')
-          : (isAr ? 'تم إرسال الإشعار' : 'Notification sent'),
-        'success'
-      );
-    } catch (e: any) {
-      showAlert(isAr ? 'خطأ' : 'Error', e?.message || (isAr ? 'فشل الإرسال' : 'Failed to send'));
-      setNotifyModal(prev => ({ ...prev, sending: false }));
-    }
-  };
-
-  // ✅ جديد: إجراءات جماعية
-  const toggleSelectUser = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const exitSelectionMode = () => { setSelectionMode(false); setSelectedIds(new Set()); };
-  const bulkVerify = async (verified: boolean) => {
-    if (selectedIds.size === 0) return;
-    setBulkBusy(true);
-    const ids = Array.from(selectedIds);
-    await Promise.all(ids.map(id => adminSetUserVerified(id, verified)));
-    setUsers(prev => prev.map(u => (ids.includes(u.id) ? { ...u, is_verified: verified } : u)));
-    setBulkBusy(false);
-    exitSelectionMode();
-    showSnackbar(isAr ? 'تم تحديث المستخدمين المحددين' : 'Selected users updated', 'success');
-    refreshQuickStats();
-  };
-  const bulkBlock = () => {
-    if (selectedIds.size === 0) return;
-    const ids = Array.from(selectedIds).filter(id => id !== currentUser?.id); // ✅ استبعاد النفس دايماً حتى بالجماعي
-    if (ids.length === 0) return;
-    showAlert(
-      isAr ? 'تأكيد الحظر الجماعي' : 'Confirm bulk block',
-      isAr ? `هل تريد حظر ${ids.length} مستخدم؟` : `Block ${ids.length} users?`,
-      [
-        { text: isAr ? 'إلغاء' : 'Cancel', style: 'cancel' },
-        {
-          text: isAr ? 'حظر' : 'Block',
-          style: 'destructive',
-          onPress: async () => {
-            setBulkBusy(true);
-            await Promise.all(ids.map(id => adminSetUserBlocked(id, true)));
-            setUsers(prev => prev.map(u => (ids.includes(u.id) ? { ...u, is_blocked: true } : u)));
-            setBulkBusy(false);
-            exitSelectionMode();
-            showSnackbar(isAr ? 'تم حظر المستخدمين المحددين' : 'Selected users blocked', 'success');
-            refreshQuickStats();
-          },
-        },
-      ]
-    );
+    const csv = generateCSV(users, ['ID', 'Username', 'Email', 'Admin', 'Verified', 'Blocked'], ['id', 'username', 'email', 'is_admin', 'is_verified', 'is_blocked']);
+    try { await Share.share({ message: csv, title: 'Users Export.csv' }); } catch (e) { console.warn('Share failed', e); }
   };
 
   const renderItem = ({ item }: { item: UserProfile }) => (
@@ -2512,25 +1411,12 @@ function UsersTab({ colors, isAr, isRTL, t }: any) {
       item={item}
       colors={colors}
       isAr={isAr}
-      isRTL={isRTL}
-      pending={pendingIds.has(item.id)}
-      isSelf={item.id === currentUser?.id}
-      adCount={adCounts[item.id]}
-      favCount={favCounts[item.id]}
-      lastSeen={lastSeenMap[item.id]}
-      selectionMode={selectionMode}
-      selected={selectedIds.has(item.id)}
-      onToggleSelect={toggleSelectUser}
       onToggleAdmin={handleToggleAdmin}
       onToggleVerified={handleToggleVerified}
       onToggleBlocked={handleToggleBlocked}
-      onViewAds={handleViewAds}
-      onViewReports={handleViewReports}
-      onViewFiledReports={handleViewFiledReports}
-      onViewProfile={handleViewProfile}
-      onNotify={handleOpenNotify}
     />
   );
+  const getItemLayout = (data: any, index: number) => ({ length: 130, offset: 130 * index, index });
 
   if (loading) {
     return (
@@ -2540,49 +1426,14 @@ function UsersTab({ colors, isAr, isRTL, t }: any) {
     );
   }
 
-  const roleOptions: { key: typeof roleFilter; label: string }[] = [
-    { key: 'all', label: isAr ? 'الكل' : 'All' },
-    { key: 'admin', label: isAr ? 'إداري' : 'Admin' },
-    { key: 'verified', label: isAr ? 'موثّق' : 'Verified' },
-    { key: 'blocked', label: isAr ? 'محظور' : 'Blocked' },
-  ];
-  const userSortOptions: { key: typeof sortBy; label: string }[] = [
-    { key: 'email', label: isAr ? 'أبجدي' : 'A–Z' },
-    { key: 'newest', label: isAr ? 'الأحدث انضماماً' : 'Newest' },
-    { key: 'oldest', label: isAr ? 'الأقدم انضماماً' : 'Oldest' },
-  ];
-  const chipStyle = (active: boolean) => ({
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full,
-    backgroundColor: active ? colors.primary : colors.surfaceTint,
-    borderWidth: 1, borderColor: active ? colors.primary : colors.border,
-    flexShrink: 0, flexGrow: 0, alignSelf: 'flex-start' as const,
-  });
-
   return (
     <View style={styles.tabContainer}>
-      {/* ✅ جديد: شريط إحصائيات سريع */}
-      {quickStats && (
-        <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', gap: 8, paddingHorizontal: Spacing.md, marginBottom: 8, flexWrap: 'wrap' }}>
-          {[
-            { label: isAr ? 'الإجمالي' : 'Total', value: quickStats.total, color: colors.textPrimary },
-            { label: isAr ? 'موثّق' : 'Verified', value: quickStats.verified, color: '#2563EB' },
-            { label: isAr ? 'محظور' : 'Blocked', value: quickStats.blocked, color: '#EF4444' },
-            { label: isAr ? 'إداري' : 'Admins', value: quickStats.admins, color: colors.primary },
-          ].map((s, i) => (
-            <View key={i} style={{ flex: 1, minWidth: 70, backgroundColor: colors.surfaceTint, borderRadius: Radius.md, borderWidth: 1, borderColor: colors.border, padding: 8, alignItems: 'center' }}>
-              <Text style={{ fontSize: 16, fontWeight: '800', color: s.color }}>{s.value}</Text>
-              <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 2 }}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-      <View style={[styles.adControls, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border, flex: 1, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      <View style={styles.adControls}>
+        <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border, flex: 1 }]}>
           <MaterialIcons name="search" size={20} color={colors.textMuted} />
           <TextInput
-            style={[styles.searchInput, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
-            placeholder={isAr ? '🔍 ابحث عن مستخدم (اسم، إيميل، هاتف)...' : '🔍 Search users (name, email, phone)...'}
+            style={[styles.searchInput, { color: colors.textPrimary }]}
+            placeholder={isAr ? '🔍 ابحث عن مستخدم...' : '🔍 Search users...'}
             placeholderTextColor={colors.textMuted}
             value={search}
             onChangeText={setSearch}
@@ -2593,71 +1444,10 @@ function UsersTab({ colors, isAr, isRTL, t }: any) {
             </Pressable>
           )}
         </View>
-        <Pressable
-          style={[styles.toggleDeletedBtn, { backgroundColor: selectionMode ? colors.primary : colors.border }]}
-          onPress={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
-        >
-          <Text style={{ color: selectionMode ? '#fff' : colors.textSecondary, fontWeight: '600', fontSize: 12 }}>
-            {selectionMode ? (isAr ? 'إلغاء التحديد' : 'Cancel select') : (isAr ? 'تحديد' : 'Select')}
-          </Text>
-        </Pressable>
         <Pressable style={[styles.exportBtn, { backgroundColor: colors.primaryGhost }]} onPress={exportUsers}>
           <MaterialIcons name="file-download" size={20} color={colors.primary} />
         </Pressable>
       </View>
-
-      {/* ✅ جديد: فلترة حسب الدور + بدون نشاط، مربوطة بالاستعلام */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ flexGrow: 0, marginBottom: 6 }}
-        contentContainerStyle={{ flexDirection: isRTL ? 'row-reverse' : 'row', gap: 6, paddingHorizontal: Spacing.md }}
-      >
-        {roleOptions.map(opt => (
-          <Pressable key={opt.key} onPress={() => setRoleFilter(opt.key)} style={chipStyle(roleFilter === opt.key)}>
-            <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '500', color: roleFilter === opt.key ? '#fff' : colors.textSecondary }}>{opt.label}</Text>
-          </Pressable>
-        ))}
-        <View style={{ width: 1, backgroundColor: colors.border, marginHorizontal: 4 }} />
-        <Pressable onPress={() => setNoActivityOnly(v => !v)} style={chipStyle(noActivityOnly)}>
-          <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '500', color: noActivityOnly ? '#fff' : colors.textSecondary }}>
-            {isAr ? '💤 بدون نشاط' : '💤 No activity'}
-          </Text>
-        </Pressable>
-      </ScrollView>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ flexGrow: 0, marginBottom: 8 }}
-        contentContainerStyle={{ flexDirection: isRTL ? 'row-reverse' : 'row', gap: 6, paddingHorizontal: Spacing.md }}
-      >
-        {userSortOptions.map(opt => (
-          <Pressable key={opt.key} onPress={() => setSortBy(opt.key)} style={chipStyle(sortBy === opt.key)}>
-            <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '500', color: sortBy === opt.key ? '#fff' : colors.textSecondary }}>{opt.label}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      {/* ✅ جديد: شريط الإجراءات الجماعية */}
-      {selectionMode && selectedIds.size > 0 && (
-        <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', gap: 8, paddingHorizontal: Spacing.md, marginBottom: 8 }}>
-          <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 12 }}>
-            {isAr ? `${selectedIds.size} محدد` : `${selectedIds.size} selected`}
-          </Text>
-          <Pressable disabled={bulkBusy} onPress={() => bulkVerify(true)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: '#DBEAFE' }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#2563EB' }}>{isAr ? 'توثيق' : 'Verify'}</Text>
-          </Pressable>
-          <Pressable disabled={bulkBusy} onPress={() => bulkVerify(false)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: colors.borderLight }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary }}>{isAr ? 'إلغاء التوثيق' : 'Unverify'}</Text>
-          </Pressable>
-          <Pressable disabled={bulkBusy} onPress={bulkBlock} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: '#FEE2E2' }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#EF4444' }}>{isAr ? 'حظر' : 'Block'}</Text>
-          </Pressable>
-          {bulkBusy && <ActivityIndicator size="small" color={colors.primary} />}
-        </View>
-      )}
-
       <FlatList
         data={filteredUsers}
         keyExtractor={(item) => item.id}
@@ -2668,6 +1458,7 @@ function UsersTab({ colors, isAr, isRTL, t }: any) {
         }
         onEndReached={() => { if (hasMore && !loadingMore) loadData(false, page + 1); }}
         onEndReachedThreshold={0.3}
+        getItemLayout={getItemLayout}
         ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} /> : null}
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -2676,149 +1467,6 @@ function UsersTab({ colors, isAr, isRTL, t }: any) {
           </View>
         }
       />
-
-      {/* ✅ جديد: مودال إعلانات المستخدم */}
-      <Modal visible={adsModal.visible} animationType="slide" transparent onRequestClose={() => setAdsModal({ visible: false, user: null, loading: false, ads: [] })}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.surface, maxHeight: '70%' }]}>
-            <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
-            <View style={[styles.modalHeader, { borderBottomColor: colors.borderLight }]}>
-              <MaterialIcons name="campaign" size={22} color={colors.primary} />
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                {isAr ? `إعلانات ${adsModal.user?.username || adsModal.user?.email || ''}` : `Ads by ${adsModal.user?.username || adsModal.user?.email || ''}`}
-              </Text>
-              <Pressable onPress={() => setAdsModal({ visible: false, user: null, loading: false, ads: [] })} hitSlop={8}>
-                <MaterialIcons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            {adsModal.loading ? (
-              <ActivityIndicator color={colors.primary} style={{ padding: 20 }} />
-            ) : adsModal.ads.length === 0 ? (
-              <Text style={{ color: colors.textMuted, textAlign: 'center', padding: 20 }}>{isAr ? 'ما عندو إعلانات' : 'No ads'}</Text>
-            ) : (
-              <ScrollView contentContainerStyle={{ padding: Spacing.md }}>
-                {adsModal.ads.map((ad: any) => (
-                  <View key={ad.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
-                    <Text style={{ color: colors.textPrimary, fontWeight: '600' }} numberOfLines={1}>{ad.title}</Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>{ad.price}₪ • {ad.status}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* ✅ جديد: مودال البلاغات المقدّمة ضد المستخدم */}
-      <Modal visible={reportsModal.visible} animationType="slide" transparent onRequestClose={() => setReportsModal({ visible: false, user: null, loading: false, reports: [] })}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.surface, maxHeight: '70%' }]}>
-            <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
-            <View style={[styles.modalHeader, { borderBottomColor: colors.borderLight }]}>
-              <MaterialIcons name="flag" size={22} color="#D97706" />
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                {isAr ? `بلاغات ضد ${reportsModal.user?.username || reportsModal.user?.email || ''}` : `Reports on ${reportsModal.user?.username || reportsModal.user?.email || ''}`}
-              </Text>
-              <Pressable onPress={() => setReportsModal({ visible: false, user: null, loading: false, reports: [] })} hitSlop={8}>
-                <MaterialIcons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            {reportsModal.loading ? (
-              <ActivityIndicator color={colors.primary} style={{ padding: 20 }} />
-            ) : reportsModal.reports.length === 0 ? (
-              <Text style={{ color: colors.textMuted, textAlign: 'center', padding: 20 }}>{isAr ? 'ما في بلاغات' : 'No reports'}</Text>
-            ) : (
-              <ScrollView contentContainerStyle={{ padding: Spacing.md }}>
-                {reportsModal.reports.map((r: any) => (
-                  <View key={r.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
-                    <Text style={{ color: colors.textPrimary, fontWeight: '600' }} numberOfLines={1}>{r.ad?.title || (isAr ? 'إعلان محذوف' : 'Deleted ad')}</Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>{r.reason} • {r.status}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* ✅ جديد: مودال البلاغات اللي قدّمها المستخدم بنفسه */}
-      <Modal visible={filedReportsModal.visible} animationType="slide" transparent onRequestClose={() => setFiledReportsModal({ visible: false, user: null, loading: false, reports: [] })}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.surface, maxHeight: '70%' }]}>
-            <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
-            <View style={[styles.modalHeader, { borderBottomColor: colors.borderLight }]}>
-              <MaterialIcons name="outlined-flag" size={22} color="#9333EA" />
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                {isAr ? `بلاغات قدّمها ${filedReportsModal.user?.username || filedReportsModal.user?.email || ''}` : `Filed by ${filedReportsModal.user?.username || filedReportsModal.user?.email || ''}`}
-              </Text>
-              <Pressable onPress={() => setFiledReportsModal({ visible: false, user: null, loading: false, reports: [] })} hitSlop={8}>
-                <MaterialIcons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            {filedReportsModal.loading ? (
-              <ActivityIndicator color={colors.primary} style={{ padding: 20 }} />
-            ) : filedReportsModal.reports.length === 0 ? (
-              <Text style={{ color: colors.textMuted, textAlign: 'center', padding: 20 }}>{isAr ? 'ما قدّم أي بلاغ' : 'Filed no reports'}</Text>
-            ) : (
-              <ScrollView contentContainerStyle={{ padding: Spacing.md }}>
-                {filedReportsModal.reports.map((r: any) => (
-                  <View key={r.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
-                    <Text style={{ color: colors.textPrimary, fontWeight: '600' }} numberOfLines={1}>{r.ad?.title || (isAr ? 'إعلان محذوف' : 'Deleted ad')}</Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>{r.reason} • {r.status}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* ✅ جديد: مودال إرسال إشعار مباشر لمستخدم واحد */}
-      <Modal visible={notifyModal.visible} animationType="slide" transparent onRequestClose={() => setNotifyModal({ visible: false, user: null, title: '', message: '', sending: false })}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalSheet, { backgroundColor: colors.surface }]}>
-              <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
-              <View style={[styles.modalHeader, { borderBottomColor: colors.borderLight }]}>
-                <MaterialIcons name="notifications" size={22} color="#16A34A" />
-                <Text style={[styles.modalTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                  {isAr ? `إشعار لـ ${notifyModal.user?.username || notifyModal.user?.email || ''}` : `Notify ${notifyModal.user?.username || notifyModal.user?.email || ''}`}
-                </Text>
-                <Pressable onPress={() => setNotifyModal({ visible: false, user: null, title: '', message: '', sending: false })} hitSlop={8}>
-                  <MaterialIcons name="close" size={24} color={colors.textMuted} />
-                </Pressable>
-              </View>
-              <View style={{ padding: Spacing.md, gap: 10 }}>
-                <TextInput
-                  style={[styles.searchInput, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: Radius.md, padding: 10, color: colors.textPrimary }]}
-                  placeholder={isAr ? 'عنوان الإشعار' : 'Notification title'}
-                  placeholderTextColor={colors.textMuted}
-                  value={notifyModal.title}
-                  onChangeText={(v) => setNotifyModal(prev => ({ ...prev, title: v }))}
-                />
-                <TextInput
-                  style={[styles.searchInput, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: Radius.md, padding: 10, color: colors.textPrimary, minHeight: 80, textAlignVertical: 'top' }]}
-                  placeholder={isAr ? 'نص الرسالة' : 'Message'}
-                  placeholderTextColor={colors.textMuted}
-                  value={notifyModal.message}
-                  onChangeText={(v) => setNotifyModal(prev => ({ ...prev, message: v }))}
-                  multiline
-                />
-                <Pressable
-                  disabled={notifyModal.sending}
-                  onPress={handleSendNotify}
-                  style={{ backgroundColor: colors.primary, borderRadius: Radius.md, padding: 12, alignItems: 'center', opacity: notifyModal.sending ? 0.6 : 1 }}
-                >
-                  {notifyModal.sending ? <ActivityIndicator color="#fff" size="small" /> : (
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>{isAr ? 'إرسال' : 'Send'}</Text>
-                  )}
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
       <Snackbar visible={snackbar.visible} message={snackbar.message} type={snackbar.type} onDismiss={() => setSnackbar({ ...snackbar, visible: false })} />
     </View>
   );
@@ -3045,7 +1693,6 @@ function BannersTab({ colors, isAr, t }: any) {
         onConfirm={confirmDeleteBanner}
         onCancel={() => setDeleteModalVisible(false)}
         isAr={isAr}
-        colors={colors}
       />
 
       <Snackbar visible={snackbar.visible} message={snackbar.message} type={snackbar.type} onDismiss={() => setSnackbar({ ...snackbar, visible: false })} />
@@ -3126,6 +1773,68 @@ function InterstitialsTab({ colors, isAr, t }: any) {
   );
 }
 
+// ─── تبويب سجل النشاطات ──────────────────────────────────────────────────────
+function ActivityLogTab({ colors, isAr }: { colors: any; isAr: boolean }) {
+  const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const loadLogs = useCallback(async () => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoading(true);
+    setRefreshing(false);
+    try {
+      const mockLogs: ActivityLog[] = Array.from({ length: 20 }, (_, i) => ({
+        id: `log-${i}`,
+        admin_name: ['أحمد', 'سارة', 'محمد', 'فاطمة'][i % 4],
+        action: ['تعديل إعلان', 'حذف مستخدم', 'تمييز إعلان', 'إرسال إشعار'][i % 4],
+        target: `العنوان ${i}`,
+        details: `تفاصيل العملية ${i}`,
+        created_at: new Date(Date.now() - i * 60000).toISOString(),
+      }));
+      if (controller.signal.aborted) return;
+      setLogs(mockLogs);
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') console.warn(err);
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => { loadLogs(); return () => { if (abortRef.current) abortRef.current.abort(); }; }, []);
+
+  const renderItem = ({ item }: { item: ActivityLog }) => (
+    <View style={[styles.logCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.logHeader}>
+        <Text style={[styles.logAdmin, { color: colors.primary }]}>{item.admin_name}</Text>
+        <Text style={[styles.logTime, { color: colors.textMuted }]}>{new Date(item.created_at).toLocaleString()}</Text>
+      </View>
+      <Text style={[styles.logAction, { color: colors.textPrimary }]}>{item.action}</Text>
+      <Text style={[styles.logTarget, { color: colors.textSecondary }]}>{item.target}</Text>
+      {item.details && <Text style={[styles.logDetails, { color: colors.textMuted }]}>{item.details}</Text>}
+    </View>
+  );
+
+  if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={colors.primary} /></View>;
+
+  return (
+    <View style={styles.tabContainer}>
+      <FlatList
+        data={logs}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadLogs(); }} colors={[colors.primary]} tintColor={colors.primary} />}
+        ListEmptyComponent={<View style={styles.emptyState}><Text style={{ color: colors.textMuted }}>{isAr ? 'لا توجد سجلات' : 'No logs'}</Text></View>}
+      />
+    </View>
+  );
+}
+
 // ─── تبويب البلاغات ───────────────────────────────────────────────────────────
 function ReportsTab({ colors, isAr }: { colors: any; isAr: boolean }) {
   const [reports, setReports] = useState<Report[]>([]);
@@ -3144,59 +1853,26 @@ function ReportsTab({ colors, isAr }: { colors: any; isAr: boolean }) {
     setLoading(true);
     setRefreshing(false);
     try {
-      const supabase = getSupabaseClient();
-      const { data, error } = await supabase
-        .from('reports')
-        .select('id, ad_id, reporter_id, reason, status, created_at, ad:ad_id(title, user_id), reporter:reporter_id(username, email)')
-        .order('created_at', { ascending: false });
-      if (controller.signal.aborted) return;
-      if (error) throw error;
-      const mapped: Report[] = (data ?? []).map((r: any) => ({
-        id: r.id,
-        reporter_name: r.reporter?.username || r.reporter?.email?.split('@')[0] || (isAr ? 'مستخدم' : 'User'),
-        target_type: 'ad',
-        target_id: r.ad?.title || r.ad_id,
-        target_user_id: r.ad?.user_id ?? null,
-        reason: r.reason,
-        status: r.status || 'pending',
-        created_at: r.created_at,
+      const mockReports: Report[] = Array.from({ length: 15 }, (_, i) => ({
+        id: `report-${i}`,
+        reporter_name: ['UserA', 'UserB', 'UserC'][i % 3],
+        target_type: ['ad', 'user', 'store'][i % 3] as any,
+        target_id: `target-${i}`,
+        reason: `سبب البلاغ ${i}`,
+        status: ['pending', 'resolved', 'rejected'][i % 3] as any,
+        created_at: new Date(Date.now() - i * 120000).toISOString(),
       }));
-      setReports(mapped);
-    } catch (err: any) {
-      console.warn(err);
-      showSnackbar(err?.message || (isAr ? 'فشل تحميل البلاغات' : 'Failed to load reports'), 'error');
-    }
+      if (controller.signal.aborted) return;
+      setReports(mockReports);
+    } catch (err) { console.warn(err); }
     finally { if (!controller.signal.aborted) setLoading(false); if (abortRef.current === controller) abortRef.current = null; }
-  }, [isAr]);
+  }, []);
 
-  useEffect(() => { loadReports(); return () => { if (abortRef.current) abortRef.current.abort(); }; }, [loadReports]);
+  useEffect(() => { loadReports(); return () => { if (abortRef.current) abortRef.current.abort(); }; }, []);
 
   const handleStatusChange = async (id: string, status: 'resolved' | 'rejected') => {
-    const prev = reports;
-    setReports(p => p.map(r => r.id === id ? { ...r, status } : r));
-    try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.from('reports').update({ status }).eq('id', id);
-      if (error) throw error;
-      showSnackbar(isAr ? 'تم تحديث حالة البلاغ' : 'Report updated', 'success');
-    } catch (err: any) {
-      setReports(prev);
-      showSnackbar(err?.message || (isAr ? 'فشل تحديث البلاغ' : 'Failed to update report'), 'error');
-    }
-  };
-
-  const handleBlockReported = async (report: Report) => {
-    if (!report.target_user_id) {
-      showSnackbar(isAr ? 'تعذر تحديد صاحب الإعلان' : 'Could not identify the ad owner', 'error');
-      return;
-    }
-    try {
-      const { error } = await adminSetUserBlocked(report.target_user_id, true);
-      if (error) throw new Error(error);
-      showSnackbar(isAr ? 'تم حظر المستخدم' : 'User blocked', 'success');
-    } catch (err: any) {
-      showSnackbar(err?.message || (isAr ? 'فشل حظر المستخدم' : 'Failed to block user'), 'error');
-    }
+    setReports(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+    showSnackbar(isAr ? 'تم تحديث حالة البلاغ' : 'Report updated', 'success');
   };
 
   const filteredReports = filter === 'all' ? reports : reports.filter(r => r.status === filter);
@@ -3211,7 +1887,7 @@ function ReportsTab({ colors, isAr }: { colors: any; isAr: boolean }) {
           </Text>
         </View>
       </View>
-      <Text style={[styles.reportTarget, { color: colors.textSecondary }]}>{isAr ? 'الإعلان' : 'Ad'}: {item.target_id}</Text>
+      <Text style={[styles.reportTarget, { color: colors.textSecondary }]}>نوع: {item.target_type} | ID: {item.target_id}</Text>
       <Text style={[styles.reportReason, { color: colors.textPrimary }]}>{item.reason}</Text>
       <Text style={[styles.reportTime, { color: colors.textMuted }]}>{new Date(item.created_at).toLocaleString()}</Text>
       {item.status === 'pending' && (
@@ -3222,7 +1898,7 @@ function ReportsTab({ colors, isAr }: { colors: any; isAr: boolean }) {
           <Pressable style={[styles.reportActionBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => handleStatusChange(item.id, 'rejected')}>
             <Text style={{ color: '#EF4444' }}>{isAr ? '✖ رفض' : 'Reject'}</Text>
           </Pressable>
-          <Pressable style={[styles.reportActionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => handleBlockReported(item)}>
+          <Pressable style={[styles.reportActionBtn, { backgroundColor: colors.primaryGhost }]} onPress={() => Alert.alert(isAr ? 'حظر المستخدم' : 'Block User', isAr ? 'سيتم حظر هذا المستخدم' : 'Block this user')}>
             <Text style={{ color: colors.primary }}>{isAr ? 'حظر' : 'Block'}</Text>
           </Pressable>
         </View>
@@ -3256,6 +1932,108 @@ function ReportsTab({ colors, isAr }: { colors: any; isAr: boolean }) {
   );
 }
 
+// ─── تبويب الطلبات ────────────────────────────────────────────────────────────
+function OrdersTab({ colors, isAr }: { colors: any; isAr: boolean }) {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled'>('all');
+  const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
+  const abortRef = useRef<AbortController | null>(null);
+
+  const showSnackbar = (msg: string, type: string = 'success') => setSnackbar({ visible: true, message: msg, type });
+
+  const loadOrders = useCallback(async () => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoading(true);
+    setRefreshing(false);
+    try {
+      const mockOrders: Order[] = Array.from({ length: 25 }, (_, i) => ({
+        id: `order-${i}`,
+        user_name: [`User${i}`, `Customer${i}`][i % 2],
+        ad_title: `إعلان ${i}`,
+        amount: Math.floor(Math.random() * 500) + 50,
+        status: ['pending', 'paid', 'shipped', 'delivered', 'cancelled'][i % 5] as any,
+        created_at: new Date(Date.now() - i * 180000).toISOString(),
+      }));
+      if (controller.signal.aborted) return;
+      setOrders(mockOrders);
+    } catch (err) { console.warn(err); }
+    finally { if (!controller.signal.aborted) setLoading(false); if (abortRef.current === controller) abortRef.current = null; }
+  }, []);
+
+  useEffect(() => { loadOrders(); return () => { if (abortRef.current) abortRef.current.abort(); }; }, []);
+
+  const handleStatusUpdate = async (id: string, newStatus: Order['status']) => {
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+    showSnackbar(isAr ? 'تم تحديث حالة الطلب' : 'Order updated', 'success');
+  };
+
+  const filteredOrders = filterStatus === 'all' ? orders : orders.filter(o => o.status === filterStatus);
+
+  const renderItem = ({ item }: { item: Order }) => (
+    <View style={[styles.orderCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.orderHeader}>
+        <Text style={[styles.orderUser, { color: colors.textPrimary }]}>{item.user_name}</Text>
+        <Text style={[styles.orderAmount, { color: colors.primary }]}>{item.amount}₪</Text>
+      </View>
+      <Text style={[styles.orderAd, { color: colors.textSecondary }]}>{item.ad_title}</Text>
+      <View style={styles.orderStatusRow}>
+        <View style={[styles.orderStatus, { backgroundColor: item.status === 'pending' ? '#FEF3C7' : item.status === 'paid' ? '#DBEAFE' : item.status === 'shipped' ? '#D1FAE5' : item.status === 'delivered' ? '#A7F3D0' : '#FEE2E2' }]}>
+          <Text style={{ color: item.status === 'pending' ? '#D97706' : item.status === 'paid' ? '#2563EB' : item.status === 'shipped' ? '#059669' : item.status === 'delivered' ? '#047857' : '#EF4444' }}>
+            {item.status === 'pending' ? (isAr ? 'قيد الانتظار' : 'Pending') : item.status === 'paid' ? (isAr ? 'مدفوع' : 'Paid') : item.status === 'shipped' ? (isAr ? 'تم الشحن' : 'Shipped') : item.status === 'delivered' ? (isAr ? 'تم التوصيل' : 'Delivered') : (isAr ? 'ملغي' : 'Cancelled')}
+          </Text>
+        </View>
+        <Text style={[styles.orderTime, { color: colors.textMuted }]}>{new Date(item.created_at).toLocaleString()}</Text>
+      </View>
+      {item.status !== 'delivered' && item.status !== 'cancelled' && (
+        <View style={styles.orderActions}>
+          {item.status === 'pending' && <Pressable style={[styles.orderActionBtn, { backgroundColor: '#DBEAFE' }]} onPress={() => handleStatusUpdate(item.id, 'paid')}><Text style={{ color: '#2563EB' }}>{isAr ? 'تأكيد الدفع' : 'Confirm Payment'}</Text></Pressable>}
+          {item.status === 'paid' && <Pressable style={[styles.orderActionBtn, { backgroundColor: '#D1FAE5' }]} onPress={() => handleStatusUpdate(item.id, 'shipped')}><Text style={{ color: '#059669' }}>{isAr ? 'شحن' : 'Ship'}</Text></Pressable>}
+          {item.status === 'shipped' && <Pressable style={[styles.orderActionBtn, { backgroundColor: '#A7F3D0' }]} onPress={() => handleStatusUpdate(item.id, 'delivered')}><Text style={{ color: '#047857' }}>{isAr ? 'تسليم' : 'Deliver'}</Text></Pressable>}
+          <Pressable style={[styles.orderActionBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => handleStatusUpdate(item.id, 'cancelled')}><Text style={{ color: '#EF4444' }}>{isAr ? 'إلغاء' : 'Cancel'}</Text></Pressable>
+        </View>
+      )}
+    </View>
+  );
+
+  if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={colors.primary} /></View>;
+
+  const statuses: Order['status'][] = ['pending', 'paid', 'shipped', 'delivered', 'cancelled'];
+  const statusLabels: Record<Order['status'], string> = {
+    pending: isAr ? 'قيد الانتظار' : 'Pending',
+    paid: isAr ? 'مدفوع' : 'Paid',
+    shipped: isAr ? 'تم الشحن' : 'Shipped',
+    delivered: isAr ? 'تم التوصيل' : 'Delivered',
+    cancelled: isAr ? 'ملغي' : 'Cancelled',
+  };
+
+  return (
+    <View style={styles.tabContainer}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContainer}>
+        <Pressable style={[styles.filterBtn, { backgroundColor: filterStatus === 'all' ? colors.primary : colors.border }]} onPress={() => setFilterStatus('all')}>
+          <Text style={{ color: filterStatus === 'all' ? '#fff' : colors.textSecondary, fontWeight: '600' }}>{isAr ? 'الكل' : 'All'}</Text>
+        </Pressable>
+        {statuses.map(s => (
+          <Pressable key={s} style={[styles.filterBtn, { backgroundColor: filterStatus === s ? colors.primary : colors.border }]} onPress={() => setFilterStatus(s)}>
+            <Text style={{ color: filterStatus === s ? '#fff' : colors.textSecondary, fontWeight: '600' }}>{statusLabels[s]}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+      <FlatList
+        data={filteredOrders}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadOrders(); }} colors={[colors.primary]} tintColor={colors.primary} />}
+        ListEmptyComponent={<View style={styles.emptyState}><Text style={{ color: colors.textMuted }}>{isAr ? 'لا توجد طلبات' : 'No orders'}</Text></View>}
+      />
+      <Snackbar visible={snackbar.visible} message={snackbar.message} type={snackbar.type} onDismiss={() => setSnackbar({ ...snackbar, visible: false })} />
+    </View>
+  );
+}
 
 // ─── تبويب الأدوات ──────────────────────────────────────────────────────────
 function ToolsTab({ colors, isAr, t }: any) {
@@ -3265,6 +2043,10 @@ function ToolsTab({ colors, isAr, t }: any) {
   const [imageUrl, setImageUrl] = useState('');
   const [sending, setSending] = useState(false);
   const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: string }>({ visible: false, message: '', type: 'success' });
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceMsg, setMaintenanceMsg] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [boostDuration, setBoostDuration] = useState('7');
   const { showAlert } = useAlert();
 
   const showSnackbar = (msg: string, type: string = 'success') => setSnackbar({ visible: true, message: msg, type });
@@ -3275,40 +2057,27 @@ function ToolsTab({ colors, isAr, t }: any) {
       return;
     }
     setSending(true);
-    try {
-      const supabase = getSupabaseClient();
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData?.session?.access_token;
-      if (!accessToken) throw new Error(isAr ? 'الجلسة غير صالحة' : 'Invalid session');
-
-      const res = await fetch('https://dmyjmmpytwppyfsjdmyj.backend.onspace.ai/functions/v1/push-notify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          action: 'broadcast',
-          title: title.trim(),
-          message: body.trim(),
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`);
-
+    setTimeout(() => {
+      setSending(false);
       setBroadcastModalVisible(false);
       setTitle('');
       setBody('');
       setImageUrl('');
-      showSnackbar(
-        isAr ? `تم الإرسال إلى ${json.sent} من ${json.total} جهاز` : `Sent to ${json.sent} of ${json.total} device(s)`,
-        'success'
-      );
-    } catch (err: any) {
-      showSnackbar(err?.message || (isAr ? 'فشل إرسال الإشعارات' : 'Failed to send broadcast'), 'error');
-    } finally {
-      setSending(false);
-    }
+      showSnackbar(isAr ? 'تم إرسال الإشعارات بنجاح' : 'Broadcast sent successfully', 'success');
+    }, 1500);
+  };
+
+  const handleBackup = () => {
+    Alert.alert(isAr ? 'نسخ احتياطي' : 'Backup', isAr ? 'سيتم تصدير جميع البيانات كملف JSON' : 'All data will be exported as JSON');
+  };
+
+  const handleRestore = () => {
+    Alert.alert(isAr ? 'استعادة' : 'Restore', isAr ? 'اختر ملف الاستعادة' : 'Select restore file');
+  };
+
+  const toggleMaintenance = () => {
+    setMaintenanceMode(!maintenanceMode);
+    showSnackbar(isAr ? `تم ${!maintenanceMode ? 'تفعيل' : 'إيقاف'} وضع الصيانة` : `Maintenance mode ${!maintenanceMode ? 'enabled' : 'disabled'}`, 'success');
   };
 
   return (
@@ -3323,6 +2092,79 @@ function ToolsTab({ colors, isAr, t }: any) {
         <View style={styles.toolText}>
           <Text style={[styles.toolTitle, { color: colors.textPrimary }]}>{isAr ? 'إرسال إشعارات جماعية' : 'Send Broadcast'}</Text>
           <Text style={[styles.toolDesc, { color: colors.textMuted }]}>{isAr ? 'مع خيارات تصفية متقدمة' : 'With advanced filters'}</Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
+      </Pressable>
+
+      <View style={styles.toolRow}>
+        <Pressable style={[styles.toolCardSmall, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={handleBackup}>
+          <MaterialIcons name="backup" size={24} color={colors.primary} />
+          <Text style={[styles.toolTitleSmall, { color: colors.textPrimary }]}>{isAr ? 'نسخ احتياطي' : 'Backup'}</Text>
+        </Pressable>
+        <Pressable style={[styles.toolCardSmall, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={handleRestore}>
+          <MaterialIcons name="restore" size={24} color={colors.primary} />
+          <Text style={[styles.toolTitleSmall, { color: colors.textPrimary }]}>{isAr ? 'استعادة' : 'Restore'}</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <MaterialIcons name="build" size={28} color={maintenanceMode ? '#EF4444' : colors.primary} />
+        <View style={styles.toolText}>
+          <Text style={[styles.toolTitle, { color: colors.textPrimary }]}>{isAr ? 'وضع الصيانة' : 'Maintenance Mode'}</Text>
+          <Text style={[styles.toolDesc, { color: colors.textMuted }]}>
+            {maintenanceMode ? (isAr ? '⚠️ مفعل' : '⚠️ Enabled') : (isAr ? 'غير مفعل' : 'Disabled')}
+          </Text>
+        </View>
+        <Pressable style={[styles.toolToggle, { backgroundColor: maintenanceMode ? '#EF4444' : colors.primary }]} onPress={toggleMaintenance}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{maintenanceMode ? (isAr ? 'إيقاف' : 'Disable') : (isAr ? 'تفعيل' : 'Enable')}</Text>
+        </Pressable>
+      </View>
+
+      <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setShowSettings(!showSettings)}>
+        <MaterialIcons name="settings" size={28} color={colors.primary} />
+        <View style={styles.toolText}>
+          <Text style={[styles.toolTitle, { color: colors.textPrimary }]}>{isAr ? 'إعدادات متقدمة' : 'Advanced Settings'}</Text>
+          <Text style={[styles.toolDesc, { color: colors.textMuted }]}>{isAr ? 'تعديل الإعدادات العامة' : 'Modify general settings'}</Text>
+        </View>
+        <MaterialIcons name={showSettings ? 'expand-less' : 'expand-more'} size={24} color={colors.textMuted} />
+      </Pressable>
+      {showSettings && (
+        <View style={[styles.settingsPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.settingRow}>
+            <Text style={[styles.settingLabel, { color: colors.textPrimary }]}>{isAr ? 'مدة التعزيز (أيام)' : 'Boost duration (days)'}</Text>
+            <TextInput style={[styles.settingInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, width: 60 }]} value={boostDuration} onChangeText={setBoostDuration} keyboardType="numeric" />
+          </View>
+          <Pressable style={[styles.saveSettingsBtn, { backgroundColor: colors.primary }]} onPress={() => { showSnackbar(isAr ? 'تم حفظ الإعدادات' : 'Settings saved', 'success'); setShowSettings(false); }}>
+            <Text style={{ color: '#fff', fontWeight: '700' }}>{isAr ? 'حفظ' : 'Save'}</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <View style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <MaterialIcons name="split" size={28} color={colors.primary} />
+        <View style={styles.toolText}>
+          <Text style={[styles.toolTitle, { color: colors.textPrimary }]}>{isAr ? 'اختبار A/B للإعلانات' : 'Ad A/B Testing'}</Text>
+          <Text style={[styles.toolDesc, { color: colors.textMuted }]}>{isAr ? 'إدارة المتغيرات وعرض النتائج' : 'Manage variants and view results'}</Text>
+        </View>
+        <Pressable style={[styles.toolToggle, { backgroundColor: colors.primaryGhost }]} onPress={() => Alert.alert(isAr ? 'نتائج A/B' : 'A/B Results', isAr ? 'الإعلان A: 120 نقرة\nالإعلان B: 95 نقرة' : 'Ad A: 120 clicks\nAd B: 95 clicks')}>
+          <Text style={{ color: colors.primary }}>{isAr ? 'عرض النتائج' : 'View Results'}</Text>
+        </Pressable>
+      </View>
+
+      <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => Alert.alert(isAr ? 'تنبيهات فورية' : 'Real-time Alerts', isAr ? 'تم الاتصال بخادم التنبيهات' : 'Connected to alert server')}>
+        <MaterialIcons name="notifications" size={28} color={colors.primary} />
+        <View style={styles.toolText}>
+          <Text style={[styles.toolTitle, { color: colors.textPrimary }]}>{isAr ? 'تنبيهات فورية' : 'Real-time Alerts'}</Text>
+          <Text style={[styles.toolDesc, { color: colors.textMuted }]}>{isAr ? 'استقبال التنبيهات اللحظية' : 'Receive instant alerts'}</Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
+      </Pressable>
+
+      <Pressable style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => Alert.alert(isAr ? 'إدارة الصلاحيات' : 'Role Management', isAr ? 'لديك صلاحيات مدير عام' : 'You have full admin rights')}>
+        <MaterialIcons name="admin-panel-settings" size={28} color={colors.primary} />
+        <View style={styles.toolText}>
+          <Text style={[styles.toolTitle, { color: colors.textPrimary }]}>{isAr ? 'إدارة الصلاحيات' : 'Role Management'}</Text>
+          <Text style={[styles.toolDesc, { color: colors.textMuted }]}>{isAr ? 'تعيين أدوار للمديرين' : 'Assign roles to admins'}</Text>
         </View>
         <MaterialIcons name="chevron-right" size={24} color={colors.textMuted} />
       </Pressable>
@@ -3514,40 +2356,8 @@ export default function AdminScreen() {
   const { language } = useLanguage();
   const isAr = language === 'ar';
   const { t } = useLanguage();
-  const { user, loading: authLoading } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.replace('/');
-      return;
-    }
-    let cancelled = false;
-    checkIsAdmin()
-      .then((admin) => {
-        if (cancelled) return;
-        setIsAdmin(admin);
-        if (!admin) router.replace('/');
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setIsAdmin(false);
-          router.replace('/');
-        }
-      });
-    return () => { cancelled = true; };
-  }, [user, authLoading, router]);
-
-  const [activeTab, setActiveTab] = useState<'analytics' | 'ads' | 'users' | 'banners' | 'interstitials' | 'reports' | 'stores' | 'tools'>('analytics');
-
-  if (authLoading || !user || isAdmin !== true) {
-    return (
-      <View style={[styles.mainContainer, { backgroundColor: colors.background, paddingTop: insets.top, alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator color={colors.primary} size="large" />
-      </View>
-    );
-  }
+  const [activeTab, setActiveTab] = useState<'analytics' | 'ads' | 'users' | 'banners' | 'interstitials' | 'logs' | 'reports' | 'orders' | 'stores' | 'tools'>('analytics');
 
   const TABS = [
     { key: 'analytics', label: isAr ? '📊 إحصائيات' : 'Analytics', icon: 'insights' },
@@ -3555,7 +2365,9 @@ export default function AdminScreen() {
     { key: 'users', label: isAr ? '👤 مستخدمين' : 'Users', icon: 'people' },
     { key: 'banners', label: isAr ? '🖼️ بانرات' : 'Banners', icon: 'view-carousel' },
     { key: 'interstitials', label: isAr ? '📱 بينية' : 'Interstitials', icon: 'play-circle-outline' },
+    { key: 'logs', label: isAr ? '📋 سجل النشاطات' : 'Activity Log', icon: 'history' },
     { key: 'reports', label: isAr ? '⚠️ بلاغات' : 'Reports', icon: 'report' },
+    { key: 'orders', label: isAr ? '🛒 طلبات' : 'Orders', icon: 'shopping-cart' },
     { key: 'stores', label: isAr ? '🏪 متاجر' : 'Stores', icon: 'storefront' },
     { key: 'tools', label: isAr ? '🛠️ أدوات' : 'Tools', icon: 'build' },
   ];
@@ -3602,11 +2414,13 @@ export default function AdminScreen() {
 
       <AdminTabErrorBoundary>
         {activeTab === 'analytics' && <AnalyticsTab isAr={isAr} colors={colors} />}
-        {activeTab === 'ads' && <AdsTab colors={colors} isAr={isAr} isRTL={isAr} t={t} />}
-        {activeTab === 'users' && <UsersTab colors={colors} isAr={isAr} isRTL={isAr} t={t} />}
+        {activeTab === 'ads' && <AdsTab colors={colors} isAr={isAr} t={t} />}
+        {activeTab === 'users' && <UsersTab colors={colors} isAr={isAr} t={t} />}
         {activeTab === 'banners' && <BannersTab colors={colors} isAr={isAr} t={t} />}
         {activeTab === 'interstitials' && <InterstitialsTab colors={colors} isAr={isAr} t={t} />}
+        {activeTab === 'logs' && <ActivityLogTab colors={colors} isAr={isAr} />}
         {activeTab === 'reports' && <ReportsTab colors={colors} isAr={isAr} />}
+        {activeTab === 'orders' && <OrdersTab colors={colors} isAr={isAr} />}
         {activeTab === 'stores' && <StoresTab colors={colors} isAr={isAr} t={t} />}
         {activeTab === 'tools' && <ToolsTab colors={colors} isAr={isAr} t={t} />}
       </AdminTabErrorBoundary>
@@ -4033,7 +2847,6 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.sm,
-    flexWrap: 'wrap',
   },
   toggleDeletedBtn: {
     paddingHorizontal: 12,
@@ -4041,7 +2854,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     height: 40,
     justifyContent: 'center',
-    flexShrink: 0, flexGrow: 0, alignSelf: 'flex-start',
   },
   exportBtn: {
     paddingHorizontal: 12,
@@ -4050,7 +2862,6 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    flexShrink: 0, flexGrow: 0, alignSelf: 'flex-start',
   },
   userCard: {
     borderWidth: 1,

@@ -253,15 +253,9 @@ export default function AiSupportScreen() {
 
     try {
       const supabase = getSupabaseClient();
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('TIMEOUT')), 20000)
-      );
-      const { data, error } = await Promise.race([
-        supabase.functions.invoke('ai-support', {
-          body: { messages: history, turnCount: turnCountRef.current },
-        }),
-        timeout,
-      ]);
+      const { data, error } = await supabase.functions.invoke('ai-support', {
+        body: { messages: history, turnCount: turnCountRef.current },
+      });
 
       if (error) {
         let errMsg = error.message;
@@ -289,19 +283,14 @@ export default function AiSupportScreen() {
           timestamp: new Date(),
         }]);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('AI Support error:', err);
-      const isTimeout = err?.message === 'TIMEOUT';
       setMessages(prev => [...prev, {
         id: `e_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         role: 'assistant',
-        content: isTimeout
-          ? (isAr
-              ? 'الاتصال بطيء أكثر من اللازم. جرّب مرة ثانية أو تواصل مع الدعم البشري مباشرة.'
-              : 'The connection is taking too long. Please try again or contact human support directly.')
-          : (isAr
-              ? 'عذراً، حدث خطأ. يرجى المحاولة مرة أخرى أو التواصل مع الدعم البشري.'
-              : 'Sorry, an error occurred. Please try again or contact human support.'),
+        content: isAr
+          ? 'عذراً، حدث خطأ. يرجى المحاولة مرة أخرى أو التواصل مع الدعم البشري.'
+          : 'Sorry, an error occurred. Please try again or contact human support.',
         timestamp: new Date(),
       }]);
     } finally {
@@ -326,7 +315,7 @@ export default function AiSupportScreen() {
       ]}>
         {!isAr ? (
           <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
-            <MaterialIcons name="smart-toy" size={16} color="#fff" />
+            <MaterialIcons name="robot" size={16} color="#fff" />
           </View>
         ) : null}
         <View style={[styles.bubble, { backgroundColor: colors.surface, ...Shadow.xs }]}>
@@ -334,7 +323,7 @@ export default function AiSupportScreen() {
         </View>
         {isAr ? (
           <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
-            <MaterialIcons name="smart-toy" size={16} color="#fff" />
+            <MaterialIcons name="robot" size={16} color="#fff" />
           </View>
         ) : null}
       </View>
@@ -425,7 +414,7 @@ export default function AiSupportScreen() {
           </Pressable>
 
           <View style={[styles.headerAvatarWrap, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-            <MaterialIcons name="smart-toy" size={22} color="#fff" />
+            <MaterialIcons name="robot" size={22} color="#fff" />
           </View>
 
           <View style={{ flex: 1 }}>
@@ -464,7 +453,7 @@ export default function AiSupportScreen() {
               { backgroundColor: isDark ? colors.surface : colors.surfaceTint, borderColor: colors.border },
             ]}>
               <View style={[styles.welcomeIconWrap, { backgroundColor: colors.primary }]}>
-                <MaterialIcons name="smart-toy" size={40} color="#fff" />
+                <MaterialIcons name="robot" size={40} color="#fff" />
               </View>
               <Text style={[styles.welcomeTitle, { color: colors.textPrimary }]}>
                 {isAr ? 'أهلاً بك في مساعد سوق قلقيلية' : 'Welcome to Souq Qalqilya Assistant'}
@@ -492,7 +481,7 @@ export default function AiSupportScreen() {
                     styles.quickRow,
                     {
                       backgroundColor: pressed
-                        ? colors.surfaceTint
+                        ? colors.primaryGhost
                         : (isDark ? colors.surface : colors.cardSurface ?? colors.surface),
                       borderColor: pressed ? colors.primary : colors.border,
                       flexDirection: isAr ? 'row-reverse' : 'row',
@@ -670,7 +659,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    overflow: 'hidden',
     ...Shadow.xs,
   },
   quickRowIcon: {

@@ -46,7 +46,6 @@ export type Store = {
   phone: string;
   whatsapp: string;
   address: string;
-  waze_url?: string | null;
   is_active: boolean;
   is_featured: boolean;
   is_approved: boolean;

@@ -588,8 +588,7 @@ function AuthGate() {
         }
 
         const hasName = profile?.username && profile.username.trim().length > 0;
-        const hasSeenWelcome = await AsyncStorage.getItem('onboarding_complete');
-        if (!hasName && !hasSeenWelcome) {
+        if (!hasName) {
           if (!cancelled) setTarget('/complete-profile');
         } else {
           if (!cancelled) setTarget('/(tabs)');

@@ -1,26 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 
-// ── تحديد معدل الطلبات بدون تسجيل دخول (الشات متاح للزوار عمداً) ────────────
-// يمنع سكربتات بتستهلك رصيد الـ AI مباشرة بدون فتح التطبيق، بدون ما نمنع الزوار الحقيقيين
-const RATE_LIMIT_MAX = 12;          // أقصى عدد رسائل لكل عنوان IP
-const RATE_LIMIT_WINDOW_MS = 60_000; // خلال دقيقة وحدة
-const requestLog = new Map<string, number[]>();
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const timestamps = (requestLog.get(ip) ?? []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
-  timestamps.push(now);
-  requestLog.set(ip, timestamps);
-  if (requestLog.size > 1000) {
-    // تنظيف دوري بسيط لمنع تسرب الذاكرة
-    for (const [k, v] of requestLog.entries()) {
-      if (v.every(t => now - t > RATE_LIMIT_WINDOW_MS)) requestLog.delete(k);
-    }
-  }
-  return timestamps.length > RATE_LIMIT_MAX;
-}
-
 // ── Souq Qalqilya AI Support System ─────────────────────────────────────────
 // Bilingual (Arabic / English) support agent for سوق قلقيلية marketplace.
 // Answers questions about browsing, posting, editing, and using features.
@@ -124,18 +104,6 @@ serve(async (req) => {
   }
 
   try {
-    // ── تحديد معدل الطلبات لكل IP — يحمي رصيد الـ AI من الاستهلاك المباشر
-    // عبر سكربتات خارج التطبيق، مع إبقاء الشات متاح للزوار كما هو مصمم ────────
-    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-      ?? req.headers.get('cf-connecting-ip')
-      ?? 'unknown';
-    if (isRateLimited(clientIp)) {
-      return new Response(
-        JSON.stringify({ error: 'Too many requests — please slow down.', shouldHandoff: false }),
-        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const { messages, turnCount } = await req.json() as {
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;
       turnCount: number;
@@ -152,9 +120,8 @@ serve(async (req) => {
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     const explicitHandoff = lastUserMsg ? detectHandoffIntent(lastUserMsg.content) : false;
 
-    // Only force a handoff after a genuinely long, unresolved back-and-forth —
-    // a low threshold here cuts off a bot that's actually being helpful.
-    const autoHandoff = turnCount >= 8;
+    // After 3 unresolved turns, suggest human handoff proactively
+    const autoHandoff = turnCount >= 4;
 
     if (explicitHandoff || autoHandoff) {
       const isAr = lastUserMsg?.content
@@ -206,11 +173,10 @@ serve(async (req) => {
     const reply: string = data.choices?.[0]?.message?.content ?? '';
 
     // ── Secondary handoff check: AI itself may suggest human contact ─────
-    // Narrowed to the specific "human support team" phrasing rather than loose
-    // keywords like "واتساب" — the assistant legitimately mentions WhatsApp
-    // when explaining real app features (e.g. contacting a store), which was
-    // wrongly popping the handoff card on every unrelated answer.
     const aiSuggestsHandoff =
+      reply.includes('واتساب') ||
+      reply.includes('WhatsApp') ||
+      reply.includes('support@') ||
       reply.includes('فريق الدعم البشري') ||
       reply.includes('human support team');
 

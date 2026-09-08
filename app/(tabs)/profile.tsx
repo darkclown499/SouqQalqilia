@@ -18,7 +18,6 @@ import { AdCard } from '@/components';
 import { useMyAds } from '@/hooks/useAds';
 import { updateAdStatus } from '@/services/adsService';
 import { checkIsAdmin } from '@/services/adminService';
-import { trackPageView } from '@/services/analyticsService';
 import { pickImage, uploadImage } from '@/services/imageService';
 import { fetchBlockedIds, unblockUser, subscribeToBlockChanges } from '@/services/blockService';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -558,7 +557,6 @@ export default function ProfileScreen() {
   // ── ✅ تحميل البيانات مع AbortController باستخدام useFocusEffect ──────────────────────────────────
   useFocusEffect(
     useCallback(() => {
-      trackPageView('profile').catch(() => {});
       if (!user?.id) return;
       const controller = new AbortController();
       const signal = controller.signal;
@@ -570,6 +568,7 @@ export default function ProfileScreen() {
           if (signal.aborted) return;
 
           // 2. تحميل بيانات الملف الشخصي والمتجر والمعلومات الأخرى
+          setEditName(user.username || '');
           const admin = await checkIsAdmin();
           if (signal.aborted) return;
           setIsAdmin(admin);
@@ -585,12 +584,11 @@ export default function ProfileScreen() {
 
           const { data: profileData } = await supabase
             .from('user_profiles')
-            .select('username, avatar_url, banner_url, phone, is_verified, push_token')
+            .select('avatar_url, banner_url, phone, is_verified, push_token')
             .eq('id', user.id)
             .single();
 
           if (signal.aborted) return;
-          setEditName(profileData?.username || user.username || '');
           if (profileData) {
             if (!profileData.avatar_url) {
               try {
@@ -711,7 +709,6 @@ export default function ProfileScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: insets.bottom + 68 + 20 }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -779,7 +776,7 @@ export default function ProfileScreen() {
           {ownerStore !== undefined && (
             ownerStore === null ? (
               <Pressable
-                style={[styles.storeCtaCard, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                style={[styles.storeCtaCard, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
                 onPress={() => router.push('/register-store' as any)}
               >
                 <View style={[styles.storeCtaIcon, { backgroundColor: colors.primary }]}>
@@ -797,7 +794,7 @@ export default function ProfileScreen() {
               </Pressable>
             ) : ownerStore.is_approved ? (
               <Pressable
-                style={[styles.storeCtaCard, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                style={[styles.storeCtaCard, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
                 onPress={() => router.push('/store-dashboard' as any)}
               >
                 <View style={[styles.storeCtaIcon, { backgroundColor: colors.primary }]}>
@@ -818,7 +815,7 @@ export default function ProfileScreen() {
               </Pressable>
             ) : (
               <Pressable
-                style={[styles.storeCtaCard, { backgroundColor: colors.surface, borderColor: '#F59E0B', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                style={[styles.storeCtaCard, { borderColor: '#F59E0B', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
                 onPress={() => router.push('/store-dashboard' as any)}
               >
                 <View style={[styles.storeCtaIcon, { backgroundColor: '#F59E0B' }]}>
@@ -1378,11 +1375,13 @@ const styles = StyleSheet.create({
   storeCtaCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#ffffff',
     padding: 16,
     borderRadius: 16,
     marginHorizontal: 16,
     marginTop: 16,
     borderWidth: 1,
+    borderColor: '#e0e0e0',
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },

@@ -17,7 +17,7 @@ interface SkeletonBoxProps {
   baseColor: string;
 }
 
-export function SkeletonBox({ width: w = '100%', height, borderRadius = Radius.sm, style, shimmerColor, baseColor }: SkeletonBoxProps) {
+function SkeletonBox({ width: w = '100%', height, borderRadius = Radius.sm, style, shimmerColor, baseColor }: SkeletonBoxProps) {
   const shimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {

@@ -34,7 +34,7 @@ export async function trackEvent(eventName: string, metadata?: Record<string, an
 
 // ── تسجيل زيارة صفحة ──
 // ✅ تم إضافة 'offers' إلى القائمة
-export async function trackPageView(page: 'home' | 'stores' | 'ad' | 'store' | 'profile' | 'offers' | 'search' | 'categories'): Promise<void> {
+export async function trackPageView(page: 'home' | 'stores' | 'ad' | 'store' | 'profile' | 'offers'): Promise<void> {
   try {
     const supabase = getSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();

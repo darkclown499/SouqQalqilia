@@ -11,7 +11,6 @@ import NetInfo from '@react-native-community/netinfo';
 import { useAuth, useAlert } from '@/template';
 import { useConversations } from '../../hooks/useChat';
 import { deleteConversation } from '@/services/chatService';
-import { markConversationRead, mergeWithLocalReadState, useChatReadStore } from '@/stores/chatReadStore';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
 import { Spacing, FontSize, Radius, Shadow } from '@/constants/theme';
@@ -67,19 +66,11 @@ export default function MessagesScreen() {
   }
 
   const {
-    conversations: rawConversations = [],
+    conversations = [],
     loading = false,
     reload = () => Promise.resolve(),
     unreadCount = 0,
   } = conversationsData;
-
-  // Instantly reflects taps into a conversation as "read" without waiting on
-  // the next server poll — the poll can lag or get skipped by the debounce below.
-  useChatReadStore();
-  const conversations = useMemo(
-    () => mergeWithLocalReadState(rawConversations as any) as unknown as ConversationItem[],
-    [rawConversations]
-  );
 
   const [isOnline, setIsOnline] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +79,7 @@ export default function MessagesScreen() {
   const isMounted = useRef(true);
   const isReloading = useRef(false);
   const lastReloadTime = useRef(0);
-  const RELOAD_DEBOUNCE_MS = 600;
+  const RELOAD_DEBOUNCE_MS = 3000;
 
   // مراقبة حالة الاتصال
   useEffect(() => {
@@ -210,10 +201,7 @@ export default function MessagesScreen() {
               flexDirection: isRTL ? 'row-reverse' : 'row',
             },
           ]}
-          onPress={() => {
-            markConversationRead(item.id, item.last_message_at ?? null);
-            router.push(`/chat/${item.id}` as any);
-          }}
+          onPress={() => router.push(`/chat/${item.id}` as any)}
           onLongPress={() => handleLongPress(item.id)}
           delayLongPress={500}
         >

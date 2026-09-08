@@ -175,12 +175,12 @@ export default function PostAdScreen() {
         <View style={[styles.guestHeader, { backgroundColor: colors.primary }]}>
           <Text style={[styles.guestHeaderTitle, textAlign]}>{t.createListing}</Text>
         </View>
-        <View style={styles.guestBody}>
+        <View style={[styles.guestBody, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           <View style={[styles.guestIcon, { backgroundColor: colors.surfaceTint }]}>
             <MaterialIcons name="add-business" size={44} color={colors.primary} />
           </View>
-          <Text style={[styles.guestTitle, { color: colors.textPrimary, textAlign: 'center' }]}>{t.signInToSell}</Text>
-          <Text style={[styles.guestSub, { color: colors.textMuted }]}>{t.signInToSellSub}</Text>
+          <Text style={[styles.guestTitle, { color: colors.textPrimary }, textAlign]}>{t.signInToSell}</Text>
+          <Text style={[styles.guestSub, { color: colors.textMuted }, textAlign]}>{t.signInToSellSub}</Text>
           <Button label={t.signInRegister} onPress={() => router.push('/login')} style={styles.guestBtn} />
         </View>
       </View>
@@ -328,7 +328,6 @@ export default function PostAdScreen() {
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
-    if (loading) return; // منع الإرسال المزدوج عند الضغط السريع المتكرر
     // ✅ التحقق من حالة الإنترنت قبل الإرسال
     const netState = await NetInfo.fetch();
     if (!netState.isConnected) {

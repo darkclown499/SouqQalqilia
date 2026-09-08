@@ -135,15 +135,6 @@ function getOfferHeight(size: string): number {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }) => {
-  const [screenW, setScreenW] = useState(() => Dimensions.get('window').width);
-  const [screenH, setScreenH] = useState(() => Dimensions.get('window').height);
-  useEffect(() => {
-    const sub = Dimensions.addEventListener('change', ({ window }) => {
-      setScreenW(window.width);
-      setScreenH(window.height);
-    });
-    return () => sub?.remove();
-  }, []);
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<FlatList>(null);
   const autoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -169,7 +160,7 @@ const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }
   const onScrollBeginDrag = () => { userScrolling.current = true; };
   const onScrollEndDrag = () => { userScrolling.current = false; };
   const onMomentumScrollEnd = (e: any) => {
-    const index = Math.round(e.nativeEvent.contentOffset.x / screenW);
+    const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
     setActiveIndex(Math.min(index, offers.length - 1));
   };
 
@@ -177,7 +168,7 @@ const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }
     const isVip = item.is_vip || false;
     return (
       <Pressable
-        style={{ width: screenW, height: screenH * 0.5 }}
+        style={{ width: SCREEN_W, height: SCREEN_H * 0.5 }}
         onPress={() => {
           if (item.phone) {
             openWhatsApp(item.phone, item.title, item.store_name);
@@ -218,7 +209,7 @@ const OfferCarousel = memo(({ offers, isAr }: { offers: Offer[]; isAr: boolean }
         onScrollBeginDrag={onScrollBeginDrag}
         onScrollEndDrag={onScrollEndDrag}
         onMomentumScrollEnd={onMomentumScrollEnd}
-        getItemLayout={(_, index) => ({ length: screenW, offset: screenW * index, index })}
+        getItemLayout={(_, index) => ({ length: SCREEN_W, offset: SCREEN_W * index, index })}
       />
       {offers.length > 1 && (
         <View style={[styles.paginationDots, { flexDirection: isAr ? 'row-reverse' : 'row' }]}>
@@ -321,11 +312,6 @@ export default function OffersScreen() {
   const [activeCategory, setActiveCategory] = useState<string>('الكل');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
-  const [screenW, setScreenW] = useState(() => Dimensions.get('window').width);
-  useEffect(() => {
-    const sub = Dimensions.addEventListener('change', ({ window }) => setScreenW(window.width));
-    return () => sub?.remove();
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -439,7 +425,7 @@ export default function OffersScreen() {
   // ── دمج العناصر للعرض ──
   const displayItems = useMemo(() => {
     const items: JSX.Element[] = [];
-    const itemWidth = (screenW - H_PAD * 2 - COL_GAP) / 2;
+    const itemWidth = (SCREEN_W - H_PAD * 2 - COL_GAP) / 2;
 
     // 1. الكاروسيل
     if (carouselOffers.length > 0) {
@@ -484,10 +470,10 @@ export default function OffersScreen() {
     }
 
     return items;
-  }, [carouselOffers, masonryColumns, isAr, isRTL, screenW]);
+  }, [carouselOffers, masonryColumns, isAr, isRTL]);
 
   const handleAddOffer = useCallback(() => {
-    router.push('/support-form');
+    router.push('/admin/offers');
   }, [router]);
 
   const toggleSearch = useCallback(() => {

@@ -25,7 +25,6 @@ import {
 } from '@/services/storeCategoriesService';
 import { Banner, fetchActiveBanners } from '@/services/bannersService';
 import NetInfo from '@react-native-community/netinfo';
-import { useCartSummary } from '@/stores/cartStore';
 
 // ── Utility: Shuffle array (Fisher-Yates) ──────────────────────────────────
 function shuffleArray<T>(array: T[]): T[] {
@@ -37,8 +36,8 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
-// ── Support WhatsApp number (single source of truth) ────────────────────────
-const SUPPORT_WHATSAPP = '972559886886';
+// ── Screen width ──────────────────────────────────────────────────────────────
+const { width: SCREEN_W } = Dimensions.get('window');
 
 // ── Module-level fallback category ────────────────────────────────────────────
 const FALLBACK_CAT: StoreCategory = {
@@ -88,10 +87,11 @@ const FALLBACK_BANNERS_STORES: Banner[] = [
     title: 'مرحباً في المتاجر',
     subtitle: 'اكتشف أفضل المتاجر',
     link_url: '/search',
-    is_active: true,
-    position: 0,
-    placement: 'stores_directory',
-    created_at: new Date().toISOString(),
+    type: 'internal',
+    size: 'large',
+    position: 'top',
+    showText: true,
+    isVip: false,
   },
   {
     id: 'fb-store-2',
@@ -99,10 +99,11 @@ const FALLBACK_BANNERS_STORES: Banner[] = [
     title: 'عروض المتاجر',
     subtitle: 'تسوق واستفد من العروض',
     link_url: '/offers',
-    is_active: true,
-    position: 1,
-    placement: 'stores_directory',
-    created_at: new Date().toISOString(),
+    type: 'internal',
+    size: 'large',
+    position: 'middle',
+    showText: true,
+    isVip: true,
   },
 ];
 
@@ -138,15 +139,10 @@ async function fetchStoreRatingsMap(): Promise<Record<string, { avg: number; cou
 // ─────────────────────────────────────────────────────────────────────────────
 const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRTL: boolean }) => {
   const [activeIdx, setActiveIdx] = useState(0);
-  const [screenW, setScreenW] = useState(() => Dimensions.get('window').width);
-  useEffect(() => {
-    const sub = Dimensions.addEventListener('change', ({ window }) => setScreenW(window.width));
-    return () => sub?.remove();
-  }, []);
   const scrollRef = useRef<ScrollView>(null);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userScrolling = useRef(false);
-  const BANNER_H = Math.round(screenW * 0.75);
+  const BANNER_H = Math.round(SCREEN_W * 0.68);
   const displayBanners = banners || [];
 
   useEffect(() => {
@@ -158,7 +154,7 @@ const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRT
         if (userScrolling.current) return;
         setActiveIdx(prev => {
           const next = (prev + 1) % displayBanners.length;
-          scrollRef.current?.scrollTo({ x: next * screenW, animated: true });
+          scrollRef.current?.scrollTo({ x: next * SCREEN_W, animated: true });
           return next;
         });
       }, 4500);
@@ -168,12 +164,12 @@ const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRT
     return () => {
       if (autoRef.current) clearInterval(autoRef.current);
     };
-  }, [displayBanners.length, screenW]);
+  }, [displayBanners.length]);
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.x / screenW);
+    const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
     setActiveIdx(Math.max(0, Math.min(idx, displayBanners.length - 1)));
-  }, [displayBanners.length, screenW]);
+  }, [displayBanners.length]);
 
   return (
     <View style={[bc.wrap, { height: BANNER_H }]}>
@@ -189,7 +185,7 @@ const BannerCarousel = React.memo(({ banners, isRTL }: { banners: Banner[]; isRT
         onMomentumScrollEnd={handleScroll}
       >
         {displayBanners.map((banner, i) => (
-          <View key={banner.id || i} style={{ width: screenW, height: BANNER_H }}>
+          <View key={banner.id || i} style={{ width: SCREEN_W, height: BANNER_H }}>
             <View style={bc.slide}>
               <Image
                 source={{ uri: banner.image_url || BANNER_FALLBACK }}
@@ -223,14 +219,14 @@ const QuickStoreCatCard = React.memo(({ cat, isAr, isSelected, onPress }: any) =
     <Pressable style={qc.card} onPress={onPress}>
       <View style={[
         qc.iconBg,
-        { borderColor: isSelected ? activeColor : `${activeColor}33` }
+        isSelected && { borderColor: activeColor }
       ]}>
         {isSelected && (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: activeColor, opacity: 0.1, borderRadius: 37 }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: activeColor, opacity: 0.12, borderRadius: 14 }]} />
         )}
         <Image
           source={{ uri: targetImageUrl }}
-          style={{ width: 42, height: 42 }}
+          style={{ width: 48, height: 48 }}
           contentFit="contain"
           transition={100}
         />
@@ -309,12 +305,7 @@ const VIPStoresStrip = React.memo(({ stores, ratings, isAr, isRTL, onStorePress 
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(0);
   const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [screenW, setScreenW] = useState(() => Dimensions.get('window').width);
-  useEffect(() => {
-    const sub = Dimensions.addEventListener('change', ({ window }) => setScreenW(window.width));
-    return () => sub?.remove();
-  }, []);
-  const CARD_WIDTH = Math.min(214, screenW * 0.55);
+  const CARD_WIDTH = Math.min(214, SCREEN_W * 0.55);
 
   const repeatedStores = useMemo(() => {
     if (stores.length === 0) return [];
@@ -708,7 +699,6 @@ export default function StoresScreen() {
   const { language, isRTL } = useLanguage();
   const { user } = useAuth();
   const isAr = language === 'ar';
-  const { totalCount: cartTotalCount } = useCartSummary();
 
   const [stores, setStores] = useState<Store[]>([]);
   const [storeCategories, setStoreCategories] = useState<StoreCategory[]>([]);
@@ -760,7 +750,7 @@ export default function StoresScreen() {
       // ✅ جلب البانرات من السيرفر مع فولباك
       let fetchedBanners: Banner[] = [];
       try {
-        const bannersRes = await fetchActiveBanners('stores_directory', { signal });
+        const bannersRes = await fetchActiveBanners('stores', { signal });
         if (!signal.aborted && isMountedRef.current) {
           fetchedBanners = bannersRes.data || [];
         }
@@ -869,10 +859,10 @@ export default function StoresScreen() {
   useFocusEffect(
     useCallback(() => {
       // نعيد خلط البانرات إذا كانت موجودة من السيرفر أو الفولباك
-      // ✅ الاعتماد على banners.length (رقم ثابت) بدل banners (مصفوفة جديدة كل خلط)
-      // لتجنب حلقة تحديث لا نهائية عند وجود بنرين أو أكثر
-      setBanners(prev => (prev.length > 1 ? shuffleArray(prev) : prev));
-    }, [banners.length])
+      if (banners.length > 1) {
+        setBanners(prev => shuffleArray(prev));
+      }
+    }, [banners])
   );
 
   useEffect(() => {
@@ -962,68 +952,44 @@ export default function StoresScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       
       {/* ── Header ── */}
-      <View style={[styles.header, { backgroundColor: colors.surface, paddingTop: insets.top + 8, paddingBottom: 15 }]}>
+      <View style={[styles.header, { backgroundColor: '#FFFFFF', paddingTop: insets.top + 8, paddingBottom: 15 }]}>
         <View style={[styles.headerRow, { flexDirection: isRTL ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
-
+          
           {isSearchVisible ? (
-            <View style={{ flex: 1, flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', backgroundColor: colors.surfaceTint, borderRadius: 12, paddingHorizontal: 12, height: 44 }}>
+            <View style={{ flex: 1, flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 12, paddingHorizontal: 12, height: 44 }}>
               <TextInput
                 autoFocus
-                style={{ flex: 1, textAlign: isRTL ? 'right' : 'left', fontSize: 14, color: colors.textPrimary }}
+                style={{ flex: 1, textAlign: isRTL ? 'right' : 'left', fontSize: 14 }}
                 placeholder={isAr ? 'ابحث في المتاجر...' : 'Search stores...'}
-                placeholderTextColor={colors.textMuted}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
               <Pressable onPress={handleClearSearch}>
-                <MaterialIcons name="close" size={22} color={colors.textPrimary} />
+                <MaterialIcons name="close" size={22} color="#1A1A1A" />
               </Pressable>
             </View>
           ) : (
             <>
-              <Pressable hitSlop={8} onPress={() => setIsSearchVisible(true)} style={styles.headerIconBtn}>
-                <MaterialIcons name="search" size={22} color={colors.textPrimary} />
+              <Pressable 
+                hitSlop={8} 
+                onPress={() => {
+                  const msg = 'مرحبا سوق قلقليلية احتاج استفسر عن اكم شغلة في المتاجر';
+                  const url = `whatsapp://send?phone=+972559886886&text=${encodeURIComponent(msg)}`;
+                  Linking.openURL(url).catch(() => Linking.openURL(`https://wa.me/972559886886?text=${encodeURIComponent(msg)}`));
+                }}
+              >
+                <MaterialCommunityIcons name="whatsapp" size={28} color="#25D366" />
               </Pressable>
 
-              <View style={styles.locationCenter}>
-                <View style={[styles.locationPill, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                  <MaterialIcons name="place" size={15} color={colors.textPrimary} />
-                  <Text style={[styles.locationPillText, { color: colors.textPrimary }]}>{isAr ? 'قلقيلية' : 'Qalqilya'}</Text>
-                </View>
+              <View style={[styles.locationCenter, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: '#F3F4F6', borderColor: 'transparent', paddingVertical: 6, paddingHorizontal: 16 }]}>
+                <Text style={{ fontSize: 13, color: '#1A1A1A', fontWeight: '800' }}>
+                  {isAr ? 'استنو المفاجئات 🎁' : 'Wait for Surprises 🎁'}
+                </Text>
               </View>
-
-              <View style={[styles.headerActionsCluster, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <Pressable
-                  hitSlop={8}
-                  onPress={() => {
-                    const msg = 'مرحبا سوق قلقليلية احتاج استفسر عن اكم شغلة في المتاجر';
-                    const url = `whatsapp://send?phone=+${SUPPORT_WHATSAPP}&text=${encodeURIComponent(msg)}`;
-                    Linking.openURL(url).catch(() => Linking.openURL(`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(msg)}`));
-                  }}
-                  style={[styles.headerIconBtn, { backgroundColor: '#DCFCE7' }]}
-                >
-                  <MaterialCommunityIcons name="whatsapp" size={19} color="#25D366" />
-                </Pressable>
-
-                <View style={[styles.actionsPill, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                  <Pressable hitSlop={8} onPress={() => router.push('/orders' as any)} style={styles.actionsPillBtn}>
-                    <MaterialIcons name="receipt-long" size={19} color="#D97706" />
-                  </Pressable>
-
-                  <View style={styles.actionsPillDivider} />
-
-                  <Pressable hitSlop={8} onPress={() => router.push('/cart' as any)} style={styles.actionsPillBtn}>
-                    <View>
-                      <MaterialIcons name="shopping-cart" size={19} color={colors.primary} />
-                      {cartTotalCount > 0 && (
-                        <View style={styles.headerCartBadge}>
-                          <Text style={styles.headerCartBadgeText}>{cartTotalCount > 9 ? '9+' : cartTotalCount}</Text>
-                        </View>
-                      )}
-                    </View>
-                  </Pressable>
-                </View>
-              </View>
+              
+              <Pressable hitSlop={8} onPress={() => setIsSearchVisible(true)}>
+                <MaterialIcons name="search" size={28} color="#1A1A1A" />
+              </Pressable>
             </>
           )}
         </View>
@@ -1043,7 +1009,7 @@ export default function StoresScreen() {
         ref={scrollRef} 
         style={{ flex: 1 }} 
         showsVerticalScrollIndicator={false} 
-        contentContainerStyle={{ paddingBottom: 80 + 68 + 10 }}
+        contentContainerStyle={{ paddingBottom: 80 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1058,8 +1024,8 @@ export default function StoresScreen() {
         {ownerStore !== null && !ownerStoreLoading && (
           <Pressable
             style={[styles.ownerCard, {
-              backgroundColor: (ownerStore as any).is_approved ? colors.surface : colors.surfaceTint,
-              borderColor: (ownerStore as any).is_approved ? colors.primary : colors.border,
+              backgroundColor: (ownerStore as any).is_approved ? colors.surface : '#F3F4F6',
+              borderColor: (ownerStore as any).is_approved ? colors.primary : '#D1D5DB',
             }]}
             onPress={() => router.push('/store-dashboard' as any)}
           >
@@ -1099,28 +1065,31 @@ export default function StoresScreen() {
               ref={catScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
-              contentContainerStyle={styles.catScroll}
+              contentContainerStyle={[styles.catScroll, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+              onContentSizeChange={() => {
+                if (isRTL && catScrollRef.current) {
+                  catScrollRef.current.scrollToEnd({ animated: false });
+                }
+              }}
             >
-              <Pressable style={[qc.card, isRTL && { transform: [{ scaleX: -1 }] }]} onPress={() => setSelectedCatId(null)}>
-                <View style={[qc.iconBg, { borderColor: selectedCatId === null ? colors.primary : `${colors.primary}33` }]}>
+              <Pressable style={qc.card} onPress={() => setSelectedCatId(null)}>
+                <View style={[qc.iconBg, selectedCatId === null && { borderColor: '#B91C1C' }]}>
                   {selectedCatId === null && (
-                    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.primary, opacity: 0.1, borderRadius: 37 }]} />
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#B91C1C', opacity: 0.12, borderRadius: 14 }]} />
                   )}
-                  <Image source={{ uri: get3DIconUrl('الكل') }} style={{ width: 42, height: 42 }} contentFit="contain" />
+                  <Image source={{ uri: get3DIconUrl('الكل') }} style={{ width: 48, height: 48 }} contentFit="contain" />
                 </View>
-                <Text style={[qc.label, selectedCatId === null && { color: colors.primary }]} numberOfLines={2}>{isAr ? 'الكل' : 'All'}</Text>
+                <Text style={[qc.label, selectedCatId === null && { color: '#B91C1C' }]} numberOfLines={2}>{isAr ? 'الكل' : 'All'}</Text>
               </Pressable>
 
               {storeCategories.filter(cat => cat.name_ar !== 'أخرى' && cat.name !== 'Others').map(cat => (
-                <View key={cat.id} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}>
-                  <QuickStoreCatCard
-                    cat={cat}
-                    isAr={isAr}
-                    isSelected={selectedCatId === cat.id}
-                    onPress={() => setSelectedCatId(cat.id)}
-                  />
-                </View>
+                <QuickStoreCatCard
+                  key={cat.id}
+                  cat={cat}
+                  isAr={isAr}
+                  isSelected={selectedCatId === cat.id}
+                  onPress={() => setSelectedCatId(cat.id)}
+                />
               ))}
             </ScrollView>
           </View>
@@ -1232,44 +1201,21 @@ const bc = StyleSheet.create({
 });
 
 const qc = StyleSheet.create({
-  card: { width: 80, alignItems: 'center', marginRight: 12, marginLeft: 4 },
+  card: { width: 85, alignItems: 'center', marginRight: 12, marginLeft: 4 },
   iconBg: {
-    width: 72, height: 72, borderRadius: 36, backgroundColor: '#FFFFFF',
+    width: 75, height: 75, borderRadius: 16, backgroundColor: '#FFFFFF',
     alignItems: 'center', justifyContent: 'center', marginBottom: 8,
-    borderWidth: 2,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 5, elevation: 2,
+    borderWidth: 2, borderColor: 'transparent',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
   },
-  label: { fontSize: 12.5, fontWeight: '700', color: '#1A1A1A', textAlign: 'center', lineHeight: 17 },
+  label: { fontSize: 13, fontWeight: '700', color: '#1A1A1A', textAlign: 'center', lineHeight: 18 },
 });
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 15 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  locationCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  locationPill: { alignItems: 'center', gap: 5 },
-  locationPillText: { fontSize: 14, fontWeight: '800', color: '#1A1A1A' },
-  headerIconBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerActionsCluster: { alignItems: 'center', gap: 8 },
-  actionsPill: {
-    alignItems: 'center', backgroundColor: '#F3F4F6',
-    borderRadius: 23, padding: 3, gap: 4,
-  },
-  actionsPillBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  actionsPillDivider: { width: 1, height: 20, backgroundColor: '#D1D5DB' },
-  headerCartBadge: {
-    position: 'absolute', top: -5, right: -7,
-    minWidth: 17, height: 17, borderRadius: 9,
-    backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 3, borderWidth: 1.5, borderColor: '#fff',
-  },
-  headerCartBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  locationCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 12 },
   ownerCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1.5, padding: 12, marginHorizontal: 16, marginTop: 16 },
   ownerIconWrap: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   ownerName: { fontSize: 14, fontWeight: '700' },

@@ -57,12 +57,7 @@ export default function LoginScreen() {
 
   const switchTab = useCallback((tab: MainTab) => {
     setActiveTab(tab);
-    // تصفير الحقول الحساسة/المؤقتة عند تبديل التبويب لتجنب تسرب بيانات قديمة
-    setOtp('');
-    setConfirmPassword('');
-    setEmailMode('login');
-    setPhoneOtp('');
-    setPhoneStep('input');
+    isSubmittingRef.current = false;
     Animated.spring(tabIndicator, {
       toValue: tab === 'phone' ? 0 : 1,
       useNativeDriver: true,
@@ -324,10 +319,10 @@ export default function LoginScreen() {
             .eq('id', data.session.user?.id || data.user?.id || '')
             .maybeSingle();
           const hasName = profile?.username && profile.username.trim().length > 0;
-          if (hasName) router.replace('/');
+          if (hasName) router.replace('/(tabs)');
           else router.replace('/complete-profile');
         } catch {
-          router.replace('/');
+          router.replace('/(tabs)');
         }
       } else {
         throw new Error(data?.error || 'No session returned');
@@ -369,11 +364,7 @@ export default function LoginScreen() {
       const { error, user: u } = await signInWithPassword(email.trim().toLowerCase(), password);
       if (error) {
         if (error.includes('Failed to load user profile')) {
-          // ✅ لا نثق بنص الخطأ وحده — نتأكد فعلياً من وجود جلسة صالحة
-          // قبل ما ندخل المستخدم، وإلا نعرض خطأ حقيقي بدل إخفاء المشكلة
-          const { data: { session } } = await getSupabaseClient().auth.getSession();
-          if (session) { router.replace('/'); return; }
-          showAlert(t.loginFailed, isAr ? 'تعذّر تحميل بيانات الحساب. حاول مجدداً.' : 'Could not load account data. Please try again.');
+          router.replace('/(tabs)');
           return;
         }
         const friendlyError = mapAuthError(error);
@@ -382,7 +373,7 @@ export default function LoginScreen() {
         }
         return;
       }
-      if (u) router.replace('/');
+      if (u) router.replace('/(tabs)');
     } finally { isSubmittingRef.current = false; }
   }, [email, password, operationLoading, isSubmittingRef, isAr, showAlert, t, signInWithPassword, mapAuthError, router]);
 
@@ -442,15 +433,13 @@ export default function LoginScreen() {
       const { error, user: newUser } = await verifyOTPAndLogin(email.trim(), otp.trim(), { password });
       if (error) {
         if (error.includes('Failed to load user profile')) {
-          const { data: { session } } = await getSupabaseClient().auth.getSession();
-          if (session) { router.replace('/'); return; }
-          showAlert(t.verificationFailed, isAr ? 'تعذّر تحميل بيانات الحساب. حاول مجدداً.' : 'Could not load account data. Please try again.');
+          router.replace('/(tabs)');
           return;
         }
         const friendlyError = mapAuthError(error);
         showAlert(t.verificationFailed, friendlyError || error);
       } else if (newUser) {
-        router.replace('/');
+        router.replace('/(tabs)');
       }
     } finally { setVerifying(false); }
   }, [otp, verifying, email, password, isAr, showAlert, t, verifyOTPAndLogin, mapAuthError, router]);
@@ -483,7 +472,7 @@ export default function LoginScreen() {
         authResolvedRef.current = true;
         cleanupGoogleAuth();
         setGoogleLoading(false);
-        router.replace('/');
+        router.replace('/(tabs)');
       }
     });
     subscriptionRef.current = subscription;
@@ -521,7 +510,7 @@ export default function LoginScreen() {
             authResolvedRef.current = true;
             cleanupGoogleAuth();
             setGoogleLoading(false);
-            router.replace('/');
+            router.replace('/(tabs)');
             return;
           }
           if (exchErr && !authResolvedRef.current) {
@@ -547,30 +536,19 @@ export default function LoginScreen() {
           let attempts = 0;
           pollRef.current = setInterval(async () => {
             attempts++;
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (session && !authResolvedRef.current) {
-                authResolvedRef.current = true;
-                cleanupGoogleAuth();
-                setGoogleLoading(false);
-                router.replace('/');
-                return;
-              }
-            } catch { /* transient — will retry or time out below */ }
-            if (attempts >= 10 && !authResolvedRef.current) {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session && !authResolvedRef.current) {
+              authResolvedRef.current = true;
+              cleanupGoogleAuth();
+              setGoogleLoading(false);
+              router.replace('/(tabs)');
+            } else if (attempts >= 10 && !authResolvedRef.current) {
               cleanupGoogleAuth();
               setGoogleLoading(false);
               showAlert(isAr ? 'لم يكتمل' : 'Not completed', isAr ? 'يرجى المحاولة مجدداً' : 'Please try again.');
             }
           }, 1500);
         }
-        return;
-      }
-
-      // المستخدم ألغى العملية بنفسه — ما في داعي لل poll ولا لرسالة خطأ مخيفة
-      if (result.type === 'dismiss' || result.type === 'cancel') {
-        cleanupGoogleAuth();
-        setGoogleLoading(false);
         return;
       }
 
@@ -584,7 +562,7 @@ export default function LoginScreen() {
             authResolvedRef.current = true;
             cleanupGoogleAuth();
             setGoogleLoading(false);
-            router.replace('/');
+            router.replace('/(tabs)');
           } else if (attempts >= 10 && !authResolvedRef.current) {
             cleanupGoogleAuth();
             setGoogleLoading(false);
@@ -863,11 +841,7 @@ export default function LoginScreen() {
       <EulaModal
         visible={eulaModalVisible}
         onClose={() => setEulaModalVisible(false)}
-        onAccept={() => {
-          if (activeTab === 'phone') setPhoneEulaAccepted(true);
-          else setEulaAccepted(true);
-          setEulaModalVisible(false);
-        }}
+        onAccept={() => { setEulaAccepted(true); setPhoneEulaAccepted(true); setEulaModalVisible(false); }}
         colors={colors} t={t} isAr={isAr}
       />
     </KeyboardAvoidingView>

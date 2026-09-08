@@ -1,7 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { BlurView } from 'expo-blur';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform, View, StyleSheet, Pressable } from 'react-native';
 import Animated, {
@@ -13,21 +11,41 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useTheme } from '@/hooks/useTheme';
 import { useLanguage } from '@/hooks/useLanguage';
-import { useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 
-const ICONS: Record<string, (focused: boolean) => keyof typeof MaterialIcons.glyphMap> = {
-  index: (focused) => (focused ? 'home-filled' : 'home'),
-  categories: () => 'grid-view',
-  stores: (focused) => (focused ? 'storefront' : 'store'),
-  profile: (focused) => (focused ? 'person' : 'person-outline'),
-};
-
-// ── شريط تبويب مخصص بالكامل — نتحكم بالتمركز يدوياً بدل الاعتماد على تخطيط
-// react-navigation الداخلي (اللي كان يزيح الأيقونات لفوق ولا يتمركز صح) ─────────
-function CustomTabBar({ state, navigation }: BottomTabBarProps) {
+export default function TabLayout() {
   const insets = useSafeAreaInsets();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
+  const { t, isRTL } = useLanguage();
 
+  // نمط شريط التبويب – تم حذف flexDirection لتفادي العكس في RTL
+  const tabBarStyle = useMemo(
+    () => ({
+      minHeight: Platform.select({
+        ios: insets.bottom + 62,
+        android: insets.bottom + 62,
+        default: 70,
+      }),
+      paddingTop: 8,
+      paddingBottom: Platform.select({
+        ios: insets.bottom + 8,
+        android: insets.bottom + 8,
+        default: 8,
+      }),
+      paddingHorizontal: 4,
+      backgroundColor: colors.tabBar,
+      borderTopWidth: 1,
+      borderTopColor: colors.tabBarBorder,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 12,
+    }),
+    [insets, colors]
+  );
+
+  // حركة زر الإضافة
   const postScale = useSharedValue(1);
   const postRotation = useSharedValue(0);
   const postAnimStyle = useAnimatedStyle(() => ({
@@ -46,166 +64,119 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     );
   }, [postScale, postRotation]);
 
-  return (
-    <View
-      pointerEvents="box-none"
-      style={[
-        styles.tabBarOuter,
-        {
-          marginBottom: insets.bottom + 10,
-          borderColor: colors.tabBarBorder,
-        },
-      ]}
-    >
-      <View style={styles.tabBarBlur}>
-        <BlurView
-          intensity={Platform.OS === 'ios' ? 80 : 60}
-          tint={isDark ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
-        />
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: isDark ? 'rgba(26,29,39,0.82)' : 'rgba(255,255,255,0.82)' },
-          ]}
-        />
-      </View>
-
-      <View style={styles.row}>
-        {state.routes.map((route, index) => {
-          const focused = state.index === index;
-
-          if (route.name === 'post') {
-            return (
-              <View key={route.key} style={styles.postSlot} pointerEvents="box-none">
-                <Animated.View
-                  style={[
-                    styles.postIconOuter,
-                    { shadowColor: '#000' },
-                    postAnimStyle,
-                  ]}
-                >
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.postIconInner,
-                      {
-                        backgroundColor: focused ? colors.accent : colors.primary,
-                        opacity: pressed ? 0.8 : 1,
-                      },
-                    ]}
-                    onPress={() => {
-                      animatePost();
-                      navigation.navigate(route.name);
-                    }}
-                  >
-                    <MaterialIcons name="add" size={28} color="#fff" />
-                  </Pressable>
-                </Animated.View>
-              </View>
-            );
-          }
-
-          const iconGetter = ICONS[route.name];
-          if (!iconGetter) return null;
-
-          const onPress = () => {
-            const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-            if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
-          };
-
-          return (
-            <Pressable
-              key={route.key}
-              onPress={onPress}
-              style={styles.itemSlot}
-              android_ripple={{ color: 'transparent' }}
+  const PostButton = useCallback(
+    (props: any) => {
+      const focused = props.accessibilityState?.selected ?? false;
+      return (
+        <View style={styles.postTabWrap} pointerEvents="box-none">
+          <View style={styles.postTabBtn}>
+            <Animated.View
+              style={[
+                styles.postIconOuter,
+                { shadowColor: focused ? colors.accent : colors.primary },
+                postAnimStyle,
+              ]}
             >
-              <View style={[styles.iconPill, focused && { backgroundColor: colors.successLight }]}>
-                <MaterialIcons
-                  name={iconGetter(focused)}
-                  size={24}
-                  color={focused ? colors.tabBarActive : colors.tabBarInactive}
-                />
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.postIconInner,
+                  {
+                    backgroundColor: focused ? colors.accent : colors.primary,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+                onPress={() => {
+                  animatePost();
+                  props.onPress?.();
+                }}
+              >
+                <MaterialIcons name="add" size={28} color="#fff" />
+              </Pressable>
+            </Animated.View>
+          </View>
+        </View>
+      );
+    },
+    [colors, postAnimStyle, animatePost]
   );
-}
-
-export default function TabLayout() {
-  const { t, isRTL } = useLanguage();
 
   return (
     <Tabs
-      tabBar={(props) => <CustomTabBar {...props} />}
-      screenOptions={{ headerShown: false, animation: 'shift' }}
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle,
+        tabBarActiveTintColor: colors.tabBarActive,
+        tabBarInactiveTintColor: colors.tabBarInactive,
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginTop: -2 },
+      }}
     >
-      <Tabs.Screen name="index" options={{ title: t.home }} />
-      <Tabs.Screen name="categories" options={{ title: t.browse }} />
-      <Tabs.Screen name="post" options={{ title: '' }} />
-      <Tabs.Screen name="stores" options={{ title: isRTL ? 'المتاجر' : 'Stores' }} />
-      <Tabs.Screen name="profile" options={{ title: t.profile }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: t.home,
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name={focused ? 'home-filled' : 'home'} size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="categories"
+        options={{
+          title: t.browse,
+          tabBarIcon: ({ color }) => <MaterialIcons name="grid-view" size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="post"
+        options={{
+          title: '',
+          tabBarButton: PostButton,
+        }}
+      />
+      <Tabs.Screen
+        name="stores"
+        options={{
+          title: isRTL ? 'المتاجر' : 'Stores',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name={focused ? 'storefront' : 'store'} size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: t.profile,
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name={focused ? 'person' : 'person-outline'} size={24} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  tabBarOuter: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 0,
-    height: 68,
-    borderRadius: 30,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  tabBarBlur: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 30,
-    overflow: 'hidden',
-  },
-  row: {
+  postTabWrap: {
     flex: 1,
-    flexDirection: 'row',
-    paddingHorizontal: 4,
-  },
-  itemSlot: {
-    flex: 1,
-    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
-  iconPill: {
-    width: 48,
-    height: 40,
-    borderRadius: 20,
-    overflow: 'hidden',
+  postTabBtn: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  postSlot: {
-    flex: 1,
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 64,
+    height: 64,
   },
   postIconOuter: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    marginTop: -34,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
+    marginTop: -20,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.32,
+    shadowRadius: 10,
+    elevation: 10,
   },
   postIconInner: {
     width: 56,
